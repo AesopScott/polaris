@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polaris — Font Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Source+Code+Pro:wght@400;600&family=Cascadia+Code:wght@400;600&family=Inconsolata:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Roboto+Mono:wght@400;600&family=Space+Mono:wght@400;700&family=Oxanium:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e2e8f0; padding: 32px; font-family: sans-serif; }
+  h1 { font-size: 18px; font-weight: 800; color: #93c5fd; letter-spacing: 0.12em; margin-bottom: 24px; text-transform: uppercase; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .card {
+    background: #1a1d27;
+    border: 1px solid #2d3148;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-header {
+    background: #13161f;
+    border-bottom: 1px solid #2d3148;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .font-name { font-size: 11px; font-weight: 700; color: #93c5fd; letter-spacing: 0.08em; text-transform: uppercase; }
+  .font-meta { font-size: 10px; color: #64748b; }
+  .terminal { padding: 14px; font-size: 13px; line-height: 1.6; }
+  .t-user    { color: #ffffff; }
+  .t-ai      { color: #22d3ee; }
+  .t-label   { color: #64748b; font-size: 10px; margin-bottom: 2px; }
+
+  .f1 .terminal { font-family: 'Consolas', monospace; }
+  .f2 .terminal { font-family: 'Fira Code', monospace; }
+  .f3 .terminal { font-family: 'JetBrains Mono', monospace; }
+  .f4 .terminal { font-family: 'Source Code Pro', monospace; }
+  .f5 .terminal { font-family: 'Cascadia Code', monospace; }
+  .f6 .terminal { font-family: 'Courier New', monospace; }
+  .f7 .terminal { font-family: 'Inconsolata', monospace; }
+  .f8 .terminal { font-family: 'IBM Plex Mono', monospace; }
+  .f9 .terminal { font-family: 'Roboto Mono', monospace; }
+  .f10 .terminal { font-family: 'Space Mono', monospace; }
+</style>
+</head>
+<body>
+<h1>Polaris — Font Mockups</h1>
+<div class="grid">
+
+  <div class="card f1">
+    <div class="card-header">
+      <span class="font-name">1 · Consolas</span>
+      <span class="font-meta">System · Current default</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f2">
+    <div class="card-header">
+      <span class="font-name">2 · Fira Code</span>
+      <span class="font-meta">Google Fonts · Ligatures</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f3">
+    <div class="card-header">
+      <span class="font-name">3 · JetBrains Mono</span>
+      <span class="font-meta">Google Fonts · Ligatures · Wide</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f4">
+    <div class="card-header">
+      <span class="font-name">4 · Source Code Pro</span>
+      <span class="font-meta">Google Fonts · Clean · Readable</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f5">
+    <div class="card-header">
+      <span class="font-name">5 · Cascadia Code</span>
+      <span class="font-meta">Microsoft · Ligatures · Windows native</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f6">
+    <div class="card-header">
+      <span class="font-name">6 · Courier New</span>
+      <span class="font-meta">System · Classic typewriter</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f7">
+    <div class="card-header">
+      <span class="font-name">7 · Inconsolata</span>
+      <span class="font-meta">Google Fonts · Narrow · High density</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f8">
+    <div class="card-header">
+      <span class="font-name">8 · IBM Plex Mono</span>
+      <span class="font-meta">Google Fonts · Modern · Technical</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f9">
+    <div class="card-header">
+      <span class="font-name">9 · Roboto Mono</span>
+      <span class="font-meta">Google Fonts · Neutral · Versatile</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+  <div class="card f10">
+    <div class="card-header">
+      <span class="font-name">10 · Space Mono</span>
+      <span class="font-meta">Google Fonts · Retro · Distinctive</span>
+    </div>
+    <div class="terminal">
+      <div class="t-label">USER</div>
+      <div class="t-user">Refactor the auth module to use JWT tokens instead of sessions.</div>
+      <br>
+      <div class="t-label">ASSISTANT</div>
+      <div class="t-ai">I'll start by updating server/auth.js — replacing express-session with jsonwebtoken. Here's the plan:</div>
+      <div class="t-ai">1. Install: npm install jsonwebtoken</div>
+      <div class="t-ai">2. Replace req.session.userId → JWT payload</div>
+      <div class="t-ai">3. Add token refresh endpoint at /auth/refresh</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

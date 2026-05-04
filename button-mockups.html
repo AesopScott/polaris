@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polaris — Button Style Mockups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0a0e1a; color: #e2e8f0; padding: 0; min-height: 100vh; }
+
+  /* ─── Style picker ─────────────────────────────────────────────────────── */
+  .picker {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,14,26,0.92); backdrop-filter: blur(8px);
+    padding: 18px 28px; border-bottom: 1px solid #1e293b;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .picker-label { font-size: 12px; font-weight: 700; opacity: 0.6; letter-spacing: 0.08em; margin-right: 10px; }
+  .pbtn {
+    padding: 7px 14px; border-radius: 6px; border: 1px solid #1e293b;
+    background: #111827; color: #94a3b8; cursor: pointer;
+    font-size: 11px; font-weight: 700; transition: all 0.15s;
+  }
+  .pbtn:hover { background: #1e293b; color: #e2e8f0; }
+  .pbtn.active { background: #3b82f6; color: #fff; border-color: #60a5fa; }
+
+  /* ─── Stage layout ─────────────────────────────────────────────────────── */
+  .stage {
+    padding: 40px 28px;
+    display: grid; gap: 50px;
+  }
+  .style-block {
+    border: 1px solid #1e293b; border-radius: 12px; padding: 28px; background: #0d1117;
+    display: none;
+  }
+  .style-block.active { display: block; }
+  .style-name { font-size: 22px; font-weight: 800; margin-bottom: 6px; color: #e2e8f0; }
+  .style-desc { font-size: 12px; opacity: 0.55; margin-bottom: 22px; line-height: 1.55; max-width: 760px; }
+  .demo-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;
+    padding: 22px 18px; border-radius: 10px;
+    background: linear-gradient(180deg, #0a0e1a 0%, #060d18 100%);
+    border: 1px solid #111827;
+  }
+
+  /* ─── Common base for all hbtn styles ─────────────────────────────────── */
+  .hbtn {
+    padding: 8px 12px; font-size: 11px; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; min-height: 32px;
+    transition: all 0.2s ease;
+    user-select: none;
+    text-align: center;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 1 — Glassmorphic                                                  */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s1 .hbtn {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(12px) saturate(1.2);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    color: #e2e8f0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .s1 .hbtn.tint-red    { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.35); color: #fca5a5; }
+  .s1 .hbtn.tint-blue   { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.35); color: #93c5fd; }
+  .s1 .hbtn.tint-green  { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.35); color: #86efac; }
+  .s1 .hbtn.tint-orange { background: rgba(249,115,22,0.18); border-color: rgba(249,115,22,0.35); color: #fdba74; }
+  .s1 .hbtn.tint-purple { background: rgba(168,85,247,0.18); border-color: rgba(168,85,247,0.35); color: #c4b5fd; }
+  .s1 .hbtn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.15); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 2 — Neumorphic (soft 3D pillows)                                  */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s2 .hbtn {
+    background: linear-gradient(145deg, #1a2030, #0d1117);
+    border: none; border-radius: 12px;
+    color: #cbd5e1;
+    box-shadow:
+      6px 6px 12px rgba(0,0,0,0.6),
+      -3px -3px 8px rgba(70,90,130,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .s2 .hbtn.tint-red    { color: #fca5a5; text-shadow: 0 0 8px rgba(239,68,68,0.5); }
+  .s2 .hbtn.tint-blue   { color: #93c5fd; text-shadow: 0 0 8px rgba(59,130,246,0.5); }
+  .s2 .hbtn.tint-green  { color: #86efac; text-shadow: 0 0 8px rgba(34,197,94,0.5); }
+  .s2 .hbtn.tint-orange { color: #fdba74; text-shadow: 0 0 8px rgba(249,115,22,0.5); }
+  .s2 .hbtn.tint-purple { color: #c4b5fd; text-shadow: 0 0 8px rgba(168,85,247,0.5); }
+  .s2 .hbtn:active { box-shadow: inset 4px 4px 8px rgba(0,0,0,0.7), inset -2px -2px 4px rgba(70,90,130,0.05); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 3 — Glossy Aqua (macOS-style)                                     */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s3 .hbtn {
+    border-radius: 999px;
+    border: 1px solid rgba(0,0,0,0.5);
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.4);
+    position: relative; overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4), inset 0 -1px 0 rgba(0,0,0,0.3);
+  }
+  .s3 .hbtn::before {
+    content: ''; position: absolute; inset: 1px 1px 50% 1px;
+    border-radius: 999px 999px 0 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.1));
+    pointer-events: none;
+  }
+  .s3 .hbtn.tint-red    { background: linear-gradient(180deg, #ef4444, #991b1b); }
+  .s3 .hbtn.tint-blue   { background: linear-gradient(180deg, #3b82f6, #1e3a8a); }
+  .s3 .hbtn.tint-green  { background: linear-gradient(180deg, #22c55e, #14532d); }
+  .s3 .hbtn.tint-orange { background: linear-gradient(180deg, #f97316, #7c2d12); }
+  .s3 .hbtn.tint-purple { background: linear-gradient(180deg, #a855f7, #581c87); }
+  .s3 .hbtn:hover { filter: brightness(1.1); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 4 — Material Elevation                                            */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s4 .hbtn {
+    border-radius: 6px; border: none;
+    color: #fff; font-weight: 800; letter-spacing: 0.04em;
+    text-transform: uppercase; font-size: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.3);
+  }
+  .s4 .hbtn.tint-red    { background: #dc2626; }
+  .s4 .hbtn.tint-blue   { background: #2563eb; }
+  .s4 .hbtn.tint-green  { background: #16a34a; }
+  .s4 .hbtn.tint-orange { background: #ea580c; }
+  .s4 .hbtn.tint-purple { background: #9333ea; }
+  .s4 .hbtn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.5), 0 8px 16px rgba(0,0,0,0.35); }
+  .s4 .hbtn:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 5 — Gradient Pill                                                 */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s5 .hbtn {
+    border-radius: 999px; border: none;
+    color: #fff; font-weight: 800;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  .s5 .hbtn.tint-red    { background: linear-gradient(135deg, #f87171, #b91c1c); }
+  .s5 .hbtn.tint-blue   { background: linear-gradient(135deg, #60a5fa, #1d4ed8); }
+  .s5 .hbtn.tint-green  { background: linear-gradient(135deg, #4ade80, #15803d); }
+  .s5 .hbtn.tint-orange { background: linear-gradient(135deg, #fb923c, #c2410c); }
+  .s5 .hbtn.tint-purple { background: linear-gradient(135deg, #c084fc, #6b21a8); }
+  .s5 .hbtn:hover { transform: scale(1.04); box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 6 — Animated Border Glow                                          */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s6 .hbtn {
+    background: #0d1117; color: #e2e8f0; border-radius: 8px; border: none;
+    position: relative; padding: 10px 14px;
+  }
+  .s6 .hbtn::before {
+    content: ''; position: absolute; inset: 0; border-radius: 8px; padding: 1.5px;
+    background: linear-gradient(45deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #a855f7, #ef4444);
+    background-size: 400% 400%;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: s6spin 4s linear infinite;
+  }
+  @keyframes s6spin { 0% { background-position: 0% 50%; } 100% { background-position: 400% 50%; } }
+  .s6 .hbtn.tint-red    { color: #fca5a5; }
+  .s6 .hbtn.tint-blue   { color: #93c5fd; }
+  .s6 .hbtn.tint-green  { color: #86efac; }
+  .s6 .hbtn.tint-orange { color: #fdba74; }
+  .s6 .hbtn.tint-purple { color: #c4b5fd; }
+  .s6 .hbtn:hover { background: #1e293b; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 7 — Cyberpunk Neon                                                */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s7 .hbtn {
+    background: #050810; color: #fff; border-radius: 0;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    font-family: 'Consolas', monospace; text-transform: uppercase;
+    font-weight: 800; letter-spacing: 0.08em; font-size: 10px;
+    border: none;
+    position: relative;
+    transition: all 0.15s;
+  }
+  .s7 .hbtn.tint-red    { color: #ff2d55; box-shadow: 0 0 8px rgba(255,45,85,0.6), inset 0 0 10px rgba(255,45,85,0.2); }
+  .s7 .hbtn.tint-blue   { color: #00d4ff; box-shadow: 0 0 8px rgba(0,212,255,0.6),  inset 0 0 10px rgba(0,212,255,0.2); }
+  .s7 .hbtn.tint-green  { color: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.6),  inset 0 0 10px rgba(0,255,136,0.2); }
+  .s7 .hbtn.tint-orange { color: #ff9500; box-shadow: 0 0 8px rgba(255,149,0,0.6),  inset 0 0 10px rgba(255,149,0,0.2); }
+  .s7 .hbtn.tint-purple { color: #d946ef; box-shadow: 0 0 8px rgba(217,70,239,0.6), inset 0 0 10px rgba(217,70,239,0.2); }
+  .s7 .hbtn:hover { filter: brightness(1.4); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 8 — Brushed Steel                                                 */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s8 .hbtn {
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px),
+      linear-gradient(180deg, #4a5568 0%, #2d3748 50%, #1a202c 100%);
+    border: 1px solid #1a202c; border-top-color: #4a5568;
+    border-radius: 5px;
+    color: #e2e8f0; font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 2px 4px rgba(0,0,0,0.4);
+  }
+  .s8 .hbtn.tint-red    { color: #fca5a5; }
+  .s8 .hbtn.tint-blue   { color: #93c5fd; }
+  .s8 .hbtn.tint-green  { color: #86efac; }
+  .s8 .hbtn.tint-orange { color: #fdba74; }
+  .s8 .hbtn.tint-purple { color: #c4b5fd; }
+  .s8 .hbtn:active { box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 9 — 3D Extruded                                                   */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s9 .hbtn {
+    border: none; border-radius: 8px;
+    color: #fff; font-weight: 900; text-transform: uppercase; font-size: 10px;
+    transform: translateY(-2px); transition: all 0.1s;
+    text-shadow: 0 -1px 0 rgba(0,0,0,0.4);
+  }
+  .s9 .hbtn.tint-red    { background: #ef4444; box-shadow: 0 4px 0 #991b1b, 0 6px 8px rgba(0,0,0,0.4); }
+  .s9 .hbtn.tint-blue   { background: #3b82f6; box-shadow: 0 4px 0 #1e3a8a, 0 6px 8px rgba(0,0,0,0.4); }
+  .s9 .hbtn.tint-green  { background: #22c55e; box-shadow: 0 4px 0 #14532d, 0 6px 8px rgba(0,0,0,0.4); }
+  .s9 .hbtn.tint-orange { background: #f97316; box-shadow: 0 4px 0 #7c2d12, 0 6px 8px rgba(0,0,0,0.4); }
+  .s9 .hbtn.tint-purple { background: #a855f7; box-shadow: 0 4px 0 #581c87, 0 6px 8px rgba(0,0,0,0.4); }
+  .s9 .hbtn:active { transform: translateY(2px); box-shadow: 0 0 0 var(--shadow-color, #000), 0 1px 2px rgba(0,0,0,0.4); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 11 — Neumorphic body + Holographic morphing text                  */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s11 .hbtn {
+    background: linear-gradient(145deg, #1a2030, #0d1117);
+    border: none; border-radius: 12px;
+    box-shadow:
+      6px 6px 12px rgba(0,0,0,0.6),
+      -3px -3px 8px rgba(70,90,130,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+    color: transparent;
+    -webkit-background-clip: text; background-clip: text;
+  }
+  .s11 .hbtn { font-size: 13px; }
+  .s11 .hbtn .lbl {
+    background-size: 200% 200%;
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    animation: s10shift 6s ease infinite;
+    font-weight: 800;
+  }
+  .s11 .hbtn.tint-red    .lbl { background-image: linear-gradient(135deg, #ff006e, #f87171, #f59e0b, #f87171); }
+  .s11 .hbtn.tint-blue   .lbl { background-image: linear-gradient(135deg, #06b6d4, #60a5fa, #8b5cf6, #60a5fa); }
+  .s11 .hbtn.tint-green  .lbl { background-image: linear-gradient(135deg, #14b8a6, #4ade80, #84cc16, #4ade80); }
+  .s11 .hbtn.tint-orange .lbl { background-image: linear-gradient(135deg, #f59e0b, #fb923c, #ef4444, #fb923c); }
+  .s11 .hbtn.tint-purple .lbl { background-image: linear-gradient(135deg, #ec4899, #c084fc, #6366f1, #c084fc); }
+  .s11 .hbtn:active { box-shadow: inset 4px 4px 8px rgba(0,0,0,0.7), inset -2px -2px 4px rgba(70,90,130,0.05); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 10 — Liquid / Holographic                                         */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s10 .hbtn {
+    border-radius: 10px; border: 1px solid rgba(255,255,255,0.15);
+    color: #fff; font-weight: 800;
+    background-size: 200% 200%;
+    animation: s10shift 6s ease infinite;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+    position: relative; overflow: hidden;
+  }
+  @keyframes s10shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .s10 .hbtn.tint-red    { background-image: linear-gradient(135deg, #ff006e, #ef4444, #f59e0b, #ef4444); }
+  .s10 .hbtn.tint-blue   { background-image: linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6, #3b82f6); }
+  .s10 .hbtn.tint-green  { background-image: linear-gradient(135deg, #14b8a6, #22c55e, #84cc16, #22c55e); }
+  .s10 .hbtn.tint-orange { background-image: linear-gradient(135deg, #f59e0b, #f97316, #ef4444, #f97316); }
+  .s10 .hbtn.tint-purple { background-image: linear-gradient(135deg, #ec4899, #a855f7, #6366f1, #a855f7); }
+  .s10 .hbtn:hover { transform: scale(1.03); }
+</style>
+</head>
+<body>
+
+<div class="picker">
+  <span class="picker-label">STYLE:</span>
+  <button class="pbtn active" data-style="1">1 · Glassmorphic</button>
+  <button class="pbtn" data-style="2">2 · Neumorphic</button>
+  <button class="pbtn" data-style="3">3 · Glossy Aqua</button>
+  <button class="pbtn" data-style="4">4 · Material</button>
+  <button class="pbtn" data-style="5">5 · Gradient Pill</button>
+  <button class="pbtn" data-style="6">6 · Border Glow</button>
+  <button class="pbtn" data-style="7">7 · Cyberpunk</button>
+  <button class="pbtn" data-style="8">8 · Brushed Steel</button>
+  <button class="pbtn" data-style="9">9 · 3D Extruded</button>
+  <button class="pbtn" data-style="10">10 · Holographic</button>
+  <button class="pbtn" data-style="11">11 · Neumorphic + Holo Text</button>
+</div>
+
+<div class="stage">
+
+  <!-- Each style block contains the same set of 14 buttons in two rows of 7 -->
+  <div class="style-block s1 active" data-style-block="1">
+    <div class="style-name">1. Glassmorphic</div>
+    <div class="style-desc">Frosted glass with backdrop blur, subtle inner glow on top edge, light tint per category. Modern, calm, expensive-feeling. Hover lifts the button slightly. Best in dark themes; the blur effect needs something behind it to look good.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s2" data-style-block="2">
+    <div class="style-name">2. Neumorphic (Soft 3D Pillows)</div>
+    <div class="style-desc">Soft pillowy buttons with two-tone shadows (dark below-right, light above-left). Color expressed through glowing text rather than fill. Tactile, calm, almost dreamy. Pressed state inverts to look depressed. Trendy 2020-style.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s3" data-style-block="3">
+    <div class="style-name">3. Glossy Aqua (macOS-style)</div>
+    <div class="style-desc">Pill-shaped, vertical gradient fill, top-half overlay creates the "wet" glass highlight. Throwback to early-2000s macOS. Highly polished and recognizable. Risks looking dated.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s4" data-style-block="4">
+    <div class="style-name">4. Material Elevation</div>
+    <div class="style-desc">Flat fills with stacked drop shadows that lift on hover. Uppercase text with letter-spacing. Confident, conventional, very Google Material. Easy to read, predictable, slightly corporate.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s5" data-style-block="5">
+    <div class="style-name">5. Gradient Pill</div>
+    <div class="style-desc">Pill-shaped buttons with diagonal gradient fills. Bright, energetic, scales up on hover. Reads as friendly and modern. Great for marketing pages, may feel a bit playful for a developer tool.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s6" data-style-block="6">
+    <div class="style-name">6. Animated Border Glow</div>
+    <div class="style-desc">Dark interior with an animated rainbow gradient border that slowly rotates around the perimeter. Eye-catching but not hyperactive. Subtle by default, mesmerizing on careful inspection.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s7" data-style-block="7">
+    <div class="style-name">7. Cyberpunk Neon</div>
+    <div class="style-desc">Angular slashed corners (clip-path), monospace uppercase text, neon glow, dark interior. Maximalist hacker aesthetic. Strong opinion — you either love this or hate it.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s8" data-style-block="8">
+    <div class="style-name">8. Brushed Steel</div>
+    <div class="style-desc">Repeating vertical lines simulating a brushed metal surface, with a top-to-bottom darkening gradient. Industrial, professional, slightly retro. Color expressed through text only.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s9" data-style-block="9">
+    <div class="style-name">9. 3D Extruded</div>
+    <div class="style-desc">Solid color top, dark same-hue side face, ground shadow. Looks like the button stands up off the page. Press it and it sinks. Tactile, fun, very gameified — could make Polaris feel less serious.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s10" data-style-block="10">
+    <div class="style-name">10. Holographic / Liquid</div>
+    <div class="style-desc">Multi-color gradients that slowly shift around the button. Premium, futuristic, slightly aurora-like. Each tint family blends into adjacent hues so it feels alive without distracting.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+  <div class="style-block s11" data-style-block="11">
+    <div class="style-name">11. Neumorphic + Holographic Text</div>
+    <div class="style-desc">Soft 3D pillow body from style #2, but the text itself is the animated multi-color gradient from style #10 — calm structure with subtly alive labels. The button itself sits still; the colors flow inside the words. Best in dark themes.</div>
+    <div class="demo-grid"></div>
+  </div>
+
+</div>
+
+<script>
+  // The actual Polaris button set, with their semantic tint classes.
+  const BUTTONS = [
+    { label: 'Restart',      tint: 'red'    },
+    { label: 'API Balance',  tint: 'blue'   },
+    { label: 'Reload UI',    tint: 'green'  },
+    { label: 'Routines',     tint: 'orange' },
+    { label: 'Settings',     tint: 'purple' },
+    { label: 'Preview',      tint: 'red'    },
+    { label: 'Obsidian Up',  tint: 'blue'   },
+    { label: 'Reset Layout', tint: 'green'  },
+    { label: 'Projects',     tint: 'orange' },
+    { label: 'Connections',  tint: 'purple' },
+    { label: 'Code Health',  tint: 'red'    },
+    { label: 'Versions',     tint: 'blue'   },
+    { label: 'Close All',    tint: 'green'  },
+    { label: 'File Manager', tint: 'orange' },
+  ];
+
+  // Render the same button set into every style's demo-grid
+  document.querySelectorAll('.demo-grid').forEach(grid => {
+    grid.innerHTML = BUTTONS.map(b => `<button class="hbtn tint-${b.tint}"><span class="lbl">${b.label}</span></button>`).join('');
+  });
+
+  // Picker switches which style block is visible
+  document.querySelectorAll('.pbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const n = btn.dataset.style;
+      document.querySelectorAll('.pbtn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.style-block').forEach(b => {
+        b.classList.toggle('active', b.dataset.styleBlock === n);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

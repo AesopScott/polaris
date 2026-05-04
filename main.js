@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -36,6 +36,7 @@ function startServer() {
       POLARIS_DIR,
       MOCKUP_DEST,
       SERVER_PORT: String(SERVER_PORT),
+      RESOURCES_PATH: process.resourcesPath ? path.join(process.resourcesPath, 'resources') : path.join(__dirname, 'resources'),
     },
     silent: false,
   });
@@ -48,6 +49,43 @@ function startServer() {
     console.log('[main] Server exited with code', code);
     if (code === 0) setTimeout(startServer, 500);
   });
+
+  // IPC bridge from server.js — folder picker, open path, etc.
+  serverProcess.on('message', async (msg) => {
+    if (!msg || !msg.type) return;
+    if (msg.type === 'pick-directory') {
+      try {
+        const result = await dialog.showOpenDialog(mainWindow, {
+          title: 'Select Working Directory',
+          properties: ['openDirectory'],
+          defaultPath: msg.defaultPath || undefined,
+        });
+        const picked = (!result.canceled && result.filePaths.length) ? result.filePaths[0] : null;
+        serverProcess.send({ type: 'directory-picked', requestId: msg.requestId, path: picked });
+      } catch (e) {
+        serverProcess.send({ type: 'directory-picked', requestId: msg.requestId, path: null, error: e.message });
+      }
+    } else if (msg.type === 'pick-file') {
+      try {
+        const result = await dialog.showOpenDialog(mainWindow, {
+          title: msg.title || 'Select File',
+          properties: ['openFile'],
+          filters: msg.filters || [],
+        });
+        const picked = (!result.canceled && result.filePaths.length) ? result.filePaths[0] : null;
+        serverProcess.send({ type: 'file-picked', requestId: msg.requestId, path: picked });
+      } catch (e) {
+        serverProcess.send({ type: 'file-picked', requestId: msg.requestId, path: null, error: e.message });
+      }
+    } else if (msg.type === 'open-path') {
+      try {
+        if (msg.mode === 'reveal') shell.showItemInFolder(msg.filePath);
+        else await shell.openPath(msg.filePath);
+      } catch (e) {
+        console.error('[main] open-path failed:', e.message);
+      }
+    }
+  });
 }
 
 function createWindow() {
@@ -59,6 +97,12 @@ function createWindow() {
     title: 'Polaris',
     backgroundColor: '#0a0e1a',
     icon: path.join(__dirname, 'assets', 'icon.ico'),
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0a0e1a',
+      symbolColor: '#60a5fa',
+      height: 26,
+    },
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -1,0 +1,124 @@
+[
+  {
+    "id": "github",
+    "name": "GitHub",
+    "emoji": "🐙",
+    "description": "Read repos, search code, manage issues and PRs, monitor Actions runs",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "{{GITHUB_PERSONAL_ACCESS_TOKEN}}"
+    },
+    "credentials": [
+      {
+        "key": "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "label": "Personal Access Token",
+        "type": "secret",
+        "required": true,
+        "hint": "github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)"
+      }
+    ],
+    "prerequisiteWarning": null
+  },
+  {
+    "id": "firebase",
+    "name": "Firebase",
+    "emoji": "🔥",
+    "description": "Connect one or more Firebase projects — Firestore read/write, auth, hosting deploy, 30+ tools",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "firebase-tools@latest", "mcp"],
+    "multiInstance": true,
+    "instanceCredential": {
+      "key": "GOOGLE_APPLICATION_CREDENTIALS",
+      "label": "Service Account JSON",
+      "type": "filepath",
+      "hint": "Firebase Console → Project Settings → Service accounts → Generate new private key → download the JSON and save it somewhere permanent, then select it here."
+    },
+    "prerequisiteWarning": null
+  },
+  {
+    "id": "brevo",
+    "name": "Brevo",
+    "emoji": "📧",
+    "description": "Transactional email, SMS, contacts, campaigns, templates, analytics",
+    "transport": "remote",
+    "url": "https://mcp.brevo.com",
+    "headerKey": "api-key",
+    "credentials": [
+      {
+        "key": "BREVO_API_KEY",
+        "label": "Brevo API Key",
+        "type": "secret",
+        "required": true,
+        "hint": "Brevo dashboard → Settings → API Keys → Generate a new API key"
+      }
+    ],
+    "prerequisiteWarning": null
+  },
+  {
+    "id": "obsidian",
+    "name": "Obsidian",
+    "emoji": "🟣",
+    "description": "Read, write, search, and edit notes, tags, and frontmatter in your vault",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "mcp-obsidian"],
+    "env": {
+      "OBSIDIAN_API_KEY": "{{OBSIDIAN_API_KEY}}",
+      "OBSIDIAN_PORT": "{{OBSIDIAN_PORT}}"
+    },
+    "credentials": [
+      {
+        "key": "OBSIDIAN_API_KEY",
+        "label": "Local REST API Key",
+        "type": "secret",
+        "required": true,
+        "hint": "In Obsidian → Settings → Local REST API → copy the API key shown there"
+      },
+      {
+        "key": "OBSIDIAN_PROTOCOL",
+        "label": "Protocol",
+        "type": "text",
+        "required": false,
+        "default": "http",
+        "hint": "Use 'http' if your Local REST API plugin runs without SSL (most common for local setups). Use 'https' if you enabled SSL in the plugin settings."
+      },
+      {
+        "key": "OBSIDIAN_PORT",
+        "label": "Port",
+        "type": "text",
+        "required": false,
+        "default": "27124",
+        "hint": "Default is 27124. Only change if you configured a different port in the Local REST API plugin."
+      }
+    ],
+    "prerequisiteWarning": "Obsidian must be running and the Local REST API community plugin must be installed and active."
+  },
+  {
+    "id": "gdrive",
+    "name": "Google Drive",
+    "emoji": "📁",
+    "description": "List, read, and search files across your Google Drive using your Google account",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+    "env": {},
+    "credentials": [],
+    "prerequisiteWarning": "Run `gcloud auth application-default login` in a terminal first to authenticate with your Google account. Requires the Google Cloud SDK to be installed."
+  },
+  {
+    "id": "chrome",
+    "name": "Chrome Connector",
+    "emoji": "🌐",
+    "description": "Browser automation, screenshots, network inspection, console access, performance traces",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "chrome-devtools-mcp@latest"],
+    "env": {},
+    "credentials": [],
+    "prerequisiteWarning": "Chrome must be running with --remote-debugging-port=9222. Add this flag to your Chrome shortcut, or use the Launch Chrome button.",
+    "launchChrome": true
+  }
+]

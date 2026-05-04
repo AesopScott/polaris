@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polaris — Label Word-Art Mockups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0a0e1a; color: #e2e8f0; }
+
+  /* ─── Style picker ─────────────────────────────────────────────────────── */
+  .picker {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,14,26,0.92); backdrop-filter: blur(8px);
+    padding: 18px 28px; border-bottom: 1px solid #1e293b;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .picker-label { font-size: 12px; font-weight: 700; opacity: 0.6; letter-spacing: 0.08em; margin-right: 10px; }
+  .pbtn {
+    padding: 7px 14px; border-radius: 6px; border: 1px solid #1e293b;
+    background: #111827; color: #94a3b8; cursor: pointer;
+    font-size: 11px; font-weight: 700; transition: all 0.15s;
+  }
+  .pbtn:hover { background: #1e293b; color: #e2e8f0; }
+  .pbtn.active { background: #3b82f6; color: #fff; border-color: #60a5fa; }
+
+  .stage { padding: 40px 28px; display: grid; gap: 50px; }
+  .style-block { display: none; }
+  .style-block.active { display: block; }
+  .style-name { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+  .style-desc { font-size: 12px; opacity: 0.55; margin-bottom: 22px; line-height: 1.55; max-width: 760px; }
+
+  /* ─── The launch-bar context row simulation ───────────────────────────── */
+  .demo-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+    padding: 28px 24px;
+    background: linear-gradient(180deg, #0a0e1a 0%, #060d18 100%);
+    border-radius: 10px; border: 1px solid #111827;
+  }
+  .field-col { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .label-row { width: 100%; text-align: center; min-height: 18px; }
+  .field-input {
+    width: 100%; padding: 7px 10px;
+    background: #1e293b; color: #e2e8f0; font-size: 12px;
+    border: 1px solid #334155; border-radius: 5px;
+  }
+
+  /* ────────────────────────────── STYLES ─────────────────────────────── */
+
+  /* Style 1 — Engraved (deep inset shadow, looks carved) */
+  .s1 .label-row {
+    font-family: 'Georgia', serif;
+    font-size: 14px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #1a2030;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 -1px 0 rgba(0,0,0,0.6);
+  }
+
+  /* Style 2 — Neon Tube */
+  .s2 .label-row {
+    font-family: 'Courier New', monospace;
+    font-size: 14px; font-weight: 800; letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow:
+      0 0 4px #fff,
+      0 0 11px #60a5fa,
+      0 0 19px #60a5fa,
+      0 0 28px #60a5fa,
+      0 0 38px #60a5fa;
+  }
+
+  /* Style 3 — Holographic Gradient (matches our buttons) */
+  .s3 .label-row {
+    font-size: 14px; font-weight: 800; letter-spacing: 0.16em;
+    text-transform: uppercase;
+    background-image: linear-gradient(135deg, #06b6d4, #60a5fa, #8b5cf6, #ec4899, #60a5fa);
+    background-size: 300% 300%;
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    animation: s3shift 5s ease infinite;
+  }
+  @keyframes s3shift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+  /* Style 4 — Embossed Plate (classic 3D bevel) */
+  .s4 .label-row {
+    font-family: 'Trebuchet MS', sans-serif;
+    font-size: 14px; font-weight: 900; letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #cbd5e1;
+    text-shadow:
+      1px 1px 0 #1e293b,
+      2px 2px 0 #1e293b,
+      3px 3px 4px rgba(0,0,0,0.5),
+      -1px -1px 0 rgba(255,255,255,0.08);
+  }
+
+  /* Style 5 — Letterpress (subtle paper-press effect) */
+  .s5 .label-row {
+    font-family: 'Verdana', sans-serif;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    text-shadow:
+      0 -1px 0 rgba(0,0,0,0.5),
+      0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  /* Style 6 — Outlined Hollow (stroke only, no fill) */
+  .s6 .label-row {
+    font-family: 'Impact', sans-serif;
+    font-size: 18px; font-weight: 900; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: transparent;
+    -webkit-text-stroke: 1px #60a5fa;
+  }
+
+  /* Style 7 — Retro Chrome (vertical gradient, stainless) */
+  .s7 .label-row {
+    font-family: 'Arial Black', sans-serif;
+    font-size: 16px; font-weight: 900; letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background-image: linear-gradient(180deg, #f8fafc 0%, #94a3b8 45%, #475569 50%, #cbd5e1 55%, #f8fafc 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  }
+
+  /* Style 8 — Glitch Offset (cyberpunk RGB split) */
+  .s8 .label-row {
+    font-family: 'Courier New', monospace;
+    font-size: 14px; font-weight: 900; letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow:
+      -1.5px 0 #ef4444,
+       1.5px 0 #06b6d4;
+  }
+
+  /* Style 9 — Soft Glow Pill (label sits on a colored capsule) */
+  .s9 .label-row {
+    display: inline-block; padding: 4px 14px; margin: 0 auto;
+    background: linear-gradient(180deg, rgba(96,165,250,0.18), rgba(96,165,250,0.06));
+    border: 1px solid rgba(96,165,250,0.35);
+    border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #93c5fd;
+    box-shadow: 0 0 12px rgba(96,165,250,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .s9 .field-col { align-items: center; }
+
+  /* Style 10 — Gradient Underline + Text */
+  .s10 .label-row {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 13px; font-weight: 800; letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #e2e8f0;
+    padding-bottom: 6px;
+    background: linear-gradient(90deg, transparent, #60a5fa, #a78bfa, transparent) no-repeat bottom / 80% 2px;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="picker">
+  <span class="picker-label">LABEL STYLE:</span>
+  <button class="pbtn active" data-style="1">1 · Engraved</button>
+  <button class="pbtn" data-style="2">2 · Neon Tube</button>
+  <button class="pbtn" data-style="3">3 · Holographic</button>
+  <button class="pbtn" data-style="4">4 · Embossed</button>
+  <button class="pbtn" data-style="5">5 · Letterpress</button>
+  <button class="pbtn" data-style="6">6 · Hollow Outline</button>
+  <button class="pbtn" data-style="7">7 · Chrome</button>
+  <button class="pbtn" data-style="8">8 · Glitch RGB</button>
+  <button class="pbtn" data-style="9">9 · Glow Pill</button>
+  <button class="pbtn" data-style="10">10 · Gradient Underline</button>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<script>
+  const STYLES = [
+    { n: 1, name: 'Engraved',           desc: 'Looks carved into the dark surface using inset shadow trick. Quiet, premium, classic. Serif typeface gives it a heavier, more authoritative feel.' },
+    { n: 2, name: 'Neon Tube',          desc: 'Bright white text wrapped in a multi-layer blue glow halo. Reads like signage. Maximum visibility, strong vibe — works if you want Polaris to feel showy.' },
+    { n: 3, name: 'Holographic',        desc: 'Same animated multi-color gradient as the header buttons. Visually unifies the labels with the rest of the UI. Subtle but alive.' },
+    { n: 4, name: 'Embossed',           desc: 'Bold sans-serif with stacked drop shadows creating a chunky 3D plate effect. Confident and graphic. Almost looks like signage on a control panel.' },
+    { n: 5, name: 'Letterpress',        desc: 'Subtle inset effect makes the text look pressed into the surface. Restrained and elegant. The lightest of the 3D effects — easy on the eyes.' },
+    { n: 6, name: 'Hollow Outline',     desc: 'Just the outline of the letters in blue, no fill. Bold typeface (Impact). Reads as architectural, modern. Light visual weight despite being large.' },
+    { n: 7, name: 'Chrome',             desc: 'Vertical metallic gradient (white → silver → dark → silver → white) creates a stainless steel finish. Retro 70s/80s feel. Strong personality.' },
+    { n: 8, name: 'Glitch RGB',         desc: 'White text with a 1.5px red shadow offset left and a cyan shadow offset right — the chromatic aberration glitch effect. Cyberpunk, slightly unsettling.' },
+    { n: 9, name: 'Glow Pill',          desc: 'Label sits on a small rounded capsule with a soft blue glow. Reads as an interactive tag rather than a section heading. Best for tighter, smaller labels.' },
+    { n:10, name: 'Gradient Underline', desc: 'Clean uppercase text with a thin blue→purple gradient underline that fades at both ends. Elegant, minimalist, won\'t fight any other UI element.' },
+  ];
+
+  const cardLabels = ['WORKING DIRECTORY', 'REMOTE GIT REPO', 'PROJECT NAME'];
+  const placeholders = [
+    'C:\\Users\\scott\\Code\\Polaris',
+    'AesopScott/polaris',
+    'Polaris',
+  ];
+
+  const stage = document.getElementById('stage');
+  STYLES.forEach(s => {
+    const block = document.createElement('div');
+    block.className = `style-block s${s.n}` + (s.n === 1 ? ' active' : '');
+    block.dataset.styleBlock = s.n;
+    const fields = cardLabels.map((lbl, i) => `
+      <div class="field-col">
+        <div class="label-row">${lbl}</div>
+        <input class="field-input" value="${placeholders[i]}" />
+      </div>
+    `).join('');
+    block.innerHTML = `
+      <div class="style-name">${s.n}. ${s.name}</div>
+      <div class="style-desc">${s.desc}</div>
+      <div class="demo-row">${fields}</div>
+    `;
+    stage.appendChild(block);
+  });
+
+  document.querySelectorAll('.pbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const n = btn.dataset.style;
+      document.querySelectorAll('.pbtn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.style-block').forEach(b => {
+        b.classList.toggle('active', b.dataset.styleBlock === n);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

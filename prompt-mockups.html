@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polaris — Prompt Window Float Mockups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0a0e1a; color: #e2e8f0; }
+
+  /* ── Picker ── */
+  .picker {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,14,26,0.95); backdrop-filter: blur(10px);
+    padding: 16px 28px; border-bottom: 1px solid #1e293b;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .picker-label { font-size: 11px; font-weight: 700; opacity: 0.5; letter-spacing: 0.1em; margin-right: 8px; }
+  .pbtn {
+    padding: 6px 13px; border-radius: 6px; border: 1px solid #1e293b;
+    background: #111827; color: #94a3b8; cursor: pointer;
+    font-size: 11px; font-weight: 700; transition: all 0.15s;
+  }
+  .pbtn:hover { background: #1e293b; color: #e2e8f0; }
+  .pbtn.active { background: #3b82f6; color: #fff; border-color: #60a5fa; }
+
+  /* ── Stage ── */
+  .stage { padding: 40px 28px; display: grid; gap: 60px; }
+  .style-block { display: none; }
+  .style-block.active { display: block; }
+  .style-name { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .style-desc { font-size: 12px; opacity: 0.5; margin-bottom: 24px; line-height: 1.6; max-width: 720px; }
+
+  /* ── Shared scene shell — simulates the launch-bar context ── */
+  .scene {
+    background: linear-gradient(180deg, #090d18 0%, #060b14 100%);
+    border-radius: 12px; border: 1px solid #111827;
+    padding: 24px 28px; position: relative;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  /* Fake context fields row above the prompt */
+  .fake-fields {
+    display: flex; gap: 10px;
+  }
+  .fake-field {
+    flex: 1; display: flex; flex-direction: column; gap: 6px;
+  }
+  .fake-pill {
+    display: block; width: 75%; text-align: center;
+    padding: 3px 12px;
+    background: linear-gradient(180deg, rgba(96,165,250,0.18), rgba(96,165,250,0.06));
+    border: 1px solid rgba(96,165,250,0.35); border-radius: 999px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.14em; color: #93c5fd;
+    box-shadow: 0 0 8px rgba(96,165,250,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+    white-space: nowrap;
+  }
+  .fake-input {
+    width: 75%; padding: 5px 9px; border-radius: 5px;
+    border: 1px solid #334155; background: #1e293b;
+    color: #e2e8f0; font-size: 11px;
+  }
+  .fake-mode {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .fake-mode-btn {
+    padding: 3px 10px; border-radius: 4px; border: 1px solid #334155;
+    background: #1e293b; color: #64748b; font-size: 10px; font-weight: 700;
+  }
+  .fake-mode-btn.active { background: #3b82f6; color: #fff; border-color: #60a5fa; }
+  .fake-mode-hint { font-size: 10px; color: #475569; }
+
+  /* Base textarea used by all styles (overridden per style) */
+  .prompt-base {
+    width: 100%; padding: 10px 12px;
+    font-size: 13px; font-family: 'Segoe UI', sans-serif;
+    resize: none; height: 56px;
+    outline: none;
+  }
+  .token-count { font-size: 10px; color: #475569; }
+
+  /* ── STYLE 1 — Flat Inset (current baseline) ── */
+  .s1 .prompt-wrap { position: relative; width: calc(83.333% + 2px); }
+  .s1 .prompt-base {
+    background: #1e293b; color: #e2e8f0;
+    border: 1px solid #334155; border-radius: 6px;
+  }
+  .s1 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 2 — Elevated Card ── */
+  .s2 .prompt-wrap { position: relative; width: calc(83.333% + 2px); }
+  .s2 .prompt-base {
+    background: #131c2e; color: #e2e8f0;
+    border: 1px solid #1e3a5f;
+    border-radius: 10px;
+    box-shadow:
+      0 4px 16px rgba(0,0,0,0.5),
+      0 1px 0 rgba(255,255,255,0.04) inset;
+  }
+  .s2 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 3 — Command Palette (full-width spotlight) ── */
+  .s3 .prompt-wrap { position: relative; width: 100%; }
+  .s3 .prompt-base {
+    background: #0d1526; color: #e2e8f0;
+    border: none;
+    border-bottom: 2px solid #3b82f6;
+    border-radius: 0;
+    padding: 12px 16px;
+    font-size: 14px;
+    box-shadow: 0 6px 24px rgba(59,130,246,0.12);
+  }
+  .s3 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 4 — Neon Border Pulse ── */
+  .s4 .prompt-wrap { position: relative; width: calc(83.333% + 2px); }
+  .s4 .prompt-base {
+    background: #0a0f1e; color: #e2e8f0;
+    border: 1px solid #60a5fa;
+    border-radius: 8px;
+    box-shadow:
+      0 0 0 1px rgba(96,165,250,0.15),
+      0 0 12px rgba(96,165,250,0.15),
+      0 0 24px rgba(96,165,250,0.08);
+  }
+  .s4 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 5 — Frosted Glass Panel ── */
+  .s5 .prompt-wrap { position: relative; width: calc(83.333% + 2px); }
+  .s5 .prompt-base {
+    background: rgba(30, 41, 59, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #e2e8f0;
+    border: 1px solid rgba(148,163,184,0.15);
+    border-radius: 12px;
+    box-shadow:
+      0 8px 32px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.07);
+  }
+  .s5 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 6 — Terminal / Monospace ── */
+  .s6 .prompt-wrap { position: relative; width: calc(83.333% + 2px); }
+  .s6 .prompt-base {
+    background: #000; color: #4ade80;
+    border: 1px solid #166534;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    caret-color: #4ade80;
+    box-shadow: 0 0 20px rgba(74,222,128,0.08), inset 0 0 40px rgba(0,0,0,0.4);
+  }
+  .s6 .prompt-wrap::before {
+    content: '> ';
+    position: absolute; top: 11px; left: 10px;
+    font-family: 'Consolas', monospace; font-size: 12px;
+    color: #4ade80; opacity: 0.6; pointer-events: none;
+  }
+  .s6 .prompt-base { padding-left: 26px; }
+  .s6 .token-count { position: absolute; bottom: 7px; right: 9px; color: #166534; }
+
+  /* ── STYLE 7 — Floating Island (detached, shadow-heavy) ── */
+  .s7 .prompt-wrap {
+    position: relative;
+    width: calc(83.333% + 2px);
+    margin: 0 0 -6px 0;
+  }
+  .s7 .prompt-base {
+    background: #141d2e; color: #e2e8f0;
+    border: 1px solid #1e3a5f;
+    border-radius: 16px;
+    box-shadow:
+      0 12px 40px rgba(0,0,0,0.7),
+      0 2px 8px rgba(0,0,0,0.5),
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      inset 0 -1px 0 rgba(0,0,0,0.3);
+    transform: translateY(-4px);
+  }
+  .s7 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 8 — Gradient Border (conic trick) ── */
+  .s8 .prompt-wrap {
+    position: relative;
+    width: calc(83.333% + 2px);
+    padding: 1.5px;
+    background: linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899, #06b6d4);
+    background-size: 300% 300%;
+    animation: gradBorder 5s ease infinite;
+    border-radius: 10px;
+  }
+  @keyframes gradBorder { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  .s8 .prompt-base {
+    background: #0d1526; color: #e2e8f0;
+    border: none;
+    border-radius: 9px;
+    width: 100%; display: block;
+  }
+  .s8 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 9 — Neumorphic Inset ── */
+  .s9 .prompt-wrap { position: relative; width: calc(83.333% + 2px); }
+  .s9 .prompt-base {
+    background: linear-gradient(145deg, #080c16, #0f1625);
+    color: #e2e8f0;
+    border: none;
+    border-radius: 12px;
+    box-shadow:
+      inset 4px 4px 10px rgba(0,0,0,0.7),
+      inset -3px -3px 8px rgba(60,80,120,0.07),
+      0 1px 0 rgba(255,255,255,0.03);
+  }
+  .s9 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+  /* ── STYLE 10 — Holographic Frame ── */
+  .s10 .prompt-wrap {
+    position: relative;
+    width: calc(83.333% + 2px);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .s10 .prompt-wrap::before {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: 10px;
+    padding: 1px;
+    background: linear-gradient(135deg, #06b6d4, #60a5fa, #8b5cf6, #ec4899, #60a5fa);
+    background-size: 300% 300%;
+    animation: holoFrame 5s ease infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  @keyframes holoFrame { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  .s10 .prompt-base {
+    background: #0d1526; color: #e2e8f0;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(96,165,250,0.06);
+  }
+  .s10 .token-count { position: absolute; bottom: 7px; right: 9px; }
+
+</style>
+</head>
+<body>
+
+<div class="picker">
+  <span class="picker-label">PROMPT STYLE:</span>
+  <button class="pbtn active" data-style="1">1 · Flat Inset</button>
+  <button class="pbtn" data-style="2">2 · Elevated Card</button>
+  <button class="pbtn" data-style="3">3 · Spotlight</button>
+  <button class="pbtn" data-style="4">4 · Neon Border</button>
+  <button class="pbtn" data-style="5">5 · Frosted Glass</button>
+  <button class="pbtn" data-style="6">6 · Terminal</button>
+  <button class="pbtn" data-style="7">7 · Floating Island</button>
+  <button class="pbtn" data-style="8">8 · Gradient Border</button>
+  <button class="pbtn" data-style="9">9 · Neumorphic Inset</button>
+  <button class="pbtn" data-style="10">10 · Holo Frame</button>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<script>
+const STYLES = [
+  { n:1,  name:'Flat Inset',       desc:'Current baseline. Subtle dark background, thin border, no depth. Clean and unobtrusive — the prompt doesn\'t fight the context fields or cards.' },
+  { n:2,  name:'Elevated Card',    desc:'Slightly lighter background with a stronger shadow creates a sense that the prompt box lifts off the surface. Feels like a separate layer above the launch bar.' },
+  { n:3,  name:'Spotlight',        desc:'Full width, no side borders — only an underline in solid blue. Inspired by macOS Spotlight and VS Code\'s command palette. The prompt becomes the dominant UI element when active.' },
+  { n:4,  name:'Neon Border',      desc:'Thin blue border with a soft glow halo. The box radiates outward — eye is drawn to it. Works well with the neon tube label style aesthetic.' },
+  { n:5,  name:'Frosted Glass',    desc:'Semi-transparent with backdrop blur. The launch-bar background bleeds through softly. Premium feel — like Electron apps built on modern design languages.' },
+  { n:6,  name:'Terminal',         desc:'Black background, green monospace text, green-tinted border, "> " prefix glyph. Leans into the CLI identity. Polarizing — either perfect or too much depending on taste.' },
+  { n:7,  name:'Floating Island',  desc:'Heavy drop shadow + slight upward transform makes the box appear to float above the surface. The shadow spills downward like a physical object lifted off the table.' },
+  { n:8,  name:'Gradient Border',  desc:'An animated cyan→purple→pink gradient wraps the edge of the box. The inner box is matte dark — the gradient only lives in the 1.5px border. Alive without being loud.' },
+  { n:9,  name:'Neumorphic Inset', desc:'Deep inset shadow pressed into the surface — the opposite of the elevated card. Looks carved in. Matches the neumorphic button and header-button style already in the app.' },
+  { n:10, name:'Holo Frame',       desc:'Animated holographic border using the mask-composite trick — the gradient cycles around the edge like a shimmer. Same gradient palette as the header buttons and label pills.' },
+];
+
+const stage = document.getElementById('stage');
+STYLES.forEach(s => {
+  const block = document.createElement('div');
+  block.className = `style-block s${s.n}` + (s.n === 1 ? ' active' : '');
+  block.dataset.styleBlock = s.n;
+  block.innerHTML = `
+    <div class="style-name">${s.n}. ${s.name}</div>
+    <div class="style-desc">${s.desc}</div>
+    <div class="scene">
+      <div class="fake-fields">
+        <div class="fake-field">
+          <div class="fake-pill">WORKING DIRECTORY</div>
+          <input class="fake-input" value="C:\\Users\\scott\\Code\\Polaris" readonly />
+        </div>
+        <div class="fake-field">
+          <div class="fake-pill">REMOTE GIT REPO</div>
+          <input class="fake-input" value="AesopScott/polaris" readonly />
+        </div>
+        <div class="fake-field">
+          <div class="fake-pill">PROJECT NAME</div>
+          <input class="fake-input" value="Polaris" readonly />
+        </div>
+      </div>
+      <div class="fake-mode">
+        <button class="fake-mode-btn active">Chat</button>
+        <button class="fake-mode-btn">Code</button>
+        <span class="fake-mode-hint">DeepSeek web chat · no agent tools, no working directory</span>
+      </div>
+      <div class="prompt-wrap">
+        <textarea class="prompt-base" placeholder="Describe what you want to discuss..."></textarea>
+        <span class="token-count">~0 / 200k tokens</span>
+      </div>
+    </div>
+  `;
+  stage.appendChild(block);
+});
+
+document.querySelectorAll('.pbtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const n = btn.dataset.style;
+    document.querySelectorAll('.pbtn').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.style-block').forEach(b => {
+      b.classList.toggle('active', b.dataset.styleBlock === n);
+    });
+  });
+});
+</script>
+</body>
+</html>

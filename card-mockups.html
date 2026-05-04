@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polaris — Session Card Style Mockups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0a0e1a; color: #e2e8f0; }
+
+  /* ─── Style picker ─────────────────────────────────────────────────────── */
+  .picker {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,14,26,0.92); backdrop-filter: blur(8px);
+    padding: 18px 28px; border-bottom: 1px solid #1e293b;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .picker-label { font-size: 12px; font-weight: 700; opacity: 0.6; letter-spacing: 0.08em; margin-right: 10px; }
+  .pbtn {
+    padding: 7px 14px; border-radius: 6px; border: 1px solid #1e293b;
+    background: #111827; color: #94a3b8; cursor: pointer;
+    font-size: 11px; font-weight: 700; transition: all 0.15s;
+  }
+  .pbtn:hover { background: #1e293b; color: #e2e8f0; }
+  .pbtn.active { background: #3b82f6; color: #fff; border-color: #60a5fa; }
+
+  .stage { padding: 40px 28px; display: grid; gap: 50px; }
+  .style-block { display: none; }
+  .style-block.active { display: block; }
+  .style-name { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+  .style-desc { font-size: 12px; opacity: 0.55; margin-bottom: 22px; line-height: 1.55; max-width: 760px; }
+
+  .demo-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    padding: 24px;
+    background: linear-gradient(180deg, #0a0e1a 0%, #060d18 100%);
+    border-radius: 10px; border: 1px solid #111827;
+  }
+
+  /* ─── Card base — common skeleton, styles override ───────────────────── */
+  .card {
+    display: flex; flex-direction: column;
+    min-height: 280px;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+  .card-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    flex-shrink: 0;
+  }
+  .drag-handle {
+    color: #64748b; font-size: 11px; cursor: grab; flex-shrink: 0;
+  }
+  .chip {
+    background: #34d399; color: #000;
+    font-size: 9px; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px;
+    letter-spacing: 0.04em; flex-shrink: 0;
+  }
+  .title {
+    flex: 1; font-size: 12px; font-weight: 700;
+    color: #34d399;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    margin-left: 10px;
+  }
+  .status {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px;
+    background: #1d4ed820; color: #60a5fa;
+    flex-shrink: 0;
+  }
+  .card-btns { display: flex; gap: 4px; flex-shrink: 0; }
+  .card-btn {
+    width: 22px; height: 22px; border-radius: 4px;
+    border: none; background: #1e293b; color: #cbd5e1;
+    font-size: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .terminal {
+    flex: 1;
+    padding: 8px 10px;
+    font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.5;
+    overflow-y: auto;
+    background: #060d18;
+  }
+  .term-user { color: #fff; margin-bottom: 4px; }
+  .term-asst { color: #60a5fa; margin-bottom: 4px; }
+  .ctx-wrap { padding: 4px 10px; flex-shrink: 0; }
+  .ctx-label { display: flex; justify-content: space-between; font-size: 9px; opacity: 0.5; margin-bottom: 2px; }
+  .ctx-bar { height: 6px; border-radius: 3px; background: #333; overflow: hidden; }
+  .ctx-fill { height: 100%; width: 35%; background: linear-gradient(90deg, #22c55e, #eab308); border-radius: 3px; }
+  .footer {
+    display: flex; padding: 6px 10px; gap: 6px; flex-shrink: 0;
+    align-items: center;
+  }
+  .timer { font-size: 10px; opacity: 0.6; margin-right: auto; }
+  .fbtn {
+    padding: 3px 10px; border-radius: 3px; border: none;
+    background: #1e293b; color: #94a3b8;
+    font-size: 10px; font-weight: 700; cursor: pointer;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 1 — Refined Default (cleaner version of current)                  */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s1 .card {
+    background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+  .s1 .card-header { background: #0d1117; border-bottom: 1px solid #1e293b; }
+  .s1 .footer      { background: #0d1117; border-top: 1px solid #1e293b; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 2 — Frosted Glass Body (matches button glassmorphic)              */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s2 .card {
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .s2 .card-header { border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .s2 .footer      { border-top: 1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.2); }
+  .s2 .terminal { background: rgba(0,0,0,0.35); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 3 — Neumorphic (matches Style 11 buttons)                         */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s3 .card {
+    background: linear-gradient(145deg, #1a2030, #0d1117);
+    border: none; border-radius: 14px;
+    box-shadow:
+      8px 8px 20px rgba(0,0,0,0.6),
+      -4px -4px 12px rgba(70,90,130,0.06),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .s3 .card-header { background: transparent; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .s3 .footer      { background: transparent; border-top: 1px solid rgba(255,255,255,0.04); }
+  .s3 .terminal    { background: rgba(0,0,0,0.4); border-radius: 8px; margin: 4px 8px; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 4 — Holographic Border                                            */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s4 .card {
+    background: #0d1117; border-radius: 12px;
+    position: relative; padding: 1.5px;
+    background-image: linear-gradient(45deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #a855f7, #ef4444);
+    background-size: 400% 400%;
+    animation: s4spin 6s linear infinite;
+  }
+  @keyframes s4spin { 0% { background-position: 0% 50%; } 100% { background-position: 400% 50%; } }
+  .s4 .card > * { background: #0d1117; }
+  .s4 .card-header { border-bottom: 1px solid #1e293b; border-radius: 11px 11px 0 0; }
+  .s4 .footer      { border-top: 1px solid #1e293b; border-radius: 0 0 11px 11px; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 5 — Status-Glow (running cards have a colored glow)               */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s5 .card {
+    background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+    box-shadow:
+      0 0 0 1px rgba(96,165,250,0.4),
+      0 0 24px rgba(96,165,250,0.25),
+      0 4px 12px rgba(0,0,0,0.4);
+    animation: s5pulse 3s ease-in-out infinite;
+  }
+  @keyframes s5pulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(96,165,250,0.4), 0 0 18px rgba(96,165,250,0.18), 0 4px 12px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 0 1px rgba(96,165,250,0.7), 0 0 32px rgba(96,165,250,0.4),  0 4px 12px rgba(0,0,0,0.4); }
+  }
+  .s5 .card-header { background: #0d1117; border-bottom: 1px solid #1e293b; }
+  .s5 .footer      { background: #0d1117; border-top: 1px solid #1e293b; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 6 — Dotted Pattern Background                                     */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s6 .card {
+    background:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.04) 1px, transparent 0) 0 0 / 12px 12px,
+      #111827;
+    border: 1px solid #1e293b; border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .s6 .card-header { background: #0d1117; border-bottom: 1px solid #1e293b; border-radius: 10px 10px 0 0; }
+  .s6 .footer      { background: #0d1117; border-top: 1px solid #1e293b; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 7 — Project-Colored Top Stripe                                    */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s7 .card {
+    background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    border-top: 3px solid #34d399;  /* Aesop green */
+  }
+  .s7 .card-header { background: #0d1117; border-bottom: 1px solid #1e293b; }
+  .s7 .footer      { background: #0d1117; border-top: 1px solid #1e293b; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 8 — Floating Drop Shadow                                          */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s8 .card {
+    background: #111827; border: 1px solid rgba(255,255,255,0.05); border-radius: 14px;
+    box-shadow:
+      0 8px 16px rgba(0,0,0,0.5),
+      0 16px 48px rgba(0,0,0,0.4),
+      0 24px 80px rgba(0,0,0,0.3);
+    transform: translateY(-3px);
+  }
+  .s8 .card-header { background: rgba(0,0,0,0.25); border-bottom: 1px solid rgba(255,255,255,0.05); border-radius: 14px 14px 0 0; }
+  .s8 .footer      { background: rgba(0,0,0,0.25); border-top: 1px solid rgba(255,255,255,0.05); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 9 — Cyberpunk Bracket Frame                                       */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s9 .card {
+    background: #050810; border: 1px solid #1e293b;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+    box-shadow: 0 0 16px rgba(96,165,250,0.15);
+  }
+  .s9 .card-header {
+    background: linear-gradient(90deg, rgba(96,165,250,0.12), transparent);
+    border-bottom: 1px solid #1e293b;
+  }
+  .s9 .title { font-family: 'Consolas', monospace; text-transform: uppercase; letter-spacing: 0.05em; }
+  .s9 .footer { background: linear-gradient(90deg, transparent, rgba(96,165,250,0.06)); border-top: 1px solid #1e293b; }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 11 — Combo: Top Stripe + Tinted Header + Floating + Running Pulse */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s11 .card {
+    background: #111827; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-top: 3px solid #34d399;  /* project stripe (Aesop green) */
+    overflow: hidden;
+    transform: translateY(-3px);
+    box-shadow:
+      0 0 0 1px rgba(96,165,250,0.4),
+      0 0 24px rgba(96,165,250,0.22),
+      0 8px 16px rgba(0,0,0,0.5),
+      0 16px 48px rgba(0,0,0,0.4),
+      0 24px 80px rgba(0,0,0,0.3);
+    animation: s11pulse 3s ease-in-out infinite;
+  }
+  @keyframes s11pulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 1px rgba(96,165,250,0.35),
+        0 0 18px rgba(96,165,250,0.18),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(96,165,250,0.7),
+        0 0 32px rgba(96,165,250,0.4),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+  }
+  .s11 .card-header {
+    background: linear-gradient(180deg, rgba(52,211,153,0.22), rgba(52,211,153,0.04));
+    border-bottom: 1px solid rgba(52,211,153,0.25);
+  }
+  .s11 .footer { background: rgba(0,0,0,0.25); border-top: 1px solid rgba(255,255,255,0.05); }
+
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  Style 10 — Tinted Header by Project                                     */
+  /* ─────────────────────────────────────────────────────────────────────── */
+  .s10 .card {
+    background: #111827; border: 1px solid #1e293b; border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }
+  .s10 .card-header {
+    background: linear-gradient(180deg, rgba(52,211,153,0.22), rgba(52,211,153,0.04));
+    border-bottom: 1px solid rgba(52,211,153,0.25);
+  }
+  .s10 .footer { background: #0d1117; border-top: 1px solid #1e293b; }
+</style>
+</head>
+<body>
+
+<div class="picker">
+  <span class="picker-label">STYLE:</span>
+  <button class="pbtn active" data-style="1">1 · Refined Default</button>
+  <button class="pbtn" data-style="2">2 · Frosted Glass</button>
+  <button class="pbtn" data-style="3">3 · Neumorphic</button>
+  <button class="pbtn" data-style="4">4 · Holo Border</button>
+  <button class="pbtn" data-style="5">5 · Status Glow</button>
+  <button class="pbtn" data-style="6">6 · Dot Pattern</button>
+  <button class="pbtn" data-style="7">7 · Top Stripe</button>
+  <button class="pbtn" data-style="8">8 · Floating</button>
+  <button class="pbtn" data-style="9">9 · Cyberpunk</button>
+  <button class="pbtn" data-style="10">10 · Tinted Header</button>
+  <button class="pbtn" data-style="11">11 · Combo (7+10+8+5)</button>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<script>
+  const cardHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="drag-handle">⠿⠿</span>
+        <span class="chip">Aesop</span>
+        <div class="title">Generate today's news digest</div>
+        <span class="status">Running</span>
+        <div class="card-btns">
+          <button class="card-btn" title="Re-run">↺</button>
+          <button class="card-btn" title="Locks">🔒</button>
+          <button class="card-btn" title="Pin">📌</button>
+          <button class="card-btn" title="Stop">■</button>
+          <button class="card-btn" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="terminal">
+        <div class="term-user">&gt; Pull the latest 5 articles from each source and write a one-paragraph summary for each.</div>
+        <div class="term-asst">I'll fetch from the configured sources, deduplicate by headline, and produce a digest. Working now...</div>
+        <div class="term-asst">Read 23 articles. Top themes today: AI regulation, Q4 earnings, climate policy.</div>
+        <div class="term-asst">Drafting summaries...</div>
+      </div>
+      <div class="ctx-wrap">
+        <div class="ctx-label"><span>Context Window</span><span>34k / 200k · 17%</span></div>
+        <div class="ctx-bar"><div class="ctx-fill"></div></div>
+      </div>
+      <div class="footer">
+        <span class="timer">42s</span>
+        <button class="fbtn">Copy</button>
+        <button class="fbtn">Clear</button>
+      </div>
+    </div>
+  `;
+
+  const STYLES = [
+    { n: 1, name: 'Refined Default', desc: 'Cleaner version of the current card. Subtle shadow, header and footer slightly darker than body, single thin border. The safe baseline — Polaris with the rough edges sanded off.' },
+    { n: 2, name: 'Frosted Glass', desc: 'Backdrop blur, semi-transparent body, soft inset highlight on top edge. Pairs naturally with glassmorphic buttons. Looks expensive but needs something behind it (pattern, color) to really show.' },
+    { n: 3, name: 'Neumorphic', desc: 'Soft 3D pillow body — same family as the Style 11 buttons we picked. Two-tone shadows give it a tactile quality. Terminal floats inside as a recessed dark rectangle. Most coherent with the chosen button look.' },
+    { n: 4, name: 'Holographic Border', desc: 'Animated rainbow border slowly rotating around the perimeter. Dark interior keeps content legible. Eye-catching without being distracting once you stop watching it. Matches button Style 6 if we ever revisit buttons.' },
+    { n: 5, name: 'Status Glow (Running)', desc: 'Running cards have a soft pulsing blue aura that breathes every 3 seconds. At-a-glance signal that something is actively working — your "pulsing glow" idea from earlier. Done/error cards would be static.' },
+    { n: 6, name: 'Dot Pattern', desc: 'Subtle dot-grid background at 4% opacity. Adds visual texture without competing with content. Reads as quietly technical, like graph paper. Works at any size.' },
+    { n: 7, name: 'Top Stripe (Project-Colored)', desc: '3px stripe along the top edge in the project\'s color. Strong project identification at a glance — you can spot which cards belong to which project from across the screen. Body stays neutral.' },
+    { n: 8, name: 'Floating', desc: 'Heavy multi-layer drop shadow makes the card appear to hover above the page. Translated up 3px so it really does sit higher. Premium feel; risks looking too elevated when you have many cards.' },
+    { n: 9, name: 'Cyberpunk Bracket', desc: 'Angular clipped corners (top-right and bottom-left), monospace title, faint blue glow tinting the header and footer. Strong opinion — fits if you want Polaris to feel more like a console than a workspace.' },
+    { n:10, name: 'Tinted Header by Project', desc: 'Header background fades from project color (top) to neutral (bottom). Like the top stripe but more saturated and integrated. Body and footer stay neutral so the project color is the only visual flourish.' },
+    { n:11, name: 'Combo — Top Stripe + Tinted Header + Floating + Running Pulse',
+      desc: 'Combines four styles into one card treatment: 3px project-colored stripe along the top edge (style 7), header that fades from project color to neutral (style 10), heavy multi-layer drop shadow that lifts the card off the page (style 8), and a soft pulsing blue aura indicating the session is running (style 5). Project identity comes through in green; running state pulses in blue — the two visual signals stay separate so they read clearly together.' },
+  ];
+
+  // Render each style block
+  const stage = document.getElementById('stage');
+  STYLES.forEach(s => {
+    const block = document.createElement('div');
+    block.className = `style-block s${s.n}` + (s.n === 1 ? ' active' : '');
+    block.dataset.styleBlock = s.n;
+    block.innerHTML = `
+      <div class="style-name">${s.n}. ${s.name}</div>
+      <div class="style-desc">${s.desc}</div>
+      <div class="demo-row">${cardHTML}${cardHTML}${cardHTML}</div>
+    `;
+    stage.appendChild(block);
+  });
+
+  // Picker switches which style block is visible
+  document.querySelectorAll('.pbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const n = btn.dataset.style;
+      document.querySelectorAll('.pbtn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.style-block').forEach(b => {
+        b.classList.toggle('active', b.dataset.styleBlock === n);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
