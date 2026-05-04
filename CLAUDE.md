@@ -12,9 +12,10 @@ Scott's personal AI command center — parallel agent sessions, real API control
 7. **Commit after every change:** After any file edit or write, immediately commit with a conventional message (feat, fix, refactor, docs, chore, perf, ci). Never leave changes uncommitted. Bump `package.json` version and rebuild before closing a work session.
 
 ## Architecture
-- **Agent sessions** → OpenRouter via Claude CLI (`ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1` + `ANTHROPIC_API_KEY=<openRouterApiKey>`).
+- **Agent sessions** → Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. 9 tool schemas (Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, TodoWrite) executed natively in server.js. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
 - **Chat sessions** → DeepSeek **web chat** (`chat.deepseek.com`, login with email/password, model `deepseek_chat`). Not `api.deepseek.com`.
-- Never mix routing.
+- **Routine sessions** → DeepSeek direct API (`api.deepseek.com`) via `spawnDeepSeekRoutine()`. Single-turn, no tools.
+- Never mix routing. The old Claude CLI path (`spawnClaude`) is retained in server.js but no longer called.
 
 ## Key files
 - `server.js` — HTTP+WS server; agent/chat spawning, file versioning, lock enforcement.
