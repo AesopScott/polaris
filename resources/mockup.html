@@ -249,7 +249,7 @@
   /* Session Card */
   .card {
     border-radius: 10px; display: flex; flex-direction: column; overflow: hidden;
-    position: relative; height: 260px; min-height: 160px;
+    position: relative; height: 520px; min-height: 160px;
     border: 1px solid rgba(255,255,255,0.05);
     border-top: 3px solid var(--card-stripe-color, #60a5fa); /* project color */
     transform: translateY(-3px);
@@ -463,7 +463,17 @@
   .p5 .t-normal { color: #fdba74; }
   .palette .t-done { color: #22c55e; }
   .palette .t-warn { color: #ef4444; }
-  .palette .t-user { color: #ffffff; }
+  .palette .t-user {
+    color: #e9d5ff;
+    background: #4c1d95;
+    border-radius: 6px;
+    padding: 4px 8px;
+    margin: 4px 0;
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .palette .t-normal { margin-bottom: 4px; }
 
   /* Palette switcher button colors */
   .pal-btn-1 { background: #0a0e1a; color: #60a5fa; }
