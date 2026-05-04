@@ -55,6 +55,7 @@ const BASE_SYSTEM_PROMPT = [
   'Before any file write, check locks.json. Locked files require explicit user approval.',
   'Before any code change, file write, or destructive action, state what you plan to do and wait for the user to confirm. Do not assume approval from context.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
+  'Format responses for readability: use short paragraphs (2-3 sentences max), separate distinct ideas with a blank line, and use bullet points for lists or steps. Avoid walls of text.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
