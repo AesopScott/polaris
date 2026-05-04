@@ -3656,14 +3656,29 @@
     if (inp || out) tokenHistory.push({ ts: Date.now(), model, input: inp, output: out });
   }
 
+  let _graphPeriodMs = 86400000; // default 24h
+
   function toggleTokenGraph() {
     _showingGraph = !_showingGraph;
     document.getElementById('api-balance-content').style.display = _showingGraph ? 'none' : 'block';
     document.getElementById('token-graph-view').style.display    = _showingGraph ? 'block' : 'none';
     document.getElementById('token-graph-btn').style.background  = _showingGraph ? '#2563eb' : '#1e3a5f';
-    if (_showingGraph) wsSend({ type: 'get-token-log', since: Date.now() - 24 * 60 * 60 * 1000 });
+    if (_showingGraph) wsSend({ type: 'get-token-log', since: Date.now() - _graphPeriodMs });
   }
   window.toggleTokenGraph = toggleTokenGraph;
+
+  function setGraphPeriod(btn, ms) {
+    _graphPeriodMs = ms;
+    document.querySelectorAll('.graph-period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wsSend({ type: 'get-token-log', since: Date.now() - ms });
+  }
+  window.setGraphPeriod = setGraphPeriod;
+
+  function refreshTokenGraph() {
+    wsSend({ type: 'get-token-log', since: Date.now() - _graphPeriodMs });
+  }
+  window.refreshTokenGraph = refreshTokenGraph;
 
   function drawTokenGraph(serverEntries) {
     const canvas = document.getElementById('token-graph-canvas');
