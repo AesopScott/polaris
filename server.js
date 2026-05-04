@@ -2036,7 +2036,7 @@ function handleMessage(ws, raw) {
         sendTo(ws, { type: 'mcp-server-enabled', id, ok: false, error: 'Add at least one project' });
         return;
       }
-      const cfg = readConfig();
+      const cfg = readJSON(CONFIG_PATH, {});
       cfg.mcp_instances = cfg.mcp_instances || {};
       const builtInstances = instances.map(inst => ({
         name: inst.name,
@@ -2068,7 +2068,7 @@ function handleMessage(ws, raw) {
         return;
       }
     }
-    const cfg = readConfig();
+    const cfg = readJSON(CONFIG_PATH, {});
     cfg.mcp_credentials = cfg.mcp_credentials || {};
     cfg.mcp_credentials[id] = {};
     for (const credDef of (entry.credentials || [])) {
