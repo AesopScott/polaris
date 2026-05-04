@@ -993,9 +993,13 @@ function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) 
   if (!promptArgOk) console.error('[spawn] PROMPT MISMATCH — arg builder corrupted the -p value');
 
   const spawnEnv = { ...process.env };
-  // Disable extended thinking — Gemini 2.5 Flash generates 500k+ hidden thinking
-  // tokens per turn via OpenRouter which massively inflates cost.
-  spawnEnv.MAX_THINKING_TOKENS = '0';
+  // Extended thinking: off for floor/balanced (massive hidden token cost, minimal gain),
+  // unrestricted for power tier (complex tasks where deep reasoning earns its keep).
+  if (session.tier === 'power') {
+    delete spawnEnv.MAX_THINKING_TOKENS;
+  } else {
+    spawnEnv.MAX_THINKING_TOKENS = '0';
+  }
   if (useDirect) {
     spawnEnv.ANTHROPIC_API_KEY  = config.anthropicApiKey;
     delete spawnEnv.ANTHROPIC_BASE_URL;
@@ -1522,7 +1526,7 @@ function handleMessage(ws, raw) {
     const name = generateSessionName(prompt);
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag });
+    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
     saveSessions();
