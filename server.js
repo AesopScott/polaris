@@ -181,7 +181,7 @@ function maskedMcpCredentials() {
 
 // ─── Support ticket submission ───────────────────────────────────────────────
 function getInstallId() {
-  const cfg = readConfig();
+  const cfg = readJSON(CONFIG_PATH, {});
   if (cfg.installId) return cfg.installId;
   const id = crypto.randomBytes(8).toString('hex');
   cfg.installId = id;
@@ -2101,7 +2101,7 @@ function handleMessage(ws, raw) {
     cj.mcpServers = cj.mcpServers || {};
     if (entry && entry.multiInstance && slug) {
       delete cj.mcpServers[slug];
-      const cfg = readConfig();
+      const cfg = readJSON(CONFIG_PATH, {});
       cfg.mcp_instances = cfg.mcp_instances || {};
       cfg.mcp_instances[id] = (cfg.mcp_instances[id] || []).filter(i => i.slug !== slug);
       writeJSON(CONFIG_PATH, cfg);
@@ -2441,7 +2441,7 @@ wss.on('connection', (ws) => {
 
   // Fire one-time `app-update` event if the version has changed since last launch
   try {
-    const cfg = readConfig();
+    const cfg = readJSON(CONFIG_PATH, {});
     const current = require('./package.json').version;
     if (cfg.lastSeenVersion !== current) {
       const previous = cfg.lastSeenVersion || null;
