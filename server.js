@@ -958,6 +958,317 @@ function generateSessionName(prompt) {
   return words.slice(0, 7).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'New Session';
 }
 
+// ─── Direct OpenRouter API — agent sessions (no CLI) ─────────────────────────
+// Replaces CLI spawning. Eliminates CLAUDE.md cold-load (~29k tokens), 37-tool
+// schema bloat, and unbounded --resume conversation replay. Instead: rolling
+// 20-turn window, 9 curated tool schemas, intentional system prompt.
+
+const MAX_AGENT_MESSAGES = 40; // 20 turns × user+assistant
+
+const DIRECT_TOOLS = [
+  { type: 'function', function: { name: 'Read', description: 'Read a file. Returns content with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer', description: 'Start line (1-based)' }, limit: { type: 'integer', description: 'Max lines to read' } }, required: ['file_path'] } } },
+  { type: 'function', function: { name: 'Write', description: 'Write content to a file, creating it if needed.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } }, required: ['file_path', 'content'] } } },
+  { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find — must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
+  { type: 'function', function: { name: 'Glob', description: 'Find files matching a glob pattern. Returns absolute paths sorted by modified time.', parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'Glob e.g. "**/*.js"' }, path: { type: 'string', description: 'Directory to search (default: working dir)' } }, required: ['pattern'] } } },
+  { type: 'function', function: { name: 'Grep', description: 'Search file contents for a regex pattern.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string', description: 'File or directory to search' }, glob: { type: 'string', description: 'File filter e.g. "*.ts"' }, output_mode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: 'Default: files_with_matches' }, context: { type: 'integer', description: 'Lines of context around matches' } }, required: ['pattern'] } } },
+  { type: 'function', function: { name: 'Bash', description: 'Execute a shell command in the session working directory.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer', description: 'Timeout ms, max 120000' } }, required: ['command'] } } },
+  { type: 'function', function: { name: 'PowerShell', description: 'Execute a PowerShell command on Windows.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer' } }, required: ['command'] } } },
+  { type: 'function', function: { name: 'WebFetch', description: 'Fetch the text content of a URL.', parameters: { type: 'object', properties: { url: { type: 'string' }, prompt: { type: 'string', description: 'What to extract from the page' } }, required: ['url'] } } },
+  { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'object', properties: { content: { type: 'string' }, status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] } }, required: ['content', 'status'] } } }, required: ['todos'] } } },
+];
+
+function buildDirectSystemPrompt(config, workDir) {
+  let prompt = BASE_SYSTEM_PROMPT + '\n';
+  // Polaris project CLAUDE.md — the rules that actually matter for Polaris agents
+  try { prompt += '\n' + fs.readFileSync(GLOBAL_CLAUDE_PATH, 'utf8'); } catch {}
+  // Project memory if available
+  try {
+    const projectKey = (workDir || '')
+      .replace(/^([A-Za-z]):/, (_, d) => d.toLowerCase() + '-')
+      .replace(/[/\\]/g, '-');
+    const memPath = path.join(os.homedir(), '.claude', 'projects', projectKey, 'memory', 'MEMORY.md');
+    prompt += '\n--- Project Memory ---\n' + fs.readFileSync(memPath, 'utf8');
+  } catch {}
+  const patterns = config.protectedPatterns || ['*.md'];
+  prompt += `\nProtected file patterns — require explicit user approval before modifying: ${patterns.join(', ')}`;
+  return prompt;
+}
+
+// ── Tool implementations ──────────────────────────────────────────────────────
+
+function toolRead({ file_path, offset, limit }) {
+  const lines = fs.readFileSync(file_path, 'utf8').split('\n');
+  const start = offset ? Math.max(0, offset - 1) : 0;
+  const end   = limit  ? Math.min(lines.length, start + limit) : lines.length;
+  return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
+}
+
+function toolWrite({ file_path, content }) {
+  fs.mkdirSync(path.dirname(file_path), { recursive: true });
+  fs.writeFileSync(file_path, content, 'utf8');
+  return `Written: ${file_path}`;
+}
+
+function toolEdit({ file_path, old_string, new_string, replace_all }) {
+  const content = fs.readFileSync(file_path, 'utf8');
+  if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
+  const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
+  fs.writeFileSync(file_path, updated, 'utf8');
+  return `Edited: ${file_path}`;
+}
+
+function toolGlob({ pattern, path: searchPath }, workDir) {
+  const base = searchPath || workDir || process.cwd();
+  // Convert glob to regex — handle ** and * separately
+  const regexStr = pattern
+    .replace(/[.+^${}()|[\]]/g, '\\$&')
+    .replace(/\\\*\\\*/g, '§DS§').replace(/\\\*/g, '[^/\\\\]*').replace(/§DS§/g, '.*')
+    .replace(/\?/g, '[^/\\\\]');
+  const rx = new RegExp(`(^|[/\\\\])${regexStr}$`, 'i');
+  const results = [];
+  const walk = (dir, depth) => {
+    if (depth > 15) return;
+    try {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (ent.name === 'node_modules' || ent.name === '.git') continue;
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) { walk(full, depth + 1); }
+        else if (rx.test(full.replace(/\\/g, '/'))) { results.push(full); }
+      }
+    } catch {}
+  };
+  walk(base, 0);
+  return results.slice(0, 500).join('\n') || '(no matches)';
+}
+
+function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, context: ctx }, workDir) {
+  const searchIn = searchPath || workDir || process.cwd();
+  const filter   = globFilter ? `*${path.extname(globFilter) || globFilter}` : '*';
+  const ctxLines = ctx || 0;
+  const ctxFlag  = ctxLines > 0 ? `-Context ${ctxLines},${ctxLines}` : '';
+  let   cmd      = `Get-ChildItem -Path "${searchIn}" -Recurse -File -Filter "${filter}" -ErrorAction SilentlyContinue | Select-String -Pattern ${JSON.stringify(pattern)} -ErrorAction SilentlyContinue ${ctxFlag}`;
+  if (output_mode === 'files_with_matches') cmd += ' | Select-Object -ExpandProperty Path -Unique';
+  else if (output_mode === 'count')         cmd += ' | Measure-Object | Select-Object -ExpandProperty Count';
+  try {
+    return execSync(`powershell.exe -NoProfile -Command "${cmd.replace(/"/g, '\\"')}"`, { timeout: 30000, maxBuffer: 5 * 1024 * 1024 }).toString().trim() || '(no matches)';
+  } catch (e) { return e.stdout?.toString().trim() || '(no matches)'; }
+}
+
+function toolBash({ command, timeout: tms }, workDir) {
+  return execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+}
+
+function toolPowerShell({ command, timeout: tms }, workDir) {
+  return execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+}
+
+function toolWebFetch({ url }) {
+  return new Promise(resolve => {
+    const lib = url.startsWith('https') ? https : require('http');
+    lib.get(url, { headers: { 'User-Agent': 'Polaris/1.0' } }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => resolve(data.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 20000)));
+    }).on('error', err => resolve(`Fetch error: ${err.message}`));
+  });
+}
+
+function toolTodoWrite({ todos }, sessionId) {
+  const s = sessions.get(sessionId);
+  if (s) s.todos = todos;
+  return 'Todos updated:\n' + todos.map(t => `[${t.status}] ${t.content}`).join('\n');
+}
+
+async function executeDirectTool(name, input, workDir, sessionId) {
+  switch (name) {
+    case 'Read':       return toolRead(input);
+    case 'Write':      return toolWrite(input);
+    case 'Edit':       return toolEdit(input);
+    case 'Glob':       return toolGlob(input, workDir);
+    case 'Grep':       return toolGrep(input, workDir);
+    case 'Bash':       return toolBash(input, workDir);
+    case 'PowerShell': return toolPowerShell(input, workDir);
+    case 'WebFetch':   return await toolWebFetch(input);
+    case 'TodoWrite':  return toolTodoWrite(input, sessionId);
+    default:           return `Unknown tool: ${name}`;
+  }
+}
+
+// ── Streaming OpenRouter call ─────────────────────────────────────────────────
+
+function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey) {
+  return new Promise(resolve => {
+    const payload = JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      tools: DIRECT_TOOLS,
+      tool_choice: 'auto',
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+    const opts = {
+      hostname: 'openrouter.ai',
+      path:     '/api/v1/chat/completions',
+      method:   'POST',
+      headers:  {
+        'Authorization':  `Bearer ${apiKey}`,
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        'HTTP-Referer':   'https://polaris.aesopacademy.com',
+        'X-Title':        'Polaris',
+      },
+    };
+    let textAccum = '', toolMap = {}, finishReason = null, usage = null, sseBuffer = '';
+    const req = https.request(opts, res => {
+      if (res.statusCode !== 200) {
+        let errRaw = '';
+        res.on('data', c => errRaw += c);
+        res.on('end', () => resolve({ error: `HTTP ${res.statusCode}: ${errRaw.slice(0, 500)}` }));
+        return;
+      }
+      res.on('data', chunk => {
+        sseBuffer += chunk.toString();
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const evt = JSON.parse(data);
+            const choice = evt.choices?.[0];
+            if (evt.usage) usage = evt.usage;
+            if (!choice) continue;
+            if (choice.finish_reason) finishReason = choice.finish_reason;
+            const delta = choice.delta || {};
+            if (delta.content) {
+              textAccum += delta.content;
+              broadcast({ type: 'line', sessionId, text: delta.content, role: 'assistant' });
+            }
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                if (!toolMap[idx]) toolMap[idx] = { id: '', name: '', arguments: '' };
+                if (tc.id)                 toolMap[idx].id        += tc.id;
+                if (tc.function?.name)     toolMap[idx].name      += tc.function.name;
+                if (tc.function?.arguments) toolMap[idx].arguments += tc.function.arguments;
+              }
+            }
+          } catch {}
+        }
+      });
+      res.on('end', () => resolve({ textAccum, toolCalls: Object.values(toolMap).filter(t => t.name), finishReason, usage }));
+    });
+    const session = sessions.get(sessionId);
+    if (session) session.req = req;
+    req.on('error', err => resolve({ error: err.message }));
+    req.write(payload);
+    req.end();
+  });
+}
+
+// ── Agentic loop ──────────────────────────────────────────────────────────────
+
+async function runDirectAgent(sessionId, userMessage, workDir) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  const config = readConfig();
+  if (!config.openRouterApiKey) {
+    broadcast({ type: 'line', sessionId, text: 'No OpenRouter API key configured. Add one in Settings.', role: 'error' });
+    broadcast({ type: 'session-status', sessionId, status: 'error' });
+    return;
+  }
+
+  addToHistory(userMessage);
+  broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
+
+  if (!session.messages) session.messages = [];
+  session.messages.push({ role: 'user', content: userMessage });
+  if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
+
+  const tier  = session.tier || 'floor';
+  const model = tier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+              : tier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+              :                       (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
+
+  session.status = 'running';
+  session.startAt = session.startAt || Date.now();
+  if (!session.resolvedModel) session.resolvedModel = model;
+  session.aborted = false;
+
+  const systemPrompt = buildDirectSystemPrompt(config, workDir);
+  const startMs = Date.now();
+  if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
+
+  // Diag log
+  const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
+  const dlog = (label, text) => { const t = ((Date.now()-startMs)/1000).toFixed(3); try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': '+String(text).slice(0,500) : ''}\n`, 'utf8'); } catch {} };
+  try { fs.appendFileSync(diagPath, `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api\nWORKDIR: ${workDir}\n--- USER PROMPT ---\n${userMessage}\n--- LOOP ---\n`, 'utf8'); } catch {}
+
+  // Mark session id (use sessionId as claudeSessionId in direct mode for resume tracking)
+  if (!session.claudeSessionId) session.claudeSessionId = sessionId;
+
+  const watcher = watchSessionFiles(sessionId, workDir);
+  if (watcher) session.watcher = watcher;
+
+  let iterations = 0;
+  while (!session.aborted && iterations < 50) {
+    iterations++;
+    dlog('ITER', iterations);
+    const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey);
+
+    if (result.error) {
+      dlog('ERROR', result.error);
+      broadcast({ type: 'line', sessionId, text: `API error: ${result.error}`, role: 'error' });
+      broadcast({ type: 'session-status', sessionId, status: 'error' });
+      const s = sessions.get(sessionId); if (s) { s.status = 'error'; s.endAt = Date.now(); }
+      return;
+    }
+
+    if (result.usage) {
+      const usage = { input_tokens: result.usage.prompt_tokens || 0, output_tokens: result.usage.completion_tokens || 0 };
+      appendTokenLog(sessionId, model, usage);
+      broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId: null, routineTag: session.routineTag || null });
+      dlog('TOKENS', `in=${usage.input_tokens} out=${usage.output_tokens}`);
+    }
+
+    // Append assistant turn to history
+    const assistantMsg = { role: 'assistant', content: result.textAccum || null };
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      assistantMsg.tool_calls = result.toolCalls.map(tc => ({
+        id: tc.id || `call_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+        type: 'function',
+        function: { name: tc.name, arguments: tc.arguments },
+      }));
+    }
+    session.messages.push(assistantMsg);
+
+    if (!result.toolCalls || result.toolCalls.length === 0) break; // natural end
+
+    // Execute tools and append results
+    for (const tc of result.toolCalls) {
+      if (session.aborted) break;
+      const callId = assistantMsg.tool_calls.find(t => t.function.name === tc.name)?.id || tc.id;
+      let toolInput;
+      try { toolInput = JSON.parse(tc.arguments); } catch { toolInput = {}; }
+      broadcast({ type: 'line', sessionId, text: `⚙ ${tc.name}`, role: 'system' });
+      dlog('TOOL', `${tc.name} ${tc.arguments.slice(0,200)}`);
+      let toolResult;
+      try { toolResult = await executeDirectTool(tc.name, toolInput, workDir, sessionId); }
+      catch (err) { toolResult = `Error: ${err.message}`; dlog('TOOL_ERR', err.message); }
+      const resultStr = String(toolResult).slice(0, 50000);
+      dlog('TOOL_RESULT', resultStr.slice(0, 200));
+      session.messages.push({ role: 'tool', tool_call_id: callId, content: resultStr });
+    }
+  }
+
+  const s = sessions.get(sessionId);
+  if (s) { s.status = s.aborted ? 'error' : 'done'; s.endAt = Date.now(); }
+  dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
+  broadcast({ type: 'session-status', sessionId, status: s?.aborted ? 'error' : 'done' });
+  autoObsidianForSession(sessionId);
+}
+
 // ─── Spawn Claude session ────────────────────────────────────────────────────
 function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) {
   const session = sessions.get(sessionId);
@@ -1565,8 +1876,8 @@ function handleMessage(ws, raw) {
       broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
       spawnDeepSeekRoutine(id, prompt, readConfig());
     } else {
-      console.log(`[routing] no routineTag → Claude CLI (model=${msg.model || 'default'})`);
-      spawnClaude(id, prompt, effectiveWorkDir, null, msg.model || null);
+      console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
+      runDirectAgent(id, prompt, effectiveWorkDir);
     }
     return;
   }
@@ -1582,7 +1893,7 @@ function handleMessage(ws, raw) {
     if (session.isChat) {
       spawnChat(sessionId, prompt, readConfig());
     } else {
-      spawnClaude(sessionId, prompt, session.workDir, resumeId, model || null);
+      runDirectAgent(sessionId, prompt, session.workDir);
     }
     return;
   }
@@ -1590,6 +1901,9 @@ function handleMessage(ws, raw) {
   if (type === 'stop') {
     const session = sessions.get(msg.sessionId);
     if (session) {
+      // Abort direct-API agent loop
+      session.aborted = true;
+      // Kill legacy CLI proc if present
       if (session.proc && !session.proc.killed) {
         session.proc.kill();
         if (session.timeout) clearTimeout(session.timeout);
