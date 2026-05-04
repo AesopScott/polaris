@@ -1942,7 +1942,9 @@ function handleMessage(ws, raw) {
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     session.status = 'running';
     session.lastPrompt = prompt;
-    broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
+    // Chat: spawnChat doesn't broadcast the user line, so do it here.
+    // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
+    if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
     broadcast({ type: 'session-status', sessionId, status: 'running' });
     if (session.isChat) {
       spawnChat(sessionId, prompt, readConfig());
