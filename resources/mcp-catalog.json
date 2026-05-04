@@ -104,9 +104,10 @@
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+    "oauthFlow": true,
     "env": {},
     "credentials": [],
-    "prerequisiteWarning": "Run `gcloud auth application-default login` in a terminal first to authenticate with your Google account. Requires the Google Cloud SDK to be installed."
+    "prerequisiteWarning": null
   },
   {
     "id": "chrome",

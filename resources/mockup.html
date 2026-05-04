@@ -2684,6 +2684,19 @@
         if (msg.ok) wsSend({ type: 'get-mcp-catalog' });
         break;
 
+      case 'gdrive-oauth-complete': {
+        const resultEl = document.getElementById('mcp-result-gdrive');
+        if (msg.ok) {
+          if (resultEl) resultEl.innerHTML = '<span style="color:#86efac;">✓ Connected — restart Claude Code to load</span>';
+          wsSend({ type: 'get-mcp-catalog' });
+        } else {
+          if (resultEl) resultEl.innerHTML = `<span style="color:#f87171;">✗ ${escHtml(msg.error || 'Unknown error')}</span>`;
+          const btn = document.getElementById('gdrive-connect-btn');
+          if (btn) { btn.disabled = false; btn.textContent = 'Connect with Google Drive'; }
+        }
+        break;
+      }
+
       case 'github-repos':
         if (msg.error) pushDebugLog(`[github] ${msg.error}`, true);
         else pushDebugLog(`[github] Loaded ${(msg.repos || []).length} repo(s)`);
@@ -4565,6 +4578,28 @@
       card.className = 'mcp-catalog-card';
       card.dataset.mcpId = entry.id;
 
+      if (entry.oauthFlow) {
+        const isEnabled = enabled.includes(entry.id);
+        const badgeText = isEnabled ? 'Connected' : 'Not connected';
+        const badgeClass = isEnabled ? 'mcp-badge-enabled' : 'mcp-badge-disabled';
+        card.innerHTML = `
+          <div class="mcp-catalog-card-header">
+            <span class="mcp-catalog-name">${entry.emoji} ${escHtml(entry.name)}</span>
+            <span class="${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="mcp-catalog-desc">${escHtml(entry.description)}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+            <button id="gdrive-connect-btn" class="fbtn" style="padding:4px 10px;font-size:11px;background:#1e3a5f;color:#93c5fd;" onclick="startGdriveOAuth(this)">
+              ${isEnabled ? 'Reconnect Google Drive' : 'Connect with Google Drive'}
+            </button>
+            ${isEnabled ? `<button class="fbtn" style="padding:4px 10px;font-size:11px;background:#7f1d1d;color:#fca5a5;" onclick="disableMcpServer('${entry.id}')">Disconnect</button>` : ''}
+          </div>
+          <div class="mcp-result" id="mcp-result-${entry.id}"></div>
+        `;
+        grid.appendChild(card);
+        continue;
+      }
+
       if (entry.multiInstance) {
         const projectList = (instances[entry.id] || []);
         const count = projectList.length;
@@ -4655,12 +4690,16 @@
     const row = document.createElement('div');
     row.className = 'mcp-firebase-row';
     row.style.cssText = 'display:flex;gap:4px;align-items:center;margin-bottom:6px;';
-    const nameId = `mcp-fb-name-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pathId = `mcp-fb-path-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    row.dataset.nameId = nameId;
     row.dataset.pathId = pathId;
+    const options = (projectsList || [])
+      .map(p => `<option value="${escHtml(p.name)}"${p.name === name ? ' selected' : ''}>${escHtml(p.name)}</option>`)
+      .join('');
     row.innerHTML = `
-      <input type="text" id="${nameId}" class="dir-field" placeholder="Project name" value="${escHtml(name || '')}" style="width:110px;font-size:11px;height:26px;padding:3px 6px;">
+      <select class="dir-field" style="width:130px;font-size:11px;height:26px;padding:2px 4px;">
+        <option value="">— Project —</option>
+        ${options}
+      </select>
       <input type="text" id="${pathId}" class="dir-field" placeholder="Service account JSON" value="${escHtml(credPath || '')}" style="flex:1;font-size:11px;height:26px;padding:3px 6px;">
       <button class="fbtn" style="padding:3px 7px;font-size:11px;" onclick="pickFirebaseJson(this)">📁</button>
       <button class="fbtn" style="padding:3px 7px;font-size:11px;background:#7f1d1d;color:#fca5a5;" onclick="this.closest('.mcp-firebase-row').remove()">✕</button>
@@ -4684,11 +4723,19 @@
     if (!list) return;
     const instances = [];
     for (const row of list.querySelectorAll('.mcp-firebase-row')) {
-      const name     = document.getElementById(row.dataset.nameId)?.value.trim() || '';
+      const name     = row.querySelector('select')?.value.trim() || '';
       const credPath = document.getElementById(row.dataset.pathId)?.value.trim() || '';
       if (name) instances.push({ name, credPath });
     }
     wsSend({ type: 'enable-mcp-server', id: entryId, instances });
+  }
+
+  function startGdriveOAuth(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Opening browser…';
+    const resultEl = document.getElementById('mcp-result-gdrive');
+    if (resultEl) resultEl.innerHTML = '';
+    wsSend({ type: 'gdrive-oauth-start' });
   }
 
   function toggleMcpForm(id) {

@@ -2114,6 +2114,90 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'gdrive-oauth-start') {
+    if (!APP_SECRETS.googleClientId || !APP_SECRETS.googleClientSecret) {
+      sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: 'Google credentials not configured in secrets.js' });
+      return;
+    }
+    const callbackServer = http.createServer();
+    callbackServer.listen(0, '127.0.0.1', () => {
+      const port = callbackServer.address().port;
+      const redirectUri = `http://127.0.0.1:${port}/oauth-callback`;
+      const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      authUrl.searchParams.set('client_id', APP_SECRETS.googleClientId);
+      authUrl.searchParams.set('redirect_uri', redirectUri);
+      authUrl.searchParams.set('response_type', 'code');
+      authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/drive');
+      authUrl.searchParams.set('access_type', 'offline');
+      authUrl.searchParams.set('prompt', 'consent');
+      exec(`start "" "${authUrl.toString()}"`, { shell: true });
+      const timeout = setTimeout(() => {
+        callbackServer.close();
+        sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: 'Auth timed out (5 minutes)' });
+      }, 5 * 60 * 1000);
+      callbackServer.once('request', (req, res) => {
+        clearTimeout(timeout);
+        const reqUrl = new URL(req.url, `http://127.0.0.1:${port}`);
+        const code = reqUrl.searchParams.get('code');
+        const oauthError = reqUrl.searchParams.get('error');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">✓ Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
+        callbackServer.close();
+        if (oauthError || !code) {
+          sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: oauthError || 'No auth code received' });
+          return;
+        }
+        const body = new URLSearchParams({
+          code,
+          client_id: APP_SECRETS.googleClientId,
+          client_secret: APP_SECRETS.googleClientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code'
+        }).toString();
+        const tokenReq = https.request({
+          hostname: 'oauth2.googleapis.com',
+          path: '/token',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+        }, tokenRes => {
+          let data = '';
+          tokenRes.on('data', chunk => data += chunk);
+          tokenRes.on('end', () => {
+            try {
+              const tokens = JSON.parse(data);
+              if (tokens.error) {
+                sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: tokens.error_description || tokens.error });
+                return;
+              }
+              const tokenFile = path.join(POLARIS_DIR, 'gdrive-token.json');
+              const tokenData = {
+                client_id: APP_SECRETS.googleClientId,
+                client_secret: APP_SECRETS.googleClientSecret,
+                access_token: tokens.access_token,
+                refresh_token: tokens.refresh_token,
+                expiry_date: Date.now() + (tokens.expires_in * 1000),
+                token_type: tokens.token_type,
+                scope: tokens.scope
+              };
+              fs.writeFileSync(tokenFile, JSON.stringify(tokenData, null, 2), 'utf8');
+              const cj = readClaudeJson();
+              cj.mcpServers = cj.mcpServers || {};
+              cj.mcpServers['gdrive'] = { command: 'npx', args: ['-y', '@modelcontextprotocol/server-gdrive'], env: { GDRIVE_OAUTH_PATH: tokenFile } };
+              writeClaudeJson(cj);
+              sendTo(ws, { type: 'gdrive-oauth-complete', ok: true });
+            } catch (e) {
+              sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: 'Failed to parse token response' });
+            }
+          });
+        });
+        tokenReq.on('error', e => sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: e.message }));
+        tokenReq.write(body);
+        tokenReq.end();
+      });
+    });
+    return;
+  }
+
   if (type === 'pick-file') {
     if (typeof process.send !== 'function') {
       sendTo(ws, { type: 'file-picked', error: 'File picker only available in the Electron app.', replyKey: msg.replyKey || null });
