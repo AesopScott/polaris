@@ -69,7 +69,7 @@ function buildSystemPrompt(config) {
 }
 
 // ─── Secret encryption (AES-256-GCM, stable file key) ────────────────────────
-const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey']);
+const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey', 'elevenLabsApiKey']);
 const SECRET_MASK    = '••••••••';
 const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
 
@@ -2020,6 +2020,35 @@ function handleMessage(ws, raw) {
     }
     writeJSON(CONFIG_PATH, { ...current, ...updates });
     sendTo(ws, { type: 'config-saved' });
+    return;
+  }
+
+  if (type === 'tts-speak') {
+    const cfg = readConfig();
+    const rawKey = cfg.elevenLabsApiKey ? decryptSecret(cfg.elevenLabsApiKey) : null;
+    if (!rawKey) { sendTo(ws, { type: 'tts-audio', error: 'no-key' }); return; }
+    const voiceId = cfg.elevenLabsVoiceId || 'pNInz6obpgDQGcFmaJgB';
+    const body = JSON.stringify({
+      text: String(msg.text || '').slice(0, 500),
+      model_id: 'eleven_turbo_v2_5',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    });
+    const req = https.request({
+      hostname: 'api.elevenlabs.io',
+      path: `/v1/text-to-speech/${voiceId}`,
+      method: 'POST',
+      headers: { 'xi-api-key': rawKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        if (res.statusCode !== 200) { sendTo(ws, { type: 'tts-audio', error: `elevenlabs-${res.statusCode}` }); return; }
+        sendTo(ws, { type: 'tts-audio', dataUrl: `data:audio/mpeg;base64,${Buffer.concat(chunks).toString('base64')}` });
+      });
+    });
+    req.on('error', e => sendTo(ws, { type: 'tts-audio', error: e.message }));
+    req.write(body);
+    req.end();
     return;
   }
 

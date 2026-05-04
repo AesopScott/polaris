@@ -682,6 +682,93 @@
   .overlay-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; }
   .overlay-bg.hidden { display: none; }
 
+  /* ─── Onboarding Walkthrough ────────────────────────────────────────────── */
+  #onboarding-overlay {
+    position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.92);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #onboarding-overlay.hidden { display: none; }
+  .onb-screen { display: none; }
+  .onb-screen.active { display: block; }
+  .onb-modal {
+    background: linear-gradient(145deg,#0f1623,#0d1117);
+    border: 1px solid rgba(96,165,250,0.35); border-radius: 16px;
+    padding: 36px 40px; max-width: 580px; width: 92%;
+    box-shadow: 0 0 60px rgba(96,165,250,0.12); text-align: center;
+  }
+  .onb-logo { font-size: 52px; margin-bottom: 10px; line-height: 1; }
+  .onb-title { font-size: 22px; font-weight: 800; color: #60a5fa; margin-bottom: 10px; }
+  .onb-sub { font-size: 13px; color: #94a3b8; margin-bottom: 28px; line-height: 1.7; }
+  .onb-levels { display: flex; gap: 12px; margin: 0 0 26px; }
+  .onb-level-card {
+    flex: 1; padding: 18px 10px; border-radius: 12px;
+    border: 2px solid rgba(96,165,250,0.18); background: rgba(96,165,250,0.03);
+    cursor: pointer; transition: all 0.18s; text-align: center;
+  }
+  .onb-level-card:hover { border-color: rgba(96,165,250,0.5); background: rgba(96,165,250,0.07); }
+  .onb-level-card.selected { border-color: #60a5fa; background: rgba(96,165,250,0.12); }
+  .onb-level-icon { font-size: 28px; margin-bottom: 8px; }
+  .onb-level-name { font-size: 12px; font-weight: 700; color: #e2e8f0; }
+  .onb-level-desc { font-size: 10px; color: #64748b; margin-top: 4px; line-height: 1.5; }
+  .onb-actions { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
+  .onb-btn-primary {
+    padding: 11px 30px; border-radius: 8px; border: none;
+    background: #3b82f6; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .onb-btn-primary:hover { background: #2563eb; }
+  .onb-btn-primary:disabled { opacity: 0.35; cursor: default; }
+  .onb-btn-secondary {
+    padding: 11px 20px; border-radius: 8px;
+    border: 1px solid rgba(96,165,250,0.22); background: transparent;
+    color: #64748b; font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .onb-btn-secondary:hover { color: #94a3b8; border-color: rgba(96,165,250,0.45); }
+  .onb-skip-label {
+    font-size: 11px; color: #475569; display: flex; align-items: center;
+    gap: 6px; cursor: pointer; margin-top: 18px; justify-content: center;
+  }
+  .onb-skip-label input { cursor: pointer; accent-color: #60a5fa; }
+  /* Tour: spotlight + narration */
+  #onb-spotlight {
+    position: fixed; pointer-events: none; z-index: 2001;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.8);
+    border: 2px solid rgba(96,165,250,0.8); border-radius: 10px;
+    transition: top 0.38s cubic-bezier(0.4,0,0.2,1), left 0.38s cubic-bezier(0.4,0,0.2,1),
+                width 0.38s cubic-bezier(0.4,0,0.2,1), height 0.38s cubic-bezier(0.4,0,0.2,1);
+  }
+  #onb-spotlight.hidden { display: none; }
+  #onb-narration {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 2002; width: 92%; max-width: 640px;
+    background: linear-gradient(145deg,#0f1623,#0d1117);
+    border: 1px solid rgba(96,165,250,0.32); border-radius: 14px;
+    padding: 20px 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+  }
+  #onb-narration.hidden { display: none; }
+  .onb-step-title { font-size: 13px; font-weight: 800; color: #60a5fa; margin-bottom: 6px; }
+  .onb-step-text  { font-size: 13px; color: #cbd5e1; line-height: 1.65; margin-bottom: 14px; }
+  .onb-step-footer { display: flex; align-items: center; justify-content: space-between; }
+  .onb-step-counter { font-size: 11px; color: #475569; }
+  .onb-step-nav { display: flex; gap: 8px; align-items: center; }
+  .onb-next-btn {
+    padding: 7px 20px; border-radius: 7px; border: none;
+    background: #3b82f6; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer;
+  }
+  .onb-next-btn:hover { background: #2563eb; }
+  .onb-prev-btn {
+    padding: 7px 14px; border-radius: 7px;
+    border: 1px solid rgba(96,165,250,0.22); background: transparent;
+    color: #64748b; font-size: 12px; cursor: pointer;
+  }
+  .onb-exit-link { font-size: 11px; color: #475569; cursor: pointer; background: none; border: none; text-decoration: underline; padding: 0; }
+  #onb-audio-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #60a5fa;
+    display: inline-block; opacity: 0; transition: opacity 0.3s; flex-shrink: 0;
+  }
+  #onb-audio-dot.active { opacity: 1; animation: onbPulse 1s ease infinite; }
+  @keyframes onbPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.6);opacity:0.5} }
+
   /* Preview Panel — floating, draggable, resizable */
   .preview-panel {
     position: fixed; z-index: 999;
@@ -854,15 +941,17 @@
     <!-- Left: Polaris identity centered in first column -->
     <canvas id="firework-canvas"></canvas>
 
-    <div class="header-identity" style="position:relative;">
-      <button class="hbtn btn-tracking" onclick="openDocs()" data-tooltip="Open the Polaris user guide"
-        style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:auto;"><span class="lbl">Docs</span></button>
+    <div class="header-identity">
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
         <div style="display:flex;align-items:center;gap:14px;">
           <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
           <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
         </div>
-        <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;transform:translateX(32px);">Your AI Command Center</div>
+        <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
+        <div style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:6px;">
+          <button id="btn-docs" class="hbtn btn-tracking" onclick="openDocs()" data-tooltip="Open the Polaris user guide" style="width:120px;"><span class="lbl">Docs</span></button>
+          <button id="btn-walkthrough" class="hbtn" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris" style="width:120px;background:linear-gradient(145deg,#1b1040,#0d0d1f);box-shadow:6px 6px 12px rgba(0,0,0,0.6),-3px -3px 8px rgba(100,60,180,0.08),inset 0 1px 0 rgba(255,255,255,0.04);"><span class="lbl" style="background:linear-gradient(135deg,#a78bfa 0%,#60a5fa 50%,#34d399 100%);-webkit-background-clip:text;background-clip:text;color:transparent;animation:none;">Walkthrough</span></button>
+        </div>
       </div>
     </div>
 
@@ -883,22 +972,22 @@
       <div class="btn-grid">
         <button class="hbtn btn-gold" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button class="hbtn btn-tracking" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
-        <button class="hbtn btn-danger" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">$ Balance</span></button>
+        <button id="btn-balance" class="hbtn btn-danger" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">$ Balance</span></button>
         <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload UI</span></button>
-        <button class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
-        <button class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
+        <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
+        <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <button class="hbtn btn-gold" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
-        <button class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
+        <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
         <button class="hbtn btn-danger" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note"><span class="lbl">Obsidian</span></button>
         <button class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
-        <button class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
-        <button class="hbtn btn-config" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
+        <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
+        <button id="btn-connect" class="hbtn btn-config" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
         <button class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
         <button class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
-        <button class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Versions</span></button>
+        <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Versions</span></button>
         <button class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button class="hbtn btn-systems" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
-        <button class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
+        <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
       </div>
     </div>
 
@@ -1140,6 +1229,11 @@
             <button onclick="testOpenAiKey()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
           <span id="openai-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
+        </div>
+        <div class="panel-section">
+          <div class="context-label accent-label">ELEVENLABS API KEY</div>
+          <input type="password" id="settings-elevenlabs-key" class="panel-input" placeholder="Paste key for voice walkthrough" style="width:100%;" />
+          <div style="font-size:10px;opacity:0.5;margin-top:4px;">Powers voice narration in the walkthrough. Get a key at <a href="#" onclick="openExternal('https://elevenlabs.io'); return false;" style="color:var(--accent);">elevenlabs.io</a></div>
         </div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
@@ -1630,6 +1724,78 @@
   </div>
   <div class="debug-panel">
     <div class="debug-panel-inner"></div>
+  </div>
+
+  <!-- ── Walkthrough Onboarding ───────────────────────────────────────────── -->
+  <div id="onboarding-overlay" class="hidden">
+    <!-- Screen 1: Prompt -->
+    <div id="onb-screen-prompt" class="onb-modal onb-screen active">
+      <div class="onb-logo">★</div>
+      <div class="onb-title">Welcome to Polaris</div>
+      <div class="onb-sub">Your personal AI command center is ready.<br>Would you like a quick guided tour?</div>
+      <div class="onb-actions">
+        <button class="onb-btn-primary" onclick="onbStartLevelPick()">Yes, show me around</button>
+        <button class="onb-btn-secondary" onclick="onbDismiss()">Not now</button>
+      </div>
+      <label class="onb-skip-label">
+        <input type="checkbox" id="onb-skip-check" /> Don't ask me again
+      </label>
+    </div>
+    <!-- Screen 2: Level picker -->
+    <div id="onb-screen-level" class="onb-modal onb-screen">
+      <div class="onb-title">What's your AI experience level?</div>
+      <div class="onb-sub">We'll tailor the tour to what's most useful for you.</div>
+      <div class="onb-levels">
+        <div class="onb-level-card" id="onb-level-beginner" onclick="onbSelectLevel('beginner')">
+          <div class="onb-level-icon">🌱</div>
+          <div class="onb-level-name">Beginner AI</div>
+          <div class="onb-level-desc">New to AI tools,<br>learning the basics</div>
+        </div>
+        <div class="onb-level-card" id="onb-level-professional" onclick="onbSelectLevel('professional')">
+          <div class="onb-level-icon">⚡</div>
+          <div class="onb-level-name">Professional AI</div>
+          <div class="onb-level-desc">Use AI daily,<br>want full feature coverage</div>
+        </div>
+        <div class="onb-level-card" id="onb-level-expert" onclick="onbSelectLevel('expert')">
+          <div class="onb-level-icon">🔬</div>
+          <div class="onb-level-name">Expert AI</div>
+          <div class="onb-level-desc">Deep AI background,<br>want the full stack view</div>
+        </div>
+      </div>
+      <div class="onb-actions">
+        <button class="onb-btn-primary" id="onb-start-tour-btn" onclick="onbBeginTour()" disabled>Start Tour</button>
+        <button class="onb-btn-secondary" onclick="onbDismiss()">Skip</button>
+      </div>
+    </div>
+    <!-- Screen 3: Final -->
+    <div id="onb-screen-final" class="onb-modal onb-screen">
+      <div class="onb-logo">🚀</div>
+      <div class="onb-title">You're all set!</div>
+      <div class="onb-sub" id="onb-final-sub">Start your first session and ask the AI anything.</div>
+      <div class="onb-actions">
+        <button class="onb-btn-primary" onclick="onbClose()">Let's go</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tour spotlight (fixed, above overlay) -->
+  <div id="onb-spotlight" class="hidden"></div>
+
+  <!-- Tour narration card -->
+  <div id="onb-narration" class="hidden">
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
+      <span id="onb-audio-dot"></span>
+      <span class="onb-step-title" id="onb-step-title"></span>
+    </div>
+    <div class="onb-step-text" id="onb-step-text"></div>
+    <div class="onb-step-footer">
+      <span class="onb-step-counter" id="onb-step-counter"></span>
+      <div class="onb-step-nav">
+        <button class="onb-exit-link" onclick="onbClose()">Exit tour</button>
+        <button class="onb-prev-btn" id="onb-prev-btn" onclick="onbPrevStep()">← Back</button>
+        <button class="onb-next-btn" id="onb-next-btn" onclick="onbNextStep()">Next →</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -2404,6 +2570,17 @@
         window.serverTzOffsetMin = msg.tzOffsetMin;
         break;
 
+      case 'tts-audio':
+        if (msg.dataUrl) {
+          if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
+          _onbAudio = new Audio(msg.dataUrl);
+          const dot = document.getElementById('onb-audio-dot');
+          if (dot) dot.classList.add('active');
+          _onbAudio.onended = () => { _onbAudio = null; if (dot) dot.classList.remove('active'); };
+          _onbAudio.play().catch(() => { _onbAudio = null; if (dot) dot.classList.remove('active'); });
+        }
+        break;
+
       case 'init':
         promptHistoryStore = msg.history || [];
         Object.keys(sessionStore).forEach(k => delete sessionStore[k]);
@@ -2436,6 +2613,7 @@
         }
         supportEnabled = !!msg.supportEnabled;
         renderGrid();
+        if (!msg.config?.skipOnboarding) setTimeout(initOnboardingPrompt, 900);
         wsSend({ type: 'get-locks' });
         wsSend({ type: 'get-versions' });
         wsSend({ type: 'get-tickets' });
@@ -3610,6 +3788,10 @@
       const inp = document.getElementById('settings-openai-key');
       if (inp) inp.value = cfg.openAiApiKey;
     }
+    if (cfg.elevenLabsApiKey !== undefined) {
+      const inp = document.getElementById('settings-elevenlabs-key');
+      if (inp) inp.value = cfg.elevenLabsApiKey;
+    }
 
     // Restore datalist entries
     if (cfg.savedWorkDirs) {
@@ -3837,6 +4019,7 @@
     const dsApiModel   = document.getElementById('settings-ds-api-model')?.value?.trim() || 'deepseek-chat';
     const anthropicKey    = document.getElementById('settings-anthropic-key')?.value || '';
     const openAiKey       = document.getElementById('settings-openai-key')?.value || '';
+    const elevenLabsKey   = document.getElementById('settings-elevenlabs-key')?.value || '';
     const useDirectAnthr  = document.getElementById('settings-use-direct-anthropic')?.checked || false;
     const anthropicModel  = document.getElementById('settings-anthropic-model')?.value?.trim() || 'claude-sonnet-4-6';
     applyPromptStyle(promptStyle);
@@ -3847,7 +4030,7 @@
       openRouterSonnetModel: orSonnet, openRouterOpusModel: orOpus,
       deepSeekEmail: dsEmail, deepSeekPassword: dsPassword, chatModel: dsModel,
       deepSeekApiKey: dsApiKey, deepSeekApiModel: dsApiModel,
-      anthropicApiKey: anthropicKey, openAiApiKey: openAiKey,
+      anthropicApiKey: anthropicKey, openAiApiKey: openAiKey, elevenLabsApiKey: elevenLabsKey,
       useDirectAnthropic: useDirectAnthr, anthropicModel,
     };
     wsSend({ type: 'save-config', config: cfg });
@@ -6973,6 +7156,217 @@
     if (frame) cancelAnimationFrame(frame);
     animate();
   }
+
+  // ── Onboarding Walkthrough ────────────────────────────────────────────────────
+  let _onbLevel = null;
+  let _onbStep  = 0;
+  let _onbSteps = [];
+  let _onbAudio = null;
+
+  const ONB_TOURS = {
+    beginner: [
+      { title: 'Welcome to Polaris', text: "You've just opened your personal AI command center. Everything you need to work with AI runs from this one window. Let me show you around.", target: null },
+      { title: 'Your Session Grid', text: "This is the session grid — the main stage. Every AI conversation you start shows up here as a live card.", target: '.session-grid' },
+      { title: 'The Launch Bar', text: "This is how you talk to the AI. Type your question or instruction here and hit Launch. That's all there is to it.", target: '.launch-bar' },
+      { title: 'Model Selection', text: "These tiers control how powerful the AI is. Polaris picks the right level automatically — you don't need to touch this until you're ready.", target: '.model-select' },
+      { title: 'Settings', text: "To activate Polaris, open Settings and paste your OpenRouter API key. You'll find one at openrouter.ai — it only takes a minute.", target: '#btn-settings' },
+      { title: 'Docs', text: "Tap Docs anytime for the full Polaris user guide. Everything is explained there in plain language with examples.", target: '#btn-docs' },
+      { title: 'Support', text: "If something isn't working, hit Support to send a message directly to the Polaris team.", target: '#btn-support' },
+      { title: 'Walkthrough', text: "And this button right here brings you back to this tour anytime you want a refresher.", target: '#btn-walkthrough' },
+      { title: "You're Ready", text: "That's the essentials. Click the Launch bar, type anything, and the AI will respond. You've got this.", target: null },
+    ],
+    professional: [
+      { title: 'Welcome to Polaris', text: "You know AI. Polaris is the control panel for running many agents in parallel — with scheduled routines, full model control, and deep integrations.", target: null },
+      { title: 'Parallel Sessions', text: "Each card in this grid is an independent AI agent running simultaneously. You can have dozens active at the same time, each with its own context.", target: '.session-grid' },
+      { title: 'Launch Bar', text: "Set your working directory, project, and model tier before launching. Each session inherits these as its context.", target: '.launch-bar' },
+      { title: 'Model Tiers', text: "Floor is fast and cheap for simple tasks. Balanced is your everyday driver. Power is reserved for deep reasoning and complex code. Set the model strings in Settings.", target: '.model-select' },
+      { title: 'Projects', text: "Organize your work into named projects, each with a working directory and git repo. Sessions launched against a project automatically get that context.", target: '#btn-projects' },
+      { title: 'Routines', text: "Routines are scheduled AI tasks. Set a cron schedule or wire them to app events like startup. Perfect for daily summaries, nightly reviews, and automated checks.", target: '#btn-routines' },
+      { title: 'Connections & MCP', text: "MCP servers extend what the AI can do — file access, web browsing, GitHub, Obsidian, and more. Enable them here and they're injected into every new session.", target: '#btn-connect' },
+      { title: 'API Balance', text: "Track your spend and token usage over time. The graph shows daily burn rate so you can catch runaway sessions before they cost you.", target: '#btn-balance' },
+      { title: 'File Versions', text: "Every file Polaris edits is versioned automatically. Click Versions to browse the full history and restore any previous state.", target: '#btn-versions' },
+      { title: 'Settings', text: "All API keys, model strings, Obsidian vault path, and session timeout live here. Start by pasting your OpenRouter key.", target: '#btn-settings' },
+      { title: "You're Ready", text: "Try wiring up your first Routine to automate something you do every day. The Walkthrough button brings you back here anytime.", target: null },
+    ],
+    expert: [
+      { title: 'Welcome to Polaris', text: "Polaris is a multi-agent orchestration layer built on Claude CLI. This tour covers the full architecture — routing, model control, MCP, event triggers, and everything under the hood.", target: null },
+      { title: 'Session Grid', text: "Each card is an independent agent session. You can pin cards, adjust column placement, resize them, and run dozens in parallel — all with separate context windows.", target: '.session-grid' },
+      { title: 'Agent Routing', text: "Sessions route through OpenRouter via the ANTHROPIC_BASE_URL override by default. Toggle Use Direct Anthropic in Settings to bypass OpenRouter and hit Anthropic's API directly.", target: '.launch-bar' },
+      { title: 'Model Tiers & Strings', text: "Floor, Balanced, and Power map to custom model strings you define in Settings. Any OpenRouter-compatible model ID works — you're not locked to any provider.", target: '.model-select' },
+      { title: 'Context Usage', text: "Each session card shows a live token meter. Watch this during long sessions — when it gets high, stop and resume to reset the context window before hitting the limit.", target: '.session-grid' },
+      { title: 'Projects', text: "Projects bind sessions to working directories and git repos. Color-coded and switchable mid-session.", target: '#btn-projects' },
+      { title: 'Routines — Cron & Events', text: "Routines support full cron syntax for scheduled triggers. You can also fire on WebSocket events like app-update — perfect for version-bump automation and CI integration.", target: '#btn-routines' },
+      { title: 'MCP Catalog', text: "The Connections panel gives you a full MCP server catalog. Enable servers, inject credentials, and every enabled server is automatically available in new agent sessions.", target: '#btn-connect' },
+      { title: 'File Versions & Locks', text: "Every file write goes through file-versions.json. Locks.json blocks writes to protected files until you explicitly approve them — defense against runaway agents.", target: '#btn-versions' },
+      { title: 'Token Graph', text: "The API Balance panel logs every session's token spend to token-log.jsonl. The graph gives you daily and per-model burn rate for billing reconciliation.", target: '#btn-balance' },
+      { title: 'Monaco Editor', text: "Monaco gives you full in-app IDE editing — file tree, multi-tab, syntax highlighting. Useful for quick edits and reviewing agent output without leaving Polaris.", target: '#btn-monaco' },
+      { title: 'DeepSeek Routing', text: "Chat sessions route to chat.deepseek.com via browser automation — not the DeepSeek API. Set your login credentials in Settings. Routines use the Direct API path instead.", target: '#btn-settings' },
+      { title: 'Diagnostics', text: "The Diag panel shows raw session output, WebSocket event logs, and system state. It's the first place to look when something breaks.", target: '#btn-settings' },
+      { title: "You're Fully Wired", text: "You have complete control over every layer of the stack. Wire up your first event-triggered Routine, enable your MCP catalog, and go build something.", target: null },
+    ],
+  };
+
+  function initOnboardingPrompt() {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (!overlay) return;
+    onbShowScreen('prompt');
+    overlay.classList.remove('hidden');
+  }
+
+  function openWalkthrough() {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (!overlay) return;
+    onbHideTour();
+    const savedLevel = currentConfig?.onboardingLevel || null;
+    if (savedLevel && ONB_TOURS[savedLevel]) {
+      _onbLevel = savedLevel;
+      _onbSteps = ONB_TOURS[savedLevel];
+      _onbStep  = 0;
+      overlay.classList.add('hidden');
+      onbShowTourStep();
+    } else {
+      onbShowScreen('level');
+      overlay.classList.remove('hidden');
+    }
+  }
+
+  function onbShowScreen(name) {
+    ['prompt', 'level', 'final'].forEach(s => {
+      const el = document.getElementById(`onb-screen-${s}`);
+      if (el) el.classList.toggle('active', s === name);
+    });
+  }
+
+  function onbStartLevelPick() { onbShowScreen('level'); }
+
+  function onbSelectLevel(level) {
+    _onbLevel = level;
+    ['beginner', 'professional', 'expert'].forEach(l => {
+      document.getElementById(`onb-level-${l}`)?.classList.toggle('selected', l === level);
+    });
+    const btn = document.getElementById('onb-start-tour-btn');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+
+  function onbBeginTour() {
+    if (!_onbLevel) return;
+    _onbSteps = ONB_TOURS[_onbLevel];
+    _onbStep  = 0;
+    wsSend({ type: 'save-config', config: { onboardingLevel: _onbLevel } });
+    document.getElementById('onboarding-overlay').classList.add('hidden');
+    onbShowTourStep();
+  }
+
+  function onbShowTourStep() {
+    const step = _onbSteps[_onbStep];
+    if (!step) { onbFinish(); return; }
+
+    const spotlight  = document.getElementById('onb-spotlight');
+    const narration  = document.getElementById('onb-narration');
+    document.getElementById('onb-step-title').textContent   = step.title;
+    document.getElementById('onb-step-text').textContent    = step.text;
+    document.getElementById('onb-step-counter').textContent = `Step ${_onbStep + 1} of ${_onbSteps.length}`;
+
+    const prevBtn = document.getElementById('onb-prev-btn');
+    const nextBtn = document.getElementById('onb-next-btn');
+    if (prevBtn) prevBtn.style.visibility = _onbStep === 0 ? 'hidden' : 'visible';
+    if (nextBtn) nextBtn.textContent = _onbStep === _onbSteps.length - 1 ? 'Finish ✓' : 'Next →';
+
+    if (step.target) {
+      const el = document.querySelector(step.target);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        const pad = 8;
+        spotlight.style.top    = (r.top    - pad) + 'px';
+        spotlight.style.left   = (r.left   - pad) + 'px';
+        spotlight.style.width  = (r.width  + pad * 2) + 'px';
+        spotlight.style.height = (r.height + pad * 2) + 'px';
+        spotlight.classList.remove('hidden');
+      } else {
+        spotlight.classList.add('hidden');
+      }
+    } else {
+      spotlight.classList.add('hidden');
+    }
+
+    narration.classList.remove('hidden');
+    onbSpeak(step.text);
+  }
+
+  function onbNextStep() {
+    if (_onbStep < _onbSteps.length - 1) { _onbStep++; onbShowTourStep(); }
+    else { onbFinish(); }
+  }
+
+  function onbPrevStep() {
+    if (_onbStep > 0) { _onbStep--; onbShowTourStep(); }
+  }
+
+  function onbFinish() {
+    onbHideTour();
+    const msgs = {
+      beginner:     'Start your first session and ask the AI anything. The Walkthrough button brings you back here anytime.',
+      professional: 'Try wiring up a Routine or enabling an MCP server. Hit Walkthrough anytime for a refresher.',
+      expert:       'Wire up your first event-triggered Routine, enable your MCP catalog, and go build something.',
+    };
+    const sub = document.getElementById('onb-final-sub');
+    if (sub) sub.textContent = msgs[_onbLevel] || msgs.beginner;
+    onbShowScreen('final');
+    document.getElementById('onboarding-overlay').classList.remove('hidden');
+  }
+
+  function onbHideTour() {
+    if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    document.getElementById('onb-spotlight')?.classList.add('hidden');
+    document.getElementById('onb-narration')?.classList.add('hidden');
+    document.getElementById('onb-audio-dot')?.classList.remove('active');
+  }
+
+  function onbDismiss() {
+    const skip = document.getElementById('onb-skip-check')?.checked;
+    if (skip) {
+      wsSend({ type: 'save-config', config: { skipOnboarding: true } });
+      if (currentConfig) currentConfig.skipOnboarding = true;
+    }
+    onbClose();
+  }
+
+  function onbClose() {
+    document.getElementById('onboarding-overlay').classList.add('hidden');
+    onbHideTour();
+  }
+
+  function onbSpeak(text) {
+    if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    document.getElementById('onb-audio-dot')?.classList.remove('active');
+    if (currentConfig?.elevenLabsApiKey) {
+      wsSend({ type: 'tts-speak', text });
+    } else {
+      onbSpeakFallback(text);
+    }
+  }
+
+  function onbSpeakFallback(text) {
+    if (!window.speechSynthesis) return;
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.92; utt.pitch = 1.0;
+    const dot = document.getElementById('onb-audio-dot');
+    if (dot) dot.classList.add('active');
+    utt.onend = () => { if (dot) dot.classList.remove('active'); };
+    window.speechSynthesis.speak(utt);
+  }
+
+  window.openWalkthrough    = openWalkthrough;
+  window.initOnboardingPrompt = initOnboardingPrompt;
+  window.onbStartLevelPick  = onbStartLevelPick;
+  window.onbSelectLevel     = onbSelectLevel;
+  window.onbBeginTour       = onbBeginTour;
+  window.onbNextStep        = onbNextStep;
+  window.onbPrevStep        = onbPrevStep;
+  window.onbDismiss         = onbDismiss;
+  window.onbClose           = onbClose;
 
   // ── Boot ──────────────────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
