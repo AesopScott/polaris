@@ -1007,7 +1007,7 @@ function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) 
     ? (config.anthropicApiKey.slice(0, 12) + '…')
     : (config.openRouterApiKey ? config.openRouterApiKey.slice(0, 12) + '…' : 'MISSING');
   const basePreview = useDirect ? 'direct' : spawnEnv.ANTHROPIC_BASE_URL;
-  broadcast({ type: 'line', sessionId, text: `[spawn] model=${effectiveModel} base=${basePreview} token=${keyPreview}`, role: 'system' });
+  if (!resumeId) broadcast({ type: 'line', sessionId, text: `[spawn] model=${effectiveModel} base=${basePreview} token=${keyPreview}`, role: 'system' });
   broadcast({ type: 'line', sessionId, text: prompt, role: 'user' });
   console.log(`[spawn] model=${effectiveModel} base=${basePreview} token=${keyPreview} workDir=${workDir}`);
 
@@ -1216,6 +1216,12 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
 
 function handleStreamEvent(sessionId, msg) {
   if (!msg || !msg.type) return;
+
+  // Capture session_id immediately from the CLI init message (before result fires)
+  if (msg.type === 'system' && msg.subtype === 'init' && msg.session_id) {
+    const s = sessions.get(sessionId);
+    if (s && !s.claudeSessionId) s.claudeSessionId = msg.session_id;
+  }
 
   if (msg.type === 'assistant' && msg.message) {
     const s = sessions.get(sessionId);
