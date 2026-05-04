@@ -4987,7 +4987,7 @@
         <option value="">— Project —</option>
         ${options}
       </select>
-      <input type="text" id="${pathId}" class="dir-field" placeholder="Service account JSON" value="${escHtml(credPath || '')}" style="flex:1;font-size:11px;height:26px;padding:3px 6px;">
+      <input type="hidden" id="${pathId}" value="${escHtml(credPath || '')}">
       <button class="fbtn" style="padding:3px 7px;font-size:11px;" onclick="pickFirebaseJson(this)">📁</button>
       <button class="fbtn" style="padding:3px 7px;font-size:11px;background:#7f1d1d;color:#fca5a5;" onclick="this.closest('.mcp-firebase-row').remove()">✕</button>
     `;
