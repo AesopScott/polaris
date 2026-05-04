@@ -40,8 +40,9 @@ let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
 catch (e) { console.log('[polaris] mcp-catalog.json not found:', e.message); }
 
-const GLOBAL_CLAUDE_PATH = path.join(__dirname, 'CLAUDE.md');
-const GLOBAL_MEMORY_PATH = path.join(os.homedir(), '.claude', 'MEMORY.md');
+const GLOBAL_CLAUDE_PATH   = path.join(__dirname, 'CLAUDE.md');
+const USER_CLAUDE_PATH     = path.join(os.homedir(), '.claude', 'CLAUDE.md');
+const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
 const PROJECT_SPECIFIC_MARKER = '<!-- PROJECT-SPECIFIC -->';
 const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 
@@ -978,20 +979,38 @@ const DIRECT_TOOLS = [
 ];
 
 function buildDirectSystemPrompt(config, workDir) {
-  let prompt = BASE_SYSTEM_PROMPT + '\n';
-  // Polaris project CLAUDE.md — the rules that actually matter for Polaris agents
-  try { prompt += '\n' + fs.readFileSync(GLOBAL_CLAUDE_PATH, 'utf8'); } catch {}
-  // Project memory if available
+  const layers = [BASE_SYSTEM_PROMPT];
+
+  // Layer 2: Global user rules (~/.claude/CLAUDE.md — coding style, git workflow, etc.)
+  try { layers.push('--- Global Rules ---\n' + fs.readFileSync(USER_CLAUDE_PATH, 'utf8')); } catch {}
+
+  // Layer 3: Global user memory (~/.claude/MEMORY.md)
+  try { layers.push('--- Global Memory ---\n' + fs.readFileSync(GLOBAL_MEMORY_PATH, 'utf8')); } catch {}
+
+  // Layer 4: Project CLAUDE.md ({workDir}/CLAUDE.md — project-specific rules)
+  if (workDir) {
+    const projectClaudeMd = path.join(workDir, 'CLAUDE.md');
+    try { layers.push('--- Project Rules ---\n' + fs.readFileSync(projectClaudeMd, 'utf8')); } catch {}
+
+    // Layer 5: Project MEMORY.md ({workDir}/MEMORY.md)
+    const projectMemoryMd = path.join(workDir, 'MEMORY.md');
+    try { layers.push('--- Project Memory ---\n' + fs.readFileSync(projectMemoryMd, 'utf8')); } catch {}
+  }
+
+  // Layer 6: Auto-memory from .claude/projects/{key}/memory/MEMORY.md
   try {
     const projectKey = (workDir || '')
       .replace(/^([A-Za-z]):/, (_, d) => d.toLowerCase() + '-')
       .replace(/[/\\]/g, '-');
     const memPath = path.join(os.homedir(), '.claude', 'projects', projectKey, 'memory', 'MEMORY.md');
-    prompt += '\n--- Project Memory ---\n' + fs.readFileSync(memPath, 'utf8');
+    layers.push('--- Project Auto-Memory ---\n' + fs.readFileSync(memPath, 'utf8'));
   } catch {}
+
+  // Layer 7: Protected patterns
   const patterns = config.protectedPatterns || ['*.md'];
-  prompt += `\nProtected file patterns — require explicit user approval before modifying: ${patterns.join(', ')}`;
-  return prompt;
+  layers.push(`Protected file patterns — require explicit user approval before modifying: ${patterns.join(', ')}`);
+
+  return layers.join('\n\n');
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
@@ -1019,11 +1038,13 @@ function toolEdit({ file_path, old_string, new_string, replace_all }) {
 
 function toolGlob({ pattern, path: searchPath }, workDir) {
   const base = searchPath || workDir || process.cwd();
-  // Convert glob to regex — handle ** and * separately
+  // Convert glob to regex — escape special chars first, then expand * and ? wildcards
   const regexStr = pattern
-    .replace(/[.+^${}()|[\]]/g, '\\$&')
-    .replace(/\\\*\\\*/g, '§DS§').replace(/\\\*/g, '[^/\\\\]*').replace(/§DS§/g, '.*')
-    .replace(/\?/g, '[^/\\\\]');
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex chars (not * or ?)
+    .replace(/\*\*/g, '§DS§')              // protect ** before replacing single *
+    .replace(/\*/g, '[^/\\\\]*')           // * → any non-separator chars
+    .replace(/§DS§/g, '.*')               // ** → anything including separators
+    .replace(/\?/g, '[^/\\\\]');           // ? → single non-separator char
   const rx = new RegExp(`(^|[/\\\\])${regexStr}$`, 'i');
   const results = [];
   const walk = (dir, depth) => {
@@ -1055,11 +1076,23 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
 }
 
 function toolBash({ command, timeout: tms }, workDir) {
-  return execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+  try {
+    return execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+  } catch (e) {
+    const out = e.stdout ? e.stdout.toString() : '';
+    const err = e.stderr ? e.stderr.toString() : '';
+    return (out + (err ? '\n' + err : '') || e.message).trim();
+  }
 }
 
 function toolPowerShell({ command, timeout: tms }, workDir) {
-  return execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+  try {
+    return execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+  } catch (e) {
+    const out = e.stdout ? e.stdout.toString() : '';
+    const err = e.stderr ? e.stderr.toString() : '';
+    return (out + (err ? '\n' + err : '') || e.message).trim();
+  }
 }
 
 function toolWebFetch({ url }) {
@@ -1167,6 +1200,25 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey) 
   });
 }
 
+// ── Message history persistence ───────────────────────────────────────────────
+
+function saveSessionMessages(sessionId) {
+  try {
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    const s = sessions.get(sessionId);
+    if (!s || !s.messages) return;
+    fs.writeFileSync(path.join(SESSIONS_DIR, `${sessionId}.json`), JSON.stringify(s.messages, null, 2), 'utf8');
+  } catch (e) { console.warn('[sessions] message save failed:', e.message); }
+}
+
+function loadSessionMessages(sessionId) {
+  try {
+    const p = path.join(SESSIONS_DIR, `${sessionId}.json`);
+    if (!fs.existsSync(p)) return [];
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch { return []; }
+}
+
 // ── Agentic loop ──────────────────────────────────────────────────────────────
 
 async function runDirectAgent(sessionId, userMessage, workDir) {
@@ -1182,7 +1234,8 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   addToHistory(userMessage);
   broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
 
-  if (!session.messages) session.messages = [];
+  // Restore persisted message history on first use (survives server restarts)
+  if (!session.messages) session.messages = loadSessionMessages(sessionId);
   session.messages.push({ role: 'user', content: userMessage });
   if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
 
@@ -1264,6 +1317,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
 
   const s = sessions.get(sessionId);
   if (s) { s.status = s.aborted ? 'error' : 'done'; s.endAt = Date.now(); }
+  saveSessionMessages(sessionId);
   dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
   broadcast({ type: 'session-status', sessionId, status: s?.aborted ? 'error' : 'done' });
   autoObsidianForSession(sessionId);
