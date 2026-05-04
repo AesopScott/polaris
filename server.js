@@ -978,7 +978,7 @@ function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) 
   const useDirect = !!(config.useDirectAnthropic && config.anthropicApiKey);
   const effectiveModel = useDirect
     ? (config.anthropicModel || 'claude-sonnet-4-6')
-    : (model || config.openRouterFloorModel || 'openrouter/auto');
+    : (session.resolvedModel || model || config.openRouterFloorModel || 'openrouter/auto');
   // shell:true on Windows joins args without quoting — quote anything with spaces ourselves
   const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
   const sysPrompt = buildSystemPrompt(config).replace(/\n/g, ' ');
@@ -1219,6 +1219,11 @@ function handleStreamEvent(sessionId, msg) {
 
   if (msg.type === 'assistant' && msg.message) {
     const s = sessions.get(sessionId);
+    // Lock the resolved model on the first response so subsequent spawns don't re-route
+    if (s && msg.message.model && !s.resolvedModel) {
+      s.resolvedModel = msg.message.model;
+      console.log(`[spawn] resolved model for ${sessionId}: ${msg.message.model}`);
+    }
     // Support both 'content' (older CLI) and 'container' (newer CLI) field names
     const blocks = msg.message.content || msg.message.container || [];
     if (Array.isArray(blocks) && blocks.length > 0) {
