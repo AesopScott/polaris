@@ -60,7 +60,11 @@ const BASE_SYSTEM_PROMPT = [
 function buildSystemPrompt(config) {
   const patterns = config.protectedPatterns || ['*.md'];
   const patternRule = `Protected file patterns — these file types require explicit user approval before ANY modification. State the planned change and wait for confirmation before writing: ${patterns.join(', ')}`;
-  return BASE_SYSTEM_PROMPT + '\n' + patternRule;
+  const mcpServers = Object.keys(readClaudeJson().mcpServers || {});
+  const mcpLine = mcpServers.length > 0
+    ? `You have the following MCP servers connected and their tools are available to you: ${mcpServers.join(', ')}. Use them proactively when relevant.`
+    : '';
+  return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '');
 }
 
 // ─── Secret encryption (AES-256-GCM, machine-bound key) ──────────────────────
