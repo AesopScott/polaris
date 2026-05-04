@@ -2027,7 +2027,7 @@ function handleMessage(ws, raw) {
     const cfg = readConfig();
     const rawKey = cfg.elevenLabsApiKey ? decryptSecret(cfg.elevenLabsApiKey) : null;
     if (!rawKey) { sendTo(ws, { type: 'tts-audio', error: 'no-key' }); return; }
-    const voiceId = cfg.elevenLabsVoiceId || 'pNInz6obpgDQGcFmaJgB';
+    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — Clear, Engaging Educator (British)
     const body = JSON.stringify({
       text: String(msg.text || '').slice(0, 500),
       model_id: 'eleven_turbo_v2_5',
