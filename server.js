@@ -67,26 +67,48 @@ function buildSystemPrompt(config) {
   return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '');
 }
 
-// ─── Secret encryption (AES-256-GCM, machine-bound key) ──────────────────────
+// ─── Secret encryption (AES-256-GCM, stable file key) ────────────────────────
 const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey']);
 const SECRET_MASK    = '••••••••';
+const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
 
-let _machineKey = null;
-function getMachineKey() {
-  if (_machineKey) return _machineKey;
+let _stableKey = null;
+function getStableKey() {
+  if (_stableKey) return _stableKey;
+  try {
+    const existing = fs.readFileSync(ENC_KEY_PATH);
+    if (existing.length === 32) { _stableKey = existing; return _stableKey; }
+  } catch {}
+  _stableKey = crypto.randomBytes(32);
+  try { fs.writeFileSync(ENC_KEY_PATH, _stableKey); } catch (e) {
+    console.error('[enc] Failed to persist stable key:', e.message);
+  }
+  return _stableKey;
+}
+
+function getLegacyKey() {
   try {
     const out = execSync('reg query "HKLM\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     const match = out.match(/MachineGuid\s+REG_SZ\s+(\S+)/);
-    if (match) { _machineKey = crypto.createHash('sha256').update(match[1]).digest(); return _machineKey; }
+    if (match) return crypto.createHash('sha256').update(match[1]).digest();
   } catch {}
-  _machineKey = crypto.createHash('sha256').update(`${os.userInfo().username}@${os.hostname()}`).digest();
-  return _machineKey;
+  return crypto.createHash('sha256').update(`${os.userInfo().username}@${os.hostname()}`).digest();
+}
+
+function tryDecryptWithKey(value, key) {
+  try {
+    const buf = Buffer.from(value.slice(4), 'base64');
+    const iv = buf.slice(0, 16); const tag = buf.slice(16, 32); const enc = buf.slice(32);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    return decipher.update(enc) + decipher.final('utf8');
+  } catch { return null; }
 }
 
 function encryptSecret(plaintext) {
   if (!plaintext) return '';
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getMachineKey(), iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getStableKey(), iv);
   const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return 'enc:' + Buffer.concat([iv, tag, enc]).toString('base64');
@@ -94,13 +116,12 @@ function encryptSecret(plaintext) {
 
 function decryptSecret(value) {
   if (!value || !value.startsWith('enc:')) return value || '';
-  try {
-    const buf = Buffer.from(value.slice(4), 'base64');
-    const iv = buf.slice(0, 16); const tag = buf.slice(16, 32); const enc = buf.slice(32);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', getMachineKey(), iv);
-    decipher.setAuthTag(tag);
-    return decipher.update(enc) + decipher.final('utf8');
-  } catch { return ''; }
+  const result = tryDecryptWithKey(value, getStableKey());
+  if (result !== null) return result;
+  const legacy = tryDecryptWithKey(value, getLegacyKey());
+  if (legacy !== null) { console.log('[enc] Decrypted with legacy key — will migrate on next startup'); return legacy; }
+  console.error('[enc] Decryption failed with all keys');
+  return '';
 }
 
 function readConfig() {
@@ -120,12 +141,23 @@ function migrateSecretsToEncrypted() {
   const raw = readJSON(CONFIG_PATH, {});
   let changed = false;
   for (const key of SENSITIVE_KEYS) {
-    if (raw[key] && !raw[key].startsWith('enc:')) {
+    if (!raw[key]) continue;
+    if (!raw[key].startsWith('enc:')) {
       raw[key] = encryptSecret(raw[key]);
       changed = true;
+      console.log(`[enc] Migrated ${key} from plaintext to encrypted`);
+    } else if (tryDecryptWithKey(raw[key], getStableKey()) === null) {
+      const legacy = tryDecryptWithKey(raw[key], getLegacyKey());
+      if (legacy) {
+        raw[key] = encryptSecret(legacy);
+        changed = true;
+        console.log(`[enc] Migrated ${key} from legacy key to stable file key`);
+      } else {
+        console.error(`[enc] Cannot decrypt ${key} with any known key`);
+      }
     }
   }
-  if (changed) { writeJSON(CONFIG_PATH, raw); console.log('[secrets] Migrated plaintext secrets to encrypted.'); }
+  if (changed) writeJSON(CONFIG_PATH, raw);
 }
 
 // ─── IPC bridge to main.js ───────────────────────────────────────────────────
