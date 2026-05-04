@@ -772,7 +772,7 @@ function autoObsidianForSession(sessionId) {
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath) return; // No vault configured — silently skip
   try {
-    const dir = path.join(vaultPath, 'Polaris_Build');
+    const dir = path.join(vaultPath, 'Polaris_Sessions');
     fs.mkdirSync(dir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const safeName = (s.name || 'Session').replace(/[<>:"/\\|?*]/g, '_').slice(0, 60);
@@ -2884,7 +2884,7 @@ function handleMessage(ws, raw) {
       return;
     }
     try {
-      const dir = path.join(vaultPath, 'Polaris_Build');
+      const dir = path.join(vaultPath, 'Polaris_Sessions');
       fs.mkdirSync(dir, { recursive: true });
       const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(dir, `${safeName}.md`);
