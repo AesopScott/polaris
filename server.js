@@ -1625,7 +1625,8 @@ function handleMessage(ws, raw) {
       sendTo(ws, { type: 'openrouter-test-result', ok: false, message: 'No API key provided' });
       return;
     }
-    if (/[^\x20-\x7E]/.test(apiKey)) {
+    const resolvedOrKey = (apiKey === SECRET_MASK) ? readConfig().openRouterApiKey : apiKey;
+    if (!resolvedOrKey || /[^\x20-\x7E]/.test(resolvedOrKey)) {
       sendTo(ws, { type: 'openrouter-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' });
       return;
     }
@@ -1633,7 +1634,7 @@ function handleMessage(ws, raw) {
       hostname: 'openrouter.ai',
       path: '/api/v1/models',
       method: 'GET',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
+      headers: { 'Authorization': `Bearer ${resolvedOrKey}` },
     }, res => {
       let body = '';
       res.on('data', c => body += c);
@@ -1663,12 +1664,13 @@ function handleMessage(ws, raw) {
   if (type === 'test-anthropic-key') {
     const { apiKey } = msg;
     if (!apiKey) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'No API key provided' }); return; }
-    if (/[^\x20-\x7E]/.test(apiKey)) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' }); return; }
+    const resolvedAnthKey = (apiKey === SECRET_MASK) ? readConfig().anthropicApiKey : apiKey;
+    if (!resolvedAnthKey || /[^\x20-\x7E]/.test(resolvedAnthKey)) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' }); return; }
     const req = https.request({
       hostname: 'api.anthropic.com',
       path: '/v1/models',
       method: 'GET',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'x-api-key': resolvedAnthKey, 'anthropic-version': '2023-06-01' },
     }, res => {
       let body = '';
       res.on('data', c => body += c);
@@ -1694,11 +1696,12 @@ function handleMessage(ws, raw) {
   if (type === 'test-openai-key') {
     const { apiKey } = msg;
     if (!apiKey) { sendTo(ws, { type: 'openai-test-result', ok: false, message: 'No API key provided' }); return; }
+    const resolvedOaiKey = (apiKey === SECRET_MASK) ? readConfig().openAiApiKey : apiKey;
     const req = https.request({
       hostname: 'api.openai.com',
       path: '/v1/models',
       method: 'GET',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
+      headers: { 'Authorization': `Bearer ${resolvedOaiKey}` },
     }, res => {
       let body = '';
       res.on('data', c => body += c);
