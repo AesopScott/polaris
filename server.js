@@ -993,6 +993,9 @@ function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) 
   if (!promptArgOk) console.error('[spawn] PROMPT MISMATCH — arg builder corrupted the -p value');
 
   const spawnEnv = { ...process.env };
+  // Disable extended thinking — Gemini 2.5 Flash generates 500k+ hidden thinking
+  // tokens per turn via OpenRouter which massively inflates cost.
+  spawnEnv.MAX_THINKING_TOKENS = '0';
   if (useDirect) {
     spawnEnv.ANTHROPIC_API_KEY  = config.anthropicApiKey;
     delete spawnEnv.ANTHROPIC_BASE_URL;
