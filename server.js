@@ -1362,17 +1362,17 @@ function spawnChat(sessionId, prompt, config) {
           if (!content) continue;
           session.chatBuffer = (session.chatBuffer || '') + content;
           const parts = session.chatBuffer.split('\n');
-          session.chatBuffer = parts.pop();
-          for (const part of parts) {
+          for (const part of parts.slice(0, -1)) { // Process all but the last part
             if (part.trim()) broadcast({ type: 'line', sessionId, text: part, role: 'assistant' });
           }
+          session.chatBuffer = parts[parts.length - 1] || ''; // Keep only the last (potentially incomplete) part
         } catch {}
       }
     });
     res.on('end', () => {
       const rem = (session.chatBuffer || '').trim();
       if (rem) broadcast({ type: 'line', sessionId, text: rem, role: 'assistant' });
-      session.chatBuffer = '';
+      session.chatBuffer = ''; // Clear the buffer after broadcasting remaining content
       session.status = 'done';
       session.endAt  = Date.now();
       broadcast({ type: 'session-status', sessionId, status: 'done' });
