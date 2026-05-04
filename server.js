@@ -163,8 +163,9 @@ function migrateSecretsToEncrypted() {
 }
 
 // ─── IPC bridge to main.js ───────────────────────────────────────────────────
-const pendingDirPicks  = new Map();
-const pendingFilePicks = new Map();
+const pendingDirPicks   = new Map();
+const pendingFilePicks  = new Map();
+const pendingQuestions  = new Map(); // questionId → resolve
 
 if (typeof process.on === 'function') {
   process.on('message', (msg) => {
@@ -975,6 +976,8 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'Bash', description: 'Execute a shell command in the session working directory.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer', description: 'Timeout ms, max 120000' } }, required: ['command'] } } },
   { type: 'function', function: { name: 'PowerShell', description: 'Execute a PowerShell command on Windows.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer' } }, required: ['command'] } } },
   { type: 'function', function: { name: 'WebFetch', description: 'Fetch the text content of a URL.', parameters: { type: 'object', properties: { url: { type: 'string' }, prompt: { type: 'string', description: 'What to extract from the page' } }, required: ['url'] } } },
+  { type: 'function', function: { name: 'WebSearch', description: 'Search the web and return results. Uses Brave Search if configured, otherwise DuckDuckGo.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' }, num_results: { type: 'integer', description: 'Max results to return (default 5)' } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask the user a clarifying question and wait for their response before continuing.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask' }, options: { type: 'array', items: { type: 'string' }, description: 'Optional predefined answer choices' } }, required: ['question'] } } },
   { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'object', properties: { content: { type: 'string' }, status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] } }, required: ['content', 'status'] } } }, required: ['todos'] } } },
 ];
 
@@ -1103,6 +1106,80 @@ function toolWebFetch({ url }) {
       res.on('data', c => data += c);
       res.on('end', () => resolve(data.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 20000)));
     }).on('error', err => resolve(`Fetch error: ${err.message}`));
+  });
+}
+
+function braveSearch(query, count, apiKey) {
+  return new Promise((resolve, reject) => {
+    const q = encodeURIComponent(query);
+    const opts = {
+      hostname: 'api.search.brave.com',
+      path: `/res/v1/web/search?q=${q}&count=${count}`,
+      method: 'GET',
+      headers: { 'Accept': 'application/json', 'Accept-Encoding': 'identity', 'X-Subscription-Token': apiKey },
+    };
+    https.request(opts, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          if (res.statusCode !== 200) return resolve(`Brave Search error ${res.statusCode}: ${data.slice(0, 200)}`);
+          const parsed = JSON.parse(data);
+          const results = (parsed.web?.results || []).slice(0, count);
+          if (!results.length) return resolve('No results found.');
+          resolve(results.map((r, i) => `${i+1}. ${r.title}\n   ${r.url}\n   ${r.description || ''}`).join('\n\n'));
+        } catch (e) { reject(e); }
+      });
+    }).on('error', reject).end();
+  });
+}
+
+function duckDuckGoSearch(query, count) {
+  return new Promise(resolve => {
+    const q = encodeURIComponent(query);
+    const opts = {
+      hostname: 'api.duckduckgo.com',
+      path: `/?q=${q}&format=json&no_redirect=1&no_html=1&skip_disambig=1`,
+      method: 'GET',
+      headers: { 'User-Agent': 'Polaris/1.0' },
+    };
+    https.request(opts, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const p = JSON.parse(data);
+          const lines = [];
+          if (p.Answer)   lines.push(`Answer: ${p.Answer}`);
+          if (p.Abstract) lines.push(`Summary: ${p.Abstract}\nSource: ${p.AbstractURL}`);
+          const topics = (p.RelatedTopics || []).filter(t => t.FirstURL && t.Text).slice(0, count);
+          topics.forEach((t, i) => lines.push(`${i+1}. ${t.Text}\n   ${t.FirstURL}`));
+          if (!lines.length) resolve('No instant-answer results. Add braveSearchApiKey in Settings for full web search (search.brave.com — free tier 2000/month).');
+          else resolve(lines.join('\n\n') + '\n\n(Tip: add braveSearchApiKey in Settings for full search results)');
+        } catch { resolve('Search unavailable. Add braveSearchApiKey in Settings.'); }
+      });
+    }).on('error', () => resolve('Search unavailable.')).end();
+  });
+}
+
+async function toolWebSearch({ query, num_results = 5 }) {
+  const config = readConfig();
+  const n = Math.min(num_results, 10);
+  if (config.braveSearchApiKey) return braveSearch(query, n, config.braveSearchApiKey);
+  return duckDuckGoSearch(query, n);
+}
+
+function toolAskUserQuestion({ question, options }, sessionId) {
+  return new Promise(resolve => {
+    const questionId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    pendingQuestions.set(questionId, resolve);
+    broadcast({ type: 'ask-user-question', sessionId, question, options: options || [], questionId });
+    setTimeout(() => {
+      if (pendingQuestions.has(questionId)) {
+        pendingQuestions.delete(questionId);
+        resolve('(No response — question timed out after 5 minutes)');
+      }
+    }, 300000);
   });
 }
 
@@ -1304,7 +1381,8 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'Bash':       return toolBash(input, workDir);
     case 'PowerShell': return toolPowerShell(input, workDir);
     case 'WebFetch':   return await toolWebFetch(input);
-    case 'TodoWrite':  return toolTodoWrite(input, sessionId);
+    case 'WebSearch':  return await toolWebSearch(input);
+    case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
     default:           return `Unknown tool: ${name}`;
   }
 }
@@ -2145,6 +2223,12 @@ function handleMessage(ws, raw) {
     } else {
       runDirectAgent(sessionId, prompt, session.workDir);
     }
+    return;
+  }
+
+  if (type === 'user-question-answer') {
+    const resolver = pendingQuestions.get(msg.questionId);
+    if (resolver) { pendingQuestions.delete(msg.questionId); resolver(msg.answer || '(no answer)'); }
     return;
   }
 

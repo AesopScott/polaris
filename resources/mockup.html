@@ -972,7 +972,7 @@
       <div class="btn-grid">
         <button class="hbtn btn-gold" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button class="hbtn btn-tracking" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
-        <button id="btn-balance" class="hbtn btn-danger" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">$ Balance</span></button>
+        <button id="btn-balance" class="hbtn btn-danger" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload UI</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
@@ -2946,11 +2946,90 @@
         break;
       }
 
+      case 'ask-user-question':
+        appendQuestionPrompt(msg.sessionId, msg.question, msg.options || [], msg.questionId);
+        pushDebugLog(`[agent question] ${msg.question.slice(0, 80)}`);
+        break;
+
       case 'error':
         alert(`Server error: ${msg.text}`);
         pushDebugLog(`[server error] ${msg.text}`, true);
         break;
     }
+  }
+
+  function appendQuestionPrompt(sessionId, question, options, questionId) {
+    const grid = getActiveGrid();
+    const card = grid && grid.querySelector(`[data-sid="${sessionId}"]`);
+    const term = card && card.querySelector('[data-term]');
+    if (!term) return;
+
+    // Inject styles once
+    if (!document.getElementById('question-prompt-styles')) {
+      const s = document.createElement('style');
+      s.id = 'question-prompt-styles';
+      s.textContent = `
+        .question-prompt { border-left: 3px solid #7c3aed; padding: 6px 0 6px 10px; margin: 6px 0; }
+        .t-question { color: #a78bfa; font-style: italic; margin-bottom: 6px; white-space: pre-wrap; }
+        .question-options { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+        .question-opt-btn { background: #1e1b4b; color: #a5b4fc; border: 1px solid #4338ca; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; font-family: inherit; }
+        .question-opt-btn:hover { background: #2d2a6e; }
+        .question-input-row { display: flex; gap: 6px; }
+        .question-input { flex: 1; background: #0d1117; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-family: inherit; }
+        .question-submit-btn { background: #7c3aed; color: #fff; border: none; border-radius: 4px; padding: 3px 12px; cursor: pointer; font-size: 12px; }
+        .question-submit-btn:hover { background: #6d28d9; }
+      `;
+      document.head.appendChild(s);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'question-prompt';
+
+    const qEl = document.createElement('div');
+    qEl.className = 't-question';
+    qEl.textContent = '⊙ ' + question;
+    wrap.appendChild(qEl);
+
+    const submit = answer => {
+      wrap.remove();
+      const s = sessionStore[sessionId];
+      if (s) s.lines.push({ text: answer, role: 'user' });
+      appendLineToCard(sessionId, { text: answer, role: 'user' });
+      wsSend({ type: 'user-question-answer', questionId, answer });
+    };
+
+    if (options.length > 0) {
+      const btnRow = document.createElement('div');
+      btnRow.className = 'question-options';
+      options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'question-opt-btn';
+        btn.textContent = opt;
+        btn.onclick = () => submit(opt);
+        btnRow.appendChild(btn);
+      });
+      wrap.appendChild(btnRow);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'question-input-row';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'question-input';
+    inp.placeholder = 'Type your answer…';
+    inp.onkeydown = e => { if (e.key === 'Enter' && inp.value.trim()) submit(inp.value.trim()); };
+    const btn = document.createElement('button');
+    btn.className = 'question-submit-btn';
+    btn.textContent = 'Answer';
+    btn.onclick = () => { if (inp.value.trim()) submit(inp.value.trim()); };
+    row.appendChild(inp);
+    row.appendChild(btn);
+    wrap.appendChild(row);
+
+    const wasAtBottom = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
+    term.appendChild(wrap);
+    if (wasAtBottom) term.scrollTop = term.scrollHeight;
+    setTimeout(() => inp.focus(), 50);
   }
 
   // ── Grid rendering ────────────────────────────────────────────────────────────
