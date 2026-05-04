@@ -2571,7 +2571,7 @@
         break;
 
       case 'tts-audio':
-        if (msg.dataUrl) {
+        if (msg.dataUrl && _onbSpeakEnabled) {
           if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
           _onbAudio = new Audio(msg.dataUrl);
           const dot = document.getElementById('onb-audio-dot');
@@ -7162,6 +7162,7 @@
   let _onbStep  = 0;
   let _onbSteps = [];
   let _onbAudio = null;
+  let _onbSpeakEnabled = false;
 
   const ONB_TOURS = {
     beginner: [
@@ -7217,16 +7218,14 @@
     const overlay = document.getElementById('onboarding-overlay');
     if (!overlay) return;
     onbHideTour();
+    onbShowScreen('level');
+    overlay.classList.remove('hidden');
     const savedLevel = currentConfig?.onboardingLevel || null;
-    if (savedLevel && ONB_TOURS[savedLevel]) {
+    if (savedLevel) {
+      document.querySelectorAll('.onb-level-card').forEach(c => c.classList.remove('selected'));
+      const card = document.getElementById(`onb-level-${savedLevel}`);
+      if (card) card.classList.add('selected');
       _onbLevel = savedLevel;
-      _onbSteps = ONB_TOURS[savedLevel];
-      _onbStep  = 0;
-      overlay.classList.add('hidden');
-      onbShowTourStep();
-    } else {
-      onbShowScreen('level');
-      overlay.classList.remove('hidden');
     }
   }
 
@@ -7316,6 +7315,7 @@
   }
 
   function onbHideTour() {
+    _onbSpeakEnabled = false;
     if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     document.getElementById('onb-spotlight')?.classList.add('hidden');
@@ -7338,6 +7338,7 @@
   }
 
   function onbSpeak(text) {
+    _onbSpeakEnabled = true;
     if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     document.getElementById('onb-audio-dot')?.classList.remove('active');
