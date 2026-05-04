@@ -1112,7 +1112,189 @@ function toolTodoWrite({ todos }, sessionId) {
   return 'Todos updated:\n' + todos.map(t => `[${t.status}] ${t.content}`).join('\n');
 }
 
+// ── MCP Integration ───────────────────────────────────────────────────────────
+
+const mcpProcesses = new Map(); // serverName → { proc, pending, buffer, nextId }
+let mcpToolsCache = null;
+let mcpToolsCacheTime = 0;
+const MCP_CACHE_TTL = 60000;
+
+function getMcpServerConfigs() {
+  return readClaudeJson().mcpServers || {};
+}
+
+function mcpSend(state, message) {
+  state.proc.stdin.write(JSON.stringify(message) + '\n');
+}
+
+function mcpStdioCall(state, method, params, timeout = 15000) {
+  return new Promise((resolve, reject) => {
+    const id = state.nextId++;
+    const timer = setTimeout(() => {
+      state.pending.delete(id);
+      reject(new Error(`MCP timeout: ${method}`));
+    }, timeout);
+    state.pending.set(id, {
+      resolve: v => { clearTimeout(timer); resolve(v); },
+      reject:  e => { clearTimeout(timer); reject(e); },
+    });
+    mcpSend(state, { jsonrpc: '2.0', id, method, params: params || {} });
+  });
+}
+
+async function ensureMcpProcess(serverName, serverConfig) {
+  const existing = mcpProcesses.get(serverName);
+  if (existing && !existing.proc.killed) return existing;
+
+  const cfg = readConfig();
+  const creds = (cfg.mcp_credentials || {})[serverName] || {};
+  const env = { ...process.env, ...(serverConfig.env || {}), ...creds };
+
+  const proc = spawn(serverConfig.command, serverConfig.args || [], {
+    env, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true,
+  });
+
+  const state = { proc, pending: new Map(), buffer: '', nextId: 1 };
+  mcpProcesses.set(serverName, state);
+
+  proc.stdout.on('data', chunk => {
+    state.buffer += chunk.toString();
+    let nl;
+    while ((nl = state.buffer.indexOf('\n')) !== -1) {
+      const line = state.buffer.slice(0, nl).trim();
+      state.buffer = state.buffer.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id != null && state.pending.has(msg.id)) {
+          const { resolve, reject } = state.pending.get(msg.id);
+          state.pending.delete(msg.id);
+          if (msg.error) reject(new Error(msg.error.message || 'MCP error'));
+          else resolve(msg.result);
+        }
+      } catch {}
+    }
+  });
+
+  proc.on('exit', code => { console.warn(`[mcp] ${serverName} exited (${code})`); mcpProcesses.delete(serverName); });
+  proc.on('error', err => { console.warn(`[mcp] ${serverName} error:`, err.message); mcpProcesses.delete(serverName); });
+
+  try {
+    await mcpStdioCall(state, 'initialize', {
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'polaris', version: '1.0' },
+    });
+    mcpSend(state, { jsonrpc: '2.0', method: 'notifications/initialized' });
+  } catch (e) {
+    console.warn(`[mcp] ${serverName} init failed:`, e.message);
+    proc.kill();
+    mcpProcesses.delete(serverName);
+    throw e;
+  }
+  return state;
+}
+
+function mcpHttpCall(url, headers, method, params) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: params || {} });
+    let urlObj;
+    try { urlObj = new URL(url); } catch { return reject(new Error(`Invalid MCP URL: ${url}`)); }
+    const lib = url.startsWith('https') ? https : require('http');
+    const opts = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (url.startsWith('https') ? 443 : 80),
+      path: urlObj.pathname + (urlObj.search || ''),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers },
+    };
+    const req = lib.request(opts, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) reject(new Error(parsed.error.message || 'MCP HTTP error'));
+          else resolve(parsed.result);
+        } catch (e) { reject(new Error(`MCP HTTP parse: ${e.message}`)); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function formatMcpResult(result) {
+  if (!result) return '(no result)';
+  if (Array.isArray(result.content)) {
+    return result.content.map(c => c.type === 'text' ? c.text : JSON.stringify(c)).join('\n');
+  }
+  return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+}
+
+async function discoverMcpTools() {
+  const now = Date.now();
+  if (mcpToolsCache && now - mcpToolsCacheTime < MCP_CACHE_TTL) return mcpToolsCache;
+
+  const servers = getMcpServerConfigs();
+  const allTools = [];
+
+  for (const [serverName, serverConfig] of Object.entries(servers)) {
+    try {
+      let toolsList = [];
+      if (serverConfig.url) {
+        const result = await mcpHttpCall(serverConfig.url, serverConfig.headers || {}, 'tools/list', {});
+        toolsList = result?.tools || [];
+      } else if (serverConfig.command) {
+        const state = await ensureMcpProcess(serverName, serverConfig);
+        const result = await mcpStdioCall(state, 'tools/list', {});
+        toolsList = result?.tools || [];
+      }
+      for (const tool of toolsList) {
+        allTools.push({
+          type: 'function',
+          function: {
+            name: `mcp__${serverName}__${tool.name}`,
+            description: `[${serverName}] ${(tool.description || tool.name).slice(0, 400)}`,
+            parameters: tool.inputSchema || { type: 'object', properties: {} },
+          },
+        });
+      }
+      console.log(`[mcp] ${serverName}: ${toolsList.length} tools`);
+    } catch (e) {
+      console.warn(`[mcp] ${serverName} discovery failed:`, e.message);
+    }
+  }
+
+  mcpToolsCache = allTools;
+  mcpToolsCacheTime = now;
+  return allTools;
+}
+
+async function callMcpTool(serverName, toolName, args) {
+  const servers = getMcpServerConfigs();
+  const serverConfig = servers[serverName];
+  if (!serverConfig) throw new Error(`MCP server not configured: ${serverName}`);
+  let result;
+  if (serverConfig.url) {
+    result = await mcpHttpCall(serverConfig.url, serverConfig.headers || {}, 'tools/call', { name: toolName, arguments: args });
+  } else if (serverConfig.command) {
+    const state = await ensureMcpProcess(serverName, serverConfig);
+    result = await mcpStdioCall(state, 'tools/call', { name: toolName, arguments: args }, 30000);
+  } else {
+    throw new Error(`MCP server ${serverName} has no command or url`);
+  }
+  return formatMcpResult(result);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function executeDirectTool(name, input, workDir, sessionId) {
+  if (name.startsWith('mcp__')) {
+    const parts = name.split('__');
+    const serverName = parts[1];
+    const toolName = parts.slice(2).join('__');
+    return await callMcpTool(serverName, toolName, input);
+  }
   switch (name) {
     case 'Read':       return toolRead(input);
     case 'Write':      return toolWrite(input);
@@ -1129,12 +1311,12 @@ async function executeDirectTool(name, input, workDir, sessionId) {
 
 // ── Streaming OpenRouter call ─────────────────────────────────────────────────
 
-function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey) {
+function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS) {
   return new Promise(resolve => {
     const payload = JSON.stringify({
       model,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
-      tools: DIRECT_TOOLS,
+      tools,
       tool_choice: 'auto',
       stream: true,
       stream_options: { include_usage: true },
@@ -1264,11 +1446,23 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   const watcher = watchSessionFiles(sessionId, workDir);
   if (watcher) session.watcher = watcher;
 
+  // Discover MCP tools and merge with native tools for this session
+  let sessionTools = DIRECT_TOOLS;
+  try {
+    const mcpTools = await discoverMcpTools();
+    if (mcpTools.length > 0) {
+      sessionTools = [...DIRECT_TOOLS, ...mcpTools];
+      dlog('MCP_TOOLS', mcpTools.length);
+    }
+  } catch (e) {
+    console.warn('[mcp] discovery failed, using native tools only:', e.message);
+  }
+
   let iterations = 0;
   while (!session.aborted && iterations < 50) {
     iterations++;
     dlog('ITER', iterations);
-    const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey);
+    const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools);
 
     if (result.error) {
       dlog('ERROR', result.error);
