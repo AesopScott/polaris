@@ -54,6 +54,7 @@ const BASE_SYSTEM_PROMPT = [
   'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the Polaris data directory.',
   'Before any file write, check locks.json. Locked files require explicit user approval.',
   'Before any code change, file write, or destructive action, state what you plan to do and wait for the user to confirm. Do not assume approval from context.',
+  'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
