@@ -9,6 +9,7 @@ Scott's personal AI command center — parallel agent sessions, real API control
 4. **Locks:** check `locks.json` before any write; locked files need explicit approval.
 5. **Server restarts:** never from code — tell Scott.
 6. **Windows:** backslash paths, no Unix shell tools. Use PowerShell or Node `fs`.
+7. **Commit after every change:** After any file edit or write, immediately commit with a conventional message (feat, fix, refactor, docs, chore, perf, ci). Never leave changes uncommitted. Bump `package.json` version and rebuild before closing a work session.
 
 ## Architecture
 - **Agent sessions** → OpenRouter via Claude CLI (`ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1` + `ANTHROPIC_API_KEY=<openRouterApiKey>`).
