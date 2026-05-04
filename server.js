@@ -1045,7 +1045,7 @@ function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) 
 
   proc.stdout.on('data', chunk => {
     const raw = chunk.toString();
-    diagLog(`CHUNK(${raw.length}b)`, raw.slice(0, 600).replace(/\n/g, '↵'));
+    diagLog(`CHUNK(${raw.length}b)`, raw.slice(0, 2000).replace(/\n/g, '↵'));
     lineBuffer += raw;
     const lines = lineBuffer.split('\n');
     lineBuffer = lines.pop();
