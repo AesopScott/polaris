@@ -975,6 +975,16 @@ function spawnClaude(sessionId, prompt, workDir, resumeId = null, model = null) 
   const args = ['--output-format', 'stream-json', '--verbose'];
   if (resumeId) args.push('--resume', resumeId);
 
+  // Restrict tools to only what Polaris agents actually use.
+  // Drops 25+ unused schemas (CronCreate, EnterWorktree, NotebookEdit, ScheduleWakeup,
+  // PushNotification, Monitor, Task, RemoteTrigger, etc.) and all MCP tools from the
+  // API request, cutting per-prompt tool-schema token cost by ~70%.
+  const POLARIS_TOOLS = [
+    'Bash', 'PowerShell', 'Read', 'Write', 'Edit',
+    'Glob', 'Grep', 'TodoWrite', 'WebSearch', 'WebFetch', 'AskUserQuestion',
+  ].join(',');
+  args.push('--allowedTools', POLARIS_TOOLS);
+
   const useDirect = !!(config.useDirectAnthropic && config.anthropicApiKey);
   const effectiveModel = useDirect
     ? (config.anthropicModel || 'claude-sonnet-4-6')
