@@ -47,6 +47,12 @@ function startServer() {
       SERVER_PORT: String(SERVER_PORT),
       RESOURCES_PATH: process.resourcesPath ? path.join(process.resourcesPath, 'resources') : path.join(__dirname, 'resources'),
     },
+    // Bump V8 old-space ceiling from the ~2 GB default to 4 GB. The server
+    // accumulates per-session state (Obsidian projectMemory, message history,
+    // broadcast lines) and previously OOM'd at ~2.8 GB after a few sessions.
+    // releaseSessionMemory() in server.js fixes the underlying leak; this
+    // gives headroom in case future code regresses again.
+    execArgv: ['--max-old-space-size=4096'],
     // silent: true + explicit stdio so we can capture stdout/stderr to a log
     // file. In a packaged Electron app, console output is otherwise invisible
     // because there's no terminal — leaving us blind when the server crashes.

@@ -777,6 +777,13 @@ function watchSessionFiles(sessionId, workDir) {
     appendVersionLog({ ts, sessionId, sessionName: s?.name || sessionId, file: rel, prev, next });
     broadcast({ type: 'file-version', sessionId, file: rel, prev, next, ts, sessionName: s?.name || sessionId });
   });
+  // Unhandled 'error' events on FSWatcher crash the Node process. Common
+  // causes: workDir was deleted out from under the watcher (e.g. eval harness
+  // tmp dirs cleaned up between fixtures), or permissions revoked. Log and
+  // swallow — the session is effectively done if its workDir vanished.
+  watcher.on('error', err => {
+    console.warn(`[polaris] watcher error on ${workDir} (session ${sessionId}): ${err.message}`);
+  });
   return watcher;
 }
 
@@ -2220,6 +2227,29 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   broadcast({ type: 'session-status', sessionId, status: s?.aborted ? 'error' : 'done' });
   autoObsidianForSession(sessionId);
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
+  releaseSessionMemory(sessionId);
+}
+
+// Drop heavy per-session fields after the agent loop finishes. Each session
+// otherwise accumulates ~MB of state (full Obsidian dir in projectMemory,
+// rolling messages window, broadcast lines) that's never released, leading
+// to V8 heap-out-of-memory after enough activity. Messages and projectMemory
+// are reloaded from disk if the user resumes the session; lines are
+// display-only and don't survive server restarts anyway.
+//
+// extractSessionToKnowledge runs fire-and-forget but reads session.lines
+// synchronously up to its first await — by the time we get here, its locals
+// already hold whatever it needs in their own closures.
+function releaseSessionMemory(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  s.messages = null;
+  s.projectMemory = null;
+  s.lines = [];
+  if (s.watcher) {
+    try { s.watcher.close(); } catch {}
+    s.watcher = null;
+  }
 }
 
 function appendTokenLog(sessionId, model, usage) {
