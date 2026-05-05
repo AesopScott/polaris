@@ -473,7 +473,9 @@
     max-width: 100%;
     box-sizing: border-box;
   }
-  .palette .t-normal { margin-bottom: 4px; }
+  .palette .t-normal { margin-bottom: 2px; }
+  .palette [data-stream-role="assistant"] { margin-bottom: 8px; white-space: pre-wrap; }
+  .palette .t-user { margin-top: 8px !important; }
 
   /* Palette switcher button colors */
   .pal-btn-1 { background: #0a0e1a; color: #60a5fa; }
@@ -3364,7 +3366,19 @@
     // Only auto-scroll if the user is already near the bottom (within 40px).
     // If they scrolled up to read, don't yank them back down.
     const wasAtBottom = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
-    term.appendChild(makeLineEl(line, sessionId));
+    // Merge consecutive assistant streaming chunks into one div instead of
+    // creating a new element per token — prevents fragmented walls of text.
+    if (line.role === 'assistant') {
+      const last = term.lastElementChild;
+      if (last && last.dataset.streamRole === 'assistant') {
+        last.textContent += line.text;
+        if (wasAtBottom) term.scrollTop = term.scrollHeight;
+        return;
+      }
+    }
+    const el = makeLineEl(line, sessionId);
+    if (line.role === 'assistant') el.dataset.streamRole = 'assistant';
+    term.appendChild(el);
     if (wasAtBottom) term.scrollTop = term.scrollHeight;
   }
 
