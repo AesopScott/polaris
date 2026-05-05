@@ -1094,13 +1094,13 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'Write', description: 'Write content to a file, creating it if needed.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } }, required: ['file_path', 'content'] } } },
   { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find â€” must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
   { type: 'function', function: { name: 'Glob', description: 'Find files matching a glob pattern. Returns absolute paths sorted by modified time.', parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'Glob e.g. "**/*.js"' }, path: { type: 'string', description: 'Directory to search (default: working dir)' } }, required: ['pattern'] } } },
-  { type: 'function', function: { name: 'Grep', description: 'Search file contents for a regex pattern.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string', description: 'File or directory to search' }, glob: { type: 'string', description: 'File filter e.g. "*.ts"' }, output_mode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: 'Default: files_with_matches' }, context: { type: 'integer', description: 'Lines of context around matches' } }, required: ['pattern'] } } },
+  { type: 'function', function: { name: 'Grep', description: 'Search file contents for a regex pattern.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string', description: 'File or directory to search' }, glob: { type: 'string', description: 'File filter e.g. "*.ts"' }, output_mode: { type: 'string', description: 'One of: content, files_with_matches (default), count' }, context: { type: 'integer', description: 'Lines of context around matches' } }, required: ['pattern'] } } },
   { type: 'function', function: { name: 'Bash', description: 'Execute a shell command in the session working directory.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer', description: 'Timeout ms, max 120000' } }, required: ['command'] } } },
   { type: 'function', function: { name: 'PowerShell', description: 'Execute a PowerShell command on Windows.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer' } }, required: ['command'] } } },
   { type: 'function', function: { name: 'WebFetch', description: 'Fetch the text content of a URL.', parameters: { type: 'object', properties: { url: { type: 'string' }, prompt: { type: 'string', description: 'What to extract from the page' } }, required: ['url'] } } },
   { type: 'function', function: { name: 'WebSearch', description: 'Search the web and return results. Uses Brave Search if configured, otherwise DuckDuckGo.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' }, num_results: { type: 'integer', description: 'Max results to return (default 5)' } }, required: ['query'] } } },
   { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask the user a clarifying question and wait for their response before continuing.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask' }, options: { type: 'array', items: { type: 'string' }, description: 'Optional predefined answer choices' } }, required: ['question'] } } },
-  { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'object', properties: { content: { type: 'string' }, status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] } }, required: ['content', 'status'] } } }, required: ['todos'] } } },
+  { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir) {
@@ -1438,9 +1438,15 @@ function toolAskUserQuestion({ question, options }, sessionId) {
 }
 
 function toolTodoWrite({ todos }, sessionId) {
+  // Accept both legacy object format and new flat "content|status" string format
+  const normalized = (todos || []).map(t => {
+    if (typeof t === 'object') return t; // legacy: {content, status}
+    const [content, status = 'pending'] = String(t).split('|');
+    return { content: content.trim(), status: status.trim() };
+  });
   const s = sessions.get(sessionId);
-  if (s) s.todos = todos;
-  return 'Todos updated:\n' + todos.map(t => `[${t.status}] ${t.content}`).join('\n');
+  if (s) s.todos = normalized;
+  return 'Todos updated:\n' + normalized.map(t => `[${t.status}] ${t.content}`).join('\n');
 }
 
 // â”€â”€ MCP Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
