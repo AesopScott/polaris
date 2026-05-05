@@ -3797,6 +3797,11 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'get-cross-check-history') {
+    sendTo(ws, { type: 'cross-check-history', entries: loadAllCrossChecks(msg.limit || 200) });
+    return;
+  }
+
   if (type === 'get-archive-detail') {
     const { sessionId } = msg;
     try {

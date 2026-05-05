@@ -979,7 +979,7 @@
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
         <button class="hbtn btn-gold" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
-        <button class="hbtn btn-tracking" data-tooltip="Cross-check sessions against project requirements"><span class="lbl">Cross ✓</span></button>
+        <button class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
@@ -1443,6 +1443,31 @@
   </div>
 
   <!-- Archive Panel -->
+  <!-- Cross-Check History panel -->
+  <div id="cross-check-panel" class="projects-panel hidden palette" style="width:720px;max-height:700px;">
+    <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar" style="cursor:default;">
+      <span style="flex:1;font-size:13px;font-weight:800;">Cross-Check History</span>
+      <button onclick="wsSend({ type:'get-cross-check-history', limit: 200 })" style="padding:4px 10px;border-radius:5px;border:1px solid #444;font-size:11px;background:#1e293b;color:#cbd5e1;cursor:pointer;">⟳ Refresh</button>
+      <button class="preview-close-btn" onclick="toggleCrossCheckPanel()">✕</button>
+    </div>
+    <div id="cross-check-list" style="overflow-y:auto;max-height:620px;padding:8px 12px;font-size:11px;">
+      <div style="padding:24px;text-align:center;opacity:0.4;">Open the panel to load history.</div>
+    </div>
+  </div>
+
+  <!-- Cross-Check detail modal -->
+  <div id="cross-check-detail-overlay" class="overlay-bg hidden" style="z-index:1500;" onclick="if(event.target===this)closeCrossCheckDetail()">
+    <div id="cross-check-detail" style="position:absolute;top:5%;left:50%;transform:translateX(-50%);width:90%;max-width:1100px;max-height:90vh;background:#0d1117;border:1px solid #334155;border-radius:8px;display:flex;flex-direction:column;">
+      <div style="padding:12px 16px;border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:13px;font-weight:800;color:#e2e8f0;">Cross-Check detail</span>
+        <span id="ccd-meta" style="font-size:10px;color:#64748b;font-family:'Consolas',monospace;flex:1;"></span>
+        <button class="preview-close-btn" onclick="closeCrossCheckDetail()">✕</button>
+      </div>
+      <div id="ccd-body" style="flex:1;overflow:auto;padding:14px 16px;font-size:11px;"></div>
+    </div>
+  </div>
+
   <div id="archive-panel" class="projects-panel hidden palette" style="width:600px;max-height:700px;">
     <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
     <div class="preview-toolbar" style="cursor:default;">
@@ -3061,6 +3086,9 @@
       case 'archives-list':
         renderArchiveList(msg.archives || []);
         break;
+      case 'cross-check-history':
+        renderCrossCheckHistory(msg.entries || []);
+        break;
       case 'archive-search-results':
         renderArchiveList(msg.results || [], true);
         break;
@@ -4019,6 +4047,96 @@
       btn.classList.remove('fork-active', 'fork-linked');
     }
   }
+
+  // ── Cross-Check History panel ─────────────────────────────────────────────────
+  let _crossCheckEntries = [];
+
+  function toggleCrossCheckPanel() {
+    const panel = document.getElementById('cross-check-panel');
+    if (!panel) return;
+    const isOpen = !panel.classList.contains('hidden');
+    if (isOpen) {
+      panel.classList.add('hidden');
+    } else {
+      panel.style.zIndex = '1002';
+      panel.classList.remove('hidden');
+      wsSend({ type: 'get-cross-check-history', limit: 200 });
+    }
+  }
+  window.toggleCrossCheckPanel = toggleCrossCheckPanel;
+
+  function renderCrossCheckHistory(entries) {
+    _crossCheckEntries = entries || [];
+    const list = document.getElementById('cross-check-list');
+    if (!list) return;
+    if (!entries || entries.length === 0) {
+      list.innerHTML = '<div style="padding:24px;text-align:center;opacity:0.4;">No cross-checks yet. Every Write or Edit > 200 bytes will appear here once reviewed.</div>';
+      return;
+    }
+    list.innerHTML = entries.map((e, i) => {
+      const verdictColor = e.review?.verdict === 'PASS' ? '#4ade80' : e.review?.verdict === 'FAIL' ? '#f87171' : '#fbbf24';
+      const verdictBg    = e.review?.verdict === 'PASS' ? 'rgba(34,197,94,0.18)' : e.review?.verdict === 'FAIL' ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)';
+      const decisionTag  = e.userDecision === 'approve' ? '<span style="color:#4ade80;">approved</span>' : e.userDecision === 'reject' ? '<span style="color:#f87171;">rejected</span>' : '<span style="color:#64748b;">pending</span>';
+      const ts = e.ts ? new Date(e.ts).toLocaleString() : '';
+      const fname = (e.filePath || '').split(/[\\/]/).pop();
+      return `<div class="cc-history-row" data-idx="${i}" onclick="openCrossCheckDetail(${i})" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #1f2937;cursor:pointer;">
+        <span style="padding:1px 7px;border-radius:999px;background:${verdictBg};color:${verdictColor};font-size:9px;font-weight:800;letter-spacing:0.05em;">${e.review?.verdict || '—'}</span>
+        <span style="color:#94a3b8;font-size:10px;width:64px;flex-shrink:0;">${e.operation || ''}</span>
+        <span style="color:#93c5fd;font-family:'Consolas',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fname}</span>
+        <span style="font-size:10px;color:#64748b;font-family:'Consolas',monospace;">${e.originalLines || 0}→${e.newLines || 0} L</span>
+        <span style="font-size:10px;width:80px;text-align:right;">${decisionTag}</span>
+        <span style="font-size:10px;color:#64748b;width:140px;text-align:right;font-family:'Consolas',monospace;">${ts}</span>
+      </div>`;
+    }).join('');
+    Array.from(list.querySelectorAll('.cc-history-row')).forEach(r => {
+      r.addEventListener('mouseenter', () => r.style.background = 'rgba(96,165,250,0.06)');
+      r.addEventListener('mouseleave', () => r.style.background = '');
+    });
+  }
+
+  function openCrossCheckDetail(idx) {
+    const e = _crossCheckEntries[idx];
+    if (!e) return;
+    document.getElementById('ccd-meta').textContent = `${e.ts || ''} · session ${e.sessionId || '—'}`;
+    const issuesHtml = (e.review?.issues || []).map(i => `<li>${escHtml(i)}</li>`).join('');
+    const verdictColor = e.review?.verdict === 'PASS' ? '#4ade80' : e.review?.verdict === 'FAIL' ? '#f87171' : '#fbbf24';
+    const before = e.originalContent != null ? escHtml(e.originalContent) : '<em style="opacity:0.4;">(content too large to store inline)</em>';
+    const after  = e.newContent      != null ? escHtml(e.newContent)      : '<em style="opacity:0.4;">(content too large to store inline)</em>';
+    const promptText = e.sessionPrompt ? escHtml(e.sessionPrompt) : '<em style="opacity:0.4;">(none recorded)</em>';
+    document.getElementById('ccd-body').innerHTML = `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Original session prompt</div>
+        <div style="background:#0a0e1a;padding:8px 10px;border-radius:4px;color:#cbd5e1;white-space:pre-wrap;">${promptText}</div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Cross-Check verdict</div>
+        <div style="background:#0a0e1a;padding:10px;border-radius:4px;border-left:3px solid ${verdictColor};">
+          <div style="font-size:12px;font-weight:700;color:${verdictColor};margin-bottom:4px;">${e.review?.verdict || '—'} — ${escHtml(e.review?.summary || '')}</div>
+          ${issuesHtml ? `<ul style="margin:6px 0 0 18px;padding:0;color:#94a3b8;">${issuesHtml}</ul>` : ''}
+          <div style="font-size:10px;color:#64748b;font-family:'Consolas',monospace;margin-top:6px;">${escHtml(e.review?.model || '')} · ${((e.review?.ms || 0) / 1000).toFixed(1)}s · user ${e.userDecision || 'pending'}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:6px;">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">File: ${escHtml(e.filePath || '')} (${e.originalLines}→${e.newLines} lines, ${e.originalBytes}→${e.newBytes} B)</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;">BEFORE</div>
+          <pre style="background:#0a0e1a;padding:8px;border-radius:4px;color:#94a3b8;font-size:10px;line-height:1.4;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;">${before}</pre>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;">AFTER</div>
+          <pre style="background:#0a0e1a;padding:8px;border-radius:4px;color:#cbd5e1;font-size:10px;line-height:1.4;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;">${after}</pre>
+        </div>
+      </div>`;
+    document.getElementById('cross-check-detail-overlay').classList.remove('hidden');
+  }
+  window.openCrossCheckDetail = openCrossCheckDetail;
+
+  function closeCrossCheckDetail() {
+    document.getElementById('cross-check-detail-overlay').classList.add('hidden');
+  }
+  window.closeCrossCheckDetail = closeCrossCheckDetail;
 
   // ── Archive panel ─────────────────────────────────────────────────────────────
   let _archiveViewSessionId = null;
