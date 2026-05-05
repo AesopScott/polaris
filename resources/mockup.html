@@ -1254,7 +1254,11 @@
         </div>
         <div class="panel-section">
           <div class="context-label accent-label">CHAT MODEL</div>
-          <input type="text" id="settings-ds-model" class="panel-input" value="deepseek/deepseek-chat" style="width:100%;" />
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="settings-ds-model" class="panel-input" value="deepseek/deepseek-chat" style="flex:1;" />
+            <button onclick="testChatModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
+          </div>
+          <span id="chat-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
@@ -4487,6 +4491,17 @@
     wsSend({ type: 'test-model', model, tier: 'power' });
   }
   window.testPowerModel = testPowerModel;
+
+  function testChatModel() {
+    const model = document.getElementById('settings-ds-model')?.value?.trim();
+    const statusEl = document.getElementById('chat-test-result');
+    if (!statusEl) return;
+    if (!model) { statusEl.style.display='block'; statusEl.style.color='#f87171'; statusEl.textContent='✗ Enter a model string first'; return; }
+    statusEl.style.display='block'; statusEl.style.color='#94a3b8'; statusEl.textContent='Testing…';
+    pushDebugLog(`[model-test] Testing chat model: ${model}`);
+    wsSend({ type: 'test-model', model, tier: 'chat' });
+  }
+  window.testChatModel = testChatModel;
 
   // ── Routines ──────────────────────────────────────────────────────────────────
   let routinesList = [];
