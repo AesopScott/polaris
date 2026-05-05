@@ -285,15 +285,39 @@
   .session-col.col-drag-over { outline: 2px dashed #3b82f6; border-radius: 8px; }
   .card.selected { border-color: #3b82f6; }
   .card-header {
-    padding: 8px 10px; display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 60px 8px 10px; display: flex; align-items: center; justify-content: space-between;
     background: linear-gradient(180deg, var(--card-header-tint, rgba(96,165,250,0.22)), rgba(96,165,250,0.04));
     border-bottom: 1px solid var(--card-header-border, rgba(96,165,250,0.25));
+    position: relative;
   }
+  /* Corner cluster: minimize + close, always anchored top-right of the card. */
+  .card-corner-btns { position: absolute; top: 4px; right: 4px; display: flex; gap: 4px; z-index: 2; }
+  .card-corner-btn {
+    width: 22px; height: 22px; border: none; border-radius: 4px;
+    background: var(--card-btn-bg); color: var(--text); cursor: pointer;
+    font-size: 11px; display: flex; align-items: center; justify-content: center;
+  }
+  .card-corner-btn[data-action="close"]:hover { background: rgba(239,68,68,0.4); color: #fff; }
+  .card-corner-btn[data-action="minimize"]:hover { background: rgba(96,165,250,0.4); color: #fff; }
+  /* Per-card preview drawer — collapsible region showing rendered files from
+     the session's workDir. Hidden by default; toggled via the 👁 button. */
+  .preview-drawer { display: none; flex-direction: column; border-top: 1px solid var(--border); height: 50%; min-height: 200px; background: #0d1117; }
+  .preview-drawer.open { display: flex; }
+  .preview-drawer-header { display: flex; gap: 6px; padding: 6px 8px; background: rgba(96,165,250,0.06); border-bottom: 1px solid var(--border); align-items: center; }
+  .preview-drawer-header select { flex: 1; min-width: 0; background: #0a0a14; color: #cbd5e1; border: 1px solid #334155; border-radius: 4px; padding: 3px 6px; font-size: 11px; font-family: 'Consolas', monospace; }
+  .preview-drawer-body { flex: 1; overflow: auto; background: #0d1117; position: relative; }
+  .preview-drawer-body iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  .preview-drawer-body img { max-width: 100%; max-height: 100%; display: block; margin: 0 auto; }
+  .preview-drawer-body pre { margin: 0; padding: 12px; font-family: 'Consolas', monospace; font-size: 11px; color: #cbd5e1; white-space: pre-wrap; word-wrap: break-word; }
+  .preview-drawer-empty { padding: 16px; text-align: center; color: #64748b; font-size: 11px; }
   .card-title { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; color: var(--card-title-color, #60a5fa); }
   .card-title.selected-title { font-weight: 900; }
   .card-title-rename-input { background: rgba(0,0,0,0.55); border: 1px solid #3b82f6; border-radius: 4px; color: #93c5fd; font-size: 12px; font-weight: 700; font-family: inherit; padding: 1px 5px; width: 130px; outline: none; caret-color: #60a5fa; }
   .status-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
-  .card-btns { display: flex; gap: 4px; }
+  .card-btns { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 156px; }
+  /* 11 buttons × 22px + 10 gaps × 4px = 282px on one row. Cap at 156px
+     (6 buttons fit: 6×22 + 5×4 = 152) so the buttons wrap into exactly 2 rows
+     regardless of card width. */
   .card-btn { width: 22px; height: 22px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
   .terminal { flex: 1; padding: 8px 10px; font-family: 'CascadiaCode', 'Cascadia Code', 'Consolas', monospace; font-size: 11px; line-height: 1.5; overflow-y: auto; white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; }
   .context-bar-wrap { padding: 4px 10px; }
@@ -2020,6 +2044,71 @@
   window.togglePreview = togglePreview;
   window.closePreview  = closePreview;
 
+  // ── Per-card preview drawer ─────────────────────────────────────────────────
+  // Each session card has its own collapsible preview region. As the agent
+  // edits files in the session's workDir, the file-version event handler
+  // appends to sessionStore[sid].modifiedFiles. The drawer's dropdown lists
+  // the most recent ~10 modified files, with auto-render on selection.
+  // Renderer dispatches by file extension: HTML → iframe via /local/ route,
+  // images → inline <img>, everything else → text via read-file WS.
+  function toggleCardPreview(sid) {
+    const card = document.querySelector(`.card[data-sid="${sid}"]`);
+    if (!card) return;
+    const drawer = card.querySelector('[data-preview-drawer]');
+    if (!drawer) return;
+    drawer.classList.toggle('open');
+    if (drawer.classList.contains('open')) populateCardPreviewFiles(sid);
+  }
+  window.toggleCardPreview = toggleCardPreview;
+
+  function populateCardPreviewFiles(sid) {
+    const s = sessionStore[sid];
+    if (!s) return;
+    const card = document.querySelector(`.card[data-sid="${sid}"]`);
+    const sel = card?.querySelector('[data-preview-file]');
+    if (!sel) return;
+    const recent = (s.modifiedFiles || []).slice(0, 10);
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— Pick a recently edited file —</option>' +
+      recent.map(f => `<option value="${escHtmlAttr(f)}"${f === prev ? ' selected' : ''}>${escHtml(f)}</option>`).join('');
+    if (!prev && recent.length) {
+      sel.value = recent[0];
+      renderCardPreview(sid, recent[0]);
+    }
+    if (!sel.dataset.previewWired) {
+      sel.dataset.previewWired = '1';
+      sel.addEventListener('change', () => { if (sel.value) renderCardPreview(sid, sel.value); });
+    }
+  }
+
+  function renderCardPreview(sid, relPath) {
+    const s = sessionStore[sid];
+    if (!s || !s.workDir || !relPath) return;
+    const card = document.querySelector(`.card[data-sid="${sid}"]`);
+    const body = card?.querySelector('[data-preview-body]');
+    if (!body) return;
+    const lang = (typeof _prvLangFor === 'function') ? _prvLangFor(relPath) : 'text';
+    if (lang === 'html') {
+      // Use the existing /local/<b64>/<path> route for static HTML. Files that
+      // need a dev server (relative imports across the project) should use the
+      // floating Preview panel which auto-starts Live Server.
+      const url = (typeof _prvHttpUrl === 'function') ? _prvHttpUrl(s.workDir, relPath) : null;
+      if (!url) { body.innerHTML = `<div class="preview-drawer-empty">Preview helpers not loaded.</div>`; return; }
+      const bust = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
+      body.innerHTML = `<iframe src="${escHtmlAttr(bust)}"></iframe>`;
+    } else if (lang === 'image') {
+      const url = (typeof _prvHttpUrl === 'function') ? _prvHttpUrl(s.workDir, relPath) : null;
+      if (!url) { body.innerHTML = `<div class="preview-drawer-empty">Preview helpers not loaded.</div>`; return; }
+      body.innerHTML = `<div style="padding:12px;text-align:center;"><img src="${escHtmlAttr(url)}?_=${Date.now()}" /></div>`;
+    } else {
+      const sep = s.workDir.includes('\\') ? '\\' : '/';
+      const fullPath = s.workDir.replace(/[\\/]$/, '') + sep + relPath.replace(/^[\\/]/, '');
+      body.innerHTML = `<div class="preview-drawer-empty">Loading…</div>`;
+      wsSend({ type: 'read-file', filePath: fullPath, replyTag: `card-preview-${sid}` });
+    }
+  }
+  window.renderCardPreview = renderCardPreview;
+
   function previewPopulateProjectSelect() {
     const sel = document.getElementById('prv-project-select');
     if (!sel) return;
@@ -2950,9 +3039,26 @@
         break;
       }
 
-      case 'file-version':
+      case 'file-version': {
         pushDebugLog(`[file] ${msg.file} v${msg.prev}→v${msg.next}`);
+        // Track modified files per session for the card preview drawer.
+        const fvSession = sessionStore[msg.sessionId];
+        if (fvSession && msg.file) {
+          if (!fvSession.modifiedFiles) fvSession.modifiedFiles = [];
+          fvSession.modifiedFiles = [msg.file, ...fvSession.modifiedFiles.filter(f => f !== msg.file)].slice(0, 20);
+          // If this card's preview drawer is open, refresh the dropdown and
+          // re-render if this file is the one currently being shown.
+          const fvCard = document.querySelector(`.card[data-sid="${msg.sessionId}"]`);
+          const fvDrawer = fvCard?.querySelector('[data-preview-drawer]');
+          if (fvDrawer?.classList.contains('open')) {
+            const fvSel = fvCard.querySelector('[data-preview-file]');
+            const wasShowing = fvSel?.value === msg.file;
+            populateCardPreviewFiles(msg.sessionId);
+            if (fvSel && wasShowing) { fvSel.value = msg.file; renderCardPreview(msg.sessionId, msg.file); }
+          }
+        }
         break;
+      }
 
       case 'session-closed':
         delete sessionStore[msg.sessionId];
@@ -3362,6 +3468,18 @@
         if (msg.replyTag === 'docs') renderDocsContent(msg);
         else if (msg.replyTag === 'monaco-panel') mpHandleFileContent(msg);
         else if (msg.replyTag === 'preview-panel') previewHandleFileContent(msg);
+        else if (msg.replyTag && msg.replyTag.startsWith('card-preview-')) {
+          const sid = msg.replyTag.replace('card-preview-', '');
+          const card = document.querySelector(`.card[data-sid="${sid}"]`);
+          const body = card?.querySelector('[data-preview-body]');
+          if (body) {
+            if (msg.error) {
+              body.innerHTML = `<div class="preview-drawer-empty" style="color:#ef4444;">Error: ${escHtml(msg.error)}</div>`;
+            } else {
+              body.innerHTML = `<pre>${escHtml(msg.content || '')}</pre>`;
+            }
+          }
+        }
         else applyFileContent(msg);
         break;
 
@@ -3769,12 +3887,15 @@
             <button class="card-btn" title="Reset size" data-action="reset-size">↕</button>
             <button class="card-btn" title="Locks" data-action="toggle-locks" data-lock-btn>🔒</button>
             <button class="card-btn ${s.pinned ? 'is-pinned' : ''}" title="${s.pinned ? 'Unpin' : 'Pin (lock position and size)'}" data-action="toggle-pin" data-pin-btn>📌</button>
+            <button class="card-btn" title="Preview — render output of files this session has edited" data-action="toggle-preview" data-preview-btn>👁</button>
             <button class="card-btn" title="Archive session — remove from grid and save for later" data-action="archive">📦</button>
             <button class="card-btn ${s.isForked ? 'fork-linked' : (s.forkActive ? 'fork-active' : '')}" title="${s.isForked ? 'Forked — click to promote to independent session' : (s.forkActive ? 'Fork active — click to stop mirroring' : 'Fork — mirror all prompts to a second model')}" data-action="fork" data-fork-btn>⑂</button>
-            <button class="card-btn" title="Minimize to status bar" data-action="minimize">—</button>
             <button class="card-btn" title="Stop" data-action="stop">■</button>
-            <button class="card-btn" title="Close" data-action="close">✕</button>
           </div>
+        </div>
+        <div class="card-corner-btns">
+          <button class="card-corner-btn" title="Minimize to status bar" data-action="minimize">—</button>
+          <button class="card-corner-btn" title="Close" data-action="close">✕</button>
         </div>
       </div>
       <div class="terminal" data-term></div>
@@ -3783,6 +3904,16 @@
         <div class="lock-add-row">
           <input class="lock-add-input" data-lock-input placeholder="Add file path to lock…" />
           <button class="lock-add-btn" data-lock-add>+ Lock</button>
+        </div>
+      </div>
+      <div class="preview-drawer" data-preview-drawer>
+        <div class="preview-drawer-header">
+          <select data-preview-file><option value="">— Pick a recently edited file —</option></select>
+          <button class="card-btn" data-action="preview-refresh" title="Refresh preview">↻</button>
+          <button class="card-btn" data-action="preview-close" title="Close preview">✕</button>
+        </div>
+        <div class="preview-drawer-body" data-preview-body>
+          <div class="preview-drawer-empty">No files edited yet. The dropdown will populate as the agent modifies files in this session's workdir.</div>
         </div>
       </div>
       ${s.isChat ? '' : `<div class="context-bar-wrap">
@@ -4086,6 +4217,19 @@
           enterResumeMode(sessionId, null);
         }
         break;
+      case 'toggle-preview':
+        toggleCardPreview(sessionId);
+        break;
+      case 'preview-refresh': {
+        const sel = cardEl.querySelector('[data-preview-file]');
+        if (sel?.value) renderCardPreview(sessionId, sel.value);
+        break;
+      }
+      case 'preview-close': {
+        const drawer = cardEl.querySelector('[data-preview-drawer]');
+        if (drawer) drawer.classList.remove('open');
+        break;
+      }
       case 'model-cheap':
         if (s) enterResumeMode(s.id, 'floor');
         break;

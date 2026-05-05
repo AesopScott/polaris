@@ -2925,12 +2925,77 @@ async function runAgentEvalCell({ model, fixture, runIndex }) {
   };
 }
 
+// Live-write helpers — append rows to 5-Agentic-Benchmark.md as cells complete
+// so the file is readable during a long run, not only after Save to Obsidian.
+// Survives WS disconnects since the server writes to disk directly. The final
+// aggregated table on agent-eval-complete writes a separate "## Run <stamp>"
+// section above this; the live section can be deleted manually after the run.
+function _agentEvalObsidianFile() {
+  const config = readConfig();
+  const proj = (config.projects || []).find(p => p.obsidianDir);
+  if (!proj) return null;
+  return path.join(proj.obsidianDir, '5-Agentic-Benchmark.md');
+}
+
+function appendAgentEvalLiveHeader(stamp, totalCells, runs) {
+  const file = _agentEvalObsidianFile();
+  if (!file) return;
+  try {
+    const header = [
+      '',
+      `### Live run ${stamp} (in progress)`,
+      `0/${totalCells} cells · ${runs} run(s) per cell · live-streaming as cells complete`,
+      '',
+      '| # | Model | Fixture | Run | Result | Iters | Tokens out | Time | Tools |',
+      '|---:|---|---|---:|---|---:|---:|---:|---|',
+      '',
+    ].join('\n');
+    let content = fs.readFileSync(file, 'utf8');
+    if (/^##\s+Results\b/m.test(content)) {
+      content = content.replace(/^##\s+Results\b[^\n]*\n/m, m => m + header);
+    } else {
+      content = content.trimEnd() + '\n\n## Results\n' + header;
+    }
+    fs.writeFileSync(file, content, 'utf8');
+  } catch {}
+}
+
+function appendAgentEvalLiveRow(stamp, cell, completed, totalCells) {
+  const file = _agentEvalObsidianFile();
+  if (!file) return;
+  try {
+    const tools = (cell.trace?.tools || []).join(', ') || '—';
+    const result = cell.pass ? '✓ PASS' : '✗ FAIL';
+    const time = ((cell.elapsedMs || 0) / 1000).toFixed(1) + 's';
+    const tokensOut = cell.trace?.tokens?.out ?? 0;
+    const iters = cell.trace?.iters ?? '—';
+    const errorSuffix = !cell.pass && cell.errors?.length ? ` <!-- ${cell.errors[0].slice(0, 80)} -->` : '';
+    const row = `| ${completed}/${totalCells} | \`${cell.model}\` | ${cell.fixtureId || cell.fixture} | ${(cell.runIndex ?? 0) + 1} | ${result} | ${iters} | ${tokensOut} | ${time} | ${tools} |${errorSuffix}`;
+    let content = fs.readFileSync(file, 'utf8');
+    // Find the live section header and insert the row right after the table header rule
+    // (the line starting with "|---").
+    const sectionRe = new RegExp(`(### Live run ${stamp.replace(/[-:T]/g, m => '\\' + m)} \\(in progress\\)[\\s\\S]*?\\n\\|---[^\\n]*\\n)`, 'm');
+    if (sectionRe.test(content)) {
+      content = content.replace(sectionRe, `$1${row}\n`);
+    } else {
+      content = content.trimEnd() + '\n' + row + '\n';
+    }
+    fs.writeFileSync(file, content, 'utf8');
+  } catch {}
+}
+
 async function runAgentEvalSuite({ runId, models, fixtureIds, runs }) {
   currentAgentEvalRun = { runId, cancelled: false };
   const fixtures = AGENT_EVAL_FIXTURES.filter(f => !fixtureIds || fixtureIds.length === 0 || fixtureIds.includes(f.id));
   const totalCells = models.length * fixtures.length * runs;
   let completed = 0;
   const results = [];
+
+  // Open a live section in Obsidian so the user can see progress as it runs,
+  // not just at the end. Survives WS disconnects since the server writes
+  // directly to disk.
+  const liveStamp = new Date().toISOString().slice(0, 19);
+  appendAgentEvalLiveHeader(liveStamp, totalCells, runs);
 
   broadcast({ type: 'agent-eval-progress', runId, phase: 'start', totalCells, completed });
 
@@ -2948,6 +3013,8 @@ async function runAgentEvalSuite({ runId, models, fixtureIds, runs }) {
         results.push(cell);
         completed++;
         broadcast({ type: 'agent-eval-cell-result', runId, completed, totalCells, ...cell });
+        // Append the cell as a live row so the file is readable mid-run.
+        appendAgentEvalLiveRow(liveStamp, cell, completed, totalCells);
       }
     }
   }
