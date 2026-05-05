@@ -1666,7 +1666,7 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
         'X-Title':        'Polaris',
       },
     };
-    let textAccum = '', toolMap = {}, finishReason = null, usage = null, sseBuffer = '';
+    let textAccum = '', toolMap = {}, finishReason = null, usage = null, sseBuffer = '', rawSample = '';
     const req = https.request(opts, res => {
       if (res.statusCode !== 200) {
         let errRaw = '';
@@ -1675,7 +1675,9 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
         return;
       }
       res.on('data', chunk => {
-        sseBuffer += chunk.toString();
+        const raw = chunk.toString();
+        if (rawSample.length < 800) rawSample += raw; // capture first ~800 chars for diagnostics
+        sseBuffer += raw;
         const lines = sseBuffer.split('\n');
         sseBuffer = lines.pop();
         for (const line of lines) {
@@ -1686,6 +1688,8 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
             const evt = JSON.parse(data);
             const choice = evt.choices?.[0];
             if (evt.usage) usage = evt.usage;
+            // surface model-level errors embedded in the stream
+            if (evt.error) { resolve({ error: `Model error: ${JSON.stringify(evt.error).slice(0, 300)}` }); return; }
             if (!choice) continue;
             if (choice.finish_reason) finishReason = choice.finish_reason;
             const delta = choice.delta || {};
@@ -1697,15 +1701,18 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
               for (const tc of delta.tool_calls) {
                 const idx = tc.index ?? 0;
                 if (!toolMap[idx]) toolMap[idx] = { id: '', name: '', arguments: '' };
-                if (tc.id)                 toolMap[idx].id        += tc.id;
-                if (tc.function?.name)     toolMap[idx].name      += tc.function.name;
+                if (tc.id)                  toolMap[idx].id        += tc.id;
+                if (tc.function?.name)      toolMap[idx].name      += tc.function.name;
                 if (tc.function?.arguments) toolMap[idx].arguments += tc.function.arguments;
               }
             }
-          } catch {}
+          } catch (parseErr) {
+            // log unparseable SSE lines so we can diagnose model-specific quirks
+            if (data && data !== '[DONE]') console.warn('[sse-parse] could not parse:', data.slice(0, 200));
+          }
         }
       });
-      res.on('end', () => resolve({ textAccum, toolCalls: Object.values(toolMap).filter(t => t.name), finishReason, usage }));
+      res.on('end', () => resolve({ textAccum, toolCalls: Object.values(toolMap).filter(t => t.name), finishReason, usage, rawSample }));
     });
     const session = sessions.get(sessionId);
     if (session) session.req = req;
@@ -1835,6 +1842,16 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
       appendTokenLog(sessionId, model, usage);
       broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId: null, routineTag: session.routineTag || null });
       dlog('TOKENS', `in=${usage.input_tokens} out=${usage.output_tokens}`);
+    }
+
+    // Detect empty response — model returned neither text nor tool calls
+    const hasContent = result.textAccum || (result.toolCalls && result.toolCalls.length > 0);
+    if (!hasContent) {
+      dlog('EMPTY_RESPONSE', `finishReason=${result.finishReason} rawSample=${(result.rawSample || '').slice(0, 300)}`);
+      broadcast({ type: 'line', sessionId, text: `Model returned an empty response (finish_reason=${result.finishReason || 'none'}). The model may not support this request format. Check the diag log for raw SSE details.`, role: 'error' });
+      broadcast({ type: 'session-status', sessionId, status: 'error' });
+      const s = sessions.get(sessionId); if (s) { s.status = 'error'; s.endAt = Date.now(); }
+      return;
     }
 
     // Append assistant turn to history
