@@ -25,8 +25,8 @@ Get-Process -Name "Polaris" -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
 Write-Host "[2/6] Cleaning old installers from dist\..." -ForegroundColor Cyan
-Get-ChildItem "dist\Polaris Setup*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
-Get-ChildItem "dist\*.blockmap"          -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem "dist\Polaris Setup*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem "dist\*.blockmap"          -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 Write-Host "[3/6] Building installer (npm run dist)..." -ForegroundColor Cyan
 npm run dist
