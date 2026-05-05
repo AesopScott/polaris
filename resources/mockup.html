@@ -1404,20 +1404,28 @@
       <div id="token-graph-view" style="display:none;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
           <span style="font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.4;margin-right:4px;">PERIOD</span>
-          <button class="graph-period-btn active" data-ms="60000"      onclick="setGraphPeriod(this,60000)">1m</button>
+          <button class="graph-period-btn"         data-ms="60000"      onclick="setGraphPeriod(this,60000)">1m</button>
           <button class="graph-period-btn"         data-ms="300000"     onclick="setGraphPeriod(this,300000)">5m</button>
           <button class="graph-period-btn"         data-ms="600000"     onclick="setGraphPeriod(this,600000)">10m</button>
           <button class="graph-period-btn"         data-ms="3600000"    onclick="setGraphPeriod(this,3600000)">1h</button>
           <button class="graph-period-btn"         data-ms="21600000"   onclick="setGraphPeriod(this,21600000)">6h</button>
-          <button class="graph-period-btn"         data-ms="86400000"   onclick="setGraphPeriod(this,86400000)">24h</button>
+          <button class="graph-period-btn active"  data-ms="86400000"   onclick="setGraphPeriod(this,86400000)">24h</button>
+          <button class="graph-period-btn"         data-ms="259200000"  onclick="setGraphPeriod(this,259200000)">3d</button>
+          <button class="graph-period-btn"         data-ms="604800000"  onclick="setGraphPeriod(this,604800000)">7d</button>
+          <button class="graph-period-btn"         data-ms="2592000000" onclick="setGraphPeriod(this,2592000000)">30d</button>
           <button onclick="refreshTokenGraph()" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:4px;border:1px solid #444;background:#1e293b;color:#60a5fa;cursor:pointer;font-weight:700;">↻ Refresh</button>
         </div>
-        <canvas id="token-graph-canvas" width="520" height="220" style="width:100%;display:block;border-radius:6px;"></canvas>
-        <div style="display:flex;gap:16px;margin-top:8px;">
-          <div style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;"></span><span style="font-size:10px;opacity:0.6;">Input</span></div>
-          <div style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;"></span><span style="font-size:10px;opacity:0.6;">Output</span></div>
-          <span id="graph-total-label" style="margin-left:auto;font-size:10px;opacity:0.5;"></span>
+        <div id="graph-summary" style="display:flex;align-items:baseline;gap:14px;margin-bottom:8px;font-size:11px;color:#94a3b8;flex-wrap:wrap;">
+          <span><span style="opacity:0.5;">Total tokens</span> <strong id="graph-total-tokens" style="color:#e2e8f0;">—</strong></span>
+          <span><span style="opacity:0.5;">Estimated cost</span> <strong id="graph-total-cost" style="color:#fbbf24;">—</strong></span>
+          <span style="opacity:0.5;">·</span>
+          <span><span style="opacity:0.5;">In</span> <strong id="graph-total-in" style="color:#60a5fa;">—</strong></span>
+          <span><span style="opacity:0.5;">Out</span> <strong id="graph-total-out" style="color:#22c55e;">—</strong></span>
+          <span id="graph-period-label" style="margin-left:auto;opacity:0.4;font-family:'Consolas',monospace;"></span>
         </div>
+        <canvas id="token-graph-canvas" width="520" height="220" style="width:100%;display:block;border-radius:6px;"></canvas>
+        <div id="graph-model-legend" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:10px;opacity:0.85;"></div>
+        <div id="graph-model-breakdown" style="margin-top:10px;font-size:11px;"></div>
       </div>
     </div>
     <div class="projects-footer">
@@ -4728,86 +4736,221 @@
   }
   window.refreshTokenGraph = refreshTokenGraph;
 
+  // Color palette for per-model stacked bars and the legend below the chart.
+  // First N most-used models get distinct colors; everything else collapses to "other".
+  const GRAPH_MODEL_COLORS = ['#3b82f6', '#22c55e', '#a78bfa', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#fb923c'];
+  const GRAPH_OTHER_COLOR  = '#64748b';
+
+  // Pick bucket size + format based on the active period.
+  function pickGraphBuckets(periodMs) {
+    if (periodMs <= 60000)        return { count: 60, ms: 1000,    timeFmt: 'sec'   }; // 1m  -> 60 x 1s
+    if (periodMs <= 300000)       return { count: 30, ms: 10000,   timeFmt: 'sec'   }; // 5m  -> 30 x 10s
+    if (periodMs <= 600000)       return { count: 30, ms: 20000,   timeFmt: 'sec'   }; // 10m -> 30 x 20s
+    if (periodMs <= 3600000)      return { count: 60, ms: 60000,   timeFmt: 'time'  }; // 1h  -> 60 x 1m
+    if (periodMs <= 21600000)     return { count: 36, ms: 600000,  timeFmt: 'time'  }; // 6h  -> 36 x 10m
+    if (periodMs <= 86400000)     return { count: 24, ms: 3600000, timeFmt: 'hour'  }; // 24h -> 24 x 1h
+    if (periodMs <= 259200000)    return { count: 36, ms: 7200000, timeFmt: 'date'  }; // 3d  -> 36 x 2h
+    if (periodMs <= 604800000)    return { count: 28, ms: 21600000,timeFmt: 'date'  }; // 7d  -> 28 x 6h
+    return                              { count: 30, ms: Math.max(86400000, Math.floor(periodMs / 30)), timeFmt: 'date' };
+  }
+
+  function formatGraphTime(ts, mode) {
+    const d = new Date(ts);
+    if (mode === 'sec')  return `${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+    if (mode === 'time') return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    if (mode === 'hour') return `${d.getHours()}h`;
+    return `${d.getMonth()+1}/${d.getDate()}`;
+  }
+
+  function formatTokens(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+    return String(Math.round(n));
+  }
+
+  function formatDollars(n) {
+    if (n === 0)    return '$0.00';
+    if (n < 0.01)   return '<$0.01';
+    if (n < 1)      return `$${n.toFixed(3)}`;
+    if (n < 100)    return `$${n.toFixed(2)}`;
+    return `$${n.toFixed(0)}`;
+  }
+
   function drawTokenGraph(serverEntries) {
     const canvas = document.getElementById('token-graph-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-    const padL = 52, padR = 12, padT = 16, padB = 36;
+    const padL = 56, padR = 12, padT = 14, padB = 32;
     const chartW = W - padL - padR, chartH = H - padT - padB;
 
-    // Merge server log + session history, dedupe by approximate match isn't needed — just merge
-    const all = [...serverEntries, ...tokenHistory];
-
-    // Bucket into 24 hourly slots
+    const all = [...(serverEntries || []), ...tokenHistory];
     const now = Date.now();
-    const hours = Array.from({ length: 24 }, (_, i) => {
-      const slotStart = now - (23 - i) * 3600000;
-      return { label: new Date(slotStart).getHours(), input: 0, output: 0 };
-    });
+    const periodMs = _graphPeriodMs;
+    const { count, ms: bucketMs, timeFmt } = pickGraphBuckets(periodMs);
+
+    // Build empty buckets, oldest -> newest
+    const buckets = Array.from({ length: count }, (_, i) => ({
+      tsStart: now - (count - i) * bucketMs,
+      total: 0,
+      perModel: {},  // model -> {input, output}
+    }));
+
+    // Aggregate totals AND per-model usage, both for the chart and the breakdown table.
+    const modelTotals = {}; // model -> {input, output, cost}
+    let grandIn = 0, grandOut = 0, grandCost = 0;
+
     for (const e of all) {
-      const hoursAgo = Math.floor((now - e.ts) / 3600000);
-      if (hoursAgo < 0 || hoursAgo >= 24) continue;
-      hours[23 - hoursAgo].input  += e.input  || 0;
-      hours[23 - hoursAgo].output += e.output || 0;
+      if (!e || !e.ts) continue;
+      const dt = now - e.ts;
+      if (dt < 0 || dt > periodMs) continue;
+      const idx = count - 1 - Math.floor(dt / bucketMs);
+      if (idx < 0 || idx >= count) continue;
+      const model = e.model || 'unknown';
+      const inp = e.input || 0;
+      const out = e.output || 0;
+      const slot = buckets[idx];
+      slot.total += inp + out;
+      const m = (slot.perModel[model] = slot.perModel[model] || { input: 0, output: 0 });
+      m.input  += inp;
+      m.output += out;
+      const mt = (modelTotals[model] = modelTotals[model] || { input: 0, output: 0, cost: 0 });
+      mt.input  += inp;
+      mt.output += out;
+      const c = estimateCost(inp, out, model);
+      mt.cost   += c;
+      grandIn   += inp;
+      grandOut  += out;
+      grandCost += c;
     }
 
-    const maxTok = Math.max(1, ...hours.map(h => h.input + h.output));
-    const barW   = Math.floor((chartW / 24) * 0.65);
-    const barGap = chartW / 24;
+    // Pick the top N models by total tokens; rest get rolled into "other".
+    const ranked = Object.entries(modelTotals)
+      .map(([m, v]) => [m, v.input + v.output, v.cost])
+      .sort((a, b) => b[1] - a[1]);
+    const topModels = ranked.slice(0, GRAPH_MODEL_COLORS.length).map(r => r[0]);
+    const colorOf = m => {
+      const idx = topModels.indexOf(m);
+      return idx >= 0 ? GRAPH_MODEL_COLORS[idx] : GRAPH_OTHER_COLOR;
+    };
+
+    const maxTok = Math.max(1, ...buckets.map(b => b.total));
 
     // Background
     ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, W, H);
 
-    // Gridlines
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    // 5 horizontal gridlines (with labels)
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
-    for (let g = 0; g <= 4; g++) {
-      const y = padT + (chartH / 4) * g;
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    for (let g = 0; g <= 5; g++) {
+      const y = padT + (chartH / 5) * g;
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + chartW, y); ctx.stroke();
+      const val = maxTok * (1 - g / 5);
+      ctx.fillText(formatTokens(val), padL - 6, y + 3);
     }
 
-    // Bars
-    for (let i = 0; i < 24; i++) {
-      const h   = hours[i];
+    // Bars — per-model stack within each bucket
+    const barGap = chartW / count;
+    const barW   = Math.max(1, Math.floor(barGap * 0.7));
+    for (let i = 0; i < count; i++) {
+      const slot = buckets[i];
+      if (!slot.total) continue;
       const x   = padL + i * barGap + (barGap - barW) / 2;
-      const tot = h.input + h.output;
-      if (!tot) continue;
-      const totalPx = (tot / maxTok) * chartH;
-      const outPx   = (h.output / maxTok) * chartH;
-      const inPx    = totalPx - outPx;
-
-      // Input (blue, bottom)
-      ctx.fillStyle = '#3b82f6';
-      ctx.fillRect(Math.round(x), Math.round(padT + chartH - inPx), barW, Math.ceil(inPx));
-      // Output (green, top)
-      if (outPx > 0) {
-        ctx.fillStyle = '#22c55e';
-        ctx.fillRect(Math.round(x), Math.round(padT + chartH - totalPx), barW, Math.ceil(outPx));
+      let yTop  = padT + chartH; // we draw upward
+      // Sort the slot's models so consistent stacking order matches the legend
+      const slotModels = Object.entries(slot.perModel).sort((a, b) => {
+        const ia = topModels.indexOf(a[0]); const ib = topModels.indexOf(b[0]);
+        // unknown models go to the bottom of the stack
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      });
+      for (const [m, v] of slotModels) {
+        const segTok = v.input + v.output;
+        if (!segTok) continue;
+        const segPx = (segTok / maxTok) * chartH;
+        ctx.fillStyle = colorOf(m);
+        ctx.fillRect(Math.round(x), Math.round(yTop - segPx), barW, Math.max(1, Math.ceil(segPx)));
+        yTop -= segPx;
       }
     }
 
-    // X-axis hour labels
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '9px monospace';
+    // X-axis time labels — show ~6 evenly-spaced
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.textAlign = 'center';
-    for (let i = 0; i < 24; i += 4) {
+    const xLabelStep = Math.max(1, Math.floor(count / 6));
+    for (let i = 0; i < count; i += xLabelStep) {
       const x = padL + i * barGap + barGap / 2;
-      ctx.fillText(`${hours[i].label}h`, x, H - padB + 14);
+      ctx.fillText(formatGraphTime(buckets[i].tsStart, timeFmt), x, H - padB + 14);
     }
+    // Always show the rightmost label too
+    const lastX = padL + (count - 1) * barGap + barGap / 2;
+    ctx.fillText(formatGraphTime(buckets[count - 1].tsStart, timeFmt), lastX, H - padB + 14);
 
-    // Y-axis labels
-    ctx.textAlign = 'right';
-    for (let g = 0; g <= 2; g++) {
-      const val = maxTok * (1 - g / 2);
-      const y   = padT + (chartH / 2) * g;
-      ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${Math.round(val)}`, padL - 5, y + 4);
+    // Update summary line + per-model breakdown + legend
+    renderGraphSummary({ grandIn, grandOut, grandCost, periodMs });
+    renderGraphLegend(ranked, colorOf);
+    renderGraphBreakdown(ranked, modelTotals);
+  }
+
+  function renderGraphSummary({ grandIn, grandOut, grandCost, periodMs }) {
+    const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    setText('graph-total-tokens', formatTokens(grandIn + grandOut));
+    setText('graph-total-cost',   formatDollars(grandCost));
+    setText('graph-total-in',     formatTokens(grandIn));
+    setText('graph-total-out',    formatTokens(grandOut));
+    const labelMap = { 60000:'1m', 300000:'5m', 600000:'10m', 3600000:'1h', 21600000:'6h', 86400000:'24h', 259200000:'3d', 604800000:'7d', 2592000000:'30d' };
+    setText('graph-period-label', labelMap[periodMs] || `${(periodMs/3600000).toFixed(1)}h`);
+  }
+
+  function renderGraphLegend(ranked, colorOf) {
+    const el = document.getElementById('graph-model-legend');
+    if (!el) return;
+    if (ranked.length === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = ranked.slice(0, GRAPH_MODEL_COLORS.length).map(([m]) =>
+      `<span style="display:flex;align-items:center;gap:5px;">
+         <span style="display:inline-block;width:10px;height:10px;background:${colorOf(m)};border-radius:2px;"></span>
+         <span style="font-family:'Consolas',monospace;color:#cbd5e1;">${escHtml(m)}</span>
+       </span>`
+    ).join('') + (ranked.length > GRAPH_MODEL_COLORS.length
+      ? `<span style="display:flex;align-items:center;gap:5px;">
+           <span style="display:inline-block;width:10px;height:10px;background:${GRAPH_OTHER_COLOR};border-radius:2px;"></span>
+           <span style="color:#94a3b8;">other (${ranked.length - GRAPH_MODEL_COLORS.length})</span>
+         </span>`
+      : '');
+  }
+
+  function renderGraphBreakdown(ranked, modelTotals) {
+    const el = document.getElementById('graph-model-breakdown');
+    if (!el) return;
+    if (ranked.length === 0) {
+      el.innerHTML = '<div style="opacity:0.4;text-align:center;padding:14px 0;font-size:11px;">No usage in this period.</div>';
+      return;
     }
+    const rows = ranked.sort((a, b) => modelTotals[b[0]].cost - modelTotals[a[0]].cost).map(([m]) => {
+      const v = modelTotals[m];
+      return `<tr style="border-bottom:1px solid #1f2937;">
+        <td style="padding:4px 6px;font-family:'Consolas',monospace;color:#cbd5e1;">${escHtml(m)}</td>
+        <td style="padding:4px 6px;text-align:right;color:#60a5fa;font-family:'Consolas',monospace;">${formatTokens(v.input)}</td>
+        <td style="padding:4px 6px;text-align:right;color:#22c55e;font-family:'Consolas',monospace;">${formatTokens(v.output)}</td>
+        <td style="padding:4px 6px;text-align:right;color:#fbbf24;font-family:'Consolas',monospace;font-weight:700;">${formatDollars(v.cost)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead><tr style="border-bottom:1px solid #334155;color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;">
+        <th style="text-align:left;padding:4px 6px;font-weight:700;">Model</th>
+        <th style="text-align:right;padding:4px 6px;font-weight:700;">Input</th>
+        <th style="text-align:right;padding:4px 6px;font-weight:700;">Output</th>
+        <th style="text-align:right;padding:4px 6px;font-weight:700;">Cost</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
   }
 
   function renderTokenGraph(serverEntries) {
-    // Small delay so canvas is visible before draw
     requestAnimationFrame(() => drawTokenGraph(serverEntries || []));
   }
 
@@ -5114,12 +5257,21 @@
     'gemini-2.0-flash':      { in: 1e-7,    out: 4e-7   },  // $0.10 / $0.40
     'gemma-3':               { in: 5e-8,    out: 1e-7   },  // ~$0.05 / $0.10
     // Anthropic
+    'claude-haiku-4-5':      { in: 1e-6,    out: 5e-6   },  // $1 / $5
+    'claude-3-5-haiku':      { in: 8e-7,    out: 4e-6   },  // $0.80 / $4
     'claude-haiku':          { in: 8e-7,    out: 4e-6   },  // $0.80 / $4
     'claude-sonnet-4-5':     { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
     'claude-sonnet-4-6':     { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
     'claude-sonnet':         { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
     'claude-3-5-sonnet':     { in: 3e-6,    out: 1.5e-5 },
     'claude-opus':           { in: 1.5e-5,  out: 7.5e-5 },  // $15 / $75
+    // Amazon Nova
+    'nova-micro':            { in: 3.5e-8,  out: 1.4e-7 },  // $0.035 / $0.14
+    'nova-lite':             { in: 6e-8,    out: 2.4e-7 },  // $0.06 / $0.24
+    'nova-pro':              { in: 8e-7,    out: 3.2e-6 },  // $0.80 / $3.20
+    // Mistral (extra)
+    'devstral-small':        { in: 1e-7,    out: 3e-7   },  // $0.10 / $0.30
+    'mistral-small-3':       { in: 1e-7,    out: 3e-7   },  // $0.10 / $0.30
     // OpenAI
     'gpt-4o-mini':           { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60
     'o4-mini':               { in: 1.1e-6,  out: 4.4e-6 },  // $1.10 / $4.40
