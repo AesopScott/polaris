@@ -1218,6 +1218,29 @@
           <span id="power-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
+      <!-- ── Benchmark Runner ───────────────────────────────────────────── -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">BENCHMARK RUNNER</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="bench-load-btn" onclick="benchLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
+          <button id="bench-run-btn" onclick="benchRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run All (0)</button>
+          <span id="bench-status" style="font-size:10px;opacity:0.5;"></span>
+        </div>
+        <div id="bench-queue-list" style="display:none;max-height:260px;overflow-y:auto;border:1px solid #1e293b;border-radius:6px;background:#0d1117;">
+          <table style="width:100%;border-collapse:collapse;font-size:10px;">
+            <thead>
+              <tr style="border-bottom:1px solid #1e293b;color:#64748b;">
+                <th style="text-align:left;padding:4px 8px;font-weight:600;">Model</th>
+                <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:54px;">TTFT</th>
+                <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:48px;">tok/s</th>
+                <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:40px;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="bench-results-body"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">API KEYS</div>
         <div class="panel-section">
@@ -2920,10 +2943,47 @@
         break;
       }
       case 'test-model-result': {
+        // Benchmark runner intercept
+        if (msg.tier && msg.tier.startsWith('bench-')) {
+          const idx = parseInt(msg.tier.split('-')[1], 10);
+          const ttftEl = document.getElementById(`bench-ttft-${idx}`);
+          const tpsEl  = document.getElementById(`bench-tps-${idx}`);
+          const stEl   = document.getElementById(`bench-st-${idx}`);
+          if (msg.ok) {
+            // parse: "✓ TTFT: 0.84s · 38 tok/s · 99 tokens · 6.04s total"
+            const ttftM = msg.message.match(/TTFT:\s*([\d.]+)s/);
+            const tpsM  = msg.message.match(/([\d]+)\s*tok\/s/);
+            const tokM  = msg.message.match(/([\d]+)\s*tokens/);
+            const totM  = msg.message.match(/([\d.]+)s\s*total/);
+            const ttft  = ttftM ? parseFloat(ttftM[1]) : 0;
+            const tps   = tpsM  ? parseInt(tpsM[1]) : 0;
+            const tokens = tokM ? parseInt(tokM[1]) : 0;
+            const totalMs = totM ? parseFloat(totM[1]) * 1000 : 0;
+            if (ttftEl) { ttftEl.textContent = ttftM ? ttftM[1]+'s' : '—'; ttftEl.style.color = '#4ade80'; }
+            if (tpsEl)  { tpsEl.textContent  = tpsM  ? tpsM[1]     : '—'; tpsEl.style.color  = '#60a5fa'; }
+            if (stEl)   { stEl.textContent = '✓'; stEl.style.color = '#4ade80'; }
+            wsSend({ type: 'benchmark-save-result', model: _benchQueue[idx], provider: null, ttft: ttft * 1000, tps, tokens, totalMs });
+          } else {
+            if (ttftEl) { ttftEl.textContent = '—'; }
+            if (tpsEl)  { tpsEl.textContent  = '—'; }
+            if (stEl)   { stEl.textContent = '✗'; stEl.style.color = '#f87171'; }
+          }
+          _benchIdx++;
+          setTimeout(benchRunNext, 400);
+          break;
+        }
         const el = document.getElementById(`${msg.tier}-test-result`);
         if (el) { el.style.display='block'; el.style.color=msg.ok?'#4ade80':'#f87171'; el.textContent=(msg.ok?'✓ ':'✗ ')+msg.message; }
         pushDebugLog(`[model-test] ${msg.tier}: ${msg.message}`);
         if (msg.detail) pushDebugLog(`[model-test] ${msg.tier} raw response: ${msg.detail}`);
+        break;
+      }
+
+      case 'benchmark-queue': {
+        if (msg.error) { document.getElementById('bench-status').textContent = '✗ ' + msg.error; break; }
+        _benchQueue = msg.models;
+        benchRenderQueue();
+        document.getElementById('bench-status').textContent = `${msg.models.length} models loaded`;
         break;
       }
 
@@ -4697,6 +4757,60 @@
     wsSend({ type: 'test-model', model, tier: 'chat' });
   }
   window.testChatModel = testChatModel;
+
+  // ── Benchmark Runner ──────────────────────────────────────────────────────────
+  let _benchQueue = [];
+  let _benchRunning = false;
+  let _benchIdx = 0;
+
+  function benchLoadQueue() {
+    document.getElementById('bench-status').textContent = 'Loading…';
+    wsSend({ type: 'benchmark-load-queue' });
+  }
+  window.benchLoadQueue = benchLoadQueue;
+
+  function benchRenderQueue() {
+    const tbody = document.getElementById('bench-results-body');
+    if (!tbody) return;
+    tbody.innerHTML = _benchQueue.map((m, i) =>
+      `<tr id="bench-row-${i}" style="border-bottom:1px solid #0f172a;">
+        <td style="padding:4px 8px;color:#94a3b8;font-family:monospace;">${m}</td>
+        <td id="bench-ttft-${i}" style="text-align:right;padding:4px 8px;color:#64748b;">—</td>
+        <td id="bench-tps-${i}" style="text-align:right;padding:4px 8px;color:#64748b;">—</td>
+        <td id="bench-st-${i}" style="text-align:right;padding:4px 8px;">⏳</td>
+      </tr>`
+    ).join('');
+    document.getElementById('bench-queue-list').style.display = 'block';
+    const runBtn = document.getElementById('bench-run-btn');
+    runBtn.textContent = `Run All (${_benchQueue.length})`;
+    runBtn.disabled = false;
+    runBtn.style.opacity = '1';
+  }
+
+  function benchRunAll() {
+    if (_benchRunning || _benchQueue.length === 0) return;
+    _benchRunning = true;
+    _benchIdx = 0;
+    document.getElementById('bench-run-btn').disabled = true;
+    document.getElementById('bench-run-btn').style.opacity = '0.4';
+    benchRunNext();
+  }
+  window.benchRunAll = benchRunAll;
+
+  function benchRunNext() {
+    if (_benchIdx >= _benchQueue.length) {
+      _benchRunning = false;
+      document.getElementById('bench-status').textContent = `Done — ${_benchQueue.length} models tested`;
+      document.getElementById('bench-run-btn').disabled = false;
+      document.getElementById('bench-run-btn').style.opacity = '1';
+      return;
+    }
+    const model = _benchQueue[_benchIdx];
+    document.getElementById('bench-status').textContent = `Testing ${_benchIdx + 1}/${_benchQueue.length}: ${model}`;
+    const stEl = document.getElementById(`bench-st-${_benchIdx}`);
+    if (stEl) stEl.textContent = '⟳';
+    wsSend({ type: 'test-model', model, tier: `bench-${_benchIdx}`, provider: null });
+  }
 
   // ── Routines ──────────────────────────────────────────────────────────────────
   let routinesList = [];

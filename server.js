@@ -76,7 +76,7 @@ function buildSystemPrompt(config) {
 
 // â"€â"€â"€ Secret encryption (AES-256-GCM, stable file key) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey', 'elevenLabsApiKey']);
-const SECRET_MASK    = 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢';
+const SECRET_MASK    = '••••••••';
 const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
 
 let _stableKey = null;
@@ -218,7 +218,7 @@ function maskedMcpCredentials() {
   for (const [serverId, serverCreds] of Object.entries(creds)) {
     masked[serverId] = {};
     for (const [key, val] of Object.entries(serverCreds)) {
-      masked[serverId][key] = val ? 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢' : '';
+      masked[serverId][key] = val ? '••••••••' : '';
     }
   }
   return masked;
@@ -2667,6 +2667,45 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'benchmark-load-queue') {
+    const config = readConfig();
+    const proj = (config.projects || []).find(p => p.obsidianDir);
+    if (!proj) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No project with Obsidian dir configured' }); return; }
+    const benchFile = path.join(proj.obsidianDir, '5-Benchmarks.md');
+    try {
+      const content = fs.readFileSync(benchFile, 'utf8');
+      const match = content.match(/```benchmark-models\n([\s\S]*?)```/);
+      if (!match) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No benchmark-models block found in 5-Benchmarks.md' }); return; }
+      const models = match[1].split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'));
+      sendTo(ws, { type: 'benchmark-queue', models });
+    } catch (e) {
+      sendTo(ws, { type: 'benchmark-queue', models: [], error: e.message });
+    }
+    return;
+  }
+
+  if (type === 'benchmark-save-result') {
+    const { model, provider, ttft, tps, tokens, totalMs } = msg;
+    const config = readConfig();
+    const proj = (config.projects || []).find(p => p.obsidianDir);
+    if (!proj) return;
+    const benchFile = path.join(proj.obsidianDir, '5-Benchmarks.md');
+    try {
+      let content = fs.readFileSync(benchFile, 'utf8');
+      const date = new Date().toISOString().slice(0, 10);
+      const providerLabel = provider || 'auto';
+      const row = `| ${date} | ${model} | ${providerLabel} | ${(ttft/1000).toFixed(2)} | ${tps} | ${tokens} | ${(totalMs/1000).toFixed(2)} | ✓ |`;
+      content = content.replace(
+        /(\| Status \|\n\|[-| ]+\|)/,
+        `$1\n${row}`
+      );
+      fs.writeFileSync(benchFile, content, 'utf8');
+    } catch {}
+    return;
+  }
+
   if (type === 'get-space-data') {
     const { projectName } = msg;
     sendTo(ws, { type: 'space-data', projectName, scores: spaceComputeScores(projectName) });
@@ -2943,7 +2982,7 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'restart') {
-    broadcast({ type: 'line', sessionId: null, text: 'Server restartingâ€¦', role: 'error' });
+    broadcast({ type: 'line', sessionId: null, text: 'Server restarting…', role: 'error' });
     setTimeout(() => process.exit(0), 300);
     return;
   }
