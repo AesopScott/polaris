@@ -1476,8 +1476,8 @@ async function executeDirectTool(name, input, workDir, sessionId) {
   }
   switch (name) {
     case 'Read':       return toolRead(input);
-    case 'Write':      return toolWrite(input);
-    case 'Edit':       return toolEdit(input);
+    case 'Write':      return toolWrite(input, workDir);
+    case 'Edit':       return toolEdit(input, workDir);
     case 'Glob':       return toolGlob(input, workDir);
     case 'Grep':       return toolGrep(input, workDir);
     case 'Bash':       return toolBash(input, workDir);
