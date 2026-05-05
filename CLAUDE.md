@@ -21,7 +21,19 @@ Scott's personal AI command center — parallel agent sessions, real API control
 - `server.js` — HTTP+WS server; agent/chat spawning, file versioning, lock enforcement.
 - `main.js` — Electron entry; forks server.js, creates BrowserWindow.
 - `resources/mockup.html` — source UI; copied to AppData on first run.
+- `scripts/build-install.ps1` — one-shot build + install. Use this instead of running `npm run dist` and the installer manually.
+- `scripts/prune-dist.js` — keeps last 5 `dist/Polaris Setup *.exe` (auto-runs via `postdist` / `postdist:fast` hooks).
 - `%APPDATA%\.claude\polaris\config.json` — API keys, model strings, vault path, all settings.
+
+## Build & install
+- **One-shot:** `& C:\Users\scott\Code\Polaris\scripts\build-install.ps1` — runs `dist:fast`, then launches the newest `dist\Polaris Setup *.exe`. Use this for Scott's daily reinstall loop.
+- **Speed ladder (when you need a different mode):**
+  - `npm start` — instant; runs Electron directly, no build, no install
+  - `npm run pack` — unpacked `dist/win-unpacked/Polaris.exe`, no installer
+  - `npm run dist:fast` — NSIS installer with `compression=store` and `asar=false` (~3-5x faster than `dist`)
+  - `npm run dist` — full release NSIS (LZMA + asar)
+- Old installers auto-pruned to 5 most recent. To keep more, edit `KEEP` in `scripts/prune-dist.js`.
+- Windows Defender exclusions for the source dir, `dist/`, and `%LOCALAPPDATA%\Programs\Polaris` cut Electron build time 30-50% — set manually in Windows Security.
 
 ## Changelog maintenance (mandatory after every version bump)
 After bumping `package.json` version, prepend a row to the **Build Index** table at the top of `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`. Format: `| <version> | <YYYY-MM-DD> | <one-sentence headline of what landed> |`. Newest build at the top of the table. The detailed prose history continues below the table — keep both. The table is the at-a-glance index; prose entries are optional for small builds.
