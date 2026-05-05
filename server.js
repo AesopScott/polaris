@@ -2230,12 +2230,14 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   releaseSessionMemory(sessionId);
 }
 
-// Drop heavy per-session fields after the agent loop finishes. Each session
-// otherwise accumulates ~MB of state (full Obsidian dir in projectMemory,
-// rolling messages window, broadcast lines) that's never released, leading
-// to V8 heap-out-of-memory after enough activity. Messages and projectMemory
-// are reloaded from disk if the user resumes the session; lines are
-// display-only and don't survive server restarts anyway.
+// Drop heavy per-session fields after the agent loop finishes. The leak
+// drivers are projectMemory (full Obsidian dir, ~MB per session) and the
+// rolling messages window — both are explicitly null-guarded at the top of
+// runDirectAgent and lazy-reload from disk / Obsidian on resume or fork, so
+// dropping them is safe. session.lines is intentionally preserved: it's
+// display-only state used by the UI's terminal scroll on reload, not
+// persisted to disk anywhere, so dropping it would lose user-visible history
+// for a done session if the UI is reloaded later.
 //
 // extractSessionToKnowledge runs fire-and-forget but reads session.lines
 // synchronously up to its first await — by the time we get here, its locals
@@ -2245,7 +2247,6 @@ function releaseSessionMemory(sessionId) {
   if (!s) return;
   s.messages = null;
   s.projectMemory = null;
-  s.lines = [];
   if (s.watcher) {
     try { s.watcher.close(); } catch {}
     s.watcher = null;
