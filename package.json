@@ -1,16 +1,18 @@
 {
   "name": "polaris",
-  "version": "1.0.85",
+  "version": "1.0.86",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
+    "dist:fast": "electron-builder --config.compression=store --config.asar=false",
     "dist": "electron-builder"
   },
   "build": {
     "appId": "com.scott.polaris",
     "productName": "Polaris",
+    "npmRebuild": false,
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
