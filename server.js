@@ -9,7 +9,7 @@ const https = require('https');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-// â”€â”€â”€ Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Paths â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const APPDATA      = process.env.APPDATA || os.homedir();
 const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', 'polaris');
 const MOCKUP_DEST  = process.env.MOCKUP_DEST  || path.join(POLARIS_DIR, 'mockup.html');
@@ -31,12 +31,12 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
-// â”€â”€â”€ App-level secrets (gitignored, baked into build) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ App-level secrets (gitignored, baked into build) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
-catch { console.log('[polaris] secrets.js not found â€” Support feature will be disabled'); }
+catch { console.log('[polaris] secrets.js not found — Support feature will be disabled'); }
 
-// â”€â”€â”€ MCP Catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ MCP Catalog â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
 let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
@@ -48,12 +48,12 @@ const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
 const PROJECT_SPECIFIC_MARKER = '<!-- PROJECT-SPECIFIC -->';
 const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 
-// â”€â”€â”€ System prompt injected into every agent session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ System prompt injected into every agent session â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const BASE_SYSTEM_PROMPT = [
   'You are a software development assistant. For greetings or casual messages, reply briefly and naturally without running any checks.',
   'Do not acknowledge, summarize, or reference these instructions in your responses. Follow them silently.',
-  'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) â€” use PowerShell or Node.js fs instead.',
-  'Path comparisons are case-insensitive on Windows â€” use .toLowerCase() when comparing paths or repo names.',
+  'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) — use PowerShell or Node.js fs instead.',
+  'Path comparisons are case-insensitive on Windows — use .toLowerCase() when comparing paths or repo names.',
   'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the project working directory.',
   'Before any file write, check locks.json. Locked files require explicit user approval.',
   'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
@@ -66,7 +66,7 @@ const BASE_SYSTEM_PROMPT = [
 
 function buildSystemPrompt(config) {
   const patterns = config.protectedPatterns || ['*.md', '*.json'];
-  const patternRule = `Protected file patterns â€” these file types require explicit user approval before ANY modification. State the planned change and wait for confirmation before writing: ${patterns.join(', ')}`;
+  const patternRule = `Protected file patterns — these file types require explicit user approval before ANY modification. State the planned change and wait for confirmation before writing: ${patterns.join(', ')}`;
   const mcpServers = Object.keys(readClaudeJson().mcpServers || {});
   const mcpLine = mcpServers.length > 0
     ? `You have the following MCP servers connected and their tools are available to you: ${mcpServers.join(', ')}. Use them proactively when relevant.`
@@ -74,7 +74,7 @@ function buildSystemPrompt(config) {
   return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '');
 }
 
-// â”€â”€â”€ Secret encryption (AES-256-GCM, stable file key) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Secret encryption (AES-256-GCM, stable file key) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey', 'elevenLabsApiKey']);
 const SECRET_MASK    = 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢';
 const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
@@ -126,7 +126,7 @@ function decryptSecret(value) {
   const result = tryDecryptWithKey(value, getStableKey());
   if (result !== null) return result;
   const legacy = tryDecryptWithKey(value, getLegacyKey());
-  if (legacy !== null) { console.log('[enc] Decrypted with legacy key â€” will migrate on next startup'); return legacy; }
+  if (legacy !== null) { console.log('[enc] Decrypted with legacy key — will migrate on next startup'); return legacy; }
   console.error('[enc] Decryption failed with all keys');
   return '';
 }
@@ -167,10 +167,10 @@ function migrateSecretsToEncrypted() {
   if (changed) writeJSON(CONFIG_PATH, raw);
 }
 
-// â”€â”€â”€ IPC bridge to main.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ IPC bridge to main.js â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
-const pendingQuestions  = new Map(); // questionId â†’ resolve
+const pendingQuestions  = new Map(); // questionId → resolve
 
 if (typeof process.on === 'function') {
   process.on('message', (msg) => {
@@ -187,7 +187,7 @@ if (typeof process.on === 'function') {
   });
 }
 
-// â”€â”€â”€ MCP Catalog helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ MCP Catalog helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function readClaudeJson() {
   try {
     if (!fs.existsSync(CLAUDE_JSON_PATH)) return {};
@@ -224,7 +224,7 @@ function maskedMcpCredentials() {
   return masked;
 }
 
-// â”€â”€â”€ Support ticket submission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Support ticket submission â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function getInstallId() {
   const cfg = readJSON(CONFIG_PATH, {});
   if (cfg.installId) return cfg.installId;
@@ -382,7 +382,7 @@ function brevoPost(payload) {
   });
 }
 
-// â”€â”€â”€ Git helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Git helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function runGit(args, cwd) {
   return new Promise(resolve => {
     exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd }, (err, stdout) => {
@@ -391,7 +391,7 @@ function runGit(args, cwd) {
   });
 }
 
-// â”€â”€â”€ File sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ File sync â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function syncGlobalToProjects() {
   const config   = readConfig();
   const projects = (config.projects || []).filter(p => p.workDir);
@@ -401,7 +401,7 @@ function syncGlobalToProjects() {
   const fileDefs = [
     { name: 'CLAUDE.md', src: GLOBAL_CLAUDE_PATH,  projectSpecific: true,  polarisOnly: false },
     { name: 'MEMORY.md', src: GLOBAL_MEMORY_PATH,  projectSpecific: true,  polarisOnly: false },
-    // SOUL.md is the Polaris brand/mission doc â€” only sync to the Polaris project, not other projects
+    // SOUL.md is the Polaris brand/mission doc — only sync to the Polaris project, not other projects
     { name: 'SOUL.md',   src: globalSoulPath,       projectSpecific: false, polarisOnly: true  },
   ];
 
@@ -457,12 +457,12 @@ function watchGlobalFiles() {
   }
 }
 
-// â”€â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const sessions = new Map();   // sessionId â†’ session object
-const forkMap  = new Map();   // primarySessionId â†’ forkSessionId
+// â"€â"€â"€ State â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+const sessions = new Map();   // sessionId → session object
+const forkMap  = new Map();   // primarySessionId → forkSessionId
 let   wss      = null;
 
-// â”€â”€â”€ Session persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Session persistence â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
@@ -502,7 +502,7 @@ function loadPersistedSessions() {
 
 loadPersistedSessions();
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function readJSON(filePath, fallback) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -549,7 +549,7 @@ function sendTo(ws, data) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
 }
 
-// â”€â”€â”€ File versioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ File versioning â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function getVersions() {
   return readJSON(VERSIONS_PATH, {});
 }
@@ -587,11 +587,11 @@ function readVersionLog() {
 
 const WATCH_EXCLUDE = /(^|[\\/])(\.git|node_modules|dist|release|\.next|\.cache|__pycache__|\.venv|coverage)([\\/]|$)/i;
 
-// â”€â”€â”€ Live Server (per-project HTTP+WS with live reload) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Live Server (per-project HTTP+WS with live reload) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 // One server per project directory. fs.watch with 100ms debounce broadcasts
 // `reload` to a separate WS server (path `/__livereload`); injected script in
 // served HTML calls `location.reload()` on receipt.
-const LIVE_SERVERS = new Map(); // projectDir â†’ instance
+const LIVE_SERVERS = new Map(); // projectDir → instance
 const LIVE_SERVER_PORT_START = 5500;
 const LIVE_SERVER_INJECT = `
 <script>
@@ -671,12 +671,12 @@ async function startLiveServer(projectDir) {
         });
         const base = urlPath.replace(/\/$/, '');
         const rows = entries.map(e => {
-          const icon = e.isDirectory() ? 'ðŸ“' : 'ðŸ“„';
+          const icon = e.isDirectory() ? 'ðŸ"' : 'ðŸ"„';
           const slash = e.isDirectory() ? '/' : '';
           return `<li style="padding:4px 0;font-family:Consolas,monospace;font-size:13px;"><a href="${base}/${encodeURIComponent(e.name)}${slash}" style="color:#60a5fa;text-decoration:none;">${icon} ${e.name}${slash}</a></li>`;
         }).join('');
         res.setHeader('Content-Type', 'text/html');
-        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>ðŸ“‚ ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
+        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>ðŸ"‚ ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
       }
       serveFile(fullPath, res);
     } catch (e) {
@@ -723,7 +723,7 @@ async function startLiveServer(projectDir) {
     if (!filename || WATCH_EXCLUDE.test(filename)) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      liveServerLog(inst, `${filename.replace(/\\/g, '/')} changed â†’ reloaded ${clients.size} client(s)`);
+      liveServerLog(inst, `${filename.replace(/\\/g, '/')} changed → reloaded ${clients.size} client(s)`);
       for (const ws of clients) { try { ws.send('reload'); } catch {} }
     }, 100);
   });
@@ -782,7 +782,7 @@ function autoObsidianForSession(sessionId) {
   if (!s.modifiedFiles || s.modifiedFiles.size === 0) return;
   const config = readConfig();
   const vaultPath = config.obsidianVaultPath;
-  if (!vaultPath) return; // No vault configured â€” silently skip
+  if (!vaultPath) return; // No vault configured — silently skip
   const matchedProj = (config.projects || []).find(
     p => p.workDir && s.workDir && p.workDir.toLowerCase() === s.workDir.toLowerCase()
   );
@@ -806,7 +806,7 @@ function autoObsidianForSession(sessionId) {
       `## Transcript\n\n\`\`\`\n${transcript}\n\`\`\`\n`;
     fs.writeFileSync(filePath, content, 'utf8');
     broadcast({ type: 'obsidian-auto-pushed', sessionId, filePath, fileCount: fileList.length });
-    console.log(`[obsidian-auto] ${sessionId} â†’ ${filePath} (${fileList.length} files)`);
+    console.log(`[obsidian-auto] ${sessionId} → ${filePath} (${fileList.length} files)`);
   } catch (e) {
     console.error('[obsidian-auto] failed:', e.message);
   }
@@ -919,21 +919,21 @@ ${transcript}`;
   console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
 }
 
-//â”€â”€â”€ Lock enforcement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//â"€â"€â"€ Lock enforcement â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function isLocked(filePath, sessionId) {
   const locks = readJSON(LOCKS_PATH, {});
   const rel = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
   return !!(locks[rel] && locks[rel].sessions && locks[rel].sessions.includes(sessionId));
 }
 
-// â”€â”€â”€ Prompt history â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Prompt history â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function addToHistory(prompt) {
   const history = readJSON(HISTORY_PATH, []);
   const updated = [prompt, ...history.filter(p => p !== prompt)].slice(0, 200);
   writeJSON(HISTORY_PATH, updated);
 }
 
-// â”€â”€â”€ Code Health analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Code Health analysis â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 async function computeCodeHealth(workDir) {
   // Churn: aggregate per-file commit count and line changes from full log
   const numstat = await runGit(['log', '--numstat', '--pretty=format:'], workDir);
@@ -988,7 +988,7 @@ async function computeCodeHealth(workDir) {
   return { churn, authors, fileStats };
 }
 
-// â”€â”€â”€ SPACE event logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ SPACE event logging â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function spaceSlug(name) {
   return (name || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
 }
@@ -1070,7 +1070,7 @@ function spaceComputeScores(projectName) {
   };
 }
 
-// â”€â”€â”€ Session name generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Session name generation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const STOP_WORDS = new Set(['a','an','the','and','or','but','in','on','at','to','for','of','with','by','from','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','ought','used','that','this','these','those','it','its','i','you','he','she','we','they','what','which','who','how','when','where','why','not','no','nor','so','yet','both','either','neither','just','also','then','than','as','if','though','although','because','since','unless','while','after','before']);
 
 function generateSessionName(prompt) {
@@ -1081,7 +1081,7 @@ function generateSessionName(prompt) {
   return words.slice(0, 7).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'New Session';
 }
 
-// â”€â”€â”€ Direct OpenRouter API â€” agent sessions (no CLI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Direct OpenRouter API — agent sessions (no CLI) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 // Replaces CLI spawning. Eliminates CLAUDE.md cold-load (~29k tokens), 37-tool
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
@@ -1091,7 +1091,7 @@ const MAX_AGENT_MESSAGES = 40; // 20 turns Ã— user+assistant
 const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'Read', description: 'Read a file. Returns content with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer', description: 'Start line (1-based)' }, limit: { type: 'integer', description: 'Max lines to read' } }, required: ['file_path'] } } },
   { type: 'function', function: { name: 'Write', description: 'Write content to a file, creating it if needed.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } }, required: ['file_path', 'content'] } } },
-  { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find â€” must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
+  { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find — must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
   { type: 'function', function: { name: 'Glob', description: 'Find files matching a glob pattern. Returns absolute paths sorted by modified time.', parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'Glob e.g. "**/*.js"' }, path: { type: 'string', description: 'Directory to search (default: working dir)' } }, required: ['pattern'] } } },
   { type: 'function', function: { name: 'Grep', description: 'Search file contents for a regex pattern.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string', description: 'File or directory to search' }, glob: { type: 'string', description: 'File filter e.g. "*.ts"' }, output_mode: { type: 'string', description: 'One of: content, files_with_matches (default), count' }, context: { type: 'integer', description: 'Lines of context around matches' } }, required: ['pattern'] } } },
   { type: 'function', function: { name: 'Bash', description: 'Execute a shell command in the session working directory.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer', description: 'Timeout ms, max 120000' } }, required: ['command'] } } },
@@ -1155,7 +1155,7 @@ function buildDirectSystemPrompt(config, workDir) {
   return layers.join('\n\n');
 }
 
-// â”€â”€ Tool implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Tool implementations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function toolRead({ file_path, offset, limit }) {
   const lines = fs.readFileSync(file_path, 'utf8').split('\n');
@@ -1232,13 +1232,13 @@ function toolEdit({ file_path, old_string, new_string, replace_all }, workDir) {
 
 function toolGlob({ pattern, path: searchPath }, workDir) {
   const base = searchPath || workDir || process.cwd();
-  // Convert glob to regex â€” escape special chars first, then expand * and ? wildcards
+  // Convert glob to regex — escape special chars first, then expand * and ? wildcards
   const regexStr = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex chars (not * or ?)
     .replace(/\*\*/g, 'Â§DSÂ§')              // protect ** before replacing single *
-    .replace(/\*/g, '[^/\\\\]*')           // * â†’ any non-separator chars
-    .replace(/Â§DSÂ§/g, '.*')               // ** â†’ anything including separators
-    .replace(/\?/g, '[^/\\\\]');           // ? â†’ single non-separator char
+    .replace(/\*/g, '[^/\\\\]*')           // * → any non-separator chars
+    .replace(/Â§DSÂ§/g, '.*')               // ** → anything including separators
+    .replace(/\?/g, '[^/\\\\]');           // ? → single non-separator char
   const rx = new RegExp(`(^|[/\\\\])${regexStr}$`, 'i');
   const results = [];
   const walk = (dir, depth) => {
@@ -1386,7 +1386,7 @@ function duckDuckGoSearch(query, count) {
           if (p.Abstract) lines.push(`Summary: ${p.Abstract}\nSource: ${p.AbstractURL}`);
           const topics = (p.RelatedTopics || []).filter(t => t.FirstURL && t.Text).slice(0, count);
           topics.forEach((t, i) => lines.push(`${i+1}. ${t.Text}\n   ${t.FirstURL}`));
-          if (!lines.length) resolve('No instant-answer results. Add braveSearchApiKey in Settings for full web search (search.brave.com â€” free tier 2000/month).');
+          if (!lines.length) resolve('No instant-answer results. Add braveSearchApiKey in Settings for full web search (search.brave.com — free tier 2000/month).');
           else resolve(lines.join('\n\n') + '\n\n(Tip: add braveSearchApiKey in Settings for full search results)');
         } catch { resolve('Search unavailable. Add braveSearchApiKey in Settings.'); }
       });
@@ -1409,7 +1409,7 @@ function toolAskUserQuestion({ question, options }, sessionId) {
     setTimeout(() => {
       if (pendingQuestions.has(questionId)) {
         pendingQuestions.delete(questionId);
-        resolve('(No response â€” question timed out after 5 minutes)');
+        resolve('(No response — question timed out after 5 minutes)');
       }
     }, 300000);
   });
@@ -1427,9 +1427,9 @@ function toolTodoWrite({ todos }, sessionId) {
   return 'Todos updated:\n' + normalized.map(t => `[${t.status}] ${t.content}`).join('\n');
 }
 
-// â”€â”€ MCP Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ MCP Integration â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-const mcpProcesses = new Map(); // serverName â†’ { proc, pending, buffer, nextId }
+const mcpProcesses = new Map(); // serverName → { proc, pending, buffer, nextId }
 let mcpToolsCache = null;
 let mcpToolsCacheTime = 0;
 const MCP_CACHE_TTL = 60000;
@@ -1601,7 +1601,7 @@ async function callMcpTool(serverName, toolName, args) {
   return formatMcpResult(result);
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 async function executeDirectTool(name, input, workDir, sessionId) {
   if (name.startsWith('mcp__')) {
@@ -1627,7 +1627,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
   }
 }
 
-// â”€â”€ Streaming OpenRouter call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Streaming OpenRouter call â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS, provider = null) {
   return new Promise(resolve => {
@@ -1768,7 +1768,7 @@ function loadSessionMessages(sessionId) {
   } catch { return []; }
 }
 
-// â”€â”€ Agentic loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Agentic loop â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 async function runDirectAgent(sessionId, userMessage, workDir) {
   const session = sessions.get(sessionId);
@@ -1932,15 +1932,15 @@ function appendTokenLog(sessionId, model, usage) {
   try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify({ ts: Date.now(), sessionId, model: model || 'unknown', input: inp, output: out }) + '\n', 'utf8'); } catch {}
 }
 
-// â”€â”€â”€ DeepSeek Direct API for routines â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Routines fire via api.deepseek.com â€” bypasses Claude CLI entirely (no 30K-token
+// â"€â"€â"€ DeepSeek Direct API for routines â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// Routines fire via api.deepseek.com — bypasses Claude CLI entirely (no 30K-token
 // project-context cold load). DeepSeek pricing is ~$0.27/MTok in vs Anthropic's $3.
 function spawnDeepSeekRoutine(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
   if (!config.deepSeekApiKey) {
-    broadcast({ type: 'line', sessionId, text: 'DeepSeek API key not configured. Go to Settings â†’ DeepSeek to add your key.', role: 'error' });
+    broadcast({ type: 'line', sessionId, text: 'DeepSeek API key not configured. Go to Settings → DeepSeek to add your key.', role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
     session.status = 'error';
     session.endAt = Date.now();
@@ -1952,7 +1952,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
   session.status = 'running';
   session.startAt = Date.now();
   const startMs = Date.now();
-  const startMsg = `[routineâ†’deepseek] firing | model=${model} | promptLen=${prompt.length} chars | routineTag=${session.routineTag || '(none)'}`;
+  const startMsg = `[routine→deepseek] firing | model=${model} | promptLen=${prompt.length} chars | routineTag=${session.routineTag || '(none)'}`;
   console.log(startMsg);
   broadcast({ type: 'line', sessionId, text: startMsg, role: 'system' });
 
@@ -1973,7 +1973,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
     },
   };
 
-  console.log(`[routineâ†’deepseek] sessionId=${sessionId} model=${model} promptLen=${prompt.length}`);
+  console.log(`[routine→deepseek] sessionId=${sessionId} model=${model} promptLen=${prompt.length}`);
 
   const req = https.request(opts, res => {
     let raw = '';
@@ -2004,7 +2004,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
           // Cost estimate for deepseek-chat: $0.27/MTok in, $1.10/MTok out (cache-miss rate)
           const cost = (usage.input_tokens * 0.27 + usage.output_tokens * 1.10) / 1_000_000;
           const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
-          const doneMsg = `[routineâ†’deepseek] done | ${elapsed}s | in=${usage.input_tokens} out=${usage.output_tokens} | est cost $${cost.toFixed(6)}`;
+          const doneMsg = `[routine→deepseek] done | ${elapsed}s | in=${usage.input_tokens} out=${usage.output_tokens} | est cost $${cost.toFixed(6)}`;
           console.log(doneMsg);
           broadcast({ type: 'line', sessionId, text: doneMsg, role: 'system' });
         }
@@ -2076,7 +2076,7 @@ function handleStreamEvent(sessionId, msg) {
 }
 
 
-// â”€â”€â”€ Spawn DeepSeek chat session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Spawn DeepSeek chat session â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -2187,7 +2187,7 @@ function spawnChat(sessionId, prompt, config) {
   req.end();
 }
 
-// â”€â”€â”€ HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ HTTP server â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     fs.readFile(MOCKUP_DEST, 'utf8', (err, data) => {
@@ -2216,7 +2216,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // Preview Panel file server â€” serves any file from a project's workDir over HTTP so
+  // Preview Panel file server — serves any file from a project's workDir over HTTP so
   // iframe + sibling resources resolve under the same origin as the Polaris UI (file://
   // would be blocked cross-origin). URL: /local/<urlSafeBase64-projectDir>/<relative-path>
   if (req.method === 'GET' && req.url.startsWith('/local/')) {
@@ -2226,7 +2226,7 @@ const httpServer = http.createServer((req, res) => {
       if (slash < 0) { res.writeHead(400); return res.end('Bad /local URL'); }
       const b64Dir = after.slice(0, slash);
       const relPath = decodeURIComponent(after.slice(slash + 1));
-      // url-safe base64 â†’ standard base64
+      // url-safe base64 → standard base64
       let std = b64Dir.replace(/-/g, '+').replace(/_/g, '/');
       while (std.length % 4) std += '=';
       const projectDir = Buffer.from(std, 'base64').toString('utf8');
@@ -2256,7 +2256,7 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && req.url === '/api/time') {
-    // Returns the server's wall-clock time. Useful for time-sync routines â€”
+    // Returns the server's wall-clock time. Useful for time-sync routines —
     // the server (Node.js) has unrestricted network access and Windows keeps it NTP-synced.
     const now = new Date();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2290,7 +2290,7 @@ const httpServer = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-// â”€â”€â”€ WebSocket message handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ WebSocket message handler â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
@@ -2339,13 +2339,13 @@ function handleMessage(ws, raw) {
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
     saveSessions();
 
-    // Tier guard â€” Balanced/Power must be explicitly configured. No silent fallback to Floor.
+    // Tier guard — Balanced/Power must be explicitly configured. No silent fallback to Floor.
     if (!routineTag && (tier === 'balanced' || tier === 'power')) {
       const cfg = readConfig();
       const tierKey = tier === 'balanced' ? 'openRouterSonnetModel' : 'openRouterOpusModel';
       const tierName = tier === 'balanced' ? 'Balanced' : 'Power';
       if (!cfg[tierKey] || !cfg.openRouterApiKey) {
-        const errMsg = `The ${tierName} model is not configured. Go to Settings â†’ OpenRouter to set up the model string and API key for this tier.`;
+        const errMsg = `The ${tierName} model is not configured. Go to Settings → OpenRouter to set up the model string and API key for this tier.`;
         broadcast({ type: 'line', sessionId: id, text: errMsg, role: 'error' });
         broadcast({ type: 'session-status', sessionId: id, status: 'error' });
         const s = sessions.get(id);
@@ -2355,15 +2355,15 @@ function handleMessage(ws, raw) {
     }
     if (projectName) spaceAppendEvent(projectName, { type: 'session-launch', sessionId: id, concurrentCount: sessions.size });
 
-    // Routines go through DeepSeek direct API â€” no CLI cold-load, ~1000Ã— cheaper per fire
+    // Routines go through DeepSeek direct API — no CLI cold-load, ~1000Ã— cheaper per fire
     if (routineTag) {
-      const routeMsg = `[routing] routineTag="${routineTag}" â†’ DeepSeek direct API (bypassing Claude CLI)`;
+      const routeMsg = `[routing] routineTag="${routineTag}" → DeepSeek direct API (bypassing Claude CLI)`;
       console.log(routeMsg);
       broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
       broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
       spawnDeepSeekRoutine(id, prompt, readConfig());
     } else {
-      console.log(`[routing] no routineTag â†’ direct OpenRouter API (model=${msg.model || 'default'})`);
+      console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
       runDirectAgent(id, prompt, effectiveWorkDir);
     }
     return;
@@ -2376,7 +2376,7 @@ function handleMessage(ws, raw) {
     session.status = 'running';
     session.lastPrompt = prompt;
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
-    // Agent: runDirectAgent broadcasts the user line itself â€” skip here to avoid double display.
+    // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
     if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
     broadcast({ type: 'session-status', sessionId, status: 'running' });
     if (session.isChat) {
@@ -2487,7 +2487,7 @@ function handleMessage(ws, raw) {
     }
     const resolvedOrKey = (apiKey === SECRET_MASK) ? readConfig().openRouterApiKey : apiKey;
     if (!resolvedOrKey || /[^\x20-\x7E]/.test(resolvedOrKey)) {
-      sendTo(ws, { type: 'openrouter-test-result', ok: false, message: 'Key contains invalid characters â€” clear the field and re-paste your key' });
+      sendTo(ws, { type: 'openrouter-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' });
       return;
     }
     const req = https.request({
@@ -2503,7 +2503,7 @@ function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = data?.data?.length || 0;
-            sendTo(ws, { type: 'openrouter-test-result', ok: true, message: `Key valid â€” ${count} models available` });
+            sendTo(ws, { type: 'openrouter-test-result', ok: true, message: `Key valid — ${count} models available` });
           } catch {
             sendTo(ws, { type: 'openrouter-test-result', ok: true, message: 'Key valid' });
           }
@@ -2525,7 +2525,7 @@ function handleMessage(ws, raw) {
     const { apiKey } = msg;
     if (!apiKey) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'No API key provided' }); return; }
     const resolvedAnthKey = (apiKey === SECRET_MASK) ? readConfig().anthropicApiKey : apiKey;
-    if (!resolvedAnthKey || /[^\x20-\x7E]/.test(resolvedAnthKey)) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Key contains invalid characters â€” clear the field and re-paste your key' }); return; }
+    if (!resolvedAnthKey || /[^\x20-\x7E]/.test(resolvedAnthKey)) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' }); return; }
     const req = https.request({
       hostname: 'api.anthropic.com',
       path: '/v1/models',
@@ -2539,7 +2539,7 @@ function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = data?.data?.length || 0;
-            sendTo(ws, { type: 'anthropic-test-result', ok: true, message: `Key valid â€” ${count} models available` });
+            sendTo(ws, { type: 'anthropic-test-result', ok: true, message: `Key valid — ${count} models available` });
           } catch { sendTo(ws, { type: 'anthropic-test-result', ok: true, message: 'Key valid' }); }
         } else if (res.statusCode === 401) {
           sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Invalid API key (401)' });
@@ -2570,7 +2570,7 @@ function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = data?.data?.length || 0;
-            sendTo(ws, { type: 'openai-test-result', ok: true, message: `Key valid â€” ${count} models available` });
+            sendTo(ws, { type: 'openai-test-result', ok: true, message: `Key valid — ${count} models available` });
           } catch { sendTo(ws, { type: 'openai-test-result', ok: true, message: 'Key valid' }); }
         } else if (res.statusCode === 401) {
           sendTo(ws, { type: 'openai-test-result', ok: false, message: 'Invalid API key (401)' });
@@ -2584,15 +2584,15 @@ function handleMessage(ws, raw) {
     return;
   }
 
-  if (type === ‘test-model’) {
+  if (type === 'test-model') {
     const { model, tier, provider } = msg;
     const config = readConfig();
     const apiKey = config.openRouterApiKey;
-    if (!model) { sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: ‘No model string entered’ }); return; }
-    if (!apiKey) { sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: ‘No OpenRouter API key configured’ }); return; }
+    if (!model) { sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No model string entered' }); return; }
+    if (!apiKey) { sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No OpenRouter API key configured' }); return; }
     const bodyObj = {
       model,
-      messages: [{ role: ‘user’, content: ‘Count from 1 to 50, one number per line. No other text.’ }],
+      messages: [{ role: 'user', content: 'Count from 1 to 50, one number per line. No other text.' }],
       max_tokens: 200,
       stream: true,
       stream_options: { include_usage: true },
@@ -2600,40 +2600,40 @@ function handleMessage(ws, raw) {
     if (provider) bodyObj.provider = { only: [provider] };
     const body = JSON.stringify(bodyObj);
     const reqStartMs = Date.now();
-    let ttftMs = null, totalChars = 0, sseBuffer = ‘’, usage = null;
+    let ttftMs = null, totalChars = 0, sseBuffer = '', usage = null;
     const req = https.request({
-      hostname: ‘openrouter.ai’,
-      path: ‘/api/v1/chat/completions’,
-      method: ‘POST’,
+      hostname: 'openrouter.ai',
+      path: '/api/v1/chat/completions',
+      method: 'POST',
       headers: {
-        ‘Authorization’: `Bearer ${apiKey}`,
-        ‘Content-Type’: ‘application/json’,
-        ‘Content-Length’: Buffer.byteLength(body),
-        ‘HTTP-Referer’: ‘https://polaris.aesopacademy.com’,
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'HTTP-Referer': 'https://polaris.aesopacademy.com',
       },
     }, res => {
-      let errRaw = ‘’;
+      let errRaw = '';
       if (res.statusCode !== 200) {
-        res.on(‘data’, c => errRaw += c);
-        res.on(‘end’, () => {
+        res.on('data', c => errRaw += c);
+        res.on('end', () => {
           try {
             const d = JSON.parse(errRaw);
             const detail = d?.error?.message || errRaw.slice(0, 300);
-            sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: `HTTP ${res.statusCode}: ${detail}` });
+            sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `HTTP ${res.statusCode}: ${detail}` });
           } catch {
-            sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: `HTTP ${res.statusCode}: ${errRaw.slice(0, 200)}` });
+            sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `HTTP ${res.statusCode}: ${errRaw.slice(0, 200)}` });
           }
         });
         return;
       }
-      res.on(‘data’, chunk => {
+      res.on('data', chunk => {
         sseBuffer += chunk.toString();
-        const lines = sseBuffer.split(‘\n’);
+        const lines = sseBuffer.split('\n');
         sseBuffer = lines.pop();
         for (const line of lines) {
-          if (!line.startsWith(‘data: ‘)) continue;
+          if (!line.startsWith('data: ')) continue;
           const data = line.slice(6).trim();
-          if (data === ‘[DONE]’) continue;
+          if (data === '[DONE]') continue;
           try {
             const evt = JSON.parse(data);
             if (evt.usage) usage = evt.usage;
@@ -2645,22 +2645,22 @@ function handleMessage(ws, raw) {
           } catch {}
         }
       });
-      res.on(‘end’, () => {
+      res.on('end', () => {
         const totalMs = Date.now() - reqStartMs;
         const outTokens = usage?.completion_tokens || Math.round(totalChars / 4);
         const streamMs = ttftMs ? totalMs - ttftMs : totalMs;
         const tps = streamMs > 0 ? Math.round(outTokens / (streamMs / 1000)) : 0;
         if (!ttftMs) {
-          sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: ‘No tokens received — model may not support streaming’ });
+          sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No tokens received — model may not support streaming' });
           return;
         }
         sendTo(ws, {
-          type: ‘test-model-result’, tier, ok: true,
+          type: 'test-model-result', tier, ok: true,
           message: `✓ TTFT: ${(ttftMs/1000).toFixed(2)}s · ${tps} tok/s · ${outTokens} tokens · ${(totalMs/1000).toFixed(2)}s total`,
         });
       });
     });
-    req.on(‘error’, err => sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: `Connection error: ${err.message}` }));
+    req.on('error', err => sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `Connection error: ${err.message}` }));
     req.write(body);
     req.end();
     return;
@@ -2871,7 +2871,7 @@ function handleMessage(ws, raw) {
     const cfg = readConfig();
     const rawKey = cfg.elevenLabsApiKey ? decryptSecret(cfg.elevenLabsApiKey) : null;
     if (!rawKey) { sendTo(ws, { type: 'tts-audio', error: 'no-key' }); return; }
-    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice â€” Clear, Engaging Educator (British)
+    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — Clear, Engaging Educator (British)
     const body = JSON.stringify({
       text: String(msg.text || '').slice(0, 500),
       model_id: 'eleven_turbo_v2_5',
@@ -3082,7 +3082,7 @@ function handleMessage(ws, raw) {
         const code = reqUrl.searchParams.get('code');
         const oauthError = reqUrl.searchParams.get('error');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">âœ“ Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
+        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">âœ" Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
         callbackServer.close();
         if (oauthError || !code) {
           sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: oauthError || 'No auth code received' });
@@ -3577,7 +3577,7 @@ function handleMessage(ws, raw) {
   }
 }
 
-// â”€â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Boot â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 
 httpServer.listen(PORT, '127.0.0.1', () => {
