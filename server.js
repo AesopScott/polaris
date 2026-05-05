@@ -2585,10 +2585,10 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'test-model') {
-    const { model, tier } = msg;
+    const { model, tier, provider } = msg;
     const config = readConfig();
     const apiKey = config.openRouterApiKey;
-    console.log(`[test-model] Testing ${tier} tier â€” model: ${model}`);
+    console.log(`[test-model] Testing ${tier} tier — model: ${model}${provider ? ' via '+provider : ''}`);
     if (!model) {
       sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No model string entered' });
       return;
@@ -2597,16 +2597,18 @@ function handleMessage(ws, raw) {
       sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No OpenRouter API key configured' });
       return;
     }
-    const body = JSON.stringify({ model, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 16, stream: true });
+    const bodyObj = { model, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 16, stream: true };
+    if (provider) bodyObj.provider = { only: [provider] };
+    const body = JSON.stringify(bodyObj);
     const req = https.request({
       hostname: 'openrouter.ai',
-      path: '/api/v1/messages',
+      path: '/api/v1/chat/completions',
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'content-length': Buffer.byteLength(body),
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'HTTP-Referer': 'https://polaris.aesopacademy.com',
       },
     }, res => {
       let raw = '';

@@ -4633,35 +4633,38 @@
   window.testOpenAiKey = testOpenAiKey;
 
   function testFloorModel() {
-    const model = document.getElementById('settings-or-floor')?.value?.trim();
+    const model    = document.getElementById('settings-or-floor')?.value?.trim();
+    const provider = document.getElementById('settings-or-floor-provider')?.value?.trim() || null;
     const statusEl = document.getElementById('floor-test-result');
     if (!statusEl) return;
     if (!model) { statusEl.style.display='block'; statusEl.style.color='#f87171'; statusEl.textContent='✗ Enter a model string first'; return; }
     statusEl.style.display='block'; statusEl.style.color='#94a3b8'; statusEl.textContent='Testing…';
-    pushDebugLog(`[model-test] Testing floor model: ${model}`);
-    wsSend({ type: 'test-model', model, tier: 'floor' });
+    pushDebugLog(`[model-test] Testing floor model: ${model}${provider ? ' via '+provider : ''}`);
+    wsSend({ type: 'test-model', model, tier: 'floor', provider });
   }
   window.testFloorModel = testFloorModel;
 
   function testBalancedModel() {
-    const model = document.getElementById('settings-or-sonnet')?.value?.trim();
+    const model    = document.getElementById('settings-or-sonnet')?.value?.trim();
+    const provider = document.getElementById('settings-or-sonnet-provider')?.value?.trim() || null;
     const statusEl = document.getElementById('balanced-test-result');
     if (!statusEl) return;
     if (!model) { statusEl.style.display='block'; statusEl.style.color='#f87171'; statusEl.textContent='✗ Enter a model string first'; return; }
     statusEl.style.display='block'; statusEl.style.color='#94a3b8'; statusEl.textContent='Testing…';
-    pushDebugLog(`[model-test] Testing balanced model: ${model}`);
-    wsSend({ type: 'test-model', model, tier: 'balanced' });
+    pushDebugLog(`[model-test] Testing balanced model: ${model}${provider ? ' via '+provider : ''}`);
+    wsSend({ type: 'test-model', model, tier: 'balanced', provider });
   }
   window.testBalancedModel = testBalancedModel;
 
   function testPowerModel() {
-    const model = document.getElementById('settings-or-opus')?.value?.trim();
+    const model    = document.getElementById('settings-or-opus')?.value?.trim();
+    const provider = document.getElementById('settings-or-opus-provider')?.value?.trim() || null;
     const statusEl = document.getElementById('power-test-result');
     if (!statusEl) return;
     if (!model) { statusEl.style.display='block'; statusEl.style.color='#f87171'; statusEl.textContent='✗ Enter a model string first'; return; }
     statusEl.style.display='block'; statusEl.style.color='#94a3b8'; statusEl.textContent='Testing…';
-    pushDebugLog(`[model-test] Testing power model: ${model}`);
-    wsSend({ type: 'test-model', model, tier: 'power' });
+    pushDebugLog(`[model-test] Testing power model: ${model}${provider ? ' via '+provider : ''}`);
+    wsSend({ type: 'test-model', model, tier: 'power', provider });
   }
   window.testPowerModel = testPowerModel;
 
