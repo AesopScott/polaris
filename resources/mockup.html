@@ -2201,6 +2201,22 @@
     const inputs = bar.querySelectorAll('input.dir-field');
     if (inputs[0]) inputs[0].value = proj ? proj.workDir : '';
     if (inputs[1]) inputs[1].value = proj ? proj.repo    : '';
+    // Auto-switch to Code mode when a real project is selected
+    if (proj) activateMode(bar, 'code');
+  }
+
+  function activateMode(bar, mode) {
+    bar.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    const ctxRow = bar.querySelector('.launch-context-row');
+    if (ctxRow) { ctxRow.style.opacity = mode === 'chat' ? '0.35' : ''; ctxRow.style.pointerEvents = mode === 'chat' ? 'none' : ''; }
+    const hint = bar.querySelector('.mode-hint');
+    if (hint) hint.textContent = mode === 'chat' ? 'DeepSeek web chat · no agent tools, no working directory' : buildCodeHint();
+    const promptEl = bar.closest('.palette')?.querySelector('.prompt-area');
+    if (promptEl) promptEl.placeholder = mode === 'chat' ? 'Describe what you want to discuss...' : 'Describe what you want this agent to do...';
+    const launchBtn = bar.querySelector('.launch-action-btn');
+    if (launchBtn && !resumeTarget) launchBtn.innerHTML = mode === 'chat'
+      ? '<span class="icon">💬</span><span class="lbl">Chat</span>'
+      : '<span class="icon">▶</span><span class="lbl">Launch</span>';
   }
 
   function toggleProjects()  {
@@ -7253,7 +7269,6 @@
       btn.addEventListener('click', () => {
         const bar = btn.closest('.launch-bar');
         const wasActive = btn.classList.contains('active');
-        bar.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b === btn));
         const mode = btn.dataset.mode;
         // If user actually switched modes (not re-clicked the same one), exit any active resume target —
         // resuming an agent session in chat mode (or vice versa) doesn't make sense.
@@ -7261,22 +7276,7 @@
           window.clearResumeMode();
           pushDebugLog('[resume] Cleared — mode switched');
         }
-        const ctxRow = bar.querySelector('.launch-context-row');
-        if (ctxRow) { ctxRow.style.opacity = mode === 'chat' ? '0.35' : ''; ctxRow.style.pointerEvents = mode === 'chat' ? 'none' : ''; }
-        const hint = bar.querySelector('.mode-hint');
-        if (hint) {
-          if (mode === 'chat') {
-            hint.textContent = 'DeepSeek web chat · no agent tools, no working directory';
-          } else {
-            hint.textContent = buildCodeHint();
-          }
-        }
-        const promptEl = bar.closest('.palette')?.querySelector('.prompt-area');
-        if (promptEl) promptEl.placeholder = mode === 'chat' ? 'Describe what you want to discuss...' : 'Describe what you want this agent to do...';
-        const launchBtn = bar.querySelector('.launch-action-btn');
-        if (launchBtn && !resumeTarget) launchBtn.innerHTML = mode === 'chat'
-          ? '<span class="icon">💬</span><span class="lbl">Chat</span>'
-          : '<span class="icon">▶</span><span class="lbl">Launch</span>';
+        activateMode(bar, mode);
       });
     });
 
