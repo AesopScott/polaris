@@ -1291,7 +1291,47 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
   } catch (e) { return e.stdout?.toString().trim() || '(no matches)'; }
 }
 
+// Shell safety enforcement ─────────────────────────────────────────────────
+const SHELL_HARD_BLOCKED = [
+  { pattern: /\bgit\s+push\s+(-f\b|--force\b)/i,    reason: 'force-push is blocked — run manually if needed' },
+  { pattern: /\bgit\s+reset\s+--hard\b/i,            reason: 'git reset --hard is blocked — run manually if needed' },
+  { pattern: /\bgit\s+clean\s+-[a-zA-Z]*f/i,         reason: 'git clean -f is blocked — run manually if needed' },
+  { pattern: /\bformat\s+[a-zA-Z]:/i,                reason: 'drive format is blocked' },
+  { pattern: /\brm\s+-[rRfF ]*[rR][fF]?\s+[/"']*[\/\\]/i, reason: 'recursive delete at filesystem root is blocked' },
+  { pattern: /\brd\s+\/s\s+\/q\s+[a-zA-Z]:\\\s*$/i, reason: 'full-drive rd is blocked' },
+];
+
+const SHELL_WRITE_VERBS = /\b(rm|del|rd|rmdir|Remove-Item|ri|move|mv|ren|rename|copy|cp|xcopy|robocopy|Set-Content|Out-File|New-Item|Add-Content|Write-Output\s*>|echo\s+.+>)\b/i;
+
+function assertSafeCommand(command, workDir) {
+  if (!workDir) return; // no workDir configured — skip enforcement
+  const flat = command.replace(/\r?\n/g, ' ');
+
+  // Layer 1: hard-blocked patterns
+  for (const { pattern, reason } of SHELL_HARD_BLOCKED) {
+    if (pattern.test(flat)) {
+      throw new Error(`Shell command blocked: ${reason}.\nCommand: ${flat.slice(0, 120)}`);
+    }
+  }
+
+  // Layer 2: absolute path boundary check for write-oriented commands
+  if (SHELL_WRITE_VERBS.test(flat)) {
+    const absPathRe = /[a-zA-Z]:[\\\/][^\s'">,;|&)>]*/g;
+    const wd = path.resolve(workDir).toLowerCase();
+    for (const p of flat.match(absPathRe) || []) {
+      const resolved = path.resolve(p).toLowerCase();
+      if (!resolved.startsWith(wd)) {
+        throw new Error(
+          `Shell command blocked: path "${p}" is outside the project directory.\n` +
+          `Allowed: ${workDir}\nAttempted: ${p}`
+        );
+      }
+    }
+  }
+}
+
 function toolBash({ command, timeout: tms }, workDir) {
+  assertSafeCommand(command, workDir);
   try {
     return execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
@@ -1302,6 +1342,7 @@ function toolBash({ command, timeout: tms }, workDir) {
 }
 
 function toolPowerShell({ command, timeout: tms }, workDir) {
+  assertSafeCommand(command, workDir);
   try {
     return execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
