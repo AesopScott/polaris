@@ -10,6 +10,7 @@ Scott's personal AI command center — parallel agent sessions, real API control
 5. **Server restarts:** never from code — tell Scott.
 6. **Windows:** backslash paths, no Unix shell tools. Use PowerShell or Node `fs`.
 7. **Commit after every change:** After any file edit or write, immediately commit with a conventional message (feat, fix, refactor, docs, chore, perf, ci). Never leave changes uncommitted. Bump `package.json` version and rebuild before closing a work session.
+8. **Never give up after one tool failure.** If `QueryMemory` returns an error or empty content, fall back to `Read`, `Glob`, or `Grep` against the filesystem — do not stop and ask the user. Canonical paths to try first: `C:\Users\scott\Code\Polaris\CLAUDE.md` (project rules) and `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md` through `8-Logs.md` (project knowledge base, listed in detail under "Project knowledge base" below). Bash and PowerShell tools are available — use them. Asking the user to "advise" or "provide the path" is a last resort, not a first response.
 
 ## Architecture
 - **Agent sessions** → Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. 9 tool schemas (Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, TodoWrite) executed natively in server.js. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
