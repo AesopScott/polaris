@@ -518,6 +518,10 @@ function readJSON(filePath, fallback) {
 }
 
 function writeJSON(filePath, data) {
+  // Back up config before every write so a corrupt write never loses everything
+  if (filePath === CONFIG_PATH) {
+    try { fs.copyFileSync(CONFIG_PATH, CONFIG_PATH.replace('.json', '.backup.json')); } catch {}
+  }
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
