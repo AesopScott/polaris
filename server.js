@@ -1404,7 +1404,10 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
         'Content-Length': Buffer.byteLength(payload),
         'HTTP-Referer':   'https://polaris.aesopacademy.com',
         'X-Title':        'Polaris',
+        'Connection':     'close',
       },
+      // Fresh agent per request — see callOpenRouterStream for rationale.
+      agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
     }, res => {
       let body = '';
       res.on('data', c => body += c);
@@ -1952,7 +1955,16 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
         'Content-Length': Buffer.byteLength(payload),
         'HTTP-Referer':   'https://polaris.aesopacademy.com',
         'X-Title':        'Polaris',
+        'Connection':     'close',
       },
+      // Fresh agent per request — forces a new TCP+TLS handshake every call so
+      // no Node-internal socket state can be reused across requests. Defensive
+      // workaround for the BAD_RECORD_MAC errors observed 2026-05-05 across
+      // multiple OpenRouter-routed providers (Google, Mistral). curl with
+      // back-to-back requests succeeded; only Node's HTTPS streaming failed,
+      // suggesting a Node TLS / Cloudflare-edge interaction we shouldn't try
+      // to reproduce on every call.
+      agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
     };
     let textAccum = '', toolMap = {}, finishReason = null, usage = null, sseBuffer = '', rawSample = '';
     const reqStartMs = Date.now();
