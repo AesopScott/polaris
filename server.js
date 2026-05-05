@@ -2164,8 +2164,9 @@ const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     fs.readFile(MOCKUP_DEST, 'utf8', (err, data) => {
       if (err) {
+        console.error('[mockup] readFile error:', err.code, err.path || MOCKUP_DEST);
         res.writeHead(500);
-        res.end('Could not load mockup.html from AppData');
+        res.end(`Could not load mockup.html from AppData\nError: ${err.code}\nPath: ${err.path || MOCKUP_DEST}`);
         return;
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
