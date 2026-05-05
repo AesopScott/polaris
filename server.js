@@ -1292,11 +1292,15 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
   const cfg = readConfig();
   if (cfg.crossCheckEnabled === false) return true; // explicitly disabled
 
+  // Bypass for Agent Eval sessions — they run unattended in a tmp workdir, so
+  // there's no human to approve and the cells need to complete promptly.
+  const session = sessions.get(sessionId);
+  if (session?.evalRunner) return true;
+
   const origBytes = Buffer.byteLength(originalContent || '', 'utf8');
   const newBytes  = Buffer.byteLength(newContent, 'utf8');
   if (Math.abs(newBytes - origBytes) < 200) return true; // tiny edit bypass
 
-  const session = sessions.get(sessionId);
   const sessionPrompt = session?.lastPrompt || '';
   const reviewerModel = cfg.crossCheckModel || CROSS_CHECK_DEFAULT_MODEL;
   const apiKey = cfg.openRouterApiKey;
@@ -2637,7 +2641,251 @@ const httpServer = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-// â"€â"€â"€ WebSocket message handler â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Agent Eval feature ──────────────────────────────────────────────────────
+// Per-model agent-loop evaluation. Drives runDirectAgent against scripted
+// fixtures across a queue of models, asserts on tool calls + filesystem state,
+// emits per-cell results over WS. Mirrors the chat-style Benchmark Runner
+// pattern but exercises agent capability instead of speed/cost.
+
+const AGENT_EVAL_FIXTURES = [
+  {
+    id: '01-implement-imperative',
+    description: "When the user authorizes a change ('implement', 'apply'), agent must call Edit/Write — not just narrate.",
+    seed: { files: { 'target.txt': 'the value is original\n' } },
+    prompt: "Read target.txt, then use the Edit tool to change the word 'original' to 'updated'. Implement this now.",
+    expect: {
+      session_status: 'done',
+      tools_called: ['Read', 'Edit'],
+      min_tool_calls: 2,
+      max_iters: 6,
+      max_seconds: 60,
+      files: { 'target.txt': { contains: 'the value is updated' } },
+    },
+  },
+  {
+    id: '02-querymemory-fallback',
+    description: 'When project memory is empty, agent must fall back to Read on the filesystem (CLAUDE.md rule 8).',
+    seed: { files: { 'secret.md': '# Notes\n\nThe secret token mentioned for this eval is XANADU-7741.\nDo not look elsewhere; the answer is in this file.\n' } },
+    prompt: 'What is the secret token mentioned in secret.md? Read the file in the current working directory and tell me the exact token string.',
+    expect: {
+      session_status: 'done',
+      tools_called: ['Read'],
+      min_tool_calls: 1,
+      max_iters: 5,
+      max_seconds: 45,
+    },
+  },
+  {
+    id: '03-basic-read',
+    description: 'Sanity baseline — simple Read + summarize.',
+    seed: { files: { 'config.json': '{ "appName": "Polaris", "version": "1.2.3", "env": "prod" }\n' } },
+    prompt: 'Read config.json from the current working directory and tell me the version it specifies.',
+    expect: {
+      session_status: 'done',
+      tools_called: ['Read'],
+      min_tool_calls: 1,
+      max_iters: 4,
+      max_seconds: 30,
+    },
+  },
+];
+
+let currentAgentEvalRun = null;
+
+function loadAgentEvalQueue() {
+  const config = readConfig();
+  const proj = (config.projects || []).find(p => p.obsidianDir);
+  if (!proj) return { models: [], error: 'No project with Obsidian dir configured' };
+  const file = path.join(proj.obsidianDir, '5-Agentic-Benchmark.md');
+  try {
+    const content = fs.readFileSync(file, 'utf8');
+    const match = content.match(/```agent-eval-models\n([\s\S]*?)```/);
+    if (!match) return { models: [], error: 'No agent-eval-models block found in 5-Agentic-Benchmark.md' };
+    const models = match[1].split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    return { models };
+  } catch (e) {
+    return { models: [], error: e.message };
+  }
+}
+
+// Same parser logic as test/agent-evals/lib/diagParser.js — kept inline here so
+// the packaged Electron build doesn't need to read from the source tree.
+function parseAgentEvalDiag(filePath) {
+  let text;
+  try { text = fs.readFileSync(filePath, 'utf8'); } catch { return null; }
+  const blocks = text.split(/^=== DIAG /m).filter(b => b.trim());
+  if (!blocks.length) return null;
+  const lines = blocks[blocks.length - 1].split('\n');
+  const result = { tools: [], tokens: { in: 0, out: 0 }, finishedAt: null, finalIters: 0, error: null, emptyResponse: null };
+  let currentIter = 0;
+  for (const l of lines) {
+    const m = l.match(/^\[\+([\d.]+)s\]\s+(\w+)(?::\s?(.*))?$/);
+    if (!m) continue;
+    const [, , label, body] = m;
+    const b = body || '';
+    switch (label) {
+      case 'ITER': currentIter = parseInt(b, 10) || currentIter; break;
+      case 'TOKENS': {
+        const tm = b.match(/in=(\d+)\s+out=(\d+)/);
+        if (tm) { result.tokens.in += parseInt(tm[1], 10); result.tokens.out += parseInt(tm[2], 10); }
+        break;
+      }
+      case 'TOOL': {
+        const tm = b.match(/^(\S+)/);
+        result.tools.push({ iter: currentIter, name: tm ? tm[1] : b.trim() });
+        break;
+      }
+      case 'EMPTY_RESPONSE': result.emptyResponse = b; break;
+      case 'ERROR': result.error = b; break;
+      case 'DONE': {
+        const dm = b.match(/^([\d.]+)s\s+iters=(\d+)/);
+        if (dm) { result.finishedAt = parseFloat(dm[1]); result.finalIters = parseInt(dm[2], 10); }
+        break;
+      }
+    }
+  }
+  if (!result.finalIters) result.finalIters = currentIter;
+  return result;
+}
+
+async function runAgentEvalCell({ model, fixture, runIndex }) {
+  const safeId = fixture.id.replace(/[^a-z0-9_-]/gi, '_');
+  const safeModel = model.replace(/[^a-z0-9_-]/gi, '_');
+  const sessionId = `eval_${safeId}_${safeModel}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const seedDir = path.join(os.tmpdir(), `polaris-eval-${safeId}-${stamp}`);
+
+  fs.mkdirSync(seedDir, { recursive: true });
+  for (const [rel, content] of Object.entries(fixture.seed?.files || {})) {
+    const full = path.join(seedDir, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content, 'utf8');
+  }
+
+  // Note: not broadcasting session-created, so the eval session won't appear
+  // as a card in the regular session grid. The Agent Eval panel renders its
+  // own progress. evalRunner: true bypasses Cross-Check for unattended runs.
+  sessions.set(sessionId, {
+    id: sessionId, name: `Eval ${fixture.id} / ${model}`,
+    workDir: seedDir, projectName: null, model, tier: 'floor',
+    isChat: false, status: 'running', startAt: Date.now(),
+    proc: null, watcher: null, timeout: null, lines: [],
+    lastPrompt: fixture.prompt, claudeSessionId: null, routineTag: null,
+    evalRunner: true,
+  });
+
+  const startMs = Date.now();
+  const timeoutMs = (fixture.expect?.max_seconds || 60) * 1000 + 30000;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    const s = sessions.get(sessionId);
+    if (s) s.aborted = true;
+  }, timeoutMs);
+
+  try { await runDirectAgent(sessionId, fixture.prompt, seedDir); }
+  catch {} // runDirectAgent shouldn't throw, but defensive
+  finally { clearTimeout(timer); }
+
+  const elapsedMs = Date.now() - startMs;
+  const session = sessions.get(sessionId);
+  const status = session?.status || 'error';
+
+  const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
+  const trace = parseAgentEvalDiag(diagPath);
+
+  const expect = fixture.expect || {};
+  const postFiles = {};
+  if (expect.files) {
+    for (const rel of Object.keys(expect.files)) {
+      try { postFiles[rel] = fs.readFileSync(path.join(seedDir, rel), 'utf8'); }
+      catch { postFiles[rel] = null; }
+    }
+  }
+
+  const errors = [];
+  if (timedOut) errors.push(`hard timeout after ${timeoutMs / 1000}s`);
+  if (!trace && !timedOut) errors.push('no diag file produced');
+  if (trace) {
+    if (expect.session_status && status !== expect.session_status) errors.push(`status: expected=${expect.session_status} got=${status}`);
+    if (typeof expect.max_iters === 'number' && trace.finalIters > expect.max_iters) errors.push(`iters: ${trace.finalIters} > max ${expect.max_iters}`);
+    if (typeof expect.max_seconds === 'number' && trace.finishedAt != null && trace.finishedAt > expect.max_seconds) errors.push(`time: ${trace.finishedAt}s > max ${expect.max_seconds}s`);
+    if (Array.isArray(expect.tools_called)) {
+      const calledNames = trace.tools.map(t => t.name);
+      for (const need of expect.tools_called) if (!calledNames.includes(need)) errors.push(`tool '${need}' not called`);
+    }
+    if (typeof expect.min_tool_calls === 'number' && trace.tools.length < expect.min_tool_calls) errors.push(`tool calls: ${trace.tools.length} < min ${expect.min_tool_calls}`);
+    if (trace.emptyResponse) errors.push(`empty response: ${trace.emptyResponse.slice(0, 100)}`);
+    if (trace.error) errors.push(`agent error: ${trace.error.slice(0, 120)}`);
+  }
+  if (expect.files) {
+    for (const [rel, check] of Object.entries(expect.files)) {
+      const got = postFiles[rel];
+      if (got == null) { errors.push(`file '${rel}' missing`); continue; }
+      if (check.contains && !got.includes(check.contains)) errors.push(`file '${rel}' missing substring '${check.contains}'`);
+    }
+  }
+
+  // Cleanup: drop session from Map (releaseSessionMemory dropped state already
+  // at end of runDirectAgent), then nuke the tmp seed dir.
+  sessions.delete(sessionId);
+  try { fs.rmSync(seedDir, { recursive: true, force: true }); } catch {}
+
+  return {
+    sessionId, fixtureId: fixture.id, model, runIndex,
+    status, elapsedMs,
+    pass: errors.length === 0,
+    errors,
+    trace: trace ? {
+      iters: trace.finalIters,
+      tools: trace.tools.map(t => t.name),
+      tokens: trace.tokens,
+      finishedAt: trace.finishedAt,
+    } : null,
+  };
+}
+
+async function runAgentEvalSuite({ runId, models, fixtureIds, runs }) {
+  currentAgentEvalRun = { runId, cancelled: false };
+  const fixtures = AGENT_EVAL_FIXTURES.filter(f => !fixtureIds || fixtureIds.length === 0 || fixtureIds.includes(f.id));
+  const totalCells = models.length * fixtures.length * runs;
+  let completed = 0;
+  const results = [];
+
+  broadcast({ type: 'agent-eval-progress', runId, phase: 'start', totalCells, completed });
+
+  outer:
+  for (const model of models) {
+    for (const fixture of fixtures) {
+      for (let runIndex = 0; runIndex < runs; runIndex++) {
+        if (currentAgentEvalRun?.cancelled) break outer;
+        broadcast({
+          type: 'agent-eval-progress', runId, phase: 'cell-start',
+          completed, totalCells, model, fixture: fixture.id,
+          runIndex: runIndex + 1, runs,
+        });
+        const cell = await runAgentEvalCell({ model, fixture, runIndex });
+        results.push(cell);
+        completed++;
+        broadcast({ type: 'agent-eval-cell-result', runId, completed, totalCells, ...cell });
+      }
+    }
+  }
+
+  const wasCancelled = !!currentAgentEvalRun?.cancelled;
+  currentAgentEvalRun = null;
+  broadcast({
+    type: 'agent-eval-complete',
+    runId, totalCells, completed,
+    cancelled: wasCancelled,
+    results: results.map(r => ({
+      model: r.model, fixture: r.fixtureId, run: r.runIndex,
+      pass: r.pass, errors: r.errors, elapsedMs: r.elapsedMs, trace: r.trace,
+    })),
+  });
+}
+
+// ─── WebSocket message handler ────────────────────────────────────────────────
 function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
@@ -3023,6 +3271,43 @@ function handleMessage(ws, raw) {
     req.on('error', err => sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `Connection error: ${err.message}` }));
     req.write(body);
     req.end();
+    return;
+  }
+
+  if (type === 'agent-eval-load-queue') {
+    const result = loadAgentEvalQueue();
+    sendTo(ws, {
+      type: 'agent-eval-queue',
+      ...result,
+      fixtures: AGENT_EVAL_FIXTURES.map(f => ({ id: f.id, description: f.description })),
+    });
+    return;
+  }
+
+  if (type === 'start-agent-eval') {
+    if (currentAgentEvalRun) {
+      sendTo(ws, { type: 'agent-eval-error', message: 'An eval run is already in progress' });
+      return;
+    }
+    const models = Array.isArray(msg.models) ? msg.models.filter(Boolean) : [];
+    if (!models.length) {
+      sendTo(ws, { type: 'agent-eval-error', message: 'No models specified' });
+      return;
+    }
+    const fixtureIds = Array.isArray(msg.fixtures) ? msg.fixtures : null;
+    const runs = Math.max(1, Math.min(10, parseInt(msg.runs, 10) || 1));
+    const runId = `aer_${Date.now()}`;
+    sendTo(ws, { type: 'agent-eval-started', runId, totalCells: models.length * (fixtureIds?.length || AGENT_EVAL_FIXTURES.length) * runs });
+    runAgentEvalSuite({ runId, models, fixtureIds, runs }).catch(e => {
+      console.error('[agent-eval] suite failed:', e);
+      broadcast({ type: 'agent-eval-error', runId, message: e.message });
+      currentAgentEvalRun = null;
+    });
+    return;
+  }
+
+  if (type === 'cancel-agent-eval') {
+    if (currentAgentEvalRun) currentAgentEvalRun.cancelled = true;
     return;
   }
 
