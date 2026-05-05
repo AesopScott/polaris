@@ -1873,9 +1873,10 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     if (!result.toolCalls || result.toolCalls.length === 0) break; // natural end
 
     // Execute tools and append results
-    for (const tc of result.toolCalls) {
+    for (let tcIdx = 0; tcIdx < result.toolCalls.length; tcIdx++) {
+      const tc = result.toolCalls[tcIdx];
       if (session.aborted) break;
-      const callId = assistantMsg.tool_calls.find(t => t.function.name === tc.name)?.id || tc.id;
+      const callId = assistantMsg.tool_calls[tcIdx]?.id || tc.id;
       let toolInput;
       try { toolInput = JSON.parse(tc.arguments); } catch { toolInput = {}; }
       broadcast({ type: 'line', sessionId, text: `⚙ ${toolDisplayLabel(tc.name, toolInput)}`, role: 'system' });
