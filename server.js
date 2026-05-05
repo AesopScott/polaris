@@ -20,6 +20,10 @@ const LOCKS_PATH    = path.join(POLARIS_DIR, 'locks.json');
 const VERSIONS_PATH = path.join(POLARIS_DIR, 'file-versions.json');
 const VERSIONS_LOG_PATH = path.join(POLARIS_DIR, 'file-versions-log.jsonl');
 const VERSIONS_LOG_CAP = 1000;
+
+const CROSS_CHECKS_DIR = path.join(POLARIS_DIR, 'cross-checks');
+const MAX_WRITE_BYTES = 1024 * 1024;  // 1 MB hard cap per file write
+const MAX_WRITE_LINES = 30000;        // 30K lines hard cap per file write
 const HISTORY_PATH  = path.join(POLARIS_DIR, 'prompt-history.json');
 const SESSIONS_DIR  = path.join(POLARIS_DIR, 'sessions');
 const LOGS_DIR      = path.join(POLARIS_DIR, 'logs');
@@ -1219,8 +1223,37 @@ function assertWritable(file_path, workDir) {
   }
 }
 
+// assertSafeWriteSize — hard cap on file write size to prevent corruption
+// Catches catastrophic writes (e.g. agent interleaving CSS rules between every
+// character of an HTML file, exploding 8K lines to 1.7M lines as in v1.0.91).
+// Cheaper to reject here than to send to Cross-Check.
+function assertSafeWriteSize(content, file_path) {
+  const bytes = Buffer.byteLength(content, 'utf8');
+  if (bytes > MAX_WRITE_BYTES) {
+    const mb = (bytes / (1024 * 1024)).toFixed(2);
+    throw new Error(
+      `Write rejected: "${path.basename(file_path)}" would be ${mb} MB ` +
+      `(limit ${MAX_WRITE_BYTES / (1024 * 1024)} MB). ` +
+      `This is almost certainly corruption — review the content before retrying.`
+    );
+  }
+  // Count lines without allocating a split array for very large strings
+  let lines = 1;
+  for (let i = 0; i < content.length; i++) {
+    if (content.charCodeAt(i) === 10) lines++;
+  }
+  if (lines > MAX_WRITE_LINES) {
+    throw new Error(
+      `Write rejected: "${path.basename(file_path)}" would be ${lines.toLocaleString()} lines ` +
+      `(limit ${MAX_WRITE_LINES.toLocaleString()}). ` +
+      `This is almost certainly corruption — review the content before retrying.`
+    );
+  }
+}
+
 function toolWrite({ file_path, content }, workDir) {
   assertWritable(file_path, workDir);
+  assertSafeWriteSize(content, file_path);
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, 'utf8');
   return `Written: ${file_path}`;
@@ -1231,6 +1264,7 @@ function toolEdit({ file_path, old_string, new_string, replace_all }, workDir) {
   const content = fs.readFileSync(file_path, 'utf8');
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
   const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
+  assertSafeWriteSize(updated, file_path);
   fs.writeFileSync(file_path, updated, 'utf8');
   return `Edited: ${file_path}`;
 }
