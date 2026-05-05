@@ -1269,6 +1269,152 @@ function toolEdit({ file_path, old_string, new_string, replace_all }, workDir) {
   return `Edited: ${file_path}`;
 }
 
+// ─── Cross-Check engine (Phase 2) ────────────────────────────────────────────
+// Reviews proposed file changes via a configurable model (default Sonnet 4.6)
+// before they hit disk. Returns { verdict, summary, issues, model, ms }.
+// Phase 2 is engine + storage only. Phase 3 wires it into the write path.
+const CROSS_CHECK_DEFAULT_MODEL = 'anthropic/claude-sonnet-4-6';
+const CROSS_CHECK_DIFF_BUDGET = 100 * 1024;  // 100 KB max combined before/after sent to reviewer
+
+function buildDiffContext(originalContent, newContent) {
+  // If both fit under the budget, send full content.
+  const totalBytes = Buffer.byteLength(originalContent, 'utf8') + Buffer.byteLength(newContent, 'utf8');
+  if (totalBytes <= CROSS_CHECK_DIFF_BUDGET) {
+    return { mode: 'full', original: originalContent, after: newContent };
+  }
+  // Otherwise send head+tail of each (200 lines each end).
+  const head = (s, n) => s.split('\n').slice(0, n).join('\n');
+  const tail = (s, n) => s.split('\n').slice(-n).join('\n');
+  return {
+    mode: 'truncated',
+    original: head(originalContent, 200) + '\n\n[... truncated ...]\n\n' + tail(originalContent, 200),
+    after:    head(newContent, 200)      + '\n\n[... truncated ...]\n\n' + tail(newContent, 200),
+  };
+}
+
+function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
+  return new Promise(resolve => {
+    const payload = JSON.stringify({ model, messages, temperature: 0.2, max_tokens: maxTokens });
+    const req = https.request({
+      hostname: 'openrouter.ai',
+      path: '/api/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Authorization':  `Bearer ${apiKey}`,
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        'HTTP-Referer':   'https://polaris.aesopacademy.com',
+        'X-Title':        'Polaris',
+      },
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        if (res.statusCode !== 200) return resolve({ error: `HTTP ${res.statusCode}: ${body.slice(0, 400)}` });
+        try {
+          const data = JSON.parse(body);
+          resolve({ content: data.choices?.[0]?.message?.content || '', usage: data.usage || null });
+        } catch (e) {
+          resolve({ error: `Parse failed: ${e.message}` });
+        }
+      });
+    });
+    req.on('error', e => resolve({ error: `Network: ${e.message}` }));
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey }) {
+  const startMs = Date.now();
+  const useModel = model || CROSS_CHECK_DEFAULT_MODEL;
+  const origLines = originalContent ? originalContent.split('\n').length : 0;
+  const origBytes = originalContent ? Buffer.byteLength(originalContent, 'utf8') : 0;
+  const newLines  = newContent.split('\n').length;
+  const newBytes  = Buffer.byteLength(newContent, 'utf8');
+
+  const diff = buildDiffContext(originalContent || '', newContent);
+  const reviewPrompt = `You are reviewing a single file change proposed by another AI agent for the Polaris project.
+
+ORIGINAL TASK GIVEN TO THE AGENT:
+${sessionPrompt || '(not captured)'}
+
+FILE: ${filePath}
+SIZE: ${origLines} lines / ${origBytes} bytes  →  ${newLines} lines / ${newBytes} bytes
+DIFF MODE: ${diff.mode}
+
+ORIGINAL CONTENT:
+\`\`\`
+${diff.original}
+\`\`\`
+
+PROPOSED NEW CONTENT:
+\`\`\`
+${diff.after}
+\`\`\`
+
+Review for:
+1. Corruption — abnormal line/byte deltas, gibberish, structural damage, repeated identical rules
+2. Correctness — does the change actually solve the task?
+3. Quality — broken syntax, dead code, security issues, malformed HTML/JS/CSS
+
+Respond ONLY with JSON in this exact shape (no prose around it):
+{"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1","issue 2"]}`;
+
+  const result = await callOpenRouterOnce(useModel, apiKey, [{ role: 'user', content: reviewPrompt }], 800);
+  const ms = Date.now() - startMs;
+
+  if (result.error) {
+    return { verdict: 'ERROR', summary: result.error, issues: [], model: useModel, ms, usage: null };
+  }
+  // Robust JSON extraction — model sometimes wraps in code fences or prose.
+  const jsonMatch = (result.content || '').match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    return { verdict: 'ERROR', summary: 'No JSON in reviewer response', issues: [result.content?.slice(0, 200) || ''], model: useModel, ms, usage: result.usage };
+  }
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      verdict: parsed.verdict === 'PASS' ? 'PASS' : 'FAIL',
+      summary: parsed.summary || '(no summary)',
+      issues:  Array.isArray(parsed.issues) ? parsed.issues : [],
+      model:   useModel,
+      ms,
+      usage:   result.usage,
+    };
+  } catch (e) {
+    return { verdict: 'ERROR', summary: `JSON parse failed: ${e.message}`, issues: [], model: useModel, ms, usage: result.usage };
+  }
+}
+
+function recordCrossCheck(sessionId, entry) {
+  fs.mkdirSync(CROSS_CHECKS_DIR, { recursive: true });
+  const file = path.join(CROSS_CHECKS_DIR, `${sessionId}.jsonl`);
+  fs.appendFileSync(file, JSON.stringify(entry) + '\n', 'utf8');
+}
+
+function loadCrossChecksForSession(sessionId) {
+  const file = path.join(CROSS_CHECKS_DIR, `${sessionId}.jsonl`);
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, 'utf8')
+    .split('\n')
+    .filter(l => l.trim())
+    .map(l => { try { return JSON.parse(l); } catch { return null; } })
+    .filter(Boolean);
+}
+
+function loadAllCrossChecks(limit = 200) {
+  if (!fs.existsSync(CROSS_CHECKS_DIR)) return [];
+  const files = fs.readdirSync(CROSS_CHECKS_DIR).filter(f => f.endsWith('.jsonl'));
+  const all = [];
+  for (const f of files) {
+    const sessionId = f.replace(/\.jsonl$/, '');
+    const entries = loadCrossChecksForSession(sessionId);
+    for (const e of entries) all.push({ ...e, sessionId });
+  }
+  return all.sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, limit);
+}
+
 function toolGlob({ pattern, path: searchPath }, workDir) {
   const base = searchPath || workDir || process.cwd();
   // Convert glob to regex — escape special chars first, then expand * and ? wildcards
