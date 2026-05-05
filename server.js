@@ -3271,6 +3271,68 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'test-elevenlabs-key') {
+    const { apiKey } = msg;
+    const resolved = (apiKey === SECRET_MASK) ? readConfig().elevenLabsApiKey : apiKey;
+    if (!resolved) { sendTo(ws, { type: 'elevenlabs-test-result', ok: false, message: 'No API key provided' }); return; }
+    const decrypted = (apiKey === SECRET_MASK && resolved) ? decryptSecret(resolved) : resolved;
+    const req = https.request({
+      hostname: 'api.elevenlabs.io',
+      path: '/v1/voices',
+      method: 'GET',
+      headers: { 'xi-api-key': decrypted },
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          try {
+            const data = JSON.parse(body);
+            const count = (data?.voices || []).length;
+            sendTo(ws, { type: 'elevenlabs-test-result', ok: true, message: `Key valid — ${count} voices available` });
+          } catch { sendTo(ws, { type: 'elevenlabs-test-result', ok: true, message: 'Key valid' }); }
+        } else if (res.statusCode === 401) {
+          sendTo(ws, { type: 'elevenlabs-test-result', ok: false, message: 'Invalid API key (401)' });
+        } else {
+          sendTo(ws, { type: 'elevenlabs-test-result', ok: false, message: `HTTP ${res.statusCode}` });
+        }
+      });
+    });
+    req.on('error', err => sendTo(ws, { type: 'elevenlabs-test-result', ok: false, message: `Connection error: ${err.message}` }));
+    req.end();
+    return;
+  }
+
+  if (type === 'test-brave-key') {
+    const { apiKey } = msg;
+    const resolved = (apiKey === SECRET_MASK) ? readConfig().braveSearchApiKey : apiKey;
+    if (!resolved) { sendTo(ws, { type: 'brave-test-result', ok: false, message: 'No API key provided' }); return; }
+    const decrypted = (apiKey === SECRET_MASK && resolved) ? decryptSecret(resolved) : resolved;
+    const req = https.request({
+      hostname: 'api.search.brave.com',
+      path: '/res/v1/web/search?q=polaris+test&count=1',
+      method: 'GET',
+      headers: { 'Accept': 'application/json', 'X-Subscription-Token': decrypted },
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          sendTo(ws, { type: 'brave-test-result', ok: true, message: 'Key valid — search returned results' });
+        } else if (res.statusCode === 401 || res.statusCode === 403) {
+          sendTo(ws, { type: 'brave-test-result', ok: false, message: `Invalid or unauthorized key (${res.statusCode})` });
+        } else if (res.statusCode === 429) {
+          sendTo(ws, { type: 'brave-test-result', ok: false, message: 'Rate limit hit (key is valid, but throttled)' });
+        } else {
+          sendTo(ws, { type: 'brave-test-result', ok: false, message: `HTTP ${res.statusCode}` });
+        }
+      });
+    });
+    req.on('error', err => sendTo(ws, { type: 'brave-test-result', ok: false, message: `Connection error: ${err.message}` }));
+    req.end();
+    return;
+  }
+
   if (type === 'test-model') {
     const { model, tier, provider } = msg;
     const config = readConfig();

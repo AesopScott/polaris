@@ -1178,7 +1178,11 @@
       </div>
       <div class="panel-section">
         <div class="context-label accent-label">DEFAULT FORK MODEL</div>
-        <input type="text" id="settings-fork-model" class="panel-input" placeholder="e.g. openrouter/auto or openai/gpt-4o" style="width:100%;" />
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="settings-fork-model" class="panel-input" placeholder="e.g. openrouter/auto or openai/gpt-4o" style="flex:1;min-width:0;" />
+          <button onclick="testForkModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
+        </div>
+        <span id="fork-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         <div style="font-size:10px;opacity:0.45;margin-top:4px;">Model used when forking a session. Leave blank to use the Floor model.</div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
@@ -1226,7 +1230,11 @@
               Enabled
             </label>
           </div>
-          <input type="text" id="settings-cross-check-model" class="panel-input" placeholder="anthropic/claude-haiku-4-5" style="width:100%;" />
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="settings-cross-check-model" class="panel-input" placeholder="anthropic/claude-haiku-4-5" style="flex:1;min-width:0;" />
+            <button onclick="testCrossCheckModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
+          </div>
+          <span id="cross-check-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
           <div style="font-size:10px;color:#64748b;margin-top:5px;line-height:1.5;">Reviewer model that reads every Write/Edit before it hits disk. Returns PASS/FAIL with reasons; you approve or reject inline. Default is Haiku 4.5 (cheap, fast structured-JSON classifier). Set to Sonnet 4.6 if you want frontier review of frontier work.</div>
         </div>
       </div>
@@ -1320,12 +1328,20 @@
         </div>
         <div class="panel-section">
           <div class="context-label accent-label">ELEVENLABS API KEY</div>
-          <input type="password" id="settings-elevenlabs-key" class="panel-input" placeholder="Paste key for voice walkthrough" style="width:100%;" />
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="password" id="settings-elevenlabs-key" class="panel-input" placeholder="Paste key for voice walkthrough" style="flex:1;min-width:0;" />
+            <button onclick="testElevenLabsKey()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
+          </div>
+          <span id="elevenlabs-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Powers voice narration in the walkthrough. Get a key at <a href="#" onclick="openExternal('https://elevenlabs.io'); return false;" style="color:var(--accent);">elevenlabs.io</a></div>
         </div>
         <div class="panel-section">
           <div class="context-label accent-label">BRAVE SEARCH API KEY</div>
-          <input type="password" id="settings-brave-key" class="panel-input" placeholder="BSA…" style="width:100%;" />
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="password" id="settings-brave-key" class="panel-input" placeholder="BSA…" style="flex:1;min-width:0;" />
+            <button onclick="testBraveSearchKey()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
+          </div>
+          <span id="brave-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Enables full web search in agent sessions. Free tier: 2,000 queries/month. Get a key at <a href="#" onclick="openExternal('https://brave.com/search/api/'); return false;" style="color:var(--accent);">brave.com/search/api</a></div>
         </div>
       </div>
@@ -2433,12 +2449,12 @@
       instrRow.innerHTML = `<td colspan="4" style="padding:0 6px 8px 6px;display:flex;flex-direction:column;gap:4px;">
         <div style="display:flex;gap:4px;align-items:center;">
           <span style="font-size:10px;color:#64748b;white-space:nowrap;width:110px;flex-shrink:0;">📓 Knowledge folder</span>
-          <input value="${escHtmlAttr(p.obsidianDir || '')}" data-field="obsidianDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Build" style="flex:1;font-size:11px;" />
+          <input value="${escHtmlAttr(p.obsidianDir || '')}" data-field="obsidianDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Build" style="flex:1;min-width:200px;font-size:11px;" />
           <button class="card-btn" style="height:28px;width:28px;flex-shrink:0;" onclick="pickObsidianDir(${i},'obsidianDir')" title="Browse">📁</button>
         </div>
         <div style="display:flex;gap:4px;align-items:center;">
           <span style="font-size:10px;color:#64748b;white-space:nowrap;width:110px;flex-shrink:0;">📓 Sessions folder</span>
-          <input value="${escHtmlAttr(p.obsidianSessionsDir || '')}" data-field="obsidianSessionsDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Sessions" style="flex:1;font-size:11px;" />
+          <input value="${escHtmlAttr(p.obsidianSessionsDir || '')}" data-field="obsidianSessionsDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Sessions" style="flex:1;min-width:200px;font-size:11px;" />
           <button class="card-btn" style="height:28px;width:28px;flex-shrink:0;" onclick="pickObsidianDir(${i},'obsidianSessionsDir')" title="Browse">📁</button>
         </div>
         <textarea data-field="instructions" data-idx="${i}"
@@ -3030,6 +3046,18 @@
         const el = document.getElementById('openai-test-result');
         if (el) { el.style.display='block'; el.style.color=msg.ok?'#4ade80':'#f87171'; el.textContent=(msg.ok?'✓ ':'✗ ')+msg.message; }
         pushDebugLog(`[openai] Key test: ${msg.message}`);
+        break;
+      }
+      case 'elevenlabs-test-result': {
+        const el = document.getElementById('elevenlabs-test-result');
+        if (el) { el.style.display='inline'; el.style.color=msg.ok?'#4ade80':'#f87171'; el.textContent=(msg.ok?'✓ ':'✗ ')+msg.message; }
+        pushDebugLog(`[elevenlabs] Key test: ${msg.message}`);
+        break;
+      }
+      case 'brave-test-result': {
+        const el = document.getElementById('brave-test-result');
+        if (el) { el.style.display='inline'; el.style.color=msg.ok?'#4ade80':'#f87171'; el.textContent=(msg.ok?'✓ ':'✗ ')+msg.message; }
+        pushDebugLog(`[brave] Key test: ${msg.message}`);
         break;
       }
       case 'test-model-result': {
@@ -5280,6 +5308,49 @@
     wsSend({ type: 'test-model', model, tier: 'chat' });
   }
   window.testChatModel = testChatModel;
+
+  // ── Test buttons added in 1.0.109 ────────────────────────────────────────────
+  function _aeShowKeyTest(elId, ok, message) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.style.display = 'inline';
+    el.style.color = ok ? '#22c55e' : '#ef4444';
+    el.textContent = (ok ? '✓ ' : '✗ ') + message;
+  }
+
+  function testElevenLabsKey() {
+    const key = document.getElementById('settings-elevenlabs-key')?.value || '';
+    _aeShowKeyTest('elevenlabs-test-result', false, 'Testing…');
+    document.getElementById('elevenlabs-test-result').style.color = '#94a3b8';
+    wsSend({ type: 'test-elevenlabs-key', apiKey: key });
+  }
+  window.testElevenLabsKey = testElevenLabsKey;
+
+  function testBraveSearchKey() {
+    const key = document.getElementById('settings-brave-key')?.value || '';
+    _aeShowKeyTest('brave-test-result', false, 'Testing…');
+    document.getElementById('brave-test-result').style.color = '#94a3b8';
+    wsSend({ type: 'test-brave-key', apiKey: key });
+  }
+  window.testBraveSearchKey = testBraveSearchKey;
+
+  function testCrossCheckModel() {
+    const model = document.getElementById('settings-cross-check-model')?.value?.trim() || '';
+    if (!model) { _aeShowKeyTest('cross-check-test-result', false, 'Enter a model string first'); return; }
+    _aeShowKeyTest('cross-check-test-result', false, 'Testing…');
+    document.getElementById('cross-check-test-result').style.color = '#94a3b8';
+    wsSend({ type: 'test-model', model, tier: 'cross-check', provider: null });
+  }
+  window.testCrossCheckModel = testCrossCheckModel;
+
+  function testForkModel() {
+    const model = document.getElementById('settings-fork-model')?.value?.trim() || '';
+    if (!model) { _aeShowKeyTest('fork-test-result', false, 'Enter a model string first'); return; }
+    _aeShowKeyTest('fork-test-result', false, 'Testing…');
+    document.getElementById('fork-test-result').style.color = '#94a3b8';
+    wsSend({ type: 'test-model', model, tier: 'fork', provider: null });
+  }
+  window.testForkModel = testForkModel;
 
   // ── Benchmark Runner ──────────────────────────────────────────────────────────
   let _benchQueue = [];

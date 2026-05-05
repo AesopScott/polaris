@@ -110,9 +110,15 @@ function startServer() {
           properties: ['openDirectory'],
           defaultPath: msg.defaultPath || undefined,
         });
+        // The dialog can end up behind mainWindow on Windows when
+        // titleBarStyle is 'hidden'. Force the parent forward after the
+        // dialog resolves so the user isn't left looking at a frozen panel
+        // wondering whether anything happened.
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
         const picked = (!result.canceled && result.filePaths.length) ? result.filePaths[0] : null;
         serverProcess.send({ type: 'directory-picked', requestId: msg.requestId, path: picked });
       } catch (e) {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
         serverProcess.send({ type: 'directory-picked', requestId: msg.requestId, path: null, error: e.message });
       }
     } else if (msg.type === 'pick-file') {
@@ -122,9 +128,11 @@ function startServer() {
           properties: ['openFile'],
           filters: msg.filters || [],
         });
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
         const picked = (!result.canceled && result.filePaths.length) ? result.filePaths[0] : null;
         serverProcess.send({ type: 'file-picked', requestId: msg.requestId, path: picked });
       } catch (e) {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
         serverProcess.send({ type: 'file-picked', requestId: msg.requestId, path: null, error: e.message });
       }
     } else if (msg.type === 'open-path') {
