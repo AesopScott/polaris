@@ -2009,7 +2009,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
       try {
         const data = JSON.parse(raw);
         const text = data?.choices?.[0]?.message?.content || '(empty response)';
-        broadcast({ type: 'line', sessionId, text, role: 'assistant' });
+        broadcast({ type: 'line', sessionId, text, role: 'assistant', class: 'ai-text' });
 
         if (data.usage) {
           const usage = {
