@@ -2593,7 +2593,7 @@ function handleMessage(ws, raw) {
     const bodyObj = {
       model,
       messages: [{ role: 'user', content: 'Count from 1 to 50, one number per line. No other text.' }],
-      max_tokens: 200,
+      max_tokens: 600,
       stream: true,
       stream_options: { include_usage: true },
     };
@@ -2637,7 +2637,8 @@ function handleMessage(ws, raw) {
           try {
             const evt = JSON.parse(data);
             if (evt.usage) usage = evt.usage;
-            const content = evt.choices?.[0]?.delta?.content;
+            const delta = evt.choices?.[0]?.delta || {};
+            const content = delta.content || delta.reasoning_content || '';
             if (content) {
               if (!ttftMs) ttftMs = Date.now() - reqStartMs;
               totalChars += content.length;
