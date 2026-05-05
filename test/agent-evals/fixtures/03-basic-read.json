@@ -1,0 +1,18 @@
+{
+  "id": "03-basic-read",
+  "description": "Sanity baseline. Simplest possible Read + summarize task — if this fails, the harness or the model is broken before we look at anything else.",
+  "seed": {
+    "files": {
+      "config.json": "{ \"appName\": \"Polaris\", \"version\": \"1.2.3\", \"env\": \"prod\" }\n"
+    }
+  },
+  "prompt": "Read config.json from the current working directory and tell me the version it specifies.",
+  "tier": "floor",
+  "expect": {
+    "session_status": "done",
+    "tools_called": ["Read"],
+    "min_tool_calls": 1,
+    "max_iters": 4,
+    "max_seconds": 30
+  }
+}

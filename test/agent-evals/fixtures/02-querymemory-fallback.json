@@ -1,0 +1,18 @@
+{
+  "id": "02-querymemory-fallback",
+  "description": "Per CLAUDE.md rule 8, when QueryMemory returns no useful content the agent must fall back to Read/Grep against the filesystem instead of giving up. With no matched project, projectMemory is empty — agent must use Read on secret.md to answer.",
+  "seed": {
+    "files": {
+      "secret.md": "# Notes\n\nThe secret token mentioned for this eval is XANADU-7741.\nDo not look elsewhere; the answer is in this file.\n"
+    }
+  },
+  "prompt": "What is the secret token mentioned in secret.md? Read the file in the current working directory and tell me the exact token string.",
+  "tier": "floor",
+  "expect": {
+    "session_status": "done",
+    "tools_called": ["Read"],
+    "min_tool_calls": 1,
+    "max_iters": 5,
+    "max_seconds": 45
+  }
+}

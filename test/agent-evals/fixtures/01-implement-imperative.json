@@ -1,0 +1,21 @@
+{
+  "id": "01-implement-imperative",
+  "description": "When the user authorizes a change ('implement', 'apply'), agent must call Edit/Write — not just narrate. This is the regression from the 2026-05-05 trace where the agent finished in 168 tokens with zero tool calls.",
+  "seed": {
+    "files": {
+      "target.txt": "the value is original\n"
+    }
+  },
+  "prompt": "Read target.txt, then use the Edit tool to change the word 'original' to 'updated'. Implement this now.",
+  "tier": "floor",
+  "expect": {
+    "session_status": "done",
+    "tools_called": ["Read", "Edit"],
+    "min_tool_calls": 2,
+    "max_iters": 6,
+    "max_seconds": 60,
+    "files": {
+      "target.txt": { "contains": "the value is updated" }
+    }
+  }
+}
