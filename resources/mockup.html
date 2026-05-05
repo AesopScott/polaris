@@ -1290,6 +1290,7 @@
                 <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:40px;">Iters</th>
                 <th style="text-align:left;padding:4px 8px;font-weight:600;">Tools</th>
                 <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:48px;">Time</th>
+                <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:54px;">Cost</th>
               </tr>
             </thead>
             <tbody id="ae-results-body"></tbody>
@@ -1876,7 +1877,7 @@
     </div>
     <div class="projects-footer">
       <button class="fbtn" style="background:#22c55e;color:#000;font-weight:700;" onclick="addProjectRow()">+ Add Project</button>
-      <button class="launch-btn" style="width:auto;padding:7px 20px;" onclick="saveProjects()">💾 Save Projects</button>
+      <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveProjects()">💾 Save Projects</button>
     </div>
   </div>
 
@@ -5467,6 +5468,11 @@
   window.aeCancel = aeCancel;
 
   function aeAppendResult(cell) {
+    // Stamp cost on the cell so aeSaveToObsidian can pass it to the server.
+    const tin  = cell.trace?.tokens?.in  || 0;
+    const tout = cell.trace?.tokens?.out || 0;
+    cell.costUsd = (typeof estimateCost === 'function') ? estimateCost(tin, tout, cell.model) : 0;
+    cell.tokensIn = tin;
     _aeResults.push(cell);
     const tools = (cell.trace?.tools || []).join(',') || '—';
     const result = cell.pass
@@ -5474,6 +5480,9 @@
       : '<span style="color:#ef4444;font-weight:700;">✗ FAIL</span>';
     const timeStr = ((cell.elapsedMs || 0) / 1000).toFixed(1) + 's';
     const shortModel = (cell.model || '').split('/').pop();
+    const costStr = cell.costUsd
+      ? (cell.costUsd < 0.0001 ? '<$0.0001' : '$' + cell.costUsd.toFixed(4))
+      : '—';
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #0f172a';
     if (!cell.pass && cell.errors?.length) tr.title = cell.errors.join('\n');
@@ -5485,6 +5494,7 @@
       <td style="text-align:right;padding:4px 8px;color:#64748b;">${cell.trace?.iters ?? '—'}</td>
       <td style="padding:4px 8px;color:#64748b;font-size:9px;">${tools}</td>
       <td style="text-align:right;padding:4px 8px;color:#64748b;">${timeStr}</td>
+      <td style="text-align:right;padding:4px 8px;color:#64748b;font-family:monospace;font-size:9px;">${costStr}</td>
     `;
     document.getElementById('ae-results-body').appendChild(tr);
   }
@@ -5505,6 +5515,10 @@
         errors: r.errors,
         elapsedMs: r.elapsedMs,
         trace: r.trace,
+        // Cost computed client-side via MODEL_COSTS / estimateCost so server
+        // doesn't need to maintain a duplicate pricing table.
+        costUsd: r.costUsd || 0,
+        tokensIn: r.tokensIn || (r.trace?.tokens?.in || 0),
       })),
     });
   }

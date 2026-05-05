@@ -3488,16 +3488,23 @@ function handleMessage(ws, raw) {
       out.push(`### Run ${stamp}`);
       out.push(`${passed}/${results.length} cells passed across ${cells.size} (model × fixture) pairs.`);
       out.push('');
-      out.push('| Model | Fixture | Pass | Latency med (s) | Iters med | Tokens out med | Tools used |');
-      out.push('|---|---|---|---:|---:|---:|---|');
+      out.push('| Model | Fixture | Pass | Latency med (s) | Iters med | Tokens in med | Tokens out med | Cost total | Tools used |');
+      out.push('|---|---|---|---:|---:|---:|---:|---:|---|');
       const sorted = [...cells.values()].sort((a, b) => (a.model + a.fixture).localeCompare(b.model + b.fixture));
+      let runTotalCost = 0;
       for (const cell of sorted) {
         const lats = cell.runs.map(r => (r.elapsedMs || 0) / 1000);
         const iters = cell.runs.map(r => r.trace?.iters || 0);
-        const toks = cell.runs.map(r => r.trace?.tokens?.out || 0);
+        const tin  = cell.runs.map(r => r.tokensIn ?? r.trace?.tokens?.in  ?? 0);
+        const tout = cell.runs.map(r => r.trace?.tokens?.out || 0);
+        const cellCost = cell.runs.reduce((s, r) => s + (r.costUsd || 0), 0);
+        runTotalCost += cellCost;
+        const costStr = cellCost === 0 ? '—' : (cellCost < 0.0001 ? '<$0.0001' : '$' + cellCost.toFixed(4));
         const toolUnion = [...new Set(cell.runs.flatMap(r => r.trace?.tools || []))].join(', ') || '—';
-        out.push(`| \`${cell.model}\` | ${cell.fixture} | ${cell.passes}/${cell.runs.length} | ${median(lats).toFixed(2)} | ${median(iters)} | ${median(toks)} | ${toolUnion} |`);
+        out.push(`| \`${cell.model}\` | ${cell.fixture} | ${cell.passes}/${cell.runs.length} | ${median(lats).toFixed(2)} | ${median(iters)} | ${median(tin)} | ${median(tout)} | ${costStr} | ${toolUnion} |`);
       }
+      out.push('');
+      out.push(`Total spend this run: ${runTotalCost === 0 ? '—' : (runTotalCost < 0.01 ? '<$0.01' : '$' + runTotalCost.toFixed(4))}`);
       out.push('');
       // Insert under "## Results" — newest at top.
       let content = fs.readFileSync(file, 'utf8');
