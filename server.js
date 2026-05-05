@@ -1652,6 +1652,8 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
       },
     };
     let textAccum = '', toolMap = {}, finishReason = null, usage = null, sseBuffer = '', rawSample = '';
+    const reqStartMs = Date.now();
+    let firstTokenMs = null, totalChars = 0, rateInterval = null;
     const req = https.request(opts, res => {
       if (res.statusCode !== 200) {
         let errRaw = '';
@@ -1661,7 +1663,7 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
       }
       res.on('data', chunk => {
         const raw = chunk.toString();
-        if (rawSample.length < 800) rawSample += raw; // capture first ~800 chars for diagnostics
+        if (rawSample.length < 800) rawSample += raw;
         sseBuffer += raw;
         const lines = sseBuffer.split('\n');
         sseBuffer = lines.pop();
@@ -1673,12 +1675,20 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
             const evt = JSON.parse(data);
             const choice = evt.choices?.[0];
             if (evt.usage) usage = evt.usage;
-            // surface model-level errors embedded in the stream
             if (evt.error) { resolve({ error: `Model error: ${JSON.stringify(evt.error).slice(0, 300)}` }); return; }
             if (!choice) continue;
             if (choice.finish_reason) finishReason = choice.finish_reason;
             const delta = choice.delta || {};
             if (delta.content) {
+              if (!firstTokenMs) {
+                firstTokenMs = Date.now();
+                rateInterval = setInterval(() => {
+                  const elapsed = (Date.now() - firstTokenMs) / 1000;
+                  const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
+                  broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - reqStartMs });
+                }, 400);
+              }
+              totalChars += delta.content.length;
               textAccum += delta.content;
               broadcast({ type: 'line', sessionId, text: delta.content, role: 'assistant' });
             }
@@ -1692,12 +1702,17 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
               }
             }
           } catch (parseErr) {
-            // log unparseable SSE lines so we can diagnose model-specific quirks
             if (data && data !== '[DONE]') console.warn('[sse-parse] could not parse:', data.slice(0, 200));
           }
         }
       });
-      res.on('end', () => resolve({ textAccum, toolCalls: Object.values(toolMap).filter(t => t.name), finishReason, usage, rawSample }));
+      res.on('end', () => {
+        if (rateInterval) clearInterval(rateInterval);
+        const elapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
+        const finalTps = elapsed && elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
+        if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - reqStartMs, final: true });
+        resolve({ textAccum, toolCalls: Object.values(toolMap).filter(t => t.name), finishReason, usage, rawSample });
+      });
     });
     const session = sessions.get(sessionId);
     if (session) session.req = req;
@@ -1789,9 +1804,14 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
 
   const tier  = session.tier || 'floor';
-  const model = tier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
-              : tier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
-              :                       (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
+  const hasImage = Array.isArray(userMessage)
+    ? userMessage.some(p => p.type === 'image_url' || p.type === 'image')
+    : false;
+  const effectiveTier = hasImage && tier === 'floor' ? 'balanced' : tier;
+  const model = effectiveTier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+              : effectiveTier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+              :                                (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
+  if (hasImage && tier === 'floor') broadcast({ type: 'line', sessionId, text: '[auto-escalated to balanced — image detected]', role: 'system' });
 
   session.status = 'running';
   session.startAt = session.startAt || Date.now();

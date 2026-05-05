@@ -303,6 +303,8 @@
   .card-footer { display: flex; align-items: stretch; }
   .footer-timer { width: 64px; min-width: 64px; display: flex; align-items: center; justify-content: center; padding: 8px 6px; border-right: 1px solid var(--border); font-size: 10px; opacity: 0.6; }
   .footer-btns { flex: 1; padding: 6px 8px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .speed-wrap { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 4px 8px; border-right: 1px solid var(--border); gap: 1px; }
+  .speed-tps { font-size: 9px; color: #94a3b8; font-variant-numeric: tabular-nums; }
   .color-controls { display: flex; align-items: center; gap: 5px; padding: 0 8px; border-left: 1px solid var(--border); flex-shrink: 0; }
   .color-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
   .color-hue-slider { -webkit-appearance: none; width: 52px; height: 5px; border-radius: 3px; border: none; cursor: pointer;
@@ -2758,6 +2760,26 @@
         break;
       }
 
+      case 'streaming-rate': {
+        const card = document.querySelector(`[data-sid="${msg.sessionId}"]`);
+        if (!card) break;
+        const wrap   = card.querySelector('[data-speed-wrap]');
+        const needle = card.querySelector('[data-speed-needle]');
+        const arc    = card.querySelector('[data-speed-arc]');
+        const tpsEl  = card.querySelector('[data-speed-tps]');
+        if (!wrap) break;
+        wrap.style.display = 'flex';
+        const tps   = msg.tokensPerSecond || 0;
+        const pct   = Math.min(tps / 80, 1);
+        const angle = (pct * 180) - 90;
+        if (needle) needle.setAttribute('transform', `rotate(${angle},35,38)`);
+        if (arc)    arc.setAttribute('stroke-dasharray', `${(pct * 88).toFixed(1)} 88`);
+        if (arc)    arc.setAttribute('stroke', pct > 0.6 ? '#34d399' : pct > 0.3 ? '#60a5fa' : '#94a3b8');
+        if (tpsEl)  tpsEl.textContent = `${tps} t/s`;
+        if (msg.final) setTimeout(() => { wrap.style.display = 'none'; }, 3000);
+        break;
+      }
+
       case 'context-usage': {
         const s = sessionStore[msg.sessionId];
         if (!s) break;
@@ -3376,6 +3398,15 @@
       </div>`}
       <div class="card-footer">
         <div class="footer-timer" data-timer>0s</div>
+        <div class="speed-wrap" data-speed-wrap>
+          <svg viewBox="0 0 70 42" width="62" height="37">
+            <path d="M7,38 A28,28 0 0,1 63,38" fill="none" stroke="#1e293b" stroke-width="5" stroke-linecap="round"/>
+            <path data-speed-arc d="M7,38 A28,28 0 0,1 63,38" fill="none" stroke="#60a5fa" stroke-width="5" stroke-linecap="round" stroke-dasharray="0 88"/>
+            <line data-speed-needle x1="35" y1="38" x2="35" y2="13" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" transform="rotate(-90,35,38)"/>
+            <circle cx="35" cy="38" r="3" fill="#60a5fa"/>
+          </svg>
+          <span class="speed-tps" data-speed-tps>0 t/s</span>
+        </div>
         <div class="footer-btns">
           <button class="fbtn" data-action="copy">Copy</button>
           <button class="fbtn" data-action="clear">Clear</button>
