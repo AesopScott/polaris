@@ -11,9 +11,18 @@ const MOCKUP_SRC = app.isPackaged
   : path.join(__dirname, 'resources', 'mockup.html');
 const MOCKUP_DEST = path.join(POLARIS_DIR, 'mockup.html');
 const SERVER_PORT = 40000;
+const SERVER_LOG_PATH = path.join(POLARIS_DIR, 'logs', 'server-stderr.log');
+const RESTART_WINDOW_MS = 30000;
+const MAX_RESTARTS_IN_WINDOW = 3;
 
 let mainWindow = null;
 let serverProcess = null;
+let isQuitting = false;
+const restartTimes = [];
+
+function appendServerLog(text) {
+  try { fs.appendFileSync(SERVER_LOG_PATH, text, 'utf8'); } catch {}
+}
 
 function ensureAppData() {
   const dirs = [
@@ -38,16 +47,51 @@ function startServer() {
       SERVER_PORT: String(SERVER_PORT),
       RESOURCES_PATH: process.resourcesPath ? path.join(process.resourcesPath, 'resources') : path.join(__dirname, 'resources'),
     },
-    silent: false,
+    // silent: true + explicit stdio so we can capture stdout/stderr to a log
+    // file. In a packaged Electron app, console output is otherwise invisible
+    // because there's no terminal — leaving us blind when the server crashes.
+    silent: true,
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+
+  appendServerLog(`\n=== fork pid=${serverProcess.pid} at ${new Date().toISOString()} ===\n`);
+  serverProcess.stdout?.on('data', chunk => {
+    const text = chunk.toString();
+    appendServerLog(text);
+    process.stdout.write(text);
+  });
+  serverProcess.stderr?.on('data', chunk => {
+    const text = chunk.toString();
+    appendServerLog(text);
+    process.stderr.write(text);
   });
 
   serverProcess.on('error', (err) => {
-    console.error('[main] Server error:', err);
+    const msg = `[main] Server error: ${err.stack || err.message}\n`;
+    console.error(msg);
+    appendServerLog(msg);
   });
 
-  serverProcess.on('exit', (code) => {
-    console.log('[main] Server exited with code', code);
-    if (code === 0) setTimeout(startServer, 500);
+  serverProcess.on('exit', (code, signal) => {
+    const reason = signal ? `signal=${signal}` : `code=${code}`;
+    const exitMsg = `[main] Server exited (${reason})\n`;
+    console.log(exitMsg.trim());
+    appendServerLog(exitMsg);
+
+    if (isQuitting) return;
+
+    // Crash-loop guard: bail if server has died too many times in a short
+    // window so we don't burn CPU on a tight respawn loop.
+    const now = Date.now();
+    while (restartTimes.length && now - restartTimes[0] > RESTART_WINDOW_MS) restartTimes.shift();
+    if (restartTimes.length >= MAX_RESTARTS_IN_WINDOW) {
+      const giveUp = `[main] Server crashed ${restartTimes.length} times in ${RESTART_WINDOW_MS / 1000}s — giving up. Check ${SERVER_LOG_PATH}\n`;
+      console.error(giveUp);
+      appendServerLog(giveUp);
+      return;
+    }
+    restartTimes.push(now);
+    setTimeout(startServer, 500);
   });
 
   // IPC bridge from server.js — folder picker, open path, etc.
@@ -127,7 +171,10 @@ app.whenReady().then(() => {
   createWindow();
 });
 
+app.on('before-quit', () => { isQuitting = true; });
+
 app.on('window-all-closed', () => {
+  isQuitting = true;
   if (serverProcess) serverProcess.kill();
   if (process.platform !== 'darwin') app.quit();
 });
