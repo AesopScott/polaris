@@ -391,6 +391,8 @@
   .palette .fbtn { background: var(--fbtn-bg); color: var(--fbtn-text); }
   .palette .card-btn { background: var(--card-btn-bg); color: var(--text); }
   .card-btn.is-pinned { background: rgba(239,68,68,0.35) !important; color: #fff !important; }
+  .card-btn.fork-active { background: rgba(167,139,250,0.35) !important; color: #c4b5fd !important; }
+  .card-btn.fork-linked { background: rgba(96,165,250,0.25) !important; color: #93c5fd !important; }
   .card.pinned { box-shadow: inset 0 0 0 2px rgba(239,68,68,0.45); }
   .card.pinned [data-resize] { display: none; }
   .card.pinned [data-drag-handle] { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
@@ -971,7 +973,7 @@
         <button class="hbtn btn-gold" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button class="hbtn btn-tracking" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-balance" class="hbtn btn-danger" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
-        <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload UI</span></button>
+        <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <button class="hbtn btn-gold" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
@@ -986,6 +988,7 @@
         <button class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button class="hbtn btn-systems" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
+        <button class="hbtn btn-tracking" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
       </div>
     </div>
 
@@ -1163,6 +1166,11 @@
         <div class="context-label accent-label">GITHUB USERNAME</div>
         <input type="text" id="settings-github-username" class="panel-input" placeholder="e.g. AesopScott" style="width:100%;" />
         <div style="font-size:10px;opacity:0.45;margin-top:4px;">Used by the Projects panel's repo selector to fetch your public repos. Public repos only — private repos require a token (not yet supported).</div>
+      </div>
+      <div class="panel-section">
+        <div class="context-label accent-label">DEFAULT FORK MODEL</div>
+        <input type="text" id="settings-fork-model" class="panel-input" placeholder="e.g. openrouter/auto or openai/gpt-4o" style="width:100%;" />
+        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Model used when forking a session. Leave blank to use the Floor model.</div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">OPENROUTER</div>
@@ -1387,6 +1395,25 @@
     </div>
     <div class="projects-panel-body" style="padding:0;">
       <pre id="diag-content" style="margin:0;padding:14px;font-size:11px;font-family:Consolas,monospace;line-height:1.5;overflow:auto;height:100%;white-space:pre-wrap;word-break:break-all;color:#94a3b8;"></pre>
+    </div>
+  </div>
+
+  <!-- Archive Panel -->
+  <div id="archive-panel" class="projects-panel hidden palette" style="width:600px;max-height:700px;">
+    <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar" style="cursor:default;">
+      <span style="flex:1;font-size:13px;font-weight:800;">📦 Archive</span>
+      <input id="archive-search" type="search" placeholder="Search sessions…" oninput="archiveSearch(this.value)"
+        style="padding:4px 10px;border-radius:5px;border:1px solid #444;font-size:12px;background:var(--input-bg);color:var(--text);width:200px;" />
+      <button class="preview-close-btn" onclick="toggleArchivePanel()">✕</button>
+    </div>
+    <div id="archive-list-body" class="projects-panel-body" style="padding:0;overflow-y:auto;flex:1;"></div>
+    <div id="archive-view" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+      <div style="padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:10px;">
+        <button onclick="archiveViewBack()" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-size:11px;">← Back</button>
+        <button onclick="_archiveViewSessionId && archiveReactivate(_archiveViewSessionId)" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(96,165,250,0.4);background:rgba(96,165,250,0.08);color:#60a5fa;cursor:pointer;font-size:11px;">Reactivate</button>
+      </div>
+      <div id="archive-view-term" class="terminal" style="flex:1;overflow-y:auto;padding:10px 14px;font-size:11px;"></div>
     </div>
   </div>
 
@@ -2635,12 +2662,14 @@
           workDir: msg.workDir, projectName: msg.projectName,
           model: msg.model || resolveModel('balanced'),
           isChat: msg.isChat || false,
+          isForked: msg.isForked || false,
+          primarySessionId: msg.primarySessionId || null,
           status: 'running', startAt: Date.now(),
           lines: [], lastPrompt: null, resumeId: null, usage: null, height: null, column: null, pinned: false,
         };
         if (!sessionOrder.includes(msg.sessionId)) sessionOrder.push(msg.sessionId);
         renderGrid();
-        enterResumeMode(msg.sessionId, null);
+        if (!msg.isForked) enterResumeMode(msg.sessionId, null);
         break;
 
       case 'line': {
@@ -2830,6 +2859,60 @@
         pushDebugLog(`[obsidian] ✓ ${msg.filePath}`);
         if (typeof camOnObsidianDone === 'function') camOnObsidianDone();
         break;
+
+      // ── Archive messages ────────────────────────────────────────────────
+      case 'archive-complete': {
+        const grid = getActiveGrid();
+        if (grid) { const c = grid.querySelector(`[data-sid="${msg.sessionId}"]`); if (c) c.remove(); }
+        delete sessionStore[msg.sessionId];
+        sessionOrder = sessionOrder.filter(id => id !== msg.sessionId);
+        updateStats(); updateMiniCards();
+        pushDebugLog(`[archive] Archived: ${msg.sessionId}`);
+        break;
+      }
+      case 'archives-list':
+        renderArchiveList(msg.archives || []);
+        break;
+      case 'archive-search-results':
+        renderArchiveList(msg.results || [], true);
+        break;
+      case 'archive-detail':
+        renderArchiveDetail(msg.sessionId, msg.lines || []);
+        break;
+      case 'archive-reactivated': {
+        const rs = msg.session;
+        sessionStore[rs.id] = { ...rs, lines: rs.lines || [], usage: null, totalCost: 0 };
+        if (!sessionOrder.includes(rs.id)) sessionOrder.push(rs.id);
+        renderGrid();
+        pushDebugLog(`[archive] Reactivated: ${rs.name || rs.id}`);
+        break;
+      }
+      case 'archive-error':
+        pushDebugLog(`[archive] Error: ${msg.error}`, true);
+        break;
+
+      // ── Fork messages ───────────────────────────────────────────────────
+      case 'fork-started': {
+        if (sessionStore[msg.primarySessionId]) { sessionStore[msg.primarySessionId].forkActive = true; sessionStore[msg.primarySessionId].forkSessionId = msg.forkSessionId; }
+        updateForkButton(msg.primarySessionId, true);
+        pushDebugLog(`[fork] Started: ${msg.forkSessionId}`);
+        break;
+      }
+      case 'fork-stopped': {
+        if (sessionStore[msg.primarySessionId]) { sessionStore[msg.primarySessionId].forkActive = false; sessionStore[msg.primarySessionId].forkSessionId = null; }
+        updateForkButton(msg.primarySessionId, false);
+        pushDebugLog(`[fork] Stopped`);
+        break;
+      }
+      case 'fork-promoted': {
+        if (sessionStore[msg.primarySessionId]) { sessionStore[msg.primarySessionId].forkActive = false; sessionStore[msg.primarySessionId].forkSessionId = null; }
+        updateForkButton(msg.primarySessionId, false);
+        const fs2 = sessionStore[msg.forkSessionId];
+        if (fs2) { fs2.isForked = false; }
+        updateForkButton(msg.forkSessionId, false, true);
+        pushDebugLog(`[fork] Promoted: ${msg.forkSessionId}`);
+        break;
+      }
 
       case 'dir-listing':
         if (msg.replyTag === 'monaco-panel') mpHandleDirListing(msg);
@@ -3199,6 +3282,8 @@
             <button class="card-btn" title="Reset size" data-action="reset-size">↕</button>
             <button class="card-btn" title="Locks" data-action="toggle-locks" data-lock-btn>🔒</button>
             <button class="card-btn ${s.pinned ? 'is-pinned' : ''}" title="${s.pinned ? 'Unpin' : 'Pin (lock position and size)'}" data-action="toggle-pin" data-pin-btn>📌</button>
+            <button class="card-btn" title="Archive session — remove from grid and save for later" data-action="archive">📦</button>
+            <button class="card-btn ${s.isForked ? 'fork-linked' : (s.forkActive ? 'fork-active' : '')}" title="${s.isForked ? 'Forked — click to promote to independent session' : (s.forkActive ? 'Fork active — click to stop mirroring' : 'Fork — mirror all prompts to a second model')}" data-action="fork" data-fork-btn>⑂</button>
             <button class="card-btn" title="Minimize to status bar" data-action="minimize">—</button>
             <button class="card-btn" title="Stop" data-action="stop">■</button>
             <button class="card-btn" title="Close" data-action="close">✕</button>
@@ -3502,8 +3587,145 @@
       case 'clear':
         if (s) { s.lines = []; const t = cardEl.querySelector('[data-term]'); if (t) t.innerHTML = ''; }
         break;
+      case 'archive': {
+        if (!s) break;
+        showInlineConfirm(cardEl, `Archive "${s.name || 'session'}"? It will be removed from the grid and saved for later.`, () => {
+          wsSend({ type: 'archive-session', sessionId });
+        });
+        break;
+      }
+      case 'fork': {
+        if (!s) break;
+        if (s.isForked) {
+          // Promote fork to independent session
+          wsSend({ type: 'promote-fork', forkSessionId: sessionId });
+        } else if (s.forkActive) {
+          wsSend({ type: 'stop-fork', primarySessionId: sessionId });
+        } else {
+          const cfg = currentConfig || {};
+          const model = cfg.defaultForkModel || cfg.openRouterFloorModel || 'openrouter/auto';
+          wsSend({ type: 'start-fork', primarySessionId: sessionId, forkModelId: model });
+        }
+        break;
+      }
     }
   }
+
+  // ── Fork helpers ──────────────────────────────────────────────────────────────
+  function updateForkButton(sessionId, active, promoted) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
+    if (!card) return;
+    const btn = card.querySelector('[data-fork-btn]');
+    if (!btn) return;
+    if (promoted) {
+      btn.title = 'Fork — mirror all prompts to a second model';
+      btn.classList.remove('fork-linked', 'fork-active');
+    } else if (active) {
+      btn.title = 'Fork active — click to stop mirroring';
+      btn.classList.add('fork-active');
+      btn.classList.remove('fork-linked');
+    } else {
+      btn.title = 'Fork — mirror all prompts to a second model';
+      btn.classList.remove('fork-active', 'fork-linked');
+    }
+  }
+
+  // ── Archive panel ─────────────────────────────────────────────────────────────
+  let _archiveViewSessionId = null;
+
+  function toggleArchivePanel() {
+    const panel = document.getElementById('archive-panel');
+    if (!panel) return;
+    const isOpen = !panel.classList.contains('hidden');
+    if (isOpen) {
+      panel.classList.add('hidden');
+    } else {
+      panel.style.zIndex = '1002';
+      panel.classList.remove('hidden');
+      wsSend({ type: 'get-archives' });
+      const searchEl = document.getElementById('archive-search');
+      if (searchEl) { searchEl.value = ''; }
+      renderArchiveDetail(null, null);
+    }
+  }
+  window.toggleArchivePanel = toggleArchivePanel;
+
+  function archiveSearch(q) {
+    if (q && q.trim()) {
+      wsSend({ type: 'search-archives', query: q.trim() });
+    } else {
+      wsSend({ type: 'get-archives' });
+    }
+  }
+  window.archiveSearch = archiveSearch;
+
+  function renderArchiveList(archives, isSearchResults) {
+    const listEl = document.getElementById('archive-list-body');
+    const viewEl = document.getElementById('archive-view');
+    if (!listEl) return;
+    if (viewEl) viewEl.style.display = 'none';
+    listEl.style.display = 'block';
+    if (!archives || archives.length === 0) {
+      listEl.innerHTML = `<div style="padding:24px;text-align:center;opacity:0.4;font-size:12px;">${isSearchResults ? 'No matching sessions.' : 'No archived sessions yet.'}</div>`;
+      return;
+    }
+    listEl.innerHTML = archives.map(a => {
+      const date = a.archivedAt ? new Date(a.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      const model = a.modelId ? `<span style="opacity:0.5;font-size:10px;">${escHtml(a.modelId)}</span>` : '';
+      const proj = a.projectName ? `<span style="opacity:0.5;font-size:10px;">· ${escHtml(a.projectName)}</span>` : '';
+      const msgs = a.messageCount != null ? `<span style="opacity:0.5;font-size:10px;">· ${a.messageCount} lines</span>` : '';
+      const excerpts = (a.excerpts || []).map(ex =>
+        `<div style="font-size:10px;opacity:0.45;font-style:italic;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">…${escHtml(ex)}…</div>`
+      ).join('');
+      return `<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:10px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+          <span style="font-size:12px;font-weight:700;">${escHtml(a.sessionName || a.sessionId)}</span>
+          <span style="font-size:10px;opacity:0.4;">${escHtml(date)}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">${model}${proj}${msgs}</div>
+        ${excerpts}
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <button onclick="archiveViewSession('${escHtmlAttr(a.sessionId)}')" style="font-size:10px;padding:2px 8px;border:1px solid rgba(255,255,255,0.15);border-radius:4px;background:transparent;color:#94a3b8;cursor:pointer;">View</button>
+          <button onclick="archiveReactivate('${escHtmlAttr(a.sessionId)}')" style="font-size:10px;padding:2px 8px;border:1px solid rgba(96,165,250,0.4);border-radius:4px;background:rgba(96,165,250,0.08);color:#60a5fa;cursor:pointer;">Reactivate</button>
+          <button onclick="archiveDelete('${escHtmlAttr(a.sessionId)}')" style="font-size:10px;padding:2px 8px;border:1px solid rgba(239,68,68,0.3);border-radius:4px;background:transparent;color:#f87171;cursor:pointer;">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderArchiveDetail(sessionId, lines) {
+    const listEl = document.getElementById('archive-list-body');
+    const viewEl = document.getElementById('archive-view');
+    if (!viewEl) return;
+    if (!sessionId) { viewEl.style.display = 'none'; if (listEl) listEl.style.display = 'block'; return; }
+    if (listEl) listEl.style.display = 'none';
+    viewEl.style.display = 'flex';
+    _archiveViewSessionId = sessionId;
+    const termEl = document.getElementById('archive-view-term');
+    if (!termEl) return;
+    termEl.innerHTML = '';
+    (lines || []).forEach(l => termEl.appendChild(makeLineEl(l, sessionId)));
+    termEl.scrollTop = termEl.scrollHeight;
+  }
+
+  window.archiveViewSession = function(sessionId) {
+    wsSend({ type: 'get-archive-detail', sessionId });
+  };
+  window.archiveReactivate = function(sessionId) {
+    wsSend({ type: 'reactivate-archive', sessionId });
+    const panel = document.getElementById('archive-panel');
+    if (panel) panel.style.display = 'none';
+  };
+  window.archiveDelete = function(sessionId) {
+    if (!confirm('Permanently delete this archived session? This cannot be undone.')) return;
+    wsSend({ type: 'delete-archive', sessionId });
+  };
+  window.archiveViewBack = function() {
+    renderArchiveDetail(null, null);
+    wsSend({ type: 'get-archives' });
+  };
 
   // ── Stats & mini-cards ────────────────────────────────────────────────────────
   function updateStats() {
@@ -3667,6 +3889,11 @@
   function enterResumeMode(sessionId, model) {
     const s = sessionStore[sessionId];
     if (!s) return;
+    // Forked+linked sessions promote on click instead of entering resume mode
+    if (s.isForked) {
+      wsSend({ type: 'promote-fork', forkSessionId: sessionId });
+      return;
+    }
     resumeTarget = { sessionId, name: s.name, resumeId: s.resumeId, model: model || null };
     document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
     const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
@@ -3849,6 +4076,10 @@
     if (cfg.githubUsername !== undefined) {
       const inp = document.getElementById('settings-github-username');
       if (inp) inp.value = cfg.githubUsername;
+    }
+    if (cfg.defaultForkModel !== undefined) {
+      const inp = document.getElementById('settings-fork-model');
+      if (inp) inp.value = cfg.defaultForkModel;
     }
     if (cfg.openRouterApiKey !== undefined) {
       const inp = document.getElementById('settings-or-key');
@@ -4128,10 +4359,11 @@
     const elevenLabsKey   = document.getElementById('settings-elevenlabs-key')?.value || '';
     const useDirectAnthr  = document.getElementById('settings-use-direct-anthropic')?.checked || false;
     const anthropicModel  = document.getElementById('settings-anthropic-model')?.value?.trim() || 'claude-sonnet-4-6';
+    const defaultForkModel = document.getElementById('settings-fork-model')?.value?.trim() || '';
     applyPromptStyle(promptStyle);
     const cfg = {
       defaultModel: model, promptStyle, sessionTimeout: timeout, obsidianVaultPath: vault,
-      githubUsername: ghUser,
+      githubUsername: ghUser, defaultForkModel,
       openRouterApiKey: orKey, openRouterFloorModel: orFloor,
       openRouterSonnetModel: orSonnet, openRouterOpusModel: orOpus,
       deepSeekEmail: dsEmail, deepSeekPassword: dsPassword, chatModel: dsModel,
@@ -6683,6 +6915,7 @@
         ${pill}
         <span class="cam-name">${escHtml(s.name || 'Untitled Session')}</span>
         <button onclick="camRowPush('${s.id}')" style="background:#3b82f6;color:#fff;">Push to Obsidian</button>
+        <button onclick="camRowArchive('${s.id}')" style="background:#78350f;color:#fcd34d;">Archive</button>
         <button onclick="camRowSkip('${s.id}')" style="background:#374151;color:#d1d5db;">Skip</button>
       </div>`;
     }).join('');
@@ -6703,6 +6936,13 @@
     if (row) row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.textContent = b.textContent === 'Skip' ? 'Skip' : 'Pushing…'; });
     camOnObsidianDone = () => { camOnObsidianDone = null; camMarkDone(sid, '✓ Pushed', '#4ade80'); };
     wsSend({ type: 'obsidian-up', sessionName: s.name, content: (s.lines || []).map(l => l.text).join('\n') });
+  }
+
+  function camRowArchive(sid) {
+    const row = document.getElementById('cam-row-' + sid);
+    if (row) row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+    wsSend({ type: 'archive-session', sessionId: sid });
+    camMarkDone(sid, '📦 Archived', '#fbbf24');
   }
 
   function camRowSkip(sid) {
@@ -6736,6 +6976,7 @@
 
   window.closeAllSessions = closeAllSessions;
   window.camRowPush       = camRowPush;
+  window.camRowArchive    = camRowArchive;
   window.camRowSkip       = camRowSkip;
   window.camCancel        = camCancel;
 
