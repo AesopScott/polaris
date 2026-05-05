@@ -516,10 +516,90 @@ function readJSON(filePath, fallback) {
   }
 }
 
+const CONFIG_ARCHIVE_DIR    = path.join(POLARIS_DIR, 'config-archive');
+const CONFIG_ARCHIVE_MAX    = 200;                  // keep N most recent supersedes
+const CONFIG_ARCHIVE_MAX_MB = 10;                   // also cap at total disk MB
+const CONFIG_ARCHIVE_MAX_BYTES = CONFIG_ARCHIVE_MAX_MB * 1024 * 1024;
+
+// mergeConfigDefensively — shallow-merge top-level fields, but deep-merge the
+// projects array by project name. The default {...current, ...incoming} pattern
+// at the save-config handler clobbers any field the UI doesn't expose: e.g.
+// the Settings panel's project entries don't surface obsidianDir / obsidianSessionsDir
+// / instructions, so a save-config round-trip used to wipe those for every
+// project (the 2026-05-05 incident). Now: each incoming project object is
+// merged on top of the matching current project (by name), preserving fields
+// the form omitted. Project deletion still works (project absent from incoming
+// array → absent from output). Explicit clearing still works (incoming sends
+// the field as null/'' → overrides).
+//
+// Also logs loudly when mcpServers or routines go from populated to empty,
+// since those have been clobbered the same way and we want the next instance
+// to be detectable in real time.
+function mergeConfigDefensively(current, incoming) {
+  const out = { ...current, ...incoming };
+
+  if (Array.isArray(incoming.projects) && Array.isArray(current.projects)) {
+    out.projects = incoming.projects.map(incomingProj => {
+      const currentProj = current.projects.find(p => p.name && p.name === incomingProj.name);
+      if (!currentProj) return incomingProj;
+      return { ...currentProj, ...incomingProj };
+    });
+  }
+
+  const detectClobber = (label, cur, inc) => {
+    if (inc === undefined) return;
+    const curCount = cur ? (Array.isArray(cur) ? cur.length : Object.keys(cur).length) : 0;
+    const incCount = inc ? (Array.isArray(inc) ? inc.length : Object.keys(inc).length) : 0;
+    if (curCount > 0 && incCount === 0) {
+      console.warn(`[save-config] WARN: ${label} going from ${curCount} entries to 0 — likely a partial UI save. Recover from config-archive/ if unintended.`);
+    }
+  };
+  detectClobber('mcpServers', current.mcpServers, incoming.mcpServers);
+  detectClobber('routines',   current.routines,   incoming.routines);
+
+  return out;
+}
+
+function pruneConfigArchive() {
+  let entries;
+  try {
+    entries = fs.readdirSync(CONFIG_ARCHIVE_DIR)
+      .filter(n => /^config\..*\.json$/.test(n))
+      .map(n => {
+        const full = path.join(CONFIG_ARCHIVE_DIR, n);
+        const st = fs.statSync(full);
+        return { full, name: n, mtimeMs: st.mtimeMs, size: st.size };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs); // newest first
+  } catch { return; }
+
+  let totalBytes = entries.reduce((s, e) => s + e.size, 0);
+  for (let i = 0; i < entries.length; i++) {
+    const overCount = i >= CONFIG_ARCHIVE_MAX;
+    const overBytes = totalBytes > CONFIG_ARCHIVE_MAX_BYTES;
+    if (!overCount && !overBytes) break;
+    try { fs.unlinkSync(entries[i].full); totalBytes -= entries[i].size; } catch {}
+  }
+}
+
 function writeJSON(filePath, data) {
-  // Back up config before every write so a corrupt write never loses everything
-  if (filePath === CONFIG_PATH) {
+  // Two-tier backup before every config write:
+  //  1. config.backup.json — single-level "last known good" (legacy, kept).
+  //  2. config-archive/config.<ISO>.json — append-only archive, every
+  //     superseded config preserved up to the size caps below. Required
+  //     after the 2026-05-05 incident where a saveSettings round-trip
+  //     stripped obsidianDir, MCP servers, and routines from every project
+  //     — the single backup had already rotated past the loss point and
+  //     recovery was impossible. Storage cost is trivial (~4 KB per write).
+  // Caps: 200 files OR 10 MB total, whichever fires first. Oldest pruned.
+  if (filePath === CONFIG_PATH && fs.existsSync(CONFIG_PATH)) {
     try { fs.copyFileSync(CONFIG_PATH, CONFIG_PATH.replace('.json', '.backup.json')); } catch {}
+    try {
+      fs.mkdirSync(CONFIG_ARCHIVE_DIR, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      fs.copyFileSync(CONFIG_PATH, path.join(CONFIG_ARCHIVE_DIR, `config.${stamp}.json`));
+      pruneConfigArchive();
+    } catch {}
   }
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
@@ -3546,7 +3626,7 @@ function handleMessage(ws, raw) {
         updates[key] = encryptSecret(updates[key]);
       }
     }
-    writeJSON(CONFIG_PATH, { ...current, ...updates });
+    writeJSON(CONFIG_PATH, mergeConfigDefensively(current, updates));
     sendTo(ws, { type: 'config-saved' });
     return;
   }
