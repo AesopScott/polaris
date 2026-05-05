@@ -1466,7 +1466,32 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
   });
 }
 
-// â”€â”€ Message history persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tool display label --------------------------------------------------
+
+function toolDisplayLabel(name, input = {}) {
+  const truncate = (s, n = 60) => (s && s.length > n ? s.slice(0, n) + '...' : s || '');
+  if (name.startsWith('mcp__')) {
+    const parts = name.split('__');
+    const server = parts[1] || '';
+    const tool = parts.slice(2).join('__');
+    return `[MCP:${server}] ${tool}`;
+  }
+  switch (name) {
+    case 'Read':       return `Read  ${truncate(input.file_path || input.path || '')}`;
+    case 'Write':      return `Write  ${truncate(input.file_path || '')}`;
+    case 'Edit':       return `Edit  ${truncate(input.file_path || '')}`;
+    case 'Glob':       return `Glob  ${truncate(input.pattern || '')}`;
+    case 'Grep':       return `Grep  ${truncate(input.pattern || '')}`;
+    case 'Bash':       return `Bash  ${truncate(input.command || '', 80)}`;
+    case 'PowerShell': return `PS  ${truncate(input.command || '', 80)}`;
+    case 'WebFetch':   return `Fetch  ${truncate(input.url || '')}`;
+    case 'WebSearch':  return `Search  ${truncate(input.query || '')}`;
+    case 'TodoWrite':  return `Todo  (${(input.todos || []).length} items)`;
+    default:           return name;
+  }
+}
+
+// -- Message history persistence -----------------------------------------
 
 function saveSessionMessages(sessionId) {
   try {
@@ -1582,7 +1607,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
       const callId = assistantMsg.tool_calls.find(t => t.function.name === tc.name)?.id || tc.id;
       let toolInput;
       try { toolInput = JSON.parse(tc.arguments); } catch { toolInput = {}; }
-      broadcast({ type: 'line', sessionId, text: `âš™ ${tc.name}`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `⚙ ${toolDisplayLabel(tc.name, toolInput)}`, role: 'system' });
       dlog('TOOL', `${tc.name} ${tc.arguments.slice(0,200)}`);
       let toolResult;
       try { toolResult = await executeDirectTool(tc.name, toolInput, workDir, sessionId); }
