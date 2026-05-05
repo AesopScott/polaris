@@ -949,10 +949,6 @@
           <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
-        <div style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:6px;">
-          <button id="btn-docs" class="hbtn btn-tracking" onclick="openDocs()" data-tooltip="Open the Polaris user guide" style="width:120px;"><span class="lbl">Docs</span></button>
-          <button id="btn-walkthrough" class="hbtn" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris" style="width:120px;background:linear-gradient(145deg,#1b1040,#0d0d1f);box-shadow:6px 6px 12px rgba(0,0,0,0.6),-3px -3px 8px rgba(100,60,180,0.08),inset 0 1px 0 rgba(255,255,255,0.04);"><span class="lbl" style="background:linear-gradient(135deg,#a78bfa 0%,#60a5fa 50%,#34d399 100%);-webkit-background-clip:text;background-clip:text;color:transparent;animation:none;">Walkthrough</span></button>
-        </div>
       </div>
     </div>
 
@@ -971,25 +967,34 @@
     <!-- Right: Button Grid -->
     <div class="header-buttons">
       <div class="btn-grid">
-        <button class="hbtn btn-gold" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
-        <button class="hbtn btn-tracking" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
-        <button id="btn-balance" class="hbtn btn-danger" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
-        <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
+        <!-- Row 1 -->
+        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
+        <button class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
+        <!-- Row 2 -->
         <button class="hbtn btn-gold" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
-        <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
-        <button class="hbtn btn-danger" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note"><span class="lbl">Obsidian</span></button>
-        <button class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
+        <button class="hbtn btn-tracking" data-tooltip="Cross-check sessions against project requirements"><span class="lbl">Cross ✓</span></button>
+        <button class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
+        <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
-        <button id="btn-connect" class="hbtn btn-config" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
-        <button class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
+        <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Walkthrough</span></button>
+        <!-- Row 3 -->
+        <button class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
         <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Versions</span></button>
+        <button class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
+        <button id="btn-connect" class="hbtn btn-systems" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
+        <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
+        <!-- Row 4 -->
+        <button class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
+        <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
+        <button class="hbtn btn-danger" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note"><span class="lbl">Obsidian</span></button>
         <button class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
-        <button class="hbtn btn-systems" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
+        <button id="btn-balance" class="hbtn btn-systems" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
-        <button class="hbtn btn-tracking" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
       </div>
     </div>
 
@@ -7281,10 +7286,10 @@
     // Header buttons
     document.querySelectorAll('.hbtn').forEach(btn => {
       const label = btn.textContent.trim();
-      if (label === 'Reload UI')    btn.addEventListener('click', () => wsSend({ type: 'reload-ui' }));
+      if (label === 'Reload')       btn.addEventListener('click', () => wsSend({ type: 'reload-ui' }));
       if (label === 'Settings')     btn.addEventListener('click', openSettings);
       if (label === 'Routines')     btn.addEventListener('click', openRoutines);
-      if (label === '$ Balance')    btn.addEventListener('click', openApiBalance);
+      if (label === 'Balance')      btn.addEventListener('click', openApiBalance);
       if (label === 'Connect')      btn.addEventListener('click', openConnections);
       if (label === 'Obsidian')     btn.addEventListener('click', obsidianUp);
       if (label === 'Restart')      btn.addEventListener('click', doRestart);
