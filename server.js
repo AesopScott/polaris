@@ -1111,40 +1111,16 @@ const DIRECT_TOOLS = [
 function buildDirectSystemPrompt(config, workDir) {
   const layers = [BASE_SYSTEM_PROMPT];
 
-  // Layer 1b: Project file map — injected immediately so model sees it at top of context
-  // Reads FileMap.md from the project's obsidianDir; skip silently if not present
-  if (workDir) {
-    const matchedForMap = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
-    if (matchedForMap?.obsidianDir) {
-      const fileMapPath = path.join(matchedForMap.obsidianDir, 'FileMap.md');
-      try {
-        const fileMap = fs.readFileSync(fileMapPath, 'utf8');
-        layers.push('--- Project File Map (use this to locate files — never ask the user for paths) ---\n' + fileMap);
-      } catch {}
-    }
-  }
-
-  // Layer 2: Global user rules (~/.claude/CLAUDE.md â€” coding style, git workflow, etc.)
-  try { layers.push('--- Global Rules ---\n' + fs.readFileSync(USER_CLAUDE_PATH, 'utf8')); } catch {}
-
-  // Layer 3: Global user memory (~/.claude/MEMORY.md)
-  try { layers.push('--- Global Memory ---\n' + fs.readFileSync(GLOBAL_MEMORY_PATH, 'utf8')); } catch {}
-
-  // Layer 4: Project CLAUDE.md ({workDir}/CLAUDE.md â€” project-specific rules)
+  // Layer 2: Project CLAUDE.md ({workDir}/CLAUDE.md)
   if (workDir) {
     const projectClaudeMd = path.join(workDir, 'CLAUDE.md');
     try { layers.push('--- Project Rules ---\n' + fs.readFileSync(projectClaudeMd, 'utf8')); } catch {}
-
-    // Layer 5: Project MEMORY.md ({workDir}/MEMORY.md)
-    const projectMemoryMd = path.join(workDir, 'MEMORY.md');
-    try { layers.push('--- Project Memory ---\n' + fs.readFileSync(projectMemoryMd, 'utf8')); } catch {}
   }
 
-  // Layer 6: Project config — identity, paths, Obsidian knowledge base
+  // Layer 3: Project config identity and paths
   if (workDir) {
     const matched = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
     if (matched) {
-      // 6a: Project identity and authoritative paths
       const configLines = [
         `Project name: ${matched.name}`,
         `Working directory: ${matched.workDir}`,
@@ -1157,24 +1133,7 @@ function buildDirectSystemPrompt(config, workDir) {
       ].filter(Boolean).join('\n');
       layers.push('--- Project Configuration ---\n' + configLines);
 
-      // 6b: Obsidian knowledge base — read all 8 numbered files in order
-      if (matched.obsidianDir && fs.existsSync(matched.obsidianDir)) {
-        const obsFiles = fs.readdirSync(matched.obsidianDir)
-          .filter(f => /^\d+-.*\.md$/i.test(f))
-          .sort((a, b) => parseInt(a) - parseInt(b));
-        const obsChunks = [];
-        for (const f of obsFiles) {
-          try {
-            const content = fs.readFileSync(path.join(matched.obsidianDir, f), 'utf8');
-            obsChunks.push(`### ${f}\n${content}`);
-          } catch {}
-        }
-        if (obsChunks.length > 0) {
-          layers.push('--- Project Knowledge Base ---\n' + obsChunks.join('\n\n'));
-        }
-      }
-
-      // 6c: Obsidian write requirement
+      // Obsidian write requirement
       if (matched.obsidianSessionsDir) {
         layers.push(
           `--- Obsidian Writing Requirement ---\n` +
@@ -1185,23 +1144,10 @@ function buildDirectSystemPrompt(config, workDir) {
         );
       }
 
-      // 6d: Custom instructions from Projects panel
+      // Custom instructions from Projects panel
       if (matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
     }
   }
-
-  // Layer 7: Auto-memory from .claude/projects/{key}/memory/MEMORY.md
-  try {
-    const projectKey = (workDir || '')
-      .replace(/^([A-Za-z]):/, (_, d) => d.toLowerCase() + '-')
-      .replace(/[/\\]/g, '-');
-    const memPath = path.join(os.homedir(), '.claude', 'projects', projectKey, 'memory', 'MEMORY.md');
-    layers.push('--- Project Auto-Memory ---\n' + fs.readFileSync(memPath, 'utf8'));
-  } catch {}
-
-  // Layer 8: Protected patterns
-  const patterns = config.protectedPatterns || ['*.md', '*.json'];
-  layers.push(`Protected file patterns â€” require explicit user approval before modifying: ${patterns.join(', ')}`);
 
   return layers.join('\n\n');
 }
