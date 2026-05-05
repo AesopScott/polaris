@@ -2157,6 +2157,17 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'rename-session') {
+    const s = sessions.get(msg.sessionId);
+    const newName = (msg.newName || '').trim();
+    if (s && newName) {
+      s.name = newName;
+      saveSessions();
+      broadcast({ type: 'session-renamed', sessionId: msg.sessionId, newName });
+    }
+    return;
+  }
+
   if (type === 'close-session') {
     const session = sessions.get(msg.sessionId);
     if (session) {

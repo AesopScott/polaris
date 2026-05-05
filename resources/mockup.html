@@ -290,6 +290,7 @@
   }
   .card-title { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; color: var(--card-title-color, #60a5fa); }
   .card-title.selected-title { font-weight: 900; }
+  .card-title-rename-input { background: rgba(0,0,0,0.55); border: 1px solid #3b82f6; border-radius: 4px; color: #93c5fd; font-size: 12px; font-weight: 700; font-family: inherit; padding: 1px 5px; width: 130px; outline: none; caret-color: #60a5fa; }
   .status-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
   .card-btns { display: flex; gap: 4px; }
   .card-btn { width: 22px; height: 22px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
@@ -2918,6 +2919,15 @@
         break;
       }
 
+      case 'session-renamed': {
+        const sr = sessionStore[msg.sessionId];
+        if (sr) sr.name = msg.newName;
+        const titleTextEl = document.querySelector(`[data-sid="${msg.sessionId}"] .card-title-text`);
+        if (titleTextEl) titleTextEl.textContent = msg.newName;
+        pushDebugLog(`[rename] ${msg.sessionId} → "${msg.newName}"`);
+        break;
+      }
+
       case 'dir-listing':
         if (msg.replyTag === 'monaco-panel') mpHandleDirListing(msg);
         else renderFmListing(msg.dirPath, msg.items);
@@ -3277,7 +3287,7 @@
       <div class="card-header">
         <span class="card-drag-handle" data-drag-handle title="Drag to reorder">⠿⠿</span>
         ${headerChip}
-        <div class="card-title" style="${titleStyle}">${escHtml(s.name || 'Session')}</div>
+        <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
           <span class="status-badge ${statusClass}">${statusLabel}</span>
           <div class="card-btns">
@@ -3363,6 +3373,12 @@
       const sel = window.getSelection();
       if (sel && sel.toString().length > 0) return;
       enterResumeMode(s.id, null);
+    });
+
+    el.querySelector('.card-title').addEventListener('contextmenu', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      startCardRename(s.id, el);
     });
 
     const dragHandle = el.querySelector('[data-drag-handle]');
@@ -3621,6 +3637,46 @@
   }
 
   // ── Fork helpers ──────────────────────────────────────────────────────────────
+  function startCardRename(sessionId, cardEl) {
+    const s = sessionStore[sessionId];
+    if (!s) return;
+    const titleEl = cardEl.querySelector('.card-title-text');
+    if (!titleEl || cardEl.querySelector('.card-title-rename-input')) return;
+    const original = s.name || 'Session';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'card-title-rename-input';
+    input.value = original;
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function commit() {
+      const newName = input.value.trim();
+      if (!newName) { cancel(); return; }
+      const span = document.createElement('span');
+      span.className = 'card-title-text';
+      span.textContent = newName;
+      input.replaceWith(span);
+      if (newName !== original) {
+        wsSend({ type: 'rename-session', sessionId, newName });
+      }
+    }
+    function cancel() {
+      const span = document.createElement('span');
+      span.className = 'card-title-text';
+      span.textContent = original;
+      input.replaceWith(span);
+    }
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }
+      else e.stopPropagation();
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('click', e => e.stopPropagation());
+  }
+
   function updateForkButton(sessionId, active, promoted) {
     const grid = getActiveGrid();
     if (!grid) return;
