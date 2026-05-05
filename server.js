@@ -1107,6 +1107,19 @@ const DIRECT_TOOLS = [
 function buildDirectSystemPrompt(config, workDir) {
   const layers = [BASE_SYSTEM_PROMPT];
 
+  // Layer 1b: Project file map — injected immediately so model sees it at top of context
+  // Reads FileMap.md from the project's obsidianDir; skip silently if not present
+  if (workDir) {
+    const matchedForMap = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
+    if (matchedForMap?.obsidianDir) {
+      const fileMapPath = path.join(matchedForMap.obsidianDir, 'FileMap.md');
+      try {
+        const fileMap = fs.readFileSync(fileMapPath, 'utf8');
+        layers.push('--- Project File Map (use this to locate files — never ask the user for paths) ---\n' + fileMap);
+      } catch {}
+    }
+  }
+
   // Layer 2: Global user rules (~/.claude/CLAUDE.md â€” coding style, git workflow, etc.)
   try { layers.push('--- Global Rules ---\n' + fs.readFileSync(USER_CLAUDE_PATH, 'utf8')); } catch {}
 
