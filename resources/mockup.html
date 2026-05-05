@@ -1276,6 +1276,11 @@
           <input type="password" id="settings-elevenlabs-key" class="panel-input" placeholder="Paste key for voice walkthrough" style="width:100%;" />
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Powers voice narration in the walkthrough. Get a key at <a href="#" onclick="openExternal('https://elevenlabs.io'); return false;" style="color:var(--accent);">elevenlabs.io</a></div>
         </div>
+        <div class="panel-section">
+          <div class="context-label accent-label">BRAVE SEARCH API KEY</div>
+          <input type="password" id="settings-brave-key" class="panel-input" placeholder="BSA…" style="width:100%;" />
+          <div style="font-size:10px;opacity:0.5;margin-top:4px;">Enables full web search in agent sessions. Free tier: 2,000 queries/month. Get a key at <a href="#" onclick="openExternal('https://brave.com/search/api/'); return false;" style="color:var(--accent);">brave.com/search/api</a></div>
+        </div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">DEEPSEEK (CHAT — web login)</div>
@@ -4406,6 +4411,10 @@
       const inp = document.getElementById('settings-elevenlabs-key');
       if (inp) inp.value = cfg.elevenLabsApiKey;
     }
+    if (cfg.braveSearchApiKey !== undefined) {
+      const inp = document.getElementById('settings-brave-key');
+      if (inp) inp.value = cfg.braveSearchApiKey;
+    }
 
     // Restore datalist entries
     if (cfg.savedWorkDirs) {
@@ -4637,6 +4646,7 @@
     const anthropicKey    = document.getElementById('settings-anthropic-key')?.value || '';
     const openAiKey       = document.getElementById('settings-openai-key')?.value || '';
     const elevenLabsKey   = document.getElementById('settings-elevenlabs-key')?.value || '';
+    const braveKey        = document.getElementById('settings-brave-key')?.value || '';
     const useDirectAnthr  = document.getElementById('settings-use-direct-anthropic')?.checked || false;
     const anthropicModel  = document.getElementById('settings-anthropic-model')?.value?.trim() || 'claude-sonnet-4-6';
     const defaultForkModel = document.getElementById('settings-fork-model')?.value?.trim() || '';
@@ -4649,7 +4659,7 @@
       openRouterFloorProvider: orFloorProvider, openRouterSonnetProvider: orSonnetProvider, openRouterOpusProvider: orOpusProvider,
       deepSeekEmail: dsEmail, deepSeekPassword: dsPassword, chatModel: dsModel,
       deepSeekApiKey: dsApiKey, deepSeekApiModel: dsApiModel,
-      anthropicApiKey: anthropicKey, openAiApiKey: openAiKey, elevenLabsApiKey: elevenLabsKey,
+      anthropicApiKey: anthropicKey, openAiApiKey: openAiKey, elevenLabsApiKey: elevenLabsKey, braveSearchApiKey: braveKey,
       useDirectAnthropic: useDirectAnthr, anthropicModel,
     };
     wsSend({ type: 'save-config', config: cfg });
