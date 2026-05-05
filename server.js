@@ -28,6 +28,8 @@ const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
+const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
+const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
 // â”€â”€â”€ App-level secrets (gitignored, baked into build) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let APP_SECRETS = {};
@@ -454,6 +456,7 @@ function watchGlobalFiles() {
 
 // â”€â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const sessions = new Map();   // sessionId â†’ session object
+const forkMap  = new Map();   // primarySessionId â†’ forkSessionId
 let   wss      = null;
 
 // â”€â”€â”€ Session persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2084,6 +2087,17 @@ function handleMessage(ws, raw) {
       spawnChat(sessionId, prompt, readConfig());
     } else {
       runDirectAgent(sessionId, prompt, session.workDir);
+      // Mirror prompt to linked fork session
+      const forkId = forkMap.get(sessionId);
+      if (forkId) {
+        const forkSession = sessions.get(forkId);
+        if (forkSession) {
+          forkSession.status = 'running';
+          broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
+          broadcast({ type: 'line', sessionId: forkId, text: displayPrompt || prompt, role: 'user' });
+          runDirectAgent(forkId, prompt, forkSession.workDir);
+        }
+      }
     }
     return;
   }
@@ -3091,9 +3105,161 @@ function handleMessage(ws, raw) {
     }
     return;
   }
+
+  // -- Archive handlers -------------------------------------------------
+
+  if (type === 'archive-session') {
+    const { sessionId } = msg;
+    const s = sessions.get(sessionId);
+    if (!s) return sendTo(ws, { type: 'archive-error', error: 'Session not found' });
+    s.aborted = true;
+    if (s.proc && !s.proc.killed) s.proc.kill();
+    if (s.req) { try { s.req.destroy(); } catch {} }
+    const archiveData = {
+      ...serializeSession(s),
+      messages: s.messages || [],
+      archivedAt: new Date().toISOString(),
+    };
+    fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+    fs.writeFileSync(path.join(ARCHIVES_DIR, `${sessionId}.json`), JSON.stringify(archiveData, null, 2), 'utf8');
+    const index = readJSON(ARCHIVES_INDEX_PATH, []);
+    const entry = {
+      sessionId, sessionName: s.name, modelId: s.model,
+      projectDir: s.workDir, projectName: s.projectName,
+      archivedAt: archiveData.archivedAt,
+      messageCount: (s.lines || []).length,
+    };
+    const existingIdx = index.findIndex(e => e.sessionId === sessionId);
+    if (existingIdx >= 0) index[existingIdx] = entry; else index.unshift(entry);
+    writeJSON(ARCHIVES_INDEX_PATH, index);
+    forkMap.delete(sessionId);
+    sessions.delete(sessionId);
+    saveSessions();
+    broadcast({ type: 'archive-complete', sessionId });
+    return;
+  }
+
+  if (type === 'get-archives') {
+    sendTo(ws, { type: 'archives-list', archives: readJSON(ARCHIVES_INDEX_PATH, []) });
+    return;
+  }
+
+  if (type === 'get-archive-detail') {
+    const { sessionId } = msg;
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(ARCHIVES_DIR, `${sessionId}.json`), 'utf8'));
+      sendTo(ws, { type: 'archive-detail', sessionId, lines: data.lines || [] });
+    } catch { sendTo(ws, { type: 'archive-error', error: 'Archive not found' }); }
+    return;
+  }
+
+  if (type === 'reactivate-archive') {
+    const { sessionId, projectDir } = msg;
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(ARCHIVES_DIR, `${sessionId}.json`), 'utf8'));
+      const workDir = projectDir || data.workDir || CHAT_DIR;
+      const session = { ...data, workDir, status: 'done', proc: null, watcher: null, timeout: null, lines: data.lines || [] };
+      sessions.set(sessionId, session);
+      saveSessions();
+      const index = readJSON(ARCHIVES_INDEX_PATH, []);
+      writeJSON(ARCHIVES_INDEX_PATH, index.filter(e => e.sessionId !== sessionId));
+      try { fs.unlinkSync(path.join(ARCHIVES_DIR, `${sessionId}.json`)); } catch {}
+      broadcast({ type: 'archive-reactivated', session: serializeSession(session) });
+    } catch (e) { sendTo(ws, { type: 'archive-error', error: `Reactivate failed: ${e.message}` }); }
+    return;
+  }
+
+  if (type === 'delete-archive') {
+    const { sessionId } = msg;
+    try { fs.unlinkSync(path.join(ARCHIVES_DIR, `${sessionId}.json`)); } catch {}
+    const index = readJSON(ARCHIVES_INDEX_PATH, []);
+    writeJSON(ARCHIVES_INDEX_PATH, index.filter(e => e.sessionId !== sessionId));
+    sendTo(ws, { type: 'archives-list', archives: readJSON(ARCHIVES_INDEX_PATH, []) });
+    return;
+  }
+
+  if (type === 'search-archives') {
+    const { query } = msg;
+    if (!query || !query.trim()) {
+      sendTo(ws, { type: 'archives-list', archives: readJSON(ARCHIVES_INDEX_PATH, []) });
+      return;
+    }
+    const q = query.toLowerCase();
+    const index = readJSON(ARCHIVES_INDEX_PATH, []);
+    const results = [];
+    for (const entry of index) {
+      const nameMatch = (entry.sessionName || '').toLowerCase().includes(q);
+      const projMatch = (entry.projectName || '').toLowerCase().includes(q);
+      const excerpts = [];
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(ARCHIVES_DIR, `${entry.sessionId}.json`), 'utf8'));
+        for (const line of (data.lines || [])) {
+          const text = (line.text || '').toLowerCase();
+          if (text.includes(q)) {
+            const idx = text.indexOf(q);
+            const start = Math.max(0, idx - 80);
+            const end = Math.min(line.text.length, idx + q.length + 80);
+            excerpts.push(line.text.slice(start, end));
+            if (excerpts.length >= 3) break;
+          }
+        }
+      } catch {}
+      if (nameMatch || projMatch || excerpts.length > 0) results.push({ ...entry, excerpts });
+    }
+    sendTo(ws, { type: 'archive-search-results', results });
+    return;
+  }
+
+  // -- Fork handlers ----------------------------------------------------
+
+  if (type === 'start-fork') {
+    const { primarySessionId, forkModelId } = msg;
+    const primary = sessions.get(primarySessionId);
+    if (!primary) return sendTo(ws, { type: 'archive-error', error: 'Session not found' });
+    const forkId = `fork_${Date.now()}`;
+    const forkName = `${primary.name} ⑂ Fork`;
+    const config = readConfig();
+    const model = forkModelId || config.defaultForkModel || config.openRouterFloorModel || 'openrouter/auto';
+    sessions.set(forkId, {
+      id: forkId, name: forkName,
+      workDir: primary.workDir, projectName: primary.projectName,
+      model, isChat: primary.isChat, isForked: true, primarySessionId,
+      status: 'done', startAt: Date.now(),
+      proc: null, watcher: null, timeout: null,
+      lines: [], lastPrompt: null, claudeSessionId: null,
+    });
+    forkMap.set(primarySessionId, forkId);
+    saveSessions();
+    broadcast({ type: 'session-created', sessionId: forkId, name: forkName, workDir: primary.workDir, projectName: primary.projectName, model, isForked: true, primarySessionId });
+    broadcast({ type: 'fork-started', primarySessionId, forkSessionId: forkId });
+    return;
+  }
+
+  if (type === 'stop-fork') {
+    const { primarySessionId } = msg;
+    const forkId = forkMap.get(primarySessionId);
+    forkMap.delete(primarySessionId);
+    broadcast({ type: 'fork-stopped', primarySessionId, forkSessionId: forkId });
+    return;
+  }
+
+  if (type === 'promote-fork') {
+    const { forkSessionId } = msg;
+    const s = sessions.get(forkSessionId);
+    if (!s) return;
+    const primaryId = s.primarySessionId;
+    forkMap.delete(primaryId);
+    s.isForked = false;
+    s.primarySessionId = null;
+    saveSessions();
+    broadcast({ type: 'fork-promoted', primarySessionId: primaryId, forkSessionId });
+    return;
+  }
 }
 
 // â”€â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
   migrateSecretsToEncrypted();
