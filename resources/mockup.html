@@ -2976,6 +2976,23 @@
         if (el) { el.style.display='block'; el.style.color=msg.ok?'#4ade80':'#f87171'; el.textContent=(msg.ok?'✓ ':'✗ ')+msg.message; }
         pushDebugLog(`[model-test] ${msg.tier}: ${msg.message}`);
         if (msg.detail) pushDebugLog(`[model-test] ${msg.tier} raw response: ${msg.detail}`);
+        // Save every successful manual test to Obsidian too
+        if (msg.ok) {
+          const tierModelMap = { floor: 'settings-or-floor', balanced: 'settings-or-sonnet', power: 'settings-or-opus', chat: 'settings-ds-model' };
+          const modelId = document.getElementById(tierModelMap[msg.tier] || '')?.value?.trim();
+          const provId  = document.getElementById(`settings-or-${msg.tier}-provider`)?.value?.trim() || null;
+          if (modelId) {
+            const ttftM = msg.message.match(/TTFT:\s*([\d.]+)s/);
+            const tpsM  = msg.message.match(/([\d]+)\s*tok\/s/);
+            const tokM  = msg.message.match(/([\d]+)\s*tokens/);
+            const totM  = msg.message.match(/([\d.]+)s\s*total/);
+            wsSend({ type: 'benchmark-save-result', model: modelId, provider: provId,
+              ttft: ttftM ? parseFloat(ttftM[1]) * 1000 : 0,
+              tps: tpsM ? parseInt(tpsM[1]) : 0,
+              tokens: tokM ? parseInt(tokM[1]) : 0,
+              totalMs: totM ? parseFloat(totM[1]) * 1000 : 0 });
+          }
+        }
         break;
       }
 
