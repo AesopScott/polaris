@@ -1757,7 +1757,7 @@
     <span class="text-muted" style="font-size:10px;font-weight:400;">· No entries yet</span>
     <span class="debug-chevron" style="margin-left:auto;font-size:10px;opacity:0.5;">▲ expand</span>
   </div>
-  <div class="debug-panel">
+  <div class="debug-panel" style="margin-bottom:20px;">
     <div class="debug-panel-inner"></div>
   </div>
 
@@ -2208,6 +2208,13 @@
     if (inputs[1]) inputs[1].value = proj ? proj.repo    : '';
     // Auto-switch to Code mode when a real project is selected
     if (proj) activateMode(bar, 'code');
+  }
+
+  function buildCodeHint() {
+    const floor    = currentConfig.openRouterFloorModel   || 'openrouter/auto';
+    const balanced = currentConfig.openRouterSonnetModel  || 'openrouter/auto';
+    const power    = currentConfig.openRouterOpusModel    || 'openrouter/auto';
+    return `Direct API · ${floor} (Floor) · ${balanced} (Balanced) · ${power} (Power)`;
   }
 
   function activateMode(bar, mode) {
@@ -4114,12 +4121,7 @@
     sel.style.color = c.fg;
   }
 
-  function buildCodeHint() {
-    const floor    = currentConfig.openRouterFloorModel   || 'openrouter/auto';
-    const balanced = currentConfig.openRouterSonnetModel  || 'openrouter/auto';
-    const power    = currentConfig.openRouterOpusModel    || 'openrouter/auto';
-    return `Claude CLI · OpenRouter   ${floor} (Floor) · ${balanced} (Balanced) · ${power} (Power)`;
-  }
+
 
   function updateTokenCount(el) {
     if (!el) return;

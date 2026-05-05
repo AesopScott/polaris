@@ -1847,8 +1847,11 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     // Detect empty response — model returned neither text nor tool calls
     const hasContent = result.textAccum || (result.toolCalls && result.toolCalls.length > 0);
     if (!hasContent) {
-      dlog('EMPTY_RESPONSE', `finishReason=${result.finishReason} rawSample=${(result.rawSample || '').slice(0, 300)}`);
-      broadcast({ type: 'line', sessionId, text: `Model returned an empty response (finish_reason=${result.finishReason || 'none'}). The model may not support this request format. Check the diag log for raw SSE details.`, role: 'error' });
+      dlog('EMPTY_RESPONSE', `finishReason=${result.finishReason} rawSample=${(result.rawSample || '').slice(0, 600)}`);
+      const reason = result.finishReason === 'error'
+        ? `The model rejected the request (finish_reason=error). This model may not support tool use or the request format. Try a different model.`
+        : `Model returned an empty response (finish_reason=${result.finishReason || 'none'}). Check the diag log for raw SSE details.`;
+      broadcast({ type: 'line', sessionId, text: reason, role: 'error' });
       broadcast({ type: 'session-status', sessionId, status: 'error' });
       const s = sessions.get(sessionId); if (s) { s.status = 'error'; s.endAt = Date.now(); }
       return;
