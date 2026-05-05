@@ -1000,7 +1000,13 @@ function buildDirectSystemPrompt(config, workDir) {
     try { layers.push('--- Project Memory ---\n' + fs.readFileSync(projectMemoryMd, 'utf8')); } catch {}
   }
 
-  // Layer 6: Auto-memory from .claude/projects/{key}/memory/MEMORY.md
+  // Layer 6: Per-project instructions from Polaris config (Projects panel)
+  if (workDir) {
+    const matched = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
+    if (matched && matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
+  }
+
+  // Layer 7: Auto-memory from .claude/projects/{key}/memory/MEMORY.md
   try {
     const projectKey = (workDir || '')
       .replace(/^([A-Za-z]):/, (_, d) => d.toLowerCase() + '-')
@@ -1009,7 +1015,7 @@ function buildDirectSystemPrompt(config, workDir) {
     layers.push('--- Project Auto-Memory ---\n' + fs.readFileSync(memPath, 'utf8'));
   } catch {}
 
-  // Layer 7: Protected patterns
+  // Layer 8: Protected patterns
   const patterns = config.protectedPatterns || ['*.md'];
   layers.push(`Protected file patterns — require explicit user approval before modifying: ${patterns.join(', ')}`);
 

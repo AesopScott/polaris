@@ -2191,12 +2191,15 @@
       const workInp  = tr.querySelector('[data-field="workDir"]');
       const repoInp  = tr.querySelector('[data-field="repo"]');
       const colorInp = tr.querySelector('[data-field="color"]');
-      const idx = parseInt(nameInp?.dataset.idx);
+      const instrInp = tr.querySelector('[data-field="instructions"]');
+      const idxEl    = nameInp || instrInp; // main row has nameInp; instructions row has instrInp
+      const idx = parseInt(idxEl?.dataset.idx);
       if (isNaN(idx) || !projectsList[idx]) return;
-      if (nameInp)  projectsList[idx].name    = nameInp.value;
-      if (workInp)  projectsList[idx].workDir = workInp.value;
-      if (repoInp)  projectsList[idx].repo    = repoInp.value;
-      if (colorInp) projectsList[idx].color   = colorInp.value;
+      if (nameInp)  projectsList[idx].name         = nameInp.value;
+      if (workInp)  projectsList[idx].workDir       = workInp.value;
+      if (repoInp)  projectsList[idx].repo          = repoInp.value;
+      if (colorInp) projectsList[idx].color         = colorInp.value;
+      if (instrInp) projectsList[idx].instructions  = instrInp.value;
     });
   }
 
@@ -2252,6 +2255,15 @@
           </div>
         </td>`;
       tbody.appendChild(tr);
+
+      // Instructions row — full-width textarea injected into agent system prompt
+      const instrRow = document.createElement('tr');
+      instrRow.innerHTML = `<td colspan="4" style="padding:0 6px 8px 6px;">
+        <textarea data-field="instructions" data-idx="${i}"
+          placeholder="Custom instructions for this project (optional — injected into agent system prompt)…"
+          style="width:100%;height:48px;box-sizing:border-box;background:#0d1117;color:#c9d1d9;border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px;font-family:inherit;resize:vertical;"
+        >${escHtmlAttr(p.instructions || '')}</textarea></td>`;
+      tbody.appendChild(instrRow);
     });
   }
 
@@ -2667,6 +2679,8 @@
         if (msg.claudeSessionId) s.resumeId = msg.claudeSessionId;
         if (msg.usage) {
           s.usage = msg.usage;
+          const turnCost = estimateCost(msg.usage.input_tokens || 0, msg.usage.output_tokens || 0, s.model);
+          s.totalCost = (s.totalCost || 0) + turnCost;
           updateContextBar(msg.sessionId, msg.usage);
           accumulateUsage(s.model || resolveModel('balanced'), msg.usage);
           if (msg.routineTag) addRoutineTokens(msg.routineTag, msg.usage);
@@ -3204,7 +3218,7 @@
       ${s.isChat ? '' : `<div class="context-bar-wrap">
         <div class="context-label-bar">
           <span>Context Window</span>
-          <span><span data-ctx-tokens>0</span> tokens · <span data-ctx-pct>0%</span></span>
+          <span><span data-ctx-tokens>0</span> tokens · <span data-ctx-pct>0%</span><span data-ctx-cost style="color:#f59e0b;"></span></span>
         </div>
         <div class="context-bar"><div class="context-fill" data-ctx-fill style="width:0%"></div></div>
       </div>`}
@@ -3395,6 +3409,9 @@
     if (fill) { fill.style.width = pct + '%'; fill.className = 'context-fill' + (pct > 75 ? ' high' : ''); }
     if (pctEl) pctEl.textContent = pct + '%';
     if (tokEl) tokEl.textContent = `${formatTokens(total)} / ${formatTokens(limit)}`;
+    const costEl = card.querySelector('[data-ctx-cost]');
+    const totalCost = (sessionStore[sessionId] || {}).totalCost || 0;
+    if (costEl) costEl.textContent = totalCost > 0 ? ` · ~$${totalCost.toFixed(4)}` : '';
   }
 
   // ── Card actions ──────────────────────────────────────────────────────────────
@@ -4234,9 +4251,24 @@
     routineTokens[tag].output += (usage.output_tokens || 0);
   }
 
-  function estimateCost(inp, out) {
-    // Approximate Sonnet 4.6 pricing: $3/MTok in, $15/MTok out
-    return (inp * 0.000003) + (out * 0.000015);
+  const MODEL_COSTS = {
+    'gemini-2.5-flash':  { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60 per MTok
+    'gemini-2.5-pro':    { in: 1.25e-6, out: 1e-5   },  // $1.25 / $10
+    'gemini-2.0-flash':  { in: 1e-7,    out: 4e-7   },  // $0.10 / $0.40
+    'deepseek-chat':     { in: 2.7e-7,  out: 1.1e-6 },  // $0.27 / $1.10
+    'deepseek-r1':       { in: 5.5e-7,  out: 2.19e-6},  // $0.55 / $2.19
+    'claude-haiku':      { in: 8e-7,    out: 4e-6   },  // $0.80 / $4
+    'claude-sonnet':     { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
+    'claude-3-5-sonnet': { in: 3e-6,    out: 1.5e-5 },
+    'claude-opus':       { in: 1.5e-5,  out: 7.5e-5 },  // $15 / $75
+    'gpt-4o-mini':       { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60
+    'gpt-4o':            { in: 2.5e-6,  out: 1e-5   },  // $2.50 / $10
+  };
+  function estimateCost(inp, out, model) {
+    const m = (model || '').toLowerCase();
+    const key = Object.keys(MODEL_COSTS).find(k => m.includes(k));
+    const rates = key ? MODEL_COSTS[key] : { in: 3e-6, out: 1.5e-5 }; // fallback: Sonnet
+    return (inp * rates.in) + (out * rates.out);
   }
 
   const TRIGGER_EVENT_LABELS = { startup: 'On Startup', 'session-done': 'Session Done', 'session-error': 'Session Error', 'app-update': 'App Updated' };
