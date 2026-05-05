@@ -1133,6 +1133,15 @@ function buildDirectSystemPrompt(config, workDir) {
       ].filter(Boolean).join('\n');
       layers.push('--- Project Configuration ---\n' + configLines);
 
+      // Obsidian session startup requirement
+      if (matched.obsidianDir) {
+        layers.push(
+          `--- Obsidian Session Startup (MANDATORY) ---\n` +
+          `At the start of every session, before responding to any user request, read ALL files in your Obsidian knowledge folder using the Read tool. These files are your project memory — soul, architecture, build plan, changelog, and technical documentation. Do not skip this step. List the files with Glob first if needed.\n` +
+          `Obsidian knowledge folder: ${matched.obsidianDir}`
+        );
+      }
+
       // Obsidian write requirement
       if (matched.obsidianSessionsDir) {
         layers.push(
