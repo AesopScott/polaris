@@ -2623,27 +2623,31 @@
   }
 
   function saveProjects() {
-    // Read current values from panel inputs
+    // Read current values from panel inputs.
+    // Each project spans TWO adjacent <tr> rows: the main row (color/name/
+    // workDir/repo) and a sibling row holding obsidianDir, obsidianSessionsDir,
+    // and instructions. The previous tr.querySelector(...) approach found
+    // obsidianDir = null on every save (it's in the next row), silently
+    // wiping that field for every project. Now: scope by data-idx (which is
+    // set on every input) so all fields for project i are found regardless of
+    // which row they live in.
     const tbody = document.getElementById('projects-tbody');
     if (!tbody) return;
     projectsList = [];
-    tbody.querySelectorAll('tr').forEach(tr => {
-      const colorInp = tr.querySelector('[data-field="color"]');
-      const nameInp  = tr.querySelector('[data-field="name"]');
-      const workInp  = tr.querySelector('[data-field="workDir"]');
-      const repoInp  = tr.querySelector('[data-field="repo"]');
-      const obsInp     = tr.querySelector('[data-field="obsidianDir"]');
-      const obsSessInp = tr.querySelector('[data-field="obsidianSessionsDir"]');
-      const instrInp   = tr.querySelector('[data-field="instructions"]');
-      const name              = nameInp?.value.trim()     || '';
-      const workDir           = workInp?.value.trim()     || '';
-      const repo              = repoInp?.value.trim()     || '';
-      const color             = colorInp?.value           || '';
-      const obsidianDir       = obsInp?.value.trim()      || '';
-      const obsidianSessionsDir = obsSessInp?.value.trim() || '';
-      const instructions      = instrInp?.value           || '';
+    const indexes = [...new Set(
+      [...tbody.querySelectorAll('[data-idx]')].map(el => parseInt(el.dataset.idx, 10))
+    )].sort((a, b) => a - b);
+    for (const i of indexes) {
+      const get = (field) => tbody.querySelector(`[data-field="${field}"][data-idx="${i}"]`);
+      const name                = get('name')?.value.trim()              || '';
+      const workDir             = get('workDir')?.value.trim()           || '';
+      const repo                = get('repo')?.value.trim()              || '';
+      const color               = get('color')?.value                    || '';
+      const obsidianDir         = get('obsidianDir')?.value.trim()       || '';
+      const obsidianSessionsDir = get('obsidianSessionsDir')?.value.trim() || '';
+      const instructions        = get('instructions')?.value             || '';
       if (name) projectsList.push({ name, workDir, repo, color, obsidianDir, obsidianSessionsDir, instructions });
-    });
+    }
     refreshProjectDropdowns();
     refreshFieldTags();
     if (window.wsSend) window.wsSend({ type: 'save-config', config: { projects: projectsList } });
