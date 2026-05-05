@@ -4842,22 +4842,62 @@
   }
 
   const MODEL_COSTS = {
-    'gemini-2.5-flash':  { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60 per MTok
-    'gemini-2.5-pro':    { in: 1.25e-6, out: 1e-5   },  // $1.25 / $10
-    'gemini-2.0-flash':  { in: 1e-7,    out: 4e-7   },  // $0.10 / $0.40
-    'deepseek-chat':     { in: 2.7e-7,  out: 1.1e-6 },  // $0.27 / $1.10
-    'deepseek-r1':       { in: 5.5e-7,  out: 2.19e-6},  // $0.55 / $2.19
-    'claude-haiku':      { in: 8e-7,    out: 4e-6   },  // $0.80 / $4
-    'claude-sonnet':     { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
-    'claude-3-5-sonnet': { in: 3e-6,    out: 1.5e-5 },
-    'claude-opus':       { in: 1.5e-5,  out: 7.5e-5 },  // $15 / $75
-    'gpt-4o-mini':       { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60
-    'gpt-4o':            { in: 2.5e-6,  out: 1e-5   },  // $2.50 / $10
+    // DeepSeek
+    'deepseek-chat-v3-0324': { in: 2.7e-7,  out: 1.1e-6 },  // $0.27 / $1.10
+    'deepseek-chat':         { in: 2.7e-7,  out: 1.1e-6 },  // $0.27 / $1.10
+    'deepseek-r1-distill':   { in: 1.4e-7,  out: 1.4e-7 },  // $0.14 / $0.14
+    'deepseek-r1':           { in: 5.5e-7,  out: 2.19e-6},  // $0.55 / $2.19
+    // Qwen
+    'qwen-2.5-7b':           { in: 4e-8,    out: 1e-7   },  // $0.04 / $0.10
+    'qwen-2.5-14b':          { in: 7e-8,    out: 2e-7   },  // $0.07 / $0.20
+    'qwen-2.5-32b':          { in: 1.6e-7,  out: 3.5e-7 },  // $0.16 / $0.35
+    'qwen-2.5-72b':          { in: 3.5e-7,  out: 4e-7   },  // $0.35 / $0.40
+    'qwen-2.5-coder':        { in: 4e-8,    out: 1e-7   },  // $0.04 / $0.10
+    'qwq-32b':               { in: 1.6e-7,  out: 3.5e-7 },  // $0.16 / $0.35
+    'qwen3':                 { in: 1.5e-7,  out: 3e-7   },  // ~$0.15 / $0.30
+    // Meta Llama
+    'llama-3.1-8b':          { in: 4e-8,    out: 4e-8   },  // $0.04 / $0.04
+    'llama-3.1-70b':         { in: 3.5e-7,  out: 4e-7   },  // $0.35 / $0.40
+    'llama-3.2-1b':          { in: 1e-8,    out: 1e-8   },  // $0.01 / $0.01
+    'llama-3.2-3b':          { in: 2e-8,    out: 2e-8   },  // $0.02 / $0.02
+    'llama-3.3-70b':         { in: 3.5e-7,  out: 4e-7   },  // $0.35 / $0.40
+    'llama-4-scout':         { in: 1.1e-7,  out: 3.4e-7 },  // $0.11 / $0.34
+    'llama-4-maverick':      { in: 4.2e-7,  out: 1.5e-6 },  // $0.42 / $1.50
+    // Google
+    'gemini-2.5-flash':      { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60
+    'gemini-2.5-pro':        { in: 1.25e-6, out: 1e-5   },  // $1.25 / $10
+    'gemini-2.0-flash-lite': { in: 7.5e-8,  out: 3e-7   },  // $0.075 / $0.30
+    'gemini-2.0-flash':      { in: 1e-7,    out: 4e-7   },  // $0.10 / $0.40
+    'gemma-3':               { in: 5e-8,    out: 1e-7   },  // ~$0.05 / $0.10
+    // Anthropic
+    'claude-haiku':          { in: 8e-7,    out: 4e-6   },  // $0.80 / $4
+    'claude-sonnet-4-5':     { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
+    'claude-sonnet-4-6':     { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
+    'claude-sonnet':         { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
+    'claude-3-5-sonnet':     { in: 3e-6,    out: 1.5e-5 },
+    'claude-opus':           { in: 1.5e-5,  out: 7.5e-5 },  // $15 / $75
+    // OpenAI
+    'gpt-4o-mini':           { in: 1.5e-7,  out: 6e-7   },  // $0.15 / $0.60
+    'o4-mini':               { in: 1.1e-6,  out: 4.4e-6 },  // $1.10 / $4.40
+    'gpt-4o':                { in: 2.5e-6,  out: 1e-5   },  // $2.50 / $10
+    // Mistral
+    'mistral-7b':            { in: 3.5e-8,  out: 1.05e-7},  // $0.035 / $0.105
+    'mistral-nemo':          { in: 1.3e-7,  out: 1.3e-7 },  // $0.13 / $0.13
+    'mixtral-8x7b':          { in: 2.4e-7,  out: 2.4e-7 },  // $0.24 / $0.24
+    'mistral-small':         { in: 1e-7,    out: 3e-7   },  // $0.10 / $0.30
+    // xAI
+    'grok-3-mini':           { in: 3e-7,    out: 5e-7   },  // $0.30 / $0.50
+    'grok-3':                { in: 3e-6,    out: 1.5e-5 },  // $3 / $15
+    // Microsoft
+    'phi-4-mini':            { in: 1e-7,    out: 2.5e-7 },  // $0.10 / $0.25
+    'phi-4':                 { in: 7e-8,    out: 2.8e-7 },  // $0.07 / $0.28
+    // Tencent
+    'hy3-preview':           { in: 0,       out: 0      },  // free preview
   };
   function estimateCost(inp, out, model) {
     const m = (model || '').toLowerCase();
     const key = Object.keys(MODEL_COSTS).find(k => m.includes(k));
-    const rates = key ? MODEL_COSTS[key] : { in: 3e-6, out: 1.5e-5 }; // fallback: Sonnet
+    const rates = key ? MODEL_COSTS[key] : { in: 5e-7, out: 1.5e-6 }; // fallback: ~$0.50/$1.50
     return (inp * rates.in) + (out * rates.out);
   }
 
