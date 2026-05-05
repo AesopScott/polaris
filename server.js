@@ -1184,10 +1184,15 @@ function assertWritable(file_path, workDir) {
   const resolved = path.resolve(file_path);
   const wd       = path.resolve(workDir);
 
-  // Rule 1: path must be within workDir
-  const inside = resolved.toLowerCase() === wd.toLowerCase() ||
-                 resolved.toLowerCase().startsWith(wd.toLowerCase() + path.sep);
-  if (!inside) {
+  // Rule 1: path must be within workDir OR the Obsidian vault (agents write session notes/changelog there)
+  const isInsideDir = (p, dir) => {
+    const d = path.resolve(dir);
+    return p.toLowerCase() === d.toLowerCase() || p.toLowerCase().startsWith(d.toLowerCase() + path.sep);
+  };
+  const cfg = readConfig();
+  const inWorkDir   = isInsideDir(resolved, wd);
+  const inObsidian  = cfg.obsidianVaultPath && isInsideDir(resolved, cfg.obsidianVaultPath);
+  if (!inWorkDir && !inObsidian) {
     throw new Error(
       `Write blocked: "${path.basename(file_path)}" is outside the project working directory.\n` +
       `Allowed: ${workDir}\nAttempted: ${resolved}`
@@ -1397,7 +1402,17 @@ function duckDuckGoSearch(query, count) {
 async function toolWebSearch({ query, num_results = 5 }) {
   const config = readConfig();
   const n = Math.min(num_results, 10);
+  // Priority 1: You.com free tier via MCP (no key required)
+  const claudeJson = readClaudeJson();
+  if (claudeJson.mcpServers?.['you-com']) {
+    try {
+      const result = await callMcpTool('you-com', 'you-search', { query, count: n });
+      if (result && !String(result).startsWith('Error')) return result;
+    } catch { /* fall through */ }
+  }
+  // Priority 2: Brave Search API (if key configured)
   if (config.braveSearchApiKey) return braveSearch(query, n, config.braveSearchApiKey);
+  // Priority 3: DuckDuckGo instant answers (free, no key, limited)
   return duckDuckGoSearch(query, n);
 }
 
