@@ -3071,7 +3071,8 @@ function handleMessage(ws, raw) {
       for (const [envKey, template] of Object.entries(entry.env || {})) {
         const credKey = template.replace('{{', '').replace('}}', '');
         const decryptedCreds = cfg.mcp_credentials[id] || {};
-        env[envKey] = credentials[credKey] || (decryptedCreds[credKey] ? decryptSecret(decryptedCreds[credKey]) : '');
+        const val = credentials[credKey] || (decryptedCreds[credKey] ? decryptSecret(decryptedCreds[credKey]) : '');
+        if (val) env[envKey] = val; // skip empty optional credentials
       }
       cj.mcpServers[id] = { command: entry.command, args: entry.args, env };
     }

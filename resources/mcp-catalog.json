@@ -110,16 +110,25 @@
     "prerequisiteWarning": null
   },
   {
-    "id": "chrome",
-    "name": "Chrome Connector",
-    "emoji": "🌐",
-    "description": "Browser automation, screenshots, network inspection, console access, performance traces",
+    "id": "you-com",
+    "name": "You.com Search",
+    "emoji": "🔍",
+    "description": "Web search, full page content extraction, and deep research with citations — free tier works without an API key",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "chrome-devtools-mcp@latest"],
-    "env": {},
-    "credentials": [],
-    "prerequisiteWarning": "Chrome must be running with --remote-debugging-port=9222. Add this flag to your Chrome shortcut, or use the Launch Chrome button.",
-    "launchChrome": true
+    "args": ["-y", "@youdotcom-oss/mcp"],
+    "env": {
+      "YDC_API_KEY": "{{YDC_API_KEY}}"
+    },
+    "credentials": [
+      {
+        "key": "YDC_API_KEY",
+        "label": "API Key (optional — free tier works without one)",
+        "type": "secret",
+        "required": false,
+        "hint": "you.com/platform → Get an API key for higher rate limits. Free tier: 100 searches/day, no key needed."
+      }
+    ],
+    "prerequisiteWarning": null
   }
 ]
