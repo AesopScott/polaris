@@ -61,13 +61,7 @@ const BASE_SYSTEM_PROMPT = [
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
-  `Permissions / rules / memory file locations — when the user asks where their permissions, rules, or memory files are, answer using these exact paths. Do not search for files — the locations are fixed:
-  Global permissions/rules (coding style, git workflow, preferences): ${USER_CLAUDE_PATH}
-  Global memory (persistent facts about the user and environment): ${GLOBAL_MEMORY_PATH}
-  Project permissions/rules (project-specific instructions): CLAUDE.md inside the project working directory
-  Project memory (persistent project facts): MEMORY.md inside the project working directory
-  Per-project inline instructions (lightweight alternative): Polaris Projects panel → select project → Instructions field
-  All of these files are loaded automatically into every session. If a file does not exist, offer to create it.`,
+  'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
