@@ -28,6 +28,7 @@ async function runOne(fixture, opts = {}) {
       workDir: seedDir,
       tier: opts.tier || fixture.tier || 'floor',
       model: opts.model || fixture.model || null,
+      crossCheckBehavior: opts.crossCheckBehavior || fixture.crossCheckBehavior || 'approve',
       timeoutMs,
     });
   } catch (e) {
@@ -114,6 +115,7 @@ async function runOne(fixture, opts = {}) {
     elapsedMs,
     trace,
     postFiles,
+    crossChecks: launchResult?.crossChecks || [],
     pass: errors.length === 0,
     errors,
   };

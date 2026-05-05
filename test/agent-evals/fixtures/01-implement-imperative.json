@@ -8,6 +8,7 @@
   },
   "prompt": "Read target.txt, then use the Edit tool to change the word 'original' to 'updated'. Implement this now.",
   "tier": "floor",
+  "crossCheckBehavior": "approve",
   "expect": {
     "session_status": "done",
     "tools_called": ["Read", "Edit"],
