@@ -2810,6 +2810,12 @@
           updateContextBar(msg.sessionId, msg.usage);
           accumulateUsage(s.model || resolveModel('balanced'), msg.usage);
           if (msg.routineTag) addRoutineTokens(msg.routineTag, msg.usage);
+          // update persistent cost display on card footer
+          const costCard = document.querySelector(`[data-sid="${msg.sessionId}"]`);
+          if (costCard) {
+            const costEl = costCard.querySelector('[data-session-cost]');
+            if (costEl) costEl.textContent = s.totalCost >= 0.01 ? `$${s.totalCost.toFixed(3)}` : `$${s.totalCost.toFixed(5)}`;
+          }
         }
         break;
       }
@@ -3435,6 +3441,10 @@
           <span style="font-size:8px;opacity:0.4;letter-spacing:0.05em;">TTFT</span>
           <span style="font-size:11px;font-weight:700;" data-speed-ttft>—</span>
           <span style="font-size:8px;opacity:0.4;">ms</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;border-right:1px solid var(--border);min-width:56px;">
+          <span style="font-size:8px;opacity:0.4;letter-spacing:0.05em;">COST</span>
+          <span style="font-size:11px;font-weight:700;color:#f59e0b;" data-session-cost>—</span>
         </div>
         <div class="footer-btns">
           <button class="fbtn" data-action="copy">Copy</button>
