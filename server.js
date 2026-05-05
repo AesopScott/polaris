@@ -3391,6 +3391,68 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'save-agent-eval-results') {
+    const config = readConfig();
+    const proj = (config.projects || []).find(p => p.obsidianDir);
+    if (!proj) {
+      sendTo(ws, { type: 'agent-eval-saved', error: 'No project with Obsidian dir configured' });
+      return;
+    }
+    const file = path.join(proj.obsidianDir, '5-Agentic-Benchmark.md');
+    try {
+      const results = Array.isArray(msg.results) ? msg.results : [];
+      if (!results.length) {
+        sendTo(ws, { type: 'agent-eval-saved', error: 'No results to save' });
+        return;
+      }
+      // Aggregate per (model × fixture): pass count, median latency, median iters,
+      // median output tokens, union of tools used.
+      const cells = new Map();
+      for (const r of results) {
+        const key = `${r.model}__${r.fixture}`;
+        if (!cells.has(key)) cells.set(key, { model: r.model, fixture: r.fixture, runs: [], passes: 0 });
+        const cell = cells.get(key);
+        cell.runs.push(r);
+        if (r.pass) cell.passes++;
+      }
+      const median = xs => {
+        if (!xs.length) return 0;
+        const s = [...xs].sort((a, b) => a - b);
+        return s.length % 2 ? s[(s.length - 1) >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+      };
+      const stamp = new Date().toISOString().slice(0, 19);
+      const passed = results.filter(r => r.pass).length;
+      const out = [];
+      out.push(`### Run ${stamp}`);
+      out.push(`${passed}/${results.length} cells passed across ${cells.size} (model × fixture) pairs.`);
+      out.push('');
+      out.push('| Model | Fixture | Pass | Latency med (s) | Iters med | Tokens out med | Tools used |');
+      out.push('|---|---|---|---:|---:|---:|---|');
+      const sorted = [...cells.values()].sort((a, b) => (a.model + a.fixture).localeCompare(b.model + b.fixture));
+      for (const cell of sorted) {
+        const lats = cell.runs.map(r => (r.elapsedMs || 0) / 1000);
+        const iters = cell.runs.map(r => r.trace?.iters || 0);
+        const toks = cell.runs.map(r => r.trace?.tokens?.out || 0);
+        const toolUnion = [...new Set(cell.runs.flatMap(r => r.trace?.tools || []))].join(', ') || '—';
+        out.push(`| \`${cell.model}\` | ${cell.fixture} | ${cell.passes}/${cell.runs.length} | ${median(lats).toFixed(2)} | ${median(iters)} | ${median(toks)} | ${toolUnion} |`);
+      }
+      out.push('');
+      // Insert under "## Results" — newest at top.
+      let content = fs.readFileSync(file, 'utf8');
+      const block = out.join('\n') + '\n';
+      if (/^##\s+Results\b/m.test(content)) {
+        content = content.replace(/^##\s+Results\b[^\n]*\n/m, m => m + '\n' + block);
+      } else {
+        content = content.trimEnd() + '\n\n## Results\n\n' + block;
+      }
+      fs.writeFileSync(file, content, 'utf8');
+      sendTo(ws, { type: 'agent-eval-saved', path: '5-Agentic-Benchmark.md' });
+    } catch (e) {
+      sendTo(ws, { type: 'agent-eval-saved', error: e.message });
+    }
+    return;
+  }
+
   if (type === 'benchmark-load-queue') {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);

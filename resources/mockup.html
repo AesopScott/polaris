@@ -1232,7 +1232,8 @@
       </div>
       <!-- ── Benchmark Runner ───────────────────────────────────────────── -->
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">BENCHMARK RUNNER</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">PERFORMANCE BENCHMARK</div>
+        <div style="font-size:10px;color:#64748b;line-height:1.4;">Per-model TTFT and tok/s on a chat prompt. Reads queue from <code>5-Performance-Benchmark.md</code>.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button id="bench-load-btn" onclick="benchLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
           <button id="bench-run-btn" onclick="benchRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run All (0)</button>
@@ -1249,6 +1250,41 @@
               </tr>
             </thead>
             <tbody id="bench-results-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Agent Eval ─────────────────────────────────────────────────── -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">AGENT EVAL</div>
+        <div style="font-size:10px;color:#64748b;line-height:1.4;">Per-model agent-loop evaluation. Drives scripted fixtures (Read, Edit, multi-turn) against each model and asserts on tool calls + filesystem state. Reads queue from <code>5-Agentic-Benchmark.md</code>.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="ae-load-btn" onclick="aeLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
+          <button id="ae-run-btn" onclick="aeRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run Eval (0)</button>
+          <button id="ae-cancel-btn" onclick="aeCancel()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Cancel</button>
+          <button id="ae-save-btn" onclick="aeSaveToObsidian()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Save to Obsidian</button>
+          <span id="ae-status" style="font-size:10px;opacity:0.5;"></span>
+        </div>
+        <div id="ae-controls" style="display:none;flex-wrap:wrap;gap:12px;align-items:center;font-size:11px;">
+          <span style="font-size:10px;opacity:0.6;font-weight:600;">FIXTURES:</span>
+          <span id="ae-fixtures-row" style="display:inline-flex;gap:10px;flex-wrap:wrap;"></span>
+          <span style="font-size:10px;opacity:0.6;font-weight:600;margin-left:8px;">RUNS/CELL:</span>
+          <input type="number" id="ae-runs" min="1" max="10" value="1" style="width:54px;padding:3px 6px;border-radius:4px;border:1px solid #334155;background:#0d1117;color:#cbd5e1;font-size:11px;" />
+        </div>
+        <div id="ae-results-list" style="display:none;max-height:340px;overflow-y:auto;border:1px solid #1e293b;border-radius:6px;background:#0d1117;">
+          <table style="width:100%;border-collapse:collapse;font-size:10px;">
+            <thead>
+              <tr style="border-bottom:1px solid #1e293b;color:#64748b;">
+                <th style="text-align:left;padding:4px 8px;font-weight:600;">Model</th>
+                <th style="text-align:left;padding:4px 8px;font-weight:600;">Fixture</th>
+                <th style="text-align:center;padding:4px 8px;font-weight:600;min-width:32px;">Run</th>
+                <th style="text-align:left;padding:4px 8px;font-weight:600;min-width:64px;">Result</th>
+                <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:40px;">Iters</th>
+                <th style="text-align:left;padding:4px 8px;font-weight:600;">Tools</th>
+                <th style="text-align:right;padding:4px 8px;font-weight:600;min-width:48px;">Time</th>
+              </tr>
+            </thead>
+            <tbody id="ae-results-body"></tbody>
           </table>
         </div>
       </div>
@@ -3051,6 +3087,63 @@
         _benchQueue = msg.models;
         benchRenderQueue();
         document.getElementById('bench-status').textContent = `${msg.models.length} models loaded`;
+        break;
+      }
+
+      // ── Agent Eval ────────────────────────────────────────────────────────
+      case 'agent-eval-queue': {
+        if (msg.error) { document.getElementById('ae-status').textContent = '✗ ' + msg.error; break; }
+        aeOnQueueLoaded(msg.models, msg.fixtures || []);
+        break;
+      }
+      case 'agent-eval-started': {
+        _aeRunId = msg.runId;
+        document.getElementById('ae-results-list').style.display = 'block';
+        document.getElementById('ae-results-body').innerHTML = '';
+        _aeResults = [];
+        document.getElementById('ae-status').textContent = `Starting ${msg.totalCells} cells…`;
+        break;
+      }
+      case 'agent-eval-progress': {
+        if (msg.phase === 'cell-start') {
+          const shortModel = (msg.model || '').split('/').pop();
+          document.getElementById('ae-status').textContent =
+            `Cell ${msg.completed + 1}/${msg.totalCells}: ${msg.fixture} / ${shortModel} (run ${msg.runIndex}/${msg.runs})`;
+        }
+        break;
+      }
+      case 'agent-eval-cell-result': {
+        aeAppendResult(msg);
+        break;
+      }
+      case 'agent-eval-complete': {
+        _aeRunning = false;
+        const passed = _aeResults.filter(r => r.pass).length;
+        const status = msg.cancelled ? ' (cancelled)' : '';
+        document.getElementById('ae-status').textContent = `Done — ${passed}/${_aeResults.length} passed${status}`;
+        document.getElementById('ae-run-btn').disabled = false;
+        document.getElementById('ae-run-btn').style.opacity = '1';
+        document.getElementById('ae-cancel-btn').disabled = true;
+        document.getElementById('ae-cancel-btn').style.opacity = '0.4';
+        if (_aeResults.length > 0) {
+          document.getElementById('ae-save-btn').disabled = false;
+          document.getElementById('ae-save-btn').style.opacity = '1';
+        }
+        break;
+      }
+      case 'agent-eval-error': {
+        document.getElementById('ae-status').textContent = '✗ ' + (msg.message || 'unknown');
+        _aeRunning = false;
+        document.getElementById('ae-run-btn').disabled = false;
+        document.getElementById('ae-run-btn').style.opacity = '1';
+        document.getElementById('ae-cancel-btn').disabled = true;
+        document.getElementById('ae-cancel-btn').style.opacity = '0.4';
+        break;
+      }
+      case 'agent-eval-saved': {
+        const el = document.getElementById('ae-status');
+        if (msg.error) { el.textContent = '✗ Save failed: ' + msg.error; el.style.color = '#ef4444'; }
+        else            { el.textContent = '✓ Saved to ' + (msg.path || '5-Agentic-Benchmark.md'); el.style.color = '#22c55e'; setTimeout(() => { el.style.color = ''; }, 4000); }
         break;
       }
 
@@ -5237,6 +5330,110 @@
     if (stEl) stEl.textContent = '⟳';
     wsSend({ type: 'test-model', model, tier: `bench-${_benchIdx}`, provider: null });
   }
+
+  // ── Agent Eval ────────────────────────────────────────────────────────────────
+  let _aeQueue = [];
+  let _aeFixtures = [];
+  let _aeResults = [];
+  let _aeRunning = false;
+  let _aeRunId = null;
+
+  function aeLoadQueue() {
+    const el = document.getElementById('ae-status');
+    el.textContent = 'Loading…';
+    el.style.color = '';
+    wsSend({ type: 'agent-eval-load-queue' });
+  }
+  window.aeLoadQueue = aeLoadQueue;
+
+  function aeOnQueueLoaded(models, fixtures) {
+    _aeQueue = models || [];
+    _aeFixtures = fixtures || [];
+    document.getElementById('ae-controls').style.display = 'flex';
+    document.getElementById('ae-fixtures-row').innerHTML = _aeFixtures.map(f =>
+      `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;" title="${(f.description || '').replace(/"/g, '&quot;')}">
+        <input type="checkbox" class="ae-fix-cb" data-fix-id="${f.id}" checked>
+        <span style="font-family:monospace;color:#cbd5e1;">${f.id}</span>
+      </label>`
+    ).join('');
+    const runBtn = document.getElementById('ae-run-btn');
+    runBtn.textContent = `Run Eval (${_aeQueue.length})`;
+    runBtn.disabled = _aeQueue.length === 0;
+    runBtn.style.opacity = _aeQueue.length === 0 ? '0.4' : '1';
+    document.getElementById('ae-status').textContent = `${_aeQueue.length} models, ${_aeFixtures.length} fixtures loaded`;
+  }
+
+  function aeRunAll() {
+    if (_aeRunning || _aeQueue.length === 0) return;
+    const fixtures = Array.from(document.querySelectorAll('.ae-fix-cb:checked')).map(cb => cb.dataset.fixId);
+    if (!fixtures.length) {
+      document.getElementById('ae-status').textContent = '✗ Select at least one fixture';
+      return;
+    }
+    const runs = Math.max(1, Math.min(10, parseInt(document.getElementById('ae-runs').value, 10) || 1));
+    _aeRunning = true;
+    _aeResults = [];
+    document.getElementById('ae-results-body').innerHTML = '';
+    document.getElementById('ae-run-btn').disabled = true;
+    document.getElementById('ae-run-btn').style.opacity = '0.4';
+    document.getElementById('ae-cancel-btn').disabled = false;
+    document.getElementById('ae-cancel-btn').style.opacity = '1';
+    document.getElementById('ae-save-btn').disabled = true;
+    document.getElementById('ae-save-btn').style.opacity = '0.4';
+    wsSend({ type: 'start-agent-eval', models: _aeQueue, fixtures, runs });
+  }
+  window.aeRunAll = aeRunAll;
+
+  function aeCancel() {
+    if (!_aeRunning) return;
+    wsSend({ type: 'cancel-agent-eval' });
+    document.getElementById('ae-status').textContent = 'Cancelling…';
+  }
+  window.aeCancel = aeCancel;
+
+  function aeAppendResult(cell) {
+    _aeResults.push(cell);
+    const tools = (cell.trace?.tools || []).join(',') || '—';
+    const result = cell.pass
+      ? '<span style="color:#22c55e;font-weight:700;">✓ PASS</span>'
+      : '<span style="color:#ef4444;font-weight:700;">✗ FAIL</span>';
+    const timeStr = ((cell.elapsedMs || 0) / 1000).toFixed(1) + 's';
+    const shortModel = (cell.model || '').split('/').pop();
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #0f172a';
+    if (!cell.pass && cell.errors?.length) tr.title = cell.errors.join('\n');
+    tr.innerHTML = `
+      <td style="padding:4px 8px;color:#cbd5e1;font-family:monospace;font-size:9px;" title="${cell.model}">${shortModel}</td>
+      <td style="padding:4px 8px;color:#94a3b8;">${cell.fixtureId || cell.fixture}</td>
+      <td style="text-align:center;padding:4px 8px;color:#64748b;">${(cell.runIndex ?? 0) + 1}</td>
+      <td style="padding:4px 8px;">${result}</td>
+      <td style="text-align:right;padding:4px 8px;color:#64748b;">${cell.trace?.iters ?? '—'}</td>
+      <td style="padding:4px 8px;color:#64748b;font-size:9px;">${tools}</td>
+      <td style="text-align:right;padding:4px 8px;color:#64748b;">${timeStr}</td>
+    `;
+    document.getElementById('ae-results-body').appendChild(tr);
+  }
+
+  function aeSaveToObsidian() {
+    if (!_aeResults.length) return;
+    const el = document.getElementById('ae-status');
+    el.textContent = 'Saving…';
+    el.style.color = '';
+    wsSend({
+      type: 'save-agent-eval-results',
+      runId: _aeRunId,
+      results: _aeResults.map(r => ({
+        model: r.model,
+        fixture: r.fixtureId || r.fixture,
+        runIndex: r.runIndex,
+        pass: r.pass,
+        errors: r.errors,
+        elapsedMs: r.elapsedMs,
+        trace: r.trace,
+      })),
+    });
+  }
+  window.aeSaveToObsidian = aeSaveToObsidian;
 
   // ── Routines ──────────────────────────────────────────────────────────────────
   let routinesList = [];
