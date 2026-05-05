@@ -1218,6 +1218,17 @@
           <input type="text" id="settings-or-opus-provider" class="panel-input" placeholder="Provider — leave blank for auto" style="width:100%;margin-top:6px;" />
           <span id="power-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
+        <div class="panel-section">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div class="context-label accent-label" style="margin:0;">CROSS-CHECK MODEL</div>
+            <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#94a3b8;cursor:pointer;margin-left:auto;">
+              <input type="checkbox" id="settings-cross-check-enabled" style="cursor:pointer;" />
+              Enabled
+            </label>
+          </div>
+          <input type="text" id="settings-cross-check-model" class="panel-input" placeholder="anthropic/claude-haiku-4-5" style="width:100%;" />
+          <div style="font-size:10px;color:#64748b;margin-top:5px;line-height:1.5;">Reviewer model that reads every Write/Edit before it hits disk. Returns PASS/FAIL with reasons; you approve or reject inline. Default is Haiku 4.5 (cheap, fast structured-JSON classifier). Set to Sonnet 4.6 if you want frontier review of frontier work.</div>
+        </div>
       </div>
       <!-- ── Benchmark Runner ───────────────────────────────────────────── -->
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px;">
@@ -4612,6 +4623,14 @@
       const inp = document.getElementById('settings-or-opus-provider');
       if (inp) inp.value = cfg.openRouterOpusProvider;
     }
+    if (cfg.crossCheckModel !== undefined) {
+      const inp = document.getElementById('settings-cross-check-model');
+      if (inp) inp.value = cfg.crossCheckModel;
+    }
+    {
+      const cb = document.getElementById('settings-cross-check-enabled');
+      if (cb) cb.checked = cfg.crossCheckEnabled !== false; // default true
+    }
     if (cfg.deepSeekEmail !== undefined) {
       const inp = document.getElementById('settings-ds-email');
       if (inp) inp.value = cfg.deepSeekEmail;
@@ -5014,6 +5033,8 @@
     const orFloorProvider  = document.getElementById('settings-or-floor-provider')?.value?.trim() || '';
     const orSonnetProvider = document.getElementById('settings-or-sonnet-provider')?.value?.trim() || '';
     const orOpusProvider   = document.getElementById('settings-or-opus-provider')?.value?.trim() || '';
+    const ccModel          = document.getElementById('settings-cross-check-model')?.value?.trim() || '';
+    const ccEnabled        = document.getElementById('settings-cross-check-enabled')?.checked ?? true;
     const dsEmail      = document.getElementById('settings-ds-email')?.value?.trim() || '';
     const dsPassword   = document.getElementById('settings-ds-password')?.value || '';
     const dsModel      = document.getElementById('settings-ds-model')?.value?.trim() || 'deepseek_chat';
@@ -5033,6 +5054,7 @@
       openRouterApiKey: orKey, openRouterFloorModel: orFloor,
       openRouterSonnetModel: orSonnet, openRouterOpusModel: orOpus,
       openRouterFloorProvider: orFloorProvider, openRouterSonnetProvider: orSonnetProvider, openRouterOpusProvider: orOpusProvider,
+      crossCheckModel: ccModel, crossCheckEnabled: ccEnabled,
       deepSeekEmail: dsEmail, deepSeekPassword: dsPassword, chatModel: dsModel,
       deepSeekApiKey: dsApiKey, deepSeekApiModel: dsApiModel,
       anthropicApiKey: anthropicKey, openAiApiKey: openAiKey, elevenLabsApiKey: elevenLabsKey, braveSearchApiKey: braveKey,
