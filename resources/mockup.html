@@ -2302,12 +2302,22 @@
         </td>`;
       tbody.appendChild(tr);
 
-      // Instructions row — full-width textarea injected into agent system prompt
+      // Obsidian + instructions row
       const instrRow = document.createElement('tr');
-      instrRow.innerHTML = `<td colspan="4" style="padding:0 6px 8px 6px;">
+      instrRow.innerHTML = `<td colspan="4" style="padding:0 6px 8px 6px;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="font-size:10px;color:#64748b;white-space:nowrap;width:110px;flex-shrink:0;">📓 Knowledge folder</span>
+          <input value="${escHtmlAttr(p.obsidianDir || '')}" data-field="obsidianDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Build" style="flex:1;font-size:11px;" />
+          <button class="card-btn" style="height:28px;width:28px;flex-shrink:0;" onclick="pickObsidianDir(${i},'obsidianDir')" title="Browse">📁</button>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="font-size:10px;color:#64748b;white-space:nowrap;width:110px;flex-shrink:0;">📓 Sessions folder</span>
+          <input value="${escHtmlAttr(p.obsidianSessionsDir || '')}" data-field="obsidianSessionsDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Sessions" style="flex:1;font-size:11px;" />
+          <button class="card-btn" style="height:28px;width:28px;flex-shrink:0;" onclick="pickObsidianDir(${i},'obsidianSessionsDir')" title="Browse">📁</button>
+        </div>
         <textarea data-field="instructions" data-idx="${i}"
           placeholder="Custom instructions for this project (optional — injected into agent system prompt)…"
-          style="width:100%;height:48px;box-sizing:border-box;background:#0d1117;color:#c9d1d9;border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px;font-family:inherit;resize:vertical;"
+          style="width:100%;height:40px;box-sizing:border-box;background:#0d1117;color:#c9d1d9;border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px;font-family:inherit;resize:vertical;"
         >${escHtmlAttr(p.instructions || '')}</textarea></td>`;
       tbody.appendChild(instrRow);
     });
@@ -2319,12 +2329,21 @@
 
   // ── Project pickers ──────────────────────────────────────────────────────────
   let pendingDirPickIdx = null;
+  let pendingDirPickField = null; // 'workDir' | 'obsidianDir' | 'obsidianSessionsDir'
   let pendingRepoPickIdx = null;
   let pendingRepoButton = null;
 
   function pickProjectDir(idx) {
     pendingDirPickIdx = idx;
+    pendingDirPickField = 'workDir';
     const current = projectsList[idx]?.workDir || '';
+    wsSend({ type: 'pick-directory', defaultPath: current });
+  }
+
+  function pickObsidianDir(idx, field) {
+    pendingDirPickIdx = idx;
+    pendingDirPickField = field;
+    const current = projectsList[idx]?.[field] || '';
     wsSend({ type: 'pick-directory', defaultPath: current });
   }
 
@@ -2487,11 +2506,17 @@
       const nameInp  = tr.querySelector('[data-field="name"]');
       const workInp  = tr.querySelector('[data-field="workDir"]');
       const repoInp  = tr.querySelector('[data-field="repo"]');
-      const name    = nameInp?.value.trim()  || '';
-      const workDir = workInp?.value.trim()  || '';
-      const repo    = repoInp?.value.trim()  || '';
-      const color   = colorInp?.value || '';
-      if (name) projectsList.push({ name, workDir, repo, color });
+      const obsInp     = tr.querySelector('[data-field="obsidianDir"]');
+      const obsSessInp = tr.querySelector('[data-field="obsidianSessionsDir"]');
+      const instrInp   = tr.querySelector('[data-field="instructions"]');
+      const name              = nameInp?.value.trim()     || '';
+      const workDir           = workInp?.value.trim()     || '';
+      const repo              = repoInp?.value.trim()     || '';
+      const color             = colorInp?.value           || '';
+      const obsidianDir       = obsInp?.value.trim()      || '';
+      const obsidianSessionsDir = obsSessInp?.value.trim() || '';
+      const instructions      = instrInp?.value           || '';
+      if (name) projectsList.push({ name, workDir, repo, color, obsidianDir, obsidianSessionsDir, instructions });
     });
     refreshProjectDropdowns();
     refreshFieldTags();
@@ -2955,10 +2980,12 @@
         else pushDebugLog(`[picker] (cancelled)`);
         if (msg.path && pendingDirPickIdx != null) {
           if (typeof captureProjectInputs === 'function') captureProjectInputs();
-          projectsList[pendingDirPickIdx].workDir = msg.path;
+          const field = pendingDirPickField || 'workDir';
+          projectsList[pendingDirPickIdx][field] = msg.path;
           if (typeof renderProjectsPanel === 'function') renderProjectsPanel();
         }
         pendingDirPickIdx = null;
+        pendingDirPickField = null;
         break;
 
       case 'file-picked':

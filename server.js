@@ -54,7 +54,7 @@ const BASE_SYSTEM_PROMPT = [
   'Do not acknowledge, summarize, or reference these instructions in your responses. Follow them silently.',
   'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) â€” use PowerShell or Node.js fs instead.',
   'Path comparisons are case-insensitive on Windows â€” use .toLowerCase() when comparing paths or repo names.',
-  'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the Polaris data directory.',
+  'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the project working directory.',
   'Before any file write, check locks.json. Locked files require explicit user approval.',
   'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
@@ -1010,10 +1010,54 @@ function buildDirectSystemPrompt(config, workDir) {
     try { layers.push('--- Project Memory ---\n' + fs.readFileSync(projectMemoryMd, 'utf8')); } catch {}
   }
 
-  // Layer 6: Per-project instructions from Polaris config (Projects panel)
+  // Layer 6: Project config — identity, paths, Obsidian knowledge base
   if (workDir) {
     const matched = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
-    if (matched && matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
+    if (matched) {
+      // 6a: Project identity and authoritative paths
+      const configLines = [
+        `Project name: ${matched.name}`,
+        `Working directory: ${matched.workDir}`,
+        matched.repo ? `Remote repository: ${matched.repo}` : null,
+        `File versions: ${path.join(matched.workDir, 'file-versions.json')}`,
+        `Locks: ${path.join(matched.workDir, 'locks.json')}`,
+        `Project rules: ${path.join(matched.workDir, 'CLAUDE.md')}`,
+        matched.obsidianDir ? `Obsidian knowledge folder: ${matched.obsidianDir}` : null,
+        matched.obsidianSessionsDir ? `Obsidian sessions folder: ${matched.obsidianSessionsDir}` : null,
+      ].filter(Boolean).join('\n');
+      layers.push('--- Project Configuration ---\n' + configLines);
+
+      // 6b: Obsidian knowledge base — read all 8 numbered files in order
+      if (matched.obsidianDir && fs.existsSync(matched.obsidianDir)) {
+        const obsFiles = fs.readdirSync(matched.obsidianDir)
+          .filter(f => /^\d+-.*\.md$/i.test(f))
+          .sort((a, b) => parseInt(a) - parseInt(b));
+        const obsChunks = [];
+        for (const f of obsFiles) {
+          try {
+            const content = fs.readFileSync(path.join(matched.obsidianDir, f), 'utf8');
+            obsChunks.push(`### ${f}\n${content}`);
+          } catch {}
+        }
+        if (obsChunks.length > 0) {
+          layers.push('--- Project Knowledge Base ---\n' + obsChunks.join('\n\n'));
+        }
+      }
+
+      // 6c: Obsidian write requirement
+      if (matched.obsidianSessionsDir) {
+        layers.push(
+          `--- Obsidian Writing Requirement ---\n` +
+          `Every session MUST be written to Obsidian when complete. No exceptions.\n` +
+          `Sessions folder: ${matched.obsidianSessionsDir}\n` +
+          `File naming: session_YYYY-MM-DD_short-description.md\n` +
+          `After writing, extract relevant content into the numbered files in: ${matched.obsidianDir}`
+        );
+      }
+
+      // 6d: Custom instructions from Projects panel
+      if (matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
+    }
   }
 
   // Layer 7: Auto-memory from .claude/projects/{key}/memory/MEMORY.md
