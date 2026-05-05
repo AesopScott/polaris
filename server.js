@@ -174,7 +174,8 @@ function migrateSecretsToEncrypted() {
 // â"€â"€â"€ IPC bridge to main.js â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
-const pendingQuestions  = new Map(); // questionId → resolve
+const pendingQuestions    = new Map(); // questionId → resolve
+const pendingCrossChecks  = new Map(); // checkId → resolve('approve'|'reject')
 
 if (typeof process.on === 'function') {
   process.on('message', (msg) => {
@@ -1251,20 +1252,106 @@ function assertSafeWriteSize(content, file_path) {
   }
 }
 
-function toolWrite({ file_path, content }, workDir) {
+// askForCrossCheckApproval — broadcasts cross-check result to UI and waits for
+// the user to approve or reject. Mirror of toolAskUserQuestion's pattern.
+function askForCrossCheckApproval({ sessionId, filePath, operation, review, originalLines, newLines, originalBytes, newBytes }) {
+  return new Promise(resolve => {
+    const checkId = `cc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    pendingCrossChecks.set(checkId, resolve);
+    broadcast({
+      type: 'cross-check-pending',
+      checkId, sessionId, filePath, operation,
+      verdict: review.verdict, summary: review.summary, issues: review.issues,
+      model: review.model, ms: review.ms,
+      originalLines, newLines, originalBytes, newBytes,
+    });
+    setTimeout(() => {
+      if (pendingCrossChecks.has(checkId)) {
+        pendingCrossChecks.delete(checkId);
+        resolve('reject');
+      }
+    }, 600000); // 10 min timeout — defaults to reject for safety
+  });
+}
+
+// runCrossCheckAndApproval — orchestrates engine + UI prompt + storage.
+// Returns true if user approved (write should proceed), false if rejected.
+// Bypasses cross-check entirely if the change delta is under 200 bytes
+// (single-char fixes don't need a Sonnet call) or if cross-check is disabled.
+async function runCrossCheckAndApproval({ sessionId, filePath, operation, originalContent, newContent }) {
+  const cfg = readConfig();
+  if (cfg.crossCheckEnabled === false) return true; // explicitly disabled
+
+  const origBytes = Buffer.byteLength(originalContent || '', 'utf8');
+  const newBytes  = Buffer.byteLength(newContent, 'utf8');
+  if (Math.abs(newBytes - origBytes) < 200) return true; // tiny edit bypass
+
+  const session = sessions.get(sessionId);
+  const sessionPrompt = session?.lastPrompt || '';
+  const reviewerModel = cfg.crossCheckModel || CROSS_CHECK_DEFAULT_MODEL;
+  const apiKey = cfg.openRouterApiKey;
+
+  let review;
+  if (!apiKey) {
+    review = { verdict: 'ERROR', summary: 'No openRouterApiKey configured — review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
+  } else {
+    review = await crossCheckChange({
+      sessionId, sessionPrompt, filePath,
+      originalContent: originalContent || '',
+      newContent,
+      model: reviewerModel,
+      apiKey,
+    });
+  }
+
+  const origLines = originalContent ? originalContent.split('\n').length : 0;
+  const newLines  = newContent.split('\n').length;
+
+  const decision = await askForCrossCheckApproval({
+    sessionId, filePath, operation, review,
+    originalLines: origLines, newLines, originalBytes: origBytes, newBytes,
+  });
+
+  recordCrossCheck(sessionId, {
+    ts: new Date().toISOString(),
+    sessionId, filePath, operation,
+    originalLines: origLines, newLines, originalBytes: origBytes, newBytes,
+    review, userDecision: decision,
+    sessionPrompt,
+    originalContent: origBytes < 200 * 1024 ? originalContent : null,
+    newContent: newBytes < 200 * 1024 ? newContent : null,
+  });
+
+  return decision === 'approve';
+}
+
+async function toolWrite({ file_path, content }, workDir, sessionId) {
   assertWritable(file_path, workDir);
   assertSafeWriteSize(content, file_path);
+  const originalContent = fs.existsSync(file_path) ? fs.readFileSync(file_path, 'utf8') : '';
+  const approved = await runCrossCheckAndApproval({
+    sessionId, filePath: file_path, operation: 'Write', originalContent, newContent: content,
+  });
+  if (!approved) {
+    throw new Error(`Cross-Check rejected: write to ${path.basename(file_path)} was not approved by the user.`);
+  }
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, 'utf8');
   return `Written: ${file_path}`;
 }
 
-function toolEdit({ file_path, old_string, new_string, replace_all }, workDir) {
+async function toolEdit({ file_path, old_string, new_string, replace_all }, workDir, sessionId) {
   assertWritable(file_path, workDir);
   const content = fs.readFileSync(file_path, 'utf8');
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
   const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
   assertSafeWriteSize(updated, file_path);
+  const approved = await runCrossCheckAndApproval({
+    sessionId, filePath: file_path, operation: 'Edit', originalContent: content, newContent: updated,
+  });
+  if (!approved) {
+    throw new Error(`Cross-Check rejected: edit to ${path.basename(file_path)} was not approved by the user.`);
+  }
   fs.writeFileSync(file_path, updated, 'utf8');
   return `Edited: ${file_path}`;
 }
@@ -1807,8 +1894,8 @@ async function executeDirectTool(name, input, workDir, sessionId) {
   }
   switch (name) {
     case 'Read':       return toolRead(input);
-    case 'Write':      return toolWrite(input, workDir);
-    case 'Edit':       return toolEdit(input, workDir);
+    case 'Write':      return await toolWrite(input, workDir, sessionId);
+    case 'Edit':       return await toolEdit(input, workDir, sessionId);
     case 'Glob':       return toolGlob(input, workDir);
     case 'Grep':       return toolGrep(input, workDir);
     case 'Bash':       return toolBash(input, workDir);
@@ -2600,6 +2687,12 @@ function handleMessage(ws, raw) {
   if (type === 'user-question-answer') {
     const resolver = pendingQuestions.get(msg.questionId);
     if (resolver) { pendingQuestions.delete(msg.questionId); resolver(msg.answer || '(no answer)'); }
+    return;
+  }
+
+  if (type === 'cross-check-decision') {
+    const resolver = pendingCrossChecks.get(msg.checkId);
+    if (resolver) { pendingCrossChecks.delete(msg.checkId); resolver(msg.decision === 'approve' ? 'approve' : 'reject'); }
     return;
   }
 
