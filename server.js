@@ -56,7 +56,7 @@ const BASE_SYSTEM_PROMPT = [
   'Path comparisons are case-insensitive on Windows â€” use .toLowerCase() when comparing paths or repo names.',
   'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the Polaris data directory.',
   'Before any file write, check locks.json. Locked files require explicit user approval.',
-  'Before any code change, file write, or destructive action, state what you plan to do and wait for the user to confirm. Do not assume approval from context.',
+  'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
   `Permissions / rules / memory file locations — when the user asks where their permissions, rules, or memory files are, answer using these exact paths. Do not search for files — the locations are fixed:
@@ -1399,6 +1399,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'WebFetch':   return await toolWebFetch(input);
     case 'WebSearch':  return await toolWebSearch(input);
     case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
+    case 'TodoWrite':  return toolTodoWrite(input, sessionId);
     default:           return `Unknown tool: ${name}`;
   }
 }
