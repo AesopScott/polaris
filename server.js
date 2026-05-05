@@ -175,7 +175,7 @@ function migrateSecretsToEncrypted() {
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
 const pendingQuestions    = new Map(); // questionId → resolve
-const pendingCrossChecks  = new Map(); // checkId → resolve('approve'|'reject')
+const pendingCrossChecks  = new Map(); // checkId → { resolve, timer }
 
 if (typeof process.on === 'function') {
   process.on('message', (msg) => {
@@ -1254,10 +1254,19 @@ function assertSafeWriteSize(content, file_path) {
 
 // askForCrossCheckApproval — broadcasts cross-check result to UI and waits for
 // the user to approve or reject. Mirror of toolAskUserQuestion's pattern.
+// pendingCrossChecks holds { resolve, timer } so the WS handler can clear the
+// timer when the user responds — otherwise the 10-minute timer pins the event
+// loop until it fires.
 function askForCrossCheckApproval({ sessionId, filePath, operation, review, originalLines, newLines, originalBytes, newBytes }) {
   return new Promise(resolve => {
     const checkId = `cc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    pendingCrossChecks.set(checkId, resolve);
+    const timer = setTimeout(() => {
+      if (pendingCrossChecks.has(checkId)) {
+        pendingCrossChecks.delete(checkId);
+        resolve('reject');
+      }
+    }, 600000); // 10 min timeout — defaults to reject for safety
+    pendingCrossChecks.set(checkId, { resolve, timer });
     broadcast({
       type: 'cross-check-pending',
       checkId, sessionId, filePath, operation,
@@ -1265,12 +1274,6 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
       model: review.model, ms: review.ms,
       originalLines, newLines, originalBytes, newBytes,
     });
-    setTimeout(() => {
-      if (pendingCrossChecks.has(checkId)) {
-        pendingCrossChecks.delete(checkId);
-        resolve('reject');
-      }
-    }, 600000); // 10 min timeout — defaults to reject for safety
   });
 }
 
@@ -1357,10 +1360,12 @@ async function toolEdit({ file_path, old_string, new_string, replace_all }, work
 }
 
 // ─── Cross-Check engine (Phase 2) ────────────────────────────────────────────
-// Reviews proposed file changes via a configurable model (default Sonnet 4.6)
-// before they hit disk. Returns { verdict, summary, issues, model, ms }.
-// Phase 2 is engine + storage only. Phase 3 wires it into the write path.
-const CROSS_CHECK_DEFAULT_MODEL = 'anthropic/claude-sonnet-4-6';
+// Reviews proposed file changes via a configurable model before they hit disk.
+// Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 — at
+// 90% of Sonnet's capability for ~3x lower cost, it's the right tier for a
+// structured-JSON classifier task that fires on every >200-byte write.
+// Override via cfg.crossCheckModel.
+const CROSS_CHECK_DEFAULT_MODEL = 'anthropic/claude-haiku-4-5';
 const CROSS_CHECK_DIFF_BUDGET = 100 * 1024;  // 100 KB max combined before/after sent to reviewer
 
 function buildDiffContext(originalContent, newContent) {
@@ -1461,9 +1466,16 @@ Respond ONLY with JSON in this exact shape (no prose around it):
   }
   try {
     const parsed = JSON.parse(jsonMatch[0]);
+    // Preserve PASS/FAIL/ERROR distinctly so the UI can show "reviewer broke" vs
+    // "reviewer flagged a real problem." Anything outside the known set is treated
+    // as ERROR so the user sees the raw verdict and can decide manually.
+    const rawVerdict = String(parsed.verdict || '').toUpperCase();
+    const verdict = (rawVerdict === 'PASS' || rawVerdict === 'FAIL' || rawVerdict === 'ERROR')
+      ? rawVerdict
+      : 'ERROR';
     return {
-      verdict: parsed.verdict === 'PASS' ? 'PASS' : 'FAIL',
-      summary: parsed.summary || '(no summary)',
+      verdict,
+      summary: parsed.summary || (verdict === 'ERROR' ? `Unrecognized verdict: ${parsed.verdict}` : '(no summary)'),
       issues:  Array.isArray(parsed.issues) ? parsed.issues : [],
       model:   useModel,
       ms,
@@ -2691,8 +2703,12 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'cross-check-decision') {
-    const resolver = pendingCrossChecks.get(msg.checkId);
-    if (resolver) { pendingCrossChecks.delete(msg.checkId); resolver(msg.decision === 'approve' ? 'approve' : 'reject'); }
+    const pending = pendingCrossChecks.get(msg.checkId);
+    if (pending) {
+      pendingCrossChecks.delete(msg.checkId);
+      clearTimeout(pending.timer);
+      pending.resolve(msg.decision === 'approve' ? 'approve' : 'reject');
+    }
     return;
   }
 
