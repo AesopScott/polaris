@@ -59,6 +59,7 @@ const BASE_SYSTEM_PROMPT = [
   'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
+  'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   `Permissions / rules / memory file locations — when the user asks where their permissions, rules, or memory files are, answer using these exact paths. Do not search for files — the locations are fixed:
   Global permissions/rules (coding style, git workflow, preferences): ${USER_CLAUDE_PATH}
   Global memory (persistent facts about the user and environment): ${GLOBAL_MEMORY_PATH}
@@ -1085,13 +1086,54 @@ function toolRead({ file_path, offset, limit }) {
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
-function toolWrite({ file_path, content }) {
+// assertWritable — enforces two rules before any write:
+//   1. file_path must be inside workDir (hard boundary)
+//   2. file must not be locked in the global locks.json
+function assertWritable(file_path, workDir) {
+  if (!workDir) return; // no workDir (e.g. chat sessions) — skip enforcement
+
+  const resolved = path.resolve(file_path);
+  const wd       = path.resolve(workDir);
+
+  // Rule 1: path must be within workDir
+  const inside = resolved.toLowerCase() === wd.toLowerCase() ||
+                 resolved.toLowerCase().startsWith(wd.toLowerCase() + path.sep);
+  if (!inside) {
+    throw new Error(
+      `Write blocked: "${path.basename(file_path)}" is outside the project working directory.\n` +
+      `Allowed: ${workDir}\nAttempted: ${resolved}`
+    );
+  }
+
+  // Rule 2: check global locks.json
+  try {
+    const locks = readJSON(LOCKS_PATH, {});
+    const rel   = path.relative(wd, resolved);
+    const isLocked = (
+      (locks[resolved]                && locks[resolved].sessions?.length)                ||
+      (locks[rel]                     && locks[rel].sessions?.length)                     ||
+      (locks[path.basename(resolved)] && locks[path.basename(resolved)].sessions?.length)
+    );
+    if (isLocked) {
+      throw new Error(
+        `Write blocked: "${path.basename(file_path)}" is locked. Unlock it in Polaris before writing.`
+      );
+    }
+  } catch (e) {
+    if (e.message.startsWith('Write blocked:')) throw e;
+    // locks.json missing or unreadable — treat as no locks
+  }
+}
+
+function toolWrite({ file_path, content }, workDir) {
+  assertWritable(file_path, workDir);
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
   fs.writeFileSync(file_path, content, 'utf8');
   return `Written: ${file_path}`;
 }
 
-function toolEdit({ file_path, old_string, new_string, replace_all }) {
+function toolEdit({ file_path, old_string, new_string, replace_all }, workDir) {
+  assertWritable(file_path, workDir);
   const content = fs.readFileSync(file_path, 'utf8');
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
   const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
