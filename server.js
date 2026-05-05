@@ -784,8 +784,12 @@ function autoObsidianForSession(sessionId) {
   const config = readConfig();
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath) return; // No vault configured â€” silently skip
+  const matchedProj = (config.projects || []).find(
+    p => p.workDir && s.workDir && p.workDir.toLowerCase() === s.workDir.toLowerCase()
+  );
+  const sessionsFolder = matchedProj?.obsidianSessionsDir || 'Polaris_Sessions';
   try {
-    const dir = path.join(vaultPath, 'Polaris_Sessions');
+    const dir = path.join(vaultPath, sessionsFolder);
     fs.mkdirSync(dir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const safeName = (s.name || 'Session').replace(/[<>:"/\\|?*]/g, '_').slice(0, 60);
@@ -809,7 +813,114 @@ function autoObsidianForSession(sessionId) {
   }
 }
 
-// â”€â”€â”€ Lock enforcement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Extract signal-rich session content and distill into numbered Obsidian knowledge files
+async function extractSessionToKnowledge(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s || !s.workDir) return;
+  const config = readConfig();
+  const matched = (config.projects || []).find(
+    p => p.workDir && p.workDir.toLowerCase() === s.workDir.toLowerCase()
+  );
+  if (!matched || !matched.obsidianDir) return;
+  if (!config.deepSeekApiKey) return;
+
+  const ACTION_PREFIXES = ['⚙ Write(', '⚙ Edit(', '⚙ Bash(', '⚙ PowerShell('];
+  const signalLines = (s.lines || []).filter(l => {
+    if (l.role === 'user' || l.role === 'assistant' || l.role === 'error') return true;
+    if (l.role === 'system') return ACTION_PREFIXES.some(p => (l.text || '').startsWith(p));
+    return false;
+  });
+  if (signalLines.length === 0) return;
+
+  const rawTranscript = signalLines.map(l => `[${l.role}] ${l.text}`).join('\n');
+  const transcript = rawTranscript.length > 8000
+    ? rawTranscript.slice(0, 8000) + '\n...[truncated]'
+    : rawTranscript;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const projectName = matched.name || s.projectName || 'Project';
+
+  const extractionPrompt = `You are a knowledge extractor for a software project called "${projectName}".
+
+Analyze this session transcript and extract structured updates. Return ONLY valid JSON with these keys (omit a key or set to null if nothing relevant was found):
+
+{
+  "architecture": "new architectural decisions, patterns, or component changes (string or null)",
+  "buildPlan": "roadmap changes, shipped features, open questions, or deferred items (string or null)",
+  "integrations": "new external APIs, tools, services, or configuration changes (string or null)",
+  "changelog": {
+    "version": "version number like 1.0.61 — only if an explicit version bump was detected, else null",
+    "date": "${today}",
+    "headline": "one sentence describing the main change this session"
+  }
+}
+
+Session transcript:
+${transcript}`;
+
+  let extracted;
+  try {
+    const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.deepSeekApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: extractionPrompt }],
+        temperature: 0.2,
+        max_tokens: 1000
+      })
+    });
+    const data = await resp.json();
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) { console.warn('[extract-knowledge] no JSON in DeepSeek response'); return; }
+    extracted = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    console.error('[extract-knowledge] DeepSeek call failed:', e.message);
+    return;
+  }
+
+  const vaultPath = config.obsidianVaultPath;
+  if (!vaultPath) return;
+  // obsidianDir may be absolute or relative to vault
+  const obsDir = path.isAbsolute(matched.obsidianDir)
+    ? matched.obsidianDir
+    : path.join(vaultPath, matched.obsidianDir);
+
+  const appendBlock = (fileName, content) => {
+    if (!content) return;
+    const filePath = path.join(obsDir, fileName);
+    const block = `\n\n## Session Update (${today})\n\n${content}\n`;
+    try { fs.appendFileSync(filePath, block, 'utf8'); } catch (_e) { /* skip if file missing */ }
+  };
+
+  appendBlock('2-Architecture.md', extracted.architecture);
+  appendBlock('3-Build-Plan.md', extracted.buildPlan);
+  appendBlock('7-Integrations.md', extracted.integrations);
+
+  // Changelog: insert table row after the header separator line
+  if (extracted.changelog?.version) {
+    const clPath = path.join(obsDir, '4-Changelog.md');
+    try {
+      let clContent = fs.readFileSync(clPath, 'utf8');
+      const dividerMatch = clContent.match(/\|[-\s|]+\|\r?\n/);
+      if (dividerMatch) {
+        const insertAt = clContent.indexOf(dividerMatch[0]) + dividerMatch[0].length;
+        const row = `| ${extracted.changelog.version} | ${extracted.changelog.date} | ${extracted.changelog.headline} |\n`;
+        clContent = clContent.slice(0, insertAt) + row + clContent.slice(insertAt);
+        fs.writeFileSync(clPath, clContent, 'utf8');
+        console.log(`[extract-knowledge] changelog row inserted: v${extracted.changelog.version}`);
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
+}
+
+//â”€â”€â”€ Lock enforcement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function isLocked(filePath, sessionId) {
   const locks = readJSON(LOCKS_PATH, {});
   const rel = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
@@ -1721,6 +1832,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
   broadcast({ type: 'session-status', sessionId, status: s?.aborted ? 'error' : 'done' });
   autoObsidianForSession(sessionId);
+  extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
 }
 
 function appendTokenLog(sessionId, model, usage) {
