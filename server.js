@@ -1106,6 +1106,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'WebSearch', description: 'Search the web and return results. Uses Brave Search if configured, otherwise DuckDuckGo.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' }, num_results: { type: 'integer', description: 'Max results to return (default 5)' } }, required: ['query'] } } },
   { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask the user a clarifying question and wait for their response before continuing.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask' }, options: { type: 'array', items: { type: 'string' }, description: 'Optional predefined answer choices' } }, required: ['question'] } } },
   { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
+  { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Call with no arguments at session start to load all project context. Pass filename to retrieve a specific file.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Omit to get all project memory.' } }, required: [] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir) {
@@ -1133,12 +1134,11 @@ function buildDirectSystemPrompt(config, workDir) {
       ].filter(Boolean).join('\n');
       layers.push('--- Project Configuration ---\n' + configLines);
 
-      // Obsidian session startup requirement
+      // Project memory directive
       if (matched.obsidianDir) {
         layers.push(
-          `--- Obsidian Session Startup (MANDATORY) ---\n` +
-          `At the start of every session, before responding to any user request, read ALL files in your Obsidian knowledge folder using the Read tool. These files are your project memory — soul, architecture, build plan, changelog, and technical documentation. Do not skip this step. List the files with Glob first if needed.\n` +
-          `Obsidian knowledge folder: ${matched.obsidianDir}`
+          `--- Project Memory (MANDATORY) ---\n` +
+          `Your project knowledge base is pre-loaded into Polaris memory. At the start of every session, before responding to any user request, call QueryMemory with no arguments to retrieve your full project context — soul, architecture, build plan, file map, changelog, and technical documentation. Do not skip this step.`
         );
       }
 
@@ -1168,6 +1168,17 @@ function toolRead({ file_path, offset, limit }) {
   const start = offset ? Math.max(0, offset - 1) : 0;
   const end   = limit  ? Math.min(lines.length, start + limit) : lines.length;
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
+}
+
+function toolQueryMemory({ filename } = {}, sessionId) {
+  const session = sessions.get(sessionId);
+  const mem = session?.projectMemory;
+  if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
+  if (filename) {
+    const key = Object.keys(mem).find(k => k.toLowerCase().includes(filename.toLowerCase()));
+    return key ? `=== ${key} ===\n${mem[key]}` : `File not found in project memory: ${filename}`;
+  }
+  return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
 // assertWritable — enforces two rules before any write:
@@ -1617,6 +1628,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'WebSearch':  return await toolWebSearch(input);
     case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
     case 'TodoWrite':  return toolTodoWrite(input, sessionId);
+    case 'QueryMemory': return toolQueryMemory(input, sessionId);
     default:           return `Unknown tool: ${name}`;
   }
 }
@@ -1759,6 +1771,23 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
 
   addToHistory(userMessage);
   broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
+
+  // Load project memory from Obsidian once per session (server-side, never sent to API directly)
+  if (!session.projectMemory) {
+    const matched = (config.projects || []).find(p => p.workDir && workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
+    if (matched?.obsidianDir) {
+      const mem = {};
+      try {
+        const files = fs.readdirSync(matched.obsidianDir).filter(f => f.endsWith('.md')).sort();
+        for (const f of files) {
+          try { mem[f] = fs.readFileSync(path.join(matched.obsidianDir, f), 'utf8'); } catch {}
+        }
+      } catch {}
+      session.projectMemory = mem;
+    } else {
+      session.projectMemory = {};
+    }
+  }
 
   // Restore persisted message history on first use (survives server restarts)
   if (!session.messages) session.messages = loadSessionMessages(sessionId);
