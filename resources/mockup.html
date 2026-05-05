@@ -1196,6 +1196,7 @@
             <input type="text" id="settings-or-floor" class="panel-input" placeholder="openrouter/auto" style="flex:1;" />
             <button onclick="testFloorModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
+          <input type="text" id="settings-or-floor-provider" class="panel-input" placeholder="Provider (e.g. Friendli) — leave blank for auto" style="width:100%;margin-top:6px;" />
           <span id="floor-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
         <div class="panel-section">
@@ -1204,6 +1205,7 @@
             <input type="text" id="settings-or-sonnet" class="panel-input" placeholder="openrouter/auto" style="flex:1;" />
             <button onclick="testBalancedModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
+          <input type="text" id="settings-or-sonnet-provider" class="panel-input" placeholder="Provider — leave blank for auto" style="width:100%;margin-top:6px;" />
           <span id="balanced-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
         <div class="panel-section">
@@ -1212,6 +1214,7 @@
             <input type="text" id="settings-or-opus" class="panel-input" placeholder="openrouter/auto" style="flex:1;" />
             <button onclick="testPowerModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
+          <input type="text" id="settings-or-opus-provider" class="panel-input" placeholder="Provider — leave blank for auto" style="width:100%;margin-top:6px;" />
           <span id="power-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
@@ -2776,7 +2779,19 @@
         if (arc)    arc.setAttribute('stroke-dasharray', `${(pct * 88).toFixed(1)} 88`);
         if (arc)    arc.setAttribute('stroke', pct > 0.6 ? '#34d399' : pct > 0.3 ? '#60a5fa' : '#94a3b8');
         if (tpsEl)  tpsEl.textContent = `${tps} t/s`;
-        if (msg.final) setTimeout(() => { wrap.style.display = 'none'; }, 3000);
+        if (msg.final) {
+          // update persistent avg
+          const avgEl = card.querySelector('[data-speed-avg]');
+          if (avgEl) {
+            const s = sessionStore[msg.sessionId];
+            if (!s) break;
+            s._tpsSamples = s._tpsSamples || [];
+            if (tps > 0) s._tpsSamples.push(tps);
+            const avg = s._tpsSamples.length ? Math.round(s._tpsSamples.reduce((a,b)=>a+b,0)/s._tpsSamples.length) : '—';
+            avgEl.textContent = avg;
+          }
+          setTimeout(() => { wrap.style.display = 'none'; }, 3000);
+        }
         break;
       }
 
@@ -3406,6 +3421,11 @@
             <circle cx="35" cy="38" r="3" fill="#60a5fa"/>
           </svg>
           <span class="speed-tps" data-speed-tps>0 t/s</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;border-right:1px solid var(--border);min-width:52px;">
+          <span style="font-size:8px;opacity:0.4;letter-spacing:0.05em;">AVG</span>
+          <span style="font-size:11px;font-weight:700;" data-speed-avg>—</span>
+          <span style="font-size:8px;opacity:0.4;">t/s</span>
         </div>
         <div class="footer-btns">
           <button class="fbtn" data-action="copy">Copy</button>
@@ -4237,6 +4257,18 @@
       const inp = document.getElementById('settings-or-floor');
       if (inp) inp.value = cfg.openRouterFloorModel;
     }
+    if (cfg.openRouterFloorProvider !== undefined) {
+      const inp = document.getElementById('settings-or-floor-provider');
+      if (inp) inp.value = cfg.openRouterFloorProvider;
+    }
+    if (cfg.openRouterSonnetProvider !== undefined) {
+      const inp = document.getElementById('settings-or-sonnet-provider');
+      if (inp) inp.value = cfg.openRouterSonnetProvider;
+    }
+    if (cfg.openRouterOpusProvider !== undefined) {
+      const inp = document.getElementById('settings-or-opus-provider');
+      if (inp) inp.value = cfg.openRouterOpusProvider;
+    }
     if (cfg.deepSeekEmail !== undefined) {
       const inp = document.getElementById('settings-ds-email');
       if (inp) inp.value = cfg.deepSeekEmail;
@@ -4497,6 +4529,9 @@
     const orFloor    = document.getElementById('settings-or-floor')?.value?.trim() || '';
     const orSonnet   = document.getElementById('settings-or-sonnet')?.value?.trim() || '';
     const orOpus     = document.getElementById('settings-or-opus')?.value?.trim() || '';
+    const orFloorProvider  = document.getElementById('settings-or-floor-provider')?.value?.trim() || '';
+    const orSonnetProvider = document.getElementById('settings-or-sonnet-provider')?.value?.trim() || '';
+    const orOpusProvider   = document.getElementById('settings-or-opus-provider')?.value?.trim() || '';
     const dsEmail      = document.getElementById('settings-ds-email')?.value?.trim() || '';
     const dsPassword   = document.getElementById('settings-ds-password')?.value || '';
     const dsModel      = document.getElementById('settings-ds-model')?.value?.trim() || 'deepseek_chat';
@@ -4514,6 +4549,7 @@
       githubUsername: ghUser, defaultForkModel,
       openRouterApiKey: orKey, openRouterFloorModel: orFloor,
       openRouterSonnetModel: orSonnet, openRouterOpusModel: orOpus,
+      openRouterFloorProvider: orFloorProvider, openRouterSonnetProvider: orSonnetProvider, openRouterOpusProvider: orOpusProvider,
       deepSeekEmail: dsEmail, deepSeekPassword: dsPassword, chatModel: dsModel,
       deepSeekApiKey: dsApiKey, deepSeekApiModel: dsApiModel,
       anthropicApiKey: anthropicKey, openAiApiKey: openAiKey, elevenLabsApiKey: elevenLabsKey,

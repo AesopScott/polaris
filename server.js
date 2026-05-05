@@ -1629,16 +1629,18 @@ async function executeDirectTool(name, input, workDir, sessionId) {
 
 // â”€â”€ Streaming OpenRouter call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS) {
+function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS, provider = null) {
   return new Promise(resolve => {
-    const payload = JSON.stringify({
+    const payloadObj = {
       model,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       tools,
       tool_choice: 'auto',
       stream: true,
       stream_options: { include_usage: true },
-    });
+    };
+    if (provider) payloadObj.provider = { only: [provider] };
+    const payload = JSON.stringify(payloadObj);
     const opts = {
       hostname: 'openrouter.ai',
       path:     '/api/v1/chat/completions',
@@ -1811,6 +1813,9 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   const model = effectiveTier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
               : effectiveTier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
               :                                (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
+  const provider = effectiveTier === 'power'    ? (config.openRouterOpusProvider   || null)
+                 : effectiveTier === 'balanced' ? (config.openRouterSonnetProvider || null)
+                 :                                (config.openRouterFloorProvider  || null);
   if (hasImage && tier === 'floor') broadcast({ type: 'line', sessionId, text: '[auto-escalated to balanced — image detected]', role: 'system' });
 
   session.status = 'running';
@@ -1849,7 +1854,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   while (!session.aborted && iterations < 50) {
     iterations++;
     dlog('ITER', iterations);
-    const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools);
+    const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
       dlog('ERROR', result.error);
