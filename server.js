@@ -59,6 +59,13 @@ const BASE_SYSTEM_PROMPT = [
   'Before any code change, file write, or destructive action, state what you plan to do and wait for the user to confirm. Do not assume approval from context.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
+  `Rules and permissions file locations — use these when the user asks where to set global or project rules:
+  Global rules (coding style, git workflow, preferences): ${USER_CLAUDE_PATH}
+  Global memory (persistent facts about the user/environment): ${GLOBAL_MEMORY_PATH}
+  Project rules (project-specific instructions): {workDir}\\CLAUDE.md in the project working directory
+  Project memory (persistent project facts): {workDir}\\MEMORY.md in the project working directory
+  Per-project inline instructions: Polaris Settings → Projects panel → select a project → Instructions field
+  These files are automatically loaded into every session's system prompt. Create them if they do not exist.`,
 ].join('\n');
 
 function buildSystemPrompt(config) {
