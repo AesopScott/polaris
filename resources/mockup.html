@@ -2780,15 +2780,19 @@
         if (arc)    arc.setAttribute('stroke', pct > 0.6 ? '#34d399' : pct > 0.3 ? '#60a5fa' : '#94a3b8');
         if (tpsEl)  tpsEl.textContent = `${tps} t/s`;
         if (msg.final) {
-          // update persistent avg
-          const avgEl = card.querySelector('[data-speed-avg]');
-          if (avgEl) {
-            const s = sessionStore[msg.sessionId];
-            if (!s) break;
-            s._tpsSamples = s._tpsSamples || [];
-            if (tps > 0) s._tpsSamples.push(tps);
-            const avg = s._tpsSamples.length ? Math.round(s._tpsSamples.reduce((a,b)=>a+b,0)/s._tpsSamples.length) : '—';
-            avgEl.textContent = avg;
+          const s = sessionStore[msg.sessionId];
+          if (s) {
+            // update persistent avg tok/s
+            const avgEl = card.querySelector('[data-speed-avg]');
+            if (avgEl) {
+              s._tpsSamples = s._tpsSamples || [];
+              if (tps > 0) s._tpsSamples.push(tps);
+              const avg = s._tpsSamples.length ? Math.round(s._tpsSamples.reduce((a,b)=>a+b,0)/s._tpsSamples.length) : '—';
+              avgEl.textContent = avg;
+            }
+            // update persistent TTFT
+            const ttftEl = card.querySelector('[data-speed-ttft]');
+            if (ttftEl && msg.ttft) ttftEl.textContent = msg.ttft;
           }
           setTimeout(() => { wrap.style.display = 'none'; }, 3000);
         }
@@ -3426,6 +3430,11 @@
           <span style="font-size:8px;opacity:0.4;letter-spacing:0.05em;">AVG</span>
           <span style="font-size:11px;font-weight:700;" data-speed-avg>—</span>
           <span style="font-size:8px;opacity:0.4;">t/s</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;border-right:1px solid var(--border);min-width:52px;">
+          <span style="font-size:8px;opacity:0.4;letter-spacing:0.05em;">TTFT</span>
+          <span style="font-size:11px;font-weight:700;" data-speed-ttft>—</span>
+          <span style="font-size:8px;opacity:0.4;">ms</span>
         </div>
         <div class="footer-btns">
           <button class="fbtn" data-action="copy">Copy</button>

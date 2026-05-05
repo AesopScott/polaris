@@ -2584,72 +2584,83 @@ function handleMessage(ws, raw) {
     return;
   }
 
-  if (type === 'test-model') {
+  if (type === ‘test-model’) {
     const { model, tier, provider } = msg;
     const config = readConfig();
     const apiKey = config.openRouterApiKey;
-    console.log(`[test-model] Testing ${tier} tier — model: ${model}${provider ? ' via '+provider : ''}`);
-    if (!model) {
-      sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No model string entered' });
-      return;
-    }
-    if (!apiKey) {
-      sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No OpenRouter API key configured' });
-      return;
-    }
-    const bodyObj = { model, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 16, stream: true };
+    if (!model) { sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: ‘No model string entered’ }); return; }
+    if (!apiKey) { sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: ‘No OpenRouter API key configured’ }); return; }
+    const bodyObj = {
+      model,
+      messages: [{ role: ‘user’, content: ‘Count from 1 to 50, one number per line. No other text.’ }],
+      max_tokens: 200,
+      stream: true,
+      stream_options: { include_usage: true },
+    };
     if (provider) bodyObj.provider = { only: [provider] };
     const body = JSON.stringify(bodyObj);
+    const reqStartMs = Date.now();
+    let ttftMs = null, totalChars = 0, sseBuffer = ‘’, usage = null;
     const req = https.request({
-      hostname: 'openrouter.ai',
-      path: '/api/v1/chat/completions',
-      method: 'POST',
+      hostname: ‘openrouter.ai’,
+      path: ‘/api/v1/chat/completions’,
+      method: ‘POST’,
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'HTTP-Referer': 'https://polaris.aesopacademy.com',
+        ‘Authorization’: `Bearer ${apiKey}`,
+        ‘Content-Type’: ‘application/json’,
+        ‘Content-Length’: Buffer.byteLength(body),
+        ‘HTTP-Referer’: ‘https://polaris.aesopacademy.com’,
       },
     }, res => {
-      let raw = '';
-      res.on('data', c => raw += c);
-      res.on('end', () => {
-        console.log(`[test-model] ${tier} (${model}) â†’ HTTP ${res.statusCode}: ${raw.slice(0, 500)}`);
-        if (res.statusCode === 200) {
-          const firstLine = raw.split('\n').find(l => l.startsWith('data:') && !l.includes('[DONE]'));
-          if (firstLine) {
-            try {
-              const data = JSON.parse(firstLine.slice(5).trim());
-              if (data.type || data.choices) {
-                sendTo(ws, { type: 'test-model-result', tier, ok: true, message: `Model valid â€” streaming works (${model})`, detail: null });
-              } else {
-                sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `Streaming response malformed â€” model may not support Anthropic streaming`, detail: raw.slice(0, 500) });
-              }
-            } catch {
-              sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `Streaming response not valid JSON â€” model likely incompatible`, detail: raw.slice(0, 500) });
-            }
-          } else {
-            sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `HTTP 200 but no SSE data received â€” model may not support Anthropic streaming`, detail: raw.slice(0, 500) });
-          }
-        } else if (res.statusCode === 401) {
-          sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'Invalid API key (401)', detail: raw.slice(0, 500) });
-        } else if (res.statusCode === 404) {
-          sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `Model not found (404) â€” check the model ID`, detail: raw.slice(0, 500) });
-        } else {
+      let errRaw = ‘’;
+      if (res.statusCode !== 200) {
+        res.on(‘data’, c => errRaw += c);
+        res.on(‘end’, () => {
           try {
-            const data = JSON.parse(raw);
-            const detail = data?.error?.message || raw.slice(0, 500);
-            sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `HTTP ${res.statusCode}: ${detail}`, detail: raw.slice(0, 500) });
+            const d = JSON.parse(errRaw);
+            const detail = d?.error?.message || errRaw.slice(0, 300);
+            sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: `HTTP ${res.statusCode}: ${detail}` });
           } catch {
-            sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `HTTP ${res.statusCode}: ${raw.slice(0, 100)}`, detail: raw.slice(0, 500) });
+            sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: `HTTP ${res.statusCode}: ${errRaw.slice(0, 200)}` });
           }
+        });
+        return;
+      }
+      res.on(‘data’, chunk => {
+        sseBuffer += chunk.toString();
+        const lines = sseBuffer.split(‘\n’);
+        sseBuffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith(‘data: ‘)) continue;
+          const data = line.slice(6).trim();
+          if (data === ‘[DONE]’) continue;
+          try {
+            const evt = JSON.parse(data);
+            if (evt.usage) usage = evt.usage;
+            const content = evt.choices?.[0]?.delta?.content;
+            if (content) {
+              if (!ttftMs) ttftMs = Date.now() - reqStartMs;
+              totalChars += content.length;
+            }
+          } catch {}
         }
       });
+      res.on(‘end’, () => {
+        const totalMs = Date.now() - reqStartMs;
+        const outTokens = usage?.completion_tokens || Math.round(totalChars / 4);
+        const streamMs = ttftMs ? totalMs - ttftMs : totalMs;
+        const tps = streamMs > 0 ? Math.round(outTokens / (streamMs / 1000)) : 0;
+        if (!ttftMs) {
+          sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: ‘No tokens received — model may not support streaming’ });
+          return;
+        }
+        sendTo(ws, {
+          type: ‘test-model-result’, tier, ok: true,
+          message: `✓ TTFT: ${(ttftMs/1000).toFixed(2)}s · ${tps} tok/s · ${outTokens} tokens · ${(totalMs/1000).toFixed(2)}s total`,
+        });
+      });
     });
-    req.on('error', err => {
-      console.log(`[test-model] ${tier} connection error: ${err.message}`);
-      sendTo(ws, { type: 'test-model-result', tier, ok: false, message: `Connection error: ${err.message}` });
-    });
+    req.on(‘error’, err => sendTo(ws, { type: ‘test-model-result’, tier, ok: false, message: `Connection error: ${err.message}` }));
     req.write(body);
     req.end();
     return;
