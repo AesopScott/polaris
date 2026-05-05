@@ -24,11 +24,13 @@ Scott's personal AI command center — parallel agent sessions, real API control
 - `%APPDATA%\.claude\polaris\config.json` — API keys, model strings, vault path, all settings.
 
 ## Changelog maintenance (mandatory after every version bump)
-After bumping `package.json` version, prepend a row to the **Build Index** table at the top of `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\changelog.md`. Format: `| <version> | <YYYY-MM-DD> | <one-sentence headline of what landed> |`. Newest build at the top of the table. The detailed prose history continues below the table — keep both. The table is the at-a-glance index; prose entries are optional for small builds.
+After bumping `package.json` version, prepend a row to the **Build Index** table at the top of `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`. Format: `| <version> | <YYYY-MM-DD> | <one-sentence headline of what landed> |`. Newest build at the top of the table. The detailed prose history continues below the table — keep both. The table is the at-a-glance index; prose entries are optional for small builds.
 
-## Soul reference
-`G:\My Drive\Aesop Academy\Obsidian\SOUL.md` — read for the why.
-Architecture decisions: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\3-Architecture.md`.
+## Project knowledge base
+Soul + why: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md`
+Architecture decisions: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\2-Architecture.md`
+Build plan + roadmap: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\3-Build-Plan.md`
+Full changelog: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`
 
 
 <!-- PROJECT-SPECIFIC -->
