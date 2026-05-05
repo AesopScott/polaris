@@ -2111,12 +2111,18 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     ? userMessage.some(p => p.type === 'image_url' || p.type === 'image')
     : false;
   const effectiveTier = hasImage && tier === 'floor' ? 'balanced' : tier;
-  const model = effectiveTier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
-              : effectiveTier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
-              :                                (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
-  const provider = effectiveTier === 'power'    ? (config.openRouterOpusProvider   || null)
-                 : effectiveTier === 'balanced' ? (config.openRouterSonnetProvider || null)
-                 :                                (config.openRouterFloorProvider  || null);
+  // session.model wins when the launcher specifies an explicit model — used by
+  // the Agent Eval runner so a single config can be tested across many models
+  // without rewriting config.json. Falls back to tier-mapped config when null.
+  const tierModel = effectiveTier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+                  : effectiveTier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+                  :                                (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
+  const model = session.model || tierModel;
+  const provider = session.model
+    ? null  // explicit model wins; no provider preference unless we add one to launch
+    : (effectiveTier === 'power'    ? (config.openRouterOpusProvider   || null)
+     : effectiveTier === 'balanced' ? (config.openRouterSonnetProvider || null)
+     :                                (config.openRouterFloorProvider  || null));
   if (hasImage && tier === 'floor') broadcast({ type: 'line', sessionId, text: '[auto-escalated to balanced — image detected]', role: 'system' });
 
   session.status = 'running';
@@ -2669,7 +2675,9 @@ function handleMessage(ws, raw) {
     saveSessions();
 
     // Tier guard — Balanced/Power must be explicitly configured. No silent fallback to Floor.
-    if (!routineTag && (tier === 'balanced' || tier === 'power')) {
+    // Skipped when an explicit msg.model is provided (Agent Eval runner path) since the
+    // explicit model overrides tier mapping anyway.
+    if (!routineTag && !msg.model && (tier === 'balanced' || tier === 'power')) {
       const cfg = readConfig();
       const tierKey = tier === 'balanced' ? 'openRouterSonnetModel' : 'openRouterOpusModel';
       const tierName = tier === 'balanced' ? 'Balanced' : 'Power';
@@ -3010,11 +3018,11 @@ function handleMessage(ws, raw) {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);
     if (!proj) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No project with Obsidian dir configured' }); return; }
-    const benchFile = path.join(proj.obsidianDir, '5-Benchmarks.md');
+    const benchFile = path.join(proj.obsidianDir, '5-Performance-Benchmark.md');
     try {
       const content = fs.readFileSync(benchFile, 'utf8');
       const match = content.match(/```benchmark-models\n([\s\S]*?)```/);
-      if (!match) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No benchmark-models block found in 5-Benchmarks.md' }); return; }
+      if (!match) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No benchmark-models block found in 5-Performance-Benchmark.md' }); return; }
       const models = match[1].split('\n')
         .map(l => l.trim())
         .filter(l => l && !l.startsWith('#'));
@@ -3030,7 +3038,7 @@ function handleMessage(ws, raw) {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);
     if (!proj) return;
-    const benchFile = path.join(proj.obsidianDir, '5-Benchmarks.md');
+    const benchFile = path.join(proj.obsidianDir, '5-Performance-Benchmark.md');
     try {
       let content = fs.readFileSync(benchFile, 'utf8');
       const date = new Date().toISOString().slice(0, 10);
