@@ -1858,7 +1858,11 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
 
     if (result.error) {
       dlog('ERROR', result.error);
-      broadcast({ type: 'line', sessionId, text: `API error: ${result.error}`, role: 'error' });
+      const isToolUnsupported = result.error.includes('tool choice') || result.error.includes('tool-call-parser') || result.error.includes('enable-auto-tool-choice');
+      const errorText = isToolUnsupported
+        ? `This model does not support tool calling (required for agent mode). Use it for chat/routine sessions only, or pick a different model.`
+        : `API error: ${result.error}`;
+      broadcast({ type: 'line', sessionId, text: errorText, role: 'error' });
       broadcast({ type: 'session-status', sessionId, status: 'error' });
       const s = sessions.get(sessionId); if (s) { s.status = 'error'; s.endAt = Date.now(); }
       return;
