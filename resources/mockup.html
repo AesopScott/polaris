@@ -4224,14 +4224,22 @@
 
   function renderAssistantMarkdown(div) {
     if (typeof marked === 'undefined') return;
-    const raw = div.textContent;
+    const raw = div.dataset.rawText || div.textContent;
     if (!raw || !raw.trim()) return;
     try {
+      const wasAtBottom = (() => {
+        const term = div.closest('[data-term]');
+        return term ? (term.scrollHeight - term.scrollTop - term.clientHeight) < 40 : false;
+      })();
       div.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
       div.classList.add('md-render');
       div.style.whiteSpace = '';
       if (typeof hljs !== 'undefined') {
         div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+      }
+      if (wasAtBottom) {
+        const term = div.closest('[data-term]');
+        if (term) term.scrollTop = term.scrollHeight;
       }
     } catch (e) {
       // Leave as plain text if parsing fails
@@ -4250,6 +4258,7 @@
         // For historical lines on already-done sessions, render markdown immediately
         if (line.role === 'assistant' && s.status === 'done') {
           div.dataset.streamRole = 'assistant';
+          div.dataset.rawText = line.text;
           renderAssistantMarkdown(div);
         }
       }
@@ -4269,10 +4278,23 @@
     const wasAtBottom = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
     // Merge consecutive assistant streaming chunks into one div instead of
     // creating a new element per token — prevents fragmented walls of text.
+    // Raw text is tracked in dataset.rawText; markdown is rendered on a debounce
+    // so the user sees formatted output within ~300ms of each pause in streaming.
     if (line.role === 'assistant') {
       const last = term.lastElementChild;
       if (last && last.dataset.streamRole === 'assistant') {
-        last.textContent += line.text;
+        last.dataset.rawText = (last.dataset.rawText || '') + line.text;
+        if (last.classList.contains('md-render')) {
+          // Already rendered once — re-render on 200ms pause so new text stays formatted
+          clearTimeout(last._mdTimer);
+          last._mdTimer = setTimeout(() => renderAssistantMarkdown(last), 200);
+        } else {
+          // Not yet rendered — show plain text while tokens are arriving fast,
+          // then do first markdown render on a 300ms pause
+          last.textContent = last.dataset.rawText;
+          clearTimeout(last._mdTimer);
+          last._mdTimer = setTimeout(() => renderAssistantMarkdown(last), 300);
+        }
         if (wasAtBottom) term.scrollTop = term.scrollHeight;
         return;
       }
