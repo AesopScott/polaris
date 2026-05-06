@@ -9,6 +9,9 @@
   var require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs' } };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/loader.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
   @font-face {
     font-family: 'CascadiaCode';
@@ -502,6 +505,30 @@
   }
   .palette .t-normal { margin-bottom: 2px; }
   .palette [data-stream-role="assistant"] { margin-bottom: 8px; white-space: pre-wrap; color: #C5C5C5; font-weight: 500; }
+  /* Monaco-style markdown rendering — applied after stream completes */
+  [data-stream-role="assistant"].md-render { white-space: normal; }
+  .md-render { line-height: 1.55; color: #C5C5C5; }
+  .md-render p { margin: 0 0 6px 0; }
+  .md-render h1, .md-render h2, .md-render h3, .md-render h4 { color: #569CD6; font-weight: 600; margin: 10px 0 4px 0; }
+  .md-render h1 { font-size: 1.15em; }
+  .md-render h2 { font-size: 1.05em; }
+  .md-render h3, .md-render h4 { font-size: 1em; }
+  .md-render code { background: #2d2d2d; color: #CE9178; padding: 1px 5px; border-radius: 3px; font-family: 'CascadiaCode', 'Cascadia Code', monospace; font-size: 11.5px; }
+  .md-render pre { background: #1e1e1e; border-left: 3px solid #569CD6; padding: 10px 12px; margin: 6px 0 8px 0; border-radius: 0 3px 3px 0; overflow-x: auto; }
+  .md-render pre code { background: none; color: inherit; padding: 0; font-size: 12px; }
+  .md-render ul, .md-render ol { margin: 3px 0 6px 18px; }
+  .md-render li { margin: 2px 0; }
+  .md-render strong { color: #DCDCAA; font-weight: 600; }
+  .md-render em { color: #9CDCFE; font-style: italic; }
+  .md-render a { color: #4EC9B0; text-decoration: none; }
+  .md-render a:hover { text-decoration: underline; }
+  .md-render blockquote { border-left: 3px solid #569CD6; padding: 2px 0 2px 10px; color: #858585; margin: 4px 0; }
+  .md-render hr { border: none; border-top: 1px solid #3e3e3e; margin: 8px 0; }
+  .md-render table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+  .md-render th { background: #2d2d2d; color: #9CDCFE; padding: 4px 10px; border: 1px solid #3e3e3e; }
+  .md-render td { padding: 3px 10px; border: 1px solid #3e3e3e; }
+  /* Override hljs background so it inherits the pre background */
+  .md-render .hljs { background: transparent; padding: 0; }
   .palette .t-user { margin-top: 8px !important; }
 
   /* Verbose output handling */
@@ -4187,6 +4214,22 @@
     });
   }
 
+  function renderAssistantMarkdown(div) {
+    if (typeof marked === 'undefined') return;
+    const raw = div.textContent;
+    if (!raw || !raw.trim()) return;
+    try {
+      div.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
+      div.classList.add('md-render');
+      div.style.whiteSpace = '';
+      if (typeof hljs !== 'undefined') {
+        div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+      }
+    } catch (e) {
+      // Leave as plain text if parsing fails
+    }
+  }
+
   function makeLineEl(line, sessionId) {
     const div = document.createElement('div');
     div.className = { user: 't-user', assistant: 't-normal', error: 't-warn' }[line.role] || 't-normal';
@@ -4196,6 +4239,11 @@
       if (s) {
         if (line.role === 'user' && s.userColor) div.style.color = s.userColor;
         if (line.role === 'assistant' && s.aiColor) div.style.color = s.aiColor;
+        // For historical lines on already-done sessions, render markdown immediately
+        if (line.role === 'assistant' && s.status === 'done') {
+          div.dataset.streamRole = 'assistant';
+          renderAssistantMarkdown(div);
+        }
       }
     }
     return div;
@@ -4238,6 +4286,12 @@
       badge.textContent = { running: 'Running', done: 'Done', error: 'Error' }[status] || status;
     }
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
+    if (status === 'done') {
+      const term = card.querySelector('[data-term]');
+      if (term) {
+        term.querySelectorAll('[data-stream-role="assistant"]:not(.md-render)').forEach(renderAssistantMarkdown);
+      }
+    }
   }
 
   function contextLimitForSession(s) {
