@@ -24,6 +24,13 @@ const VERSIONS_LOG_CAP = 1000;
 const CROSS_CHECKS_DIR = path.join(POLARIS_DIR, 'cross-checks');
 const MAX_WRITE_BYTES = 1024 * 1024;  // 1 MB hard cap per file write
 const MAX_WRITE_LINES = 30000;        // 30K lines hard cap per file write
+
+// OpenRouter model catalog cache. Refreshed daily; powers exact-match cost
+// lookups across the UI (API Balance graph, Agent Eval cost column) so brand-
+// new models like google/gemini-3-flash-preview don't fall through to the
+// hardcoded fallback rate.
+const OPENROUTER_CATALOG_PATH = path.join(POLARIS_DIR, 'openrouter-catalog.json');
+const OPENROUTER_CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
 const HISTORY_PATH  = path.join(POLARIS_DIR, 'prompt-history.json');
 const SESSIONS_DIR  = path.join(POLARIS_DIR, 'sessions');
 const LOGS_DIR      = path.join(POLARIS_DIR, 'logs');
@@ -602,6 +609,80 @@ function writeJSON(filePath, data) {
     } catch {}
   }
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// ─── OpenRouter catalog (model pricing) ──────────────────────────────────────
+// Fetches https://openrouter.ai/api/v1/models, caches on disk + in memory,
+// builds a {modelId: {in, out}} dict the UI uses for cost calculations. This
+// removes the need to maintain a hardcoded MODEL_COSTS table — every model
+// OpenRouter knows about gets accurate pricing automatically.
+let _orCatalogPromise = null;
+
+function ensureOpenRouterCatalog(force = false) {
+  if (!force) {
+    try {
+      const stat = fs.statSync(OPENROUTER_CATALOG_PATH);
+      if (Date.now() - stat.mtimeMs < OPENROUTER_CATALOG_TTL_MS) {
+        return Promise.resolve(JSON.parse(fs.readFileSync(OPENROUTER_CATALOG_PATH, 'utf8')));
+      }
+    } catch {}
+  }
+  if (_orCatalogPromise) return _orCatalogPromise;
+  _orCatalogPromise = new Promise(resolve => {
+    const cfg = readConfig();
+    const apiKey = cfg.openRouterApiKey ? decryptSecret(cfg.openRouterApiKey) : null;
+    const headers = { 'Accept': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    const req = https.request({
+      hostname: 'openrouter.ai',
+      path: '/api/v1/models',
+      method: 'GET',
+      headers,
+      // Defensive fresh agent — same pattern as callOpenRouterStream after
+      // the BAD_RECORD_MAC issues on 2026-05-05.
+      agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          console.warn(`[catalog] HTTP ${res.statusCode}: ${body.slice(0, 200)}`);
+          resolve(null);
+          return;
+        }
+        try {
+          const data = JSON.parse(body);
+          fs.writeFileSync(OPENROUTER_CATALOG_PATH, JSON.stringify(data), 'utf8');
+          console.log(`[catalog] refreshed: ${(data.data || []).length} models`);
+          resolve(data);
+        } catch (e) {
+          console.warn(`[catalog] parse failed: ${e.message}`);
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', err => {
+      console.warn(`[catalog] fetch failed: ${err.message}`);
+      resolve(null);
+    });
+    req.end();
+  });
+  _orCatalogPromise.finally(() => { _orCatalogPromise = null; });
+  return _orCatalogPromise;
+}
+
+function buildModelCostsDict() {
+  let catalog;
+  try { catalog = JSON.parse(fs.readFileSync(OPENROUTER_CATALOG_PATH, 'utf8')); }
+  catch { return {}; }
+  const dict = {};
+  for (const m of (catalog.data || [])) {
+    if (!m.id || !m.pricing) continue;
+    const inp = parseFloat(m.pricing.prompt) || 0;
+    const out = parseFloat(m.pricing.completion) || 0;
+    if (inp || out) dict[m.id] = { in: inp, out: out };
+  }
+  return dict;
 }
 
 function broadcast(data) {
@@ -3526,6 +3607,16 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'refresh-openrouter-catalog') {
+    ensureOpenRouterCatalog(true).then(catalog => {
+      const dict = buildModelCostsDict();
+      const count = Object.keys(dict).length;
+      broadcast({ type: 'model-costs', costs: dict });
+      sendTo(ws, { type: 'openrouter-catalog-refreshed', count, ok: !!catalog });
+    });
+    return;
+  }
+
   if (type === 'save-agent-eval-results') {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);
@@ -4591,6 +4682,14 @@ wss.on('connection', (ws) => {
     supportEnabled: !!(APP_SECRETS.brevoApiKey && APP_SECRETS.brevoApiKey !== 'PASTE_YOUR_BREVO_KEY_HERE'),
     appVersion: require('./package.json').version,
   });
+
+  // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
+  // First send whatever's cached (instant), then trigger a refresh in the
+  // background and send the updated dict when ready.
+  sendTo(ws, { type: 'model-costs', costs: buildModelCostsDict() });
+  ensureOpenRouterCatalog(false).then(() => {
+    sendTo(ws, { type: 'model-costs', costs: buildModelCostsDict() });
+  }).catch(() => {});
 
   // Fire one-time `app-update` event if the version has changed since last launch
   try {

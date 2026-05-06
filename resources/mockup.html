@@ -1210,7 +1210,12 @@
         <div style="font-size:10px;opacity:0.45;margin-top:4px;">Model used when forking a session. Leave blank to use the Floor model.</div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">OPENROUTER</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;display:flex;align-items:center;gap:10px;">
+          <span>OPENROUTER</span>
+          <button onclick="refreshOpenRouterCatalog()" style="padding:3px 10px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0;text-transform:none;">↻ Refresh Pricing</button>
+          <span id="openrouter-refresh-status" style="font-size:10px;display:none;letter-spacing:0;text-transform:none;"></span>
+        </div>
+        <div style="font-size:10px;color:#64748b;line-height:1.4;margin-top:-4px;">Fetches the OpenRouter `/api/v1/models` catalog to power exact-match pricing across the API Balance graph and Agent Eval cost column. Auto-refreshes daily; click Refresh to pull current rates immediately.</div>
         <div class="panel-section">
           <div class="context-label accent-label">API KEY</div>
           <div style="display:flex;gap:8px;align-items:center;">
@@ -2888,6 +2893,27 @@
       case 'server-tz':
         window.serverTzOffsetMin = msg.tzOffsetMin;
         break;
+
+      case 'model-costs': {
+        window._modelCosts = msg.costs || {};
+        const count = Object.keys(window._modelCosts).length;
+        if (count > 0) pushDebugLog(`[cost] loaded ${count} model rates from OpenRouter catalog`);
+        // Re-render anything that displays cost so existing rows reflect the
+        // updated rates (token graph + agent eval table re-pull from this dict).
+        if (typeof renderApiBalance === 'function') renderApiBalance();
+        break;
+      }
+      case 'openrouter-catalog-refreshed': {
+        const el = document.getElementById('openrouter-refresh-status');
+        if (el) {
+          el.style.display = 'inline';
+          el.style.color = msg.ok ? '#22c55e' : '#ef4444';
+          el.textContent = msg.ok ? `✓ Refreshed — ${msg.count} models` : '✗ Refresh failed';
+          setTimeout(() => { el.style.display = 'none'; }, 4000);
+        }
+        pushDebugLog(`[catalog] refresh: ${msg.ok ? 'ok' : 'failed'} (${msg.count} models)`);
+        break;
+      }
 
       case 'tts-audio':
         if (msg.dataUrl && _onbSpeakEnabled) {
@@ -5497,6 +5523,17 @@
   }
   window.testForkModel = testForkModel;
 
+  function refreshOpenRouterCatalog() {
+    const el = document.getElementById('openrouter-refresh-status');
+    if (el) {
+      el.style.display = 'inline';
+      el.style.color = '#94a3b8';
+      el.textContent = 'Refreshing…';
+    }
+    wsSend({ type: 'refresh-openrouter-catalog' });
+  }
+  window.refreshOpenRouterCatalog = refreshOpenRouterCatalog;
+
   // ── Benchmark Runner ──────────────────────────────────────────────────────────
   let _benchQueue = [];
   let _benchRunning = false;
@@ -5742,7 +5779,19 @@
     // Tencent
     'hy3-preview':           { in: 0,       out: 0      },  // free preview
   };
+  // Live catalog from server's OpenRouter /api/v1/models cache. Exact-match
+  // lookup, populated via the 'model-costs' WS message on connect and on
+  // catalog refresh. Wins over the hardcoded MODEL_COSTS table because it
+  // covers brand-new models the table hasn't been updated for.
+  window._modelCosts = window._modelCosts || {};
+
   function estimateCost(inp, out, model) {
+    // 1. Exact match from server's OpenRouter catalog (most accurate)
+    if (model && window._modelCosts && window._modelCosts[model]) {
+      const r = window._modelCosts[model];
+      return (inp * r.in) + (out * r.out);
+    }
+    // 2. Substring match against hardcoded MODEL_COSTS (offline-safe fallback)
     const m = (model || '').toLowerCase();
     const key = Object.keys(MODEL_COSTS).find(k => m.includes(k));
     const rates = key ? MODEL_COSTS[key] : { in: 5e-7, out: 1.5e-6 }; // fallback: ~$0.50/$1.50
