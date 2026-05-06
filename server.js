@@ -2587,8 +2587,28 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     }
   }
 
+  // Continuation pass: if the loop exited without a final assistant text response
+  // (e.g. hit the 50-iteration limit mid-tool-chain), nudge the model once so the
+  // user gets an actual answer rather than silence.
+  if (!session.aborted) {
+    const lastMsg = session.messages[session.messages.length - 1];
+    const lastIsAssistantText = lastMsg && lastMsg.role === 'assistant' &&
+      lastMsg.content && lastMsg.content.trim().length > 0;
+    if (!lastIsAssistantText) {
+      dlog('CONTINUATION', 'Loop ended without final assistant text — requesting final answer');
+      broadcast({ type: 'line', sessionId, text: '⚙ Requesting final answer...', role: 'system' });
+      session.messages.push({ role: 'user', content: 'Please provide your final answer based on everything you have done so far.' });
+      const contResult = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
+      if (!contResult.error && contResult.textAccum) {
+        session.messages.push({ role: 'assistant', content: contResult.textAccum });
+      } else {
+        dlog('CONTINUATION_FAIL', contResult.error || 'empty response on continuation pass');
+      }
+    }
+  }
+
   const s = sessions.get(sessionId);
-  if (s) { s.status = s.aborted ? 'error' : 'done'; if (s.status === 'done' && !s.aborted) { const lastMsg = s.messages && s.messages[s.messages.length - 1]; const hasText = lastMsg && lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content.trim().length > 0; const hasTools = lastMsg && lastMsg.tool_calls && lastMsg.tool_calls.length > 0; if (!hasText && !hasTools) { broadcast({ type: 'line', sessionId, text: 'Session ended without a final response.', role: 'system' }); dlog('EMPTY_DONE', 'Session marked done but lacks assistant text/tools in final turn'); } } s.endAt = Date.now(); }
+  if (s) { s.status = s.aborted ? 'error' : 'done'; s.endAt = Date.now(); }
   saveSessionMessages(sessionId);
   dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
   broadcast({ type: 'session-status', sessionId, status: s?.aborted ? 'error' : 'done' });
