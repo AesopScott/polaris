@@ -75,6 +75,7 @@ const BASE_SYSTEM_PROMPT = [
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
+  "You are also permitted to write files to the user's Downloads folder.",
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -1380,7 +1381,8 @@ function assertWritable(file_path, workDir) {
   const cfg = readConfig();
   const inWorkDir   = isInsideDir(resolved, wd);
   const inObsidian  = cfg.obsidianVaultPath && isInsideDir(resolved, cfg.obsidianVaultPath);
-  if (!inWorkDir && !inObsidian) {
+  const inDownloads = isInsideDir(resolved, path.join(process.env.USERPROFILE, "Downloads"));
+  if (!inWorkDir && !inObsidian && !inDownloads) {
     throw new Error(
       `Write blocked: "${path.basename(file_path)}" is outside the project working directory.\n` +
       `Allowed: ${workDir}\nAttempted: ${resolved}`
