@@ -3698,14 +3698,17 @@
       const s = document.createElement('style');
       s.id = 'question-prompt-styles';
       s.textContent = `
-        .question-prompt { border-left: 3px solid #7c3aed; padding: 6px 0 6px 10px; margin: 6px 0; }
-        .t-question { color: #a78bfa; font-style: italic; margin-bottom: 6px; white-space: pre-wrap; }
-        .question-options { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-        .question-opt-btn { background: #1e1b4b; color: #a5b4fc; border: 1px solid #4338ca; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; font-family: inherit; }
-        .question-opt-btn:hover { background: #2d2a6e; }
+        @keyframes q-glow { 0%,100% { box-shadow: 0 0 8px rgba(167,139,250,0.35); } 50% { box-shadow: 0 0 22px rgba(167,139,250,0.75); } }
+        .question-prompt { background: rgba(109,40,217,0.16); border: 1px solid #7c3aed; border-left: 4px solid #a78bfa; border-radius: 6px; padding: 12px 14px; margin: 12px 0; animation: q-glow 2.2s ease-in-out infinite; }
+        .question-label { color: #a78bfa; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+        .t-question { color: #e9d5ff; font-size: 13px; font-weight: 600; margin-bottom: 10px; white-space: pre-wrap; line-height: 1.5; }
+        .question-options { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+        .question-opt-btn { background: rgba(109,40,217,0.28); color: #c4b5fd; border: 1px solid #7c3aed; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; font-family: inherit; transition: background 0.15s; }
+        .question-opt-btn:hover { background: rgba(109,40,217,0.5); color: #ede9fe; }
         .question-input-row { display: flex; gap: 6px; }
-        .question-input { flex: 1; background: #0d1117; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-family: inherit; }
-        .question-submit-btn { background: #7c3aed; color: #fff; border: none; border-radius: 4px; padding: 3px 12px; cursor: pointer; font-size: 12px; }
+        .question-input { flex: 1; background: rgba(0,0,0,0.3); color: #ede9fe; border: 1px solid #7c3aed; border-radius: 4px; padding: 5px 10px; font-size: 12px; font-family: inherit; outline: none; }
+        .question-input:focus { border-color: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.4); }
+        .question-submit-btn { background: #7c3aed; color: #fff; border: none; border-radius: 4px; padding: 5px 14px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 0.15s; }
         .question-submit-btn:hover { background: #6d28d9; }
       `;
       document.head.appendChild(s);
@@ -3714,9 +3717,14 @@
     const wrap = document.createElement('div');
     wrap.className = 'question-prompt';
 
+    const label = document.createElement('div');
+    label.className = 'question-label';
+    label.textContent = '❓ Needs your input';
+    wrap.appendChild(label);
+
     const qEl = document.createElement('div');
     qEl.className = 't-question';
-    qEl.textContent = '⊙ ' + question;
+    qEl.textContent = question;
     wrap.appendChild(qEl);
 
     const submit = answer => {
