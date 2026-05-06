@@ -2781,7 +2781,13 @@ function loadAgentEvalQueue() {
     const content = fs.readFileSync(file, 'utf8');
     const match = content.match(/```agent-eval-models\n([\s\S]*?)```/);
     if (!match) return { models: [], error: 'No agent-eval-models block found in 5-Agentic-Benchmark.md' };
-    const models = match[1].split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    // Strip inline `#` comments AND full-line comments so a line like
+    // `meta-llama/llama-4-scout  # retried after disconnect` parses as just
+    // the model id. Without inline-strip, the entire line including the comment
+    // was sent to OpenRouter as the model id, causing "not a valid model" 400s.
+    const models = match[1].split('\n')
+      .map(l => l.replace(/#.*$/, '').trim())
+      .filter(l => l);
     return { models };
   } catch (e) {
     return { models: [], error: e.message };
@@ -3598,9 +3604,10 @@ function handleMessage(ws, raw) {
       const content = fs.readFileSync(benchFile, 'utf8');
       const match = content.match(/```benchmark-models\n([\s\S]*?)```/);
       if (!match) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No benchmark-models block found in 5-Performance-Benchmark.md' }); return; }
+      // Strip inline `#` comments so `model-id  # retry note` parses correctly.
       const models = match[1].split('\n')
-        .map(l => l.trim())
-        .filter(l => l && !l.startsWith('#'));
+        .map(l => l.replace(/#.*$/, '').trim())
+        .filter(l => l);
       sendTo(ws, { type: 'benchmark-queue', models });
     } catch (e) {
       sendTo(ws, { type: 'benchmark-queue', models: [], error: e.message });
