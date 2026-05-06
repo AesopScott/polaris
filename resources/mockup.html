@@ -4065,7 +4065,7 @@
       </div>
       ${s.isChat ? '' : `<div class="context-bar-wrap">
         <div class="context-label-bar">
-          <span>Context Window</span>
+          <span>Context Window${s.model ? ` <span style="opacity:0.55;font-weight:400;">(${s.model.split('/').pop()})</span>` : ''}</span>
           <span><span data-ctx-tokens>0</span> tokens · <span data-ctx-pct>0%</span><span data-ctx-cost style="color:#f59e0b;"></span></span>
         </div>
         <div class="context-bar"><div class="context-fill" data-ctx-fill style="width:0%"></div></div>
