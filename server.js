@@ -1021,9 +1021,9 @@ Analyze this session transcript and extract structured updates. Return ONLY vali
   "buildPlan": "roadmap changes, shipped features, open questions, or deferred items (string or null)",
   "integrations": "new external APIs, tools, services, or configuration changes (string or null)",
   "changelog": {
-    "version": "version number like 1.0.61 — only if an explicit version bump was detected, else null",
+    "version": "version number from a package.json bump, like 1.0.114 — only if an explicit version bump was detected in this session, else null",
     "date": "${today}",
-    "headline": "one sentence describing the main change this session"
+    "description": "Multi-sentence markdown-formatted entry following the project's changelog convention. MUST start with one of these bold-prefixed type tags: **feat:** (new feature), **fix:** (bug fix), **refactor:**, **chore:**, **docs:**, **perf:**, **test:**, **ci:**. Follow the prefix with a detailed description of what landed AND why — root cause if it's a fix, scope if it's a feature. Use backticks around filenames (mockup.html, server.js), function names (runDirectAgent), identifiers, and code-level references. 2-6 sentences typical. Match the depth and tone of existing entries in 4-Changelog.md, e.g.: '**fix:** Critical parser bug — every cell in the eval re-run was failing instantly with HTTP 400 because the queue parser only stripped lines starting with #, not inline trailing comments...'"
   }
 }
 
@@ -1073,7 +1073,10 @@ ${transcript}`;
   appendBlock('3-Build-Plan.md', extracted.buildPlan);
   appendBlock('7-Integrations.md', extracted.integrations);
 
-  // Changelog: insert table row after the header separator line
+  // Changelog: insert table row after the header separator line.
+  // Backwards-compatible: prefers extracted.changelog.description (the new
+  // markdown-formatted style with **type:** prefix and multi-sentence
+  // detail), falls back to .headline if an older extraction sent that.
   if (extracted.changelog?.version) {
     const clPath = path.join(obsDir, '4-Changelog.md');
     try {
@@ -1081,7 +1084,10 @@ ${transcript}`;
       const dividerMatch = clContent.match(/\|[-\s|]+\|\r?\n/);
       if (dividerMatch) {
         const insertAt = clContent.indexOf(dividerMatch[0]) + dividerMatch[0].length;
-        const row = `| ${extracted.changelog.version} | ${extracted.changelog.date} | ${extracted.changelog.headline} |\n`;
+        const text = extracted.changelog.description || extracted.changelog.headline || '';
+        // Strip pipe characters that would break the markdown table.
+        const safe = String(text).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
+        const row = `| ${extracted.changelog.version} | ${extracted.changelog.date} | ${safe} |\n`;
         clContent = clContent.slice(0, insertAt) + row + clContent.slice(insertAt);
         fs.writeFileSync(clPath, clContent, 'utf8');
         console.log(`[extract-knowledge] changelog row inserted: v${extracted.changelog.version}`);

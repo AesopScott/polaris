@@ -38,7 +38,16 @@ Scott's personal AI command center — parallel agent sessions, real API control
 - Windows Defender exclusions for the source dir, `dist/`, and `%LOCALAPPDATA%\Programs\Polaris` cut Electron build time 30-50% — set manually in Windows Security.
 
 ## Changelog maintenance (mandatory after every version bump)
-After bumping `package.json` version, prepend a row to the **Build Index** table at the top of `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`. Format: `| <version> | <YYYY-MM-DD> | <one-sentence headline of what landed> |`. Newest build at the top of the table. The detailed prose history continues below the table — keep both. The table is the at-a-glance index; prose entries are optional for small builds.
+After bumping `package.json` version, prepend a row to the **Build Index** table at the top of `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`. Newest build at the top of the table.
+
+**Format:** `| <version> | <YYYY-MM-DD> | **<type>:** <multi-sentence description with markdown> |`
+
+- `<type>` is one of: `feat`, `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, `ci` — bolded with `**type:**` prefix
+- Description is 2-6 sentences explaining **what landed AND why** (root cause for fixes, scope for features). Single-sentence headlines are too thin — they don't survive context loss
+- Use backticks around filenames (`mockup.html`, `server.js`), function names (`runDirectAgent`), identifiers, and code-level references
+- Server-side auto-extraction (`extractSessionToKnowledge` → DeepSeek) follows the same convention; if you see a row that's just a one-line headline, it predates this rule
+
+The detailed prose history continues below the table — keep both. The table is the at-a-glance index; prose entries are optional for small builds.
 
 ## Project knowledge base
 Soul + why: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md`
