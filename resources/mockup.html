@@ -1268,7 +1268,7 @@
         <div style="font-size:10px;color:#64748b;line-height:1.4;">Per-model TTFT and tok/s on a chat prompt. Reads queue from <code>5-Performance-Benchmark.md</code>.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button id="bench-load-btn" onclick="benchLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
-          <button id="bench-run-btn" onclick="benchRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run All (0)</button>
+          <button id="bench-run-btn" onclick="benchRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run All (0)</button><button id="bench-clear-btn" onclick="benchClearResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Clear</button>
           <span id="bench-status" style="font-size:10px;opacity:0.5;"></span>
         </div>
         <div id="bench-queue-list" style="display:none;max-height:260px;overflow-y:auto;border:1px solid #1e293b;border-radius:6px;background:#0d1117;">
@@ -1294,7 +1294,7 @@
           <button id="ae-load-btn" onclick="aeLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
           <button id="ae-run-btn" onclick="aeRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run Eval (0)</button>
           <button id="ae-cancel-btn" onclick="aeCancel()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Cancel</button>
-          <button id="ae-save-btn" onclick="aeSaveToObsidian()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Save to Obsidian</button>
+          <button id="ae-save-btn" onclick="aeSaveToObsidian()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Save to Obsidian</button><button id="ae-clear-btn" onclick="aeClearResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Clear</button>
           <span id="ae-status" style="font-size:10px;opacity:0.5;"></span>
         </div>
         <div id="ae-controls" style="display:none;flex-wrap:wrap;gap:12px;align-items:center;font-size:11px;">
@@ -5502,7 +5502,7 @@
   let _benchRunning = false;
   let _benchIdx = 0;
 
-  function benchLoadQueue() {
+  function benchClearResults() { _benchQueue = []; document.getElementById("bench-results-body").innerHTML = ""; document.getElementById("bench-queue-list").style.display = "none"; document.getElementById("bench-status").textContent = ""; const runBtn = document.getElementById("bench-run-btn"); runBtn.textContent = "Run All (0)"; runBtn.disabled = true; runBtn.style.opacity = "0.4"; } window.benchClearResults = benchClearResults; function benchLoadQueue() {
     document.getElementById('bench-status').textContent = 'Loading…';
     wsSend({ type: 'benchmark-load-queue' });
   }
@@ -5558,7 +5558,7 @@
   let _aeRunning = false;
   let _aeRunId = null;
 
-  function aeLoadQueue() {
+  function aeClearResults() { _aeQueue = []; _aeFixtures = []; _aeResults = []; document.getElementById("ae-results-body").innerHTML = ""; document.getElementById("ae-results-list").style.display = "none"; document.getElementById("ae-controls").style.display = "none"; document.getElementById("ae-status").textContent = ""; const runBtn = document.getElementById("ae-run-btn"); runBtn.textContent = "Run Eval (0)"; runBtn.disabled = true; runBtn.style.opacity = "0.4"; } window.aeClearResults = aeClearResults; function aeLoadQueue() {
     const el = document.getElementById('ae-status');
     el.textContent = 'Loading…';
     el.style.color = '';
