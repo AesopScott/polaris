@@ -3634,6 +3634,43 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'run-build') {
+    // Direct execution of the build-install script. NOT through an agent
+    // session — that path was confused: agent's confirmation rules made it
+    // ask before running, paid LLM tokens for a script invocation, and got
+    // orphaned mid-execution when the script killed Polaris.
+    //
+    // Spawns powershell.exe detached so the script survives Polaris's death
+    // (build-install.ps1 kills Polaris.exe early to free dist file locks).
+    // detached + stdio:'ignore' + child.unref() gives the PowerShell process
+    // its own process group so it runs to completion independently.
+    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
+    const fullScript = path.join(sourcePath, 'scripts', 'build-install.ps1');
+    if (!fs.existsSync(fullScript)) {
+      sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
+      return;
+    }
+    try {
+      const child = spawn('powershell.exe', [
+        '-NoProfile', '-NoExit',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', fullScript,
+      ], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: false,
+        cwd: sourcePath,
+      });
+      child.unref();
+      sendTo(ws, { type: 'build-result', ok: true, message: `Build started (pid ${child.pid}). Polaris will close shortly; the new version will install automatically.` });
+      console.log(`[run-build] spawned detached powershell pid=${child.pid} script=${fullScript}`);
+    } catch (e) {
+      sendTo(ws, { type: 'build-result', ok: false, message: `Spawn failed: ${e.message}` });
+      console.error('[run-build] spawn error:', e);
+    }
+    return;
+  }
+
   if (type === 'save-agent-eval-results') {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);

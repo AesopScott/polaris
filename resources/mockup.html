@@ -2914,6 +2914,20 @@
         pushDebugLog(`[catalog] refresh: ${msg.ok ? 'ok' : 'failed'} (${msg.count} models)`);
         break;
       }
+      case 'build-result': {
+        pushDebugLog(`[build] ${msg.ok ? 'started' : 'failed'}: ${msg.message}`);
+        if (msg.ok) {
+          // Subtle UI dim + non-blocking notice. The script will kill Polaris
+          // within seconds; nothing else for the user to do here.
+          document.body.style.transition = 'opacity 0.3s';
+          document.body.style.opacity = '0.55';
+          document.body.style.pointerEvents = 'none';
+          alert(msg.message);
+        } else {
+          alert('Build failed to start:\n' + msg.message);
+        }
+        break;
+      }
 
       case 'tts-audio':
         if (msg.dataUrl && _onbSpeakEnabled) {
@@ -9004,16 +9018,13 @@
   window.onbClose           = onbClose;
 
   function executeBuild() {
-    if (!confirm("Run build-install.ps1? This will rebuild Polaris and run the installer.")) return;
-    wsSend({ 
-      type: 'launch', 
-      prompt: '& C:\\Users\\scott\\Code\\Polaris\\scripts\\build-install.ps1',
-      workDir: 'C:\\Users\\scott\\Code\\Polaris',
-      projectName: 'Polaris',
-      modelTier: 'floor',
-      isPowerShell: true 
-    });
+    if (!confirm("Run build-install.ps1?\n\nPolaris will close shortly. The build runs in a separate PowerShell window and the new version will install automatically.")) return;
+    // Direct server-side action — no agent session, no LLM, no token cost.
+    // Server spawns powershell.exe detached so it survives Polaris's death
+    // (the script kills Polaris.exe to free dist file locks).
+    wsSend({ type: 'run-build' });
   }
+  window.executeBuild = executeBuild;
 
   // ── Boot ──────────────────────────────────────────────────────────────────────
 
