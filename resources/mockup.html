@@ -995,7 +995,7 @@
     <div class="header-buttons">
       <div class="btn-grid">
         <!-- Row 1 -->
-        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-build" class="hbtn btn-interface" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1)"><span class="lbl">Build</span></button>
         <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
         <button class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
         <button class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
@@ -8951,7 +8951,20 @@
   window.onbDismiss         = onbDismiss;
   window.onbClose           = onbClose;
 
+  function executeBuild() {
+    if (!confirm("Run build-install.ps1? This will rebuild Polaris and run the installer.")) return;
+    wsSend({ 
+      type: 'launch', 
+      prompt: '& C:\\Users\\scott\\Code\\Polaris\\scripts\\build-install.ps1',
+      workDir: 'C:\\Users\\scott\\Code\\Polaris',
+      projectName: 'Polaris',
+      modelTier: 'floor',
+      isPowerShell: true 
+    });
+  }
+
   // ── Boot ──────────────────────────────────────────────────────────────────────
+
   document.addEventListener('DOMContentLoaded', () => {
     refreshProjectDropdowns();
     refreshFieldTags();
