@@ -315,9 +315,10 @@
   .card-title-rename-input { background: rgba(0,0,0,0.55); border: 1px solid #3b82f6; border-radius: 4px; color: #93c5fd; font-size: 12px; font-weight: 700; font-family: inherit; padding: 1px 5px; width: 130px; outline: none; caret-color: #60a5fa; }
   .status-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
   .card-btns { display: grid; grid-template-rows: repeat(2, 22px); grid-auto-flow: column; gap: 4px; justify-content: flex-end; }
-  /* 11 buttons × 22px + 10 gaps × 4px = 282px on one row. Cap at 156px
-     (6 buttons fit: 6×22 + 5×4 = 152) so the buttons wrap into exactly 2 rows
-     regardless of card width. */
+  /* Grid with exactly 2 rows of 22px and column-flow auto-placement: buttons
+     fill row 1 left-to-right, then wrap to row 2. Deterministic 2-row layout
+     regardless of card width or button count. (Earlier flex-wrap + max-width
+     approach was replaced 1.0.123 because grid handles this more cleanly.) */
   .card-btn { width: 22px; height: 22px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
   .terminal { flex: 1; padding: 8px 10px; font-family: 'CascadiaCode', 'Cascadia Code', 'Consolas', monospace; font-size: 11px; line-height: 1.5; overflow-y: auto; white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; }
   .context-bar-wrap { padding: 4px 10px; }
@@ -995,8 +996,8 @@
     <div class="header-buttons">
       <div class="btn-grid">
         <!-- Row 1 -->
-        <button id="btn-build" class="hbtn btn-interface" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1)"><span class="lbl">Build</span></button>
         <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
         <button class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
         <button class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
@@ -1273,7 +1274,8 @@
         <div style="font-size:10px;color:#64748b;line-height:1.4;">Per-model TTFT and tok/s on a chat prompt. Reads queue from <code>5-Performance-Benchmark.md</code>.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button id="bench-load-btn" onclick="benchLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
-          <button id="bench-run-btn" onclick="benchRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run All (0)</button><button id="bench-clear-btn" onclick="benchClearResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Clear</button>
+          <button id="bench-run-btn" onclick="benchRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run All (0)</button>
+          <button id="bench-clear-btn" onclick="benchClearResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Clear</button>
           <span id="bench-status" style="font-size:10px;opacity:0.5;"></span>
         </div>
         <div id="bench-queue-list" style="display:none;max-height:260px;overflow-y:auto;border:1px solid #1e293b;border-radius:6px;background:#0d1117;">
@@ -1299,7 +1301,8 @@
           <button id="ae-load-btn" onclick="aeLoadQueue()" style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Load Queue from Obsidian</button>
           <button id="ae-run-btn" onclick="aeRunAll()" disabled style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Run Eval (0)</button>
           <button id="ae-cancel-btn" onclick="aeCancel()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Cancel</button>
-          <button id="ae-save-btn" onclick="aeSaveToObsidian()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Save to Obsidian</button><button id="ae-clear-btn" onclick="aeClearResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Clear</button>
+          <button id="ae-save-btn" onclick="aeSaveToObsidian()" disabled style="padding:5px 12px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;opacity:0.4;">Save to Obsidian</button>
+          <button id="ae-clear-btn" onclick="aeClearResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">Clear</button>
           <span id="ae-status" style="font-size:10px;opacity:0.5;"></span>
         </div>
         <div id="ae-controls" style="display:none;flex-wrap:wrap;gap:12px;align-items:center;font-size:11px;">
@@ -5620,7 +5623,19 @@
   let _benchRunning = false;
   let _benchIdx = 0;
 
-  function benchClearResults() { _benchQueue = []; document.getElementById("bench-results-body").innerHTML = ""; document.getElementById("bench-queue-list").style.display = "none"; document.getElementById("bench-status").textContent = ""; const runBtn = document.getElementById("bench-run-btn"); runBtn.textContent = "Run All (0)"; runBtn.disabled = true; runBtn.style.opacity = "0.4"; } window.benchClearResults = benchClearResults; function benchLoadQueue() {
+  function benchClearResults() {
+    _benchQueue = [];
+    document.getElementById('bench-results-body').innerHTML = '';
+    document.getElementById('bench-queue-list').style.display = 'none';
+    document.getElementById('bench-status').textContent = '';
+    const runBtn = document.getElementById('bench-run-btn');
+    runBtn.textContent = 'Run All (0)';
+    runBtn.disabled = true;
+    runBtn.style.opacity = '0.4';
+  }
+  window.benchClearResults = benchClearResults;
+
+  function benchLoadQueue() {
     document.getElementById('bench-status').textContent = 'Loading…';
     wsSend({ type: 'benchmark-load-queue' });
   }
@@ -5676,7 +5691,22 @@
   let _aeRunning = false;
   let _aeRunId = null;
 
-  function aeClearResults() { _aeQueue = []; _aeFixtures = []; _aeResults = []; document.getElementById("ae-results-body").innerHTML = ""; document.getElementById("ae-results-list").style.display = "none"; document.getElementById("ae-controls").style.display = "none"; document.getElementById("ae-status").textContent = ""; const runBtn = document.getElementById("ae-run-btn"); runBtn.textContent = "Run Eval (0)"; runBtn.disabled = true; runBtn.style.opacity = "0.4"; } window.aeClearResults = aeClearResults; function aeLoadQueue() {
+  function aeClearResults() {
+    _aeQueue = [];
+    _aeFixtures = [];
+    _aeResults = [];
+    document.getElementById('ae-results-body').innerHTML = '';
+    document.getElementById('ae-results-list').style.display = 'none';
+    document.getElementById('ae-controls').style.display = 'none';
+    document.getElementById('ae-status').textContent = '';
+    const runBtn = document.getElementById('ae-run-btn');
+    runBtn.textContent = 'Run Eval (0)';
+    runBtn.disabled = true;
+    runBtn.style.opacity = '0.4';
+  }
+  window.aeClearResults = aeClearResults;
+
+  function aeLoadQueue() {
     const el = document.getElementById('ae-status');
     el.textContent = 'Loading…';
     el.style.color = '';

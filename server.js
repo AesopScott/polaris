@@ -75,7 +75,7 @@ const BASE_SYSTEM_PROMPT = [
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
-  "You are also permitted to write files to the user's Downloads folder.",
+  "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away — generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -1379,13 +1379,20 @@ function assertWritable(file_path, workDir) {
     return p.toLowerCase() === d.toLowerCase() || p.toLowerCase().startsWith(d.toLowerCase() + path.sep);
   };
   const cfg = readConfig();
+  const downloadsDir = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Downloads') : null;
   const inWorkDir   = isInsideDir(resolved, wd);
   const inObsidian  = cfg.obsidianVaultPath && isInsideDir(resolved, cfg.obsidianVaultPath);
-  const inDownloads = isInsideDir(resolved, path.join(process.env.USERPROFILE, "Downloads"));
+  const inDownloads = downloadsDir && isInsideDir(resolved, downloadsDir);
   if (!inWorkDir && !inObsidian && !inDownloads) {
+    const allowed = [
+      `  workDir: ${workDir}`,
+      cfg.obsidianVaultPath ? `  Obsidian vault: ${cfg.obsidianVaultPath}` : null,
+      downloadsDir ? `  Downloads: ${downloadsDir}` : null,
+    ].filter(Boolean).join('\n');
     throw new Error(
-      `Write blocked: "${path.basename(file_path)}" is outside the project working directory.\n` +
-      `Allowed: ${workDir}\nAttempted: ${resolved}`
+      `Write blocked: "${path.basename(file_path)}" is outside any allowed path.\n` +
+      `Allowed:\n${allowed}\n` +
+      `Attempted: ${resolved}`
     );
   }
 
