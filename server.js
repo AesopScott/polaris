@@ -2497,13 +2497,23 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     console.warn('[mcp] discovery failed, using native tools only:', e.message);
   }
 
-  let iterations = 0;
+    let iterations = 0;
+  let retryCount = 0;
   while (!session.aborted && iterations < 50) {
     iterations++;
     dlog('ITER', iterations);
     const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
+      if (retryCount < 3) {
+        retryCount++;
+        const wait = retryCount * 2000;
+        broadcast({ type: 'line', sessionId, text: `⚠️ API error. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
+        dlog('RETRY_ERR', `count=${retryCount} err=${result.error}`);
+        await new Promise(r => setTimeout(r, wait));
+        iterations--;
+        continue;
+      }
       dlog('ERROR', result.error);
       const isToolUnsupported = result.error.includes('tool choice') || result.error.includes('tool-call-parser') || result.error.includes('enable-auto-tool-choice');
       const errorText = isToolUnsupported
@@ -2525,6 +2535,15 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     // Detect empty response — model returned neither text nor tool calls
     const hasContent = result.textAccum || (result.toolCalls && result.toolCalls.length > 0);
     if (!hasContent) {
+      if (retryCount < 3) {
+        retryCount++;
+        const wait = retryCount * 2000;
+        broadcast({ type: 'line', sessionId, text: `⚠️ Empty response. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
+        dlog('RETRY_EMPTY', `count=${retryCount} reason=${result.finishReason}`);
+        await new Promise(r => setTimeout(r, wait));
+        iterations--;
+        continue;
+      }
       dlog('EMPTY_RESPONSE', `finishReason=${result.finishReason} rawSample=${(result.rawSample || '').slice(0, 600)}`);
       const reason = result.finishReason === 'error'
         ? `The model rejected the request (finish_reason=error). This model may not support tool use or the request format. Try a different model.`
@@ -2535,7 +2554,9 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
       return;
     }
 
-    // Append assistant turn to history
+    retryCount = 0; // Reset on success
+
+  // Append assistant turn to history
     const assistantMsg = { role: 'assistant', content: result.textAccum || null };
     if (result.toolCalls && result.toolCalls.length > 0) {
       assistantMsg.tool_calls = result.toolCalls.map(tc => ({
