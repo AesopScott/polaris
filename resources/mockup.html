@@ -4718,7 +4718,10 @@
     resumeTarget = { sessionId, name: s.name, resumeId: s.resumeId, model: model || null };
     document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
     const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
-    if (card) card.classList.add('selected');
+    if (card) {
+      card.classList.add('selected');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
     document.querySelectorAll('.palette').forEach(app => {
       const banner  = app.querySelector('.resume-banner');
       const nameEl  = app.querySelector('.resume-session-name');
@@ -4732,7 +4735,7 @@
       }
     });
     const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
-    if (promptEl) { promptEl.value = ''; promptEl.focus(); }
+    if (promptEl) { promptEl.value = ''; }
   }
 
   window.clearResumeMode = function () {
