@@ -70,6 +70,8 @@ const BASE_SYSTEM_PROMPT = [
   'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
   'Never ask the user for file paths, directory names, or code locations. Use Glob to find files by pattern and Grep to search content. Always search first, then act. If you need to find something, find it yourself.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
+  'End-of-session ritual when source files were modified: (1) Bump `package.json` version — patch increment (1.0.X → 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and that they can install with: & C:\\Users\\scott\\Code\\Polaris\\scripts\\build-install.ps1. The server\'s extractSessionToKnowledge runs automatically and writes a changelog row to Obsidian\'s 4-Changelog.md when it sees the bumped version — you do NOT need to write the changelog manually.',
+  'Obsidian writes are automatic. You do NOT need to manually write session notes or numbered-file updates to Obsidian. When this session ends, Polaris runs extractSessionToKnowledge server-side, which calls DeepSeek to distill what happened and writes to 2-Architecture.md / 3-Build-Plan.md / 7-Integrations.md / 4-Changelog.md as appropriate. Your job is to (a) do the work, (b) bump the version if source changed, (c) commit. The Obsidian sync handles itself.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
@@ -1315,14 +1317,21 @@ function buildDirectSystemPrompt(config, workDir) {
         );
       }
 
-      // Obsidian write requirement
+      // Obsidian sync is automatic — make this explicit so agents don't try to
+      // duplicate the work (and don't ignore it because the previous mandate
+      // sounded contradictory). The server's extractSessionToKnowledge runs
+      // when the session ends and writes to numbered Obsidian files.
       if (matched.obsidianSessionsDir) {
         layers.push(
-          `--- Obsidian Writing Requirement ---\n` +
-          `Every session MUST be written to Obsidian when complete. No exceptions.\n` +
-          `Sessions folder: ${matched.obsidianSessionsDir}\n` +
-          `File naming: session_YYYY-MM-DD_short-description.md\n` +
-          `After writing, extract relevant content into the numbered files in: ${matched.obsidianDir}`
+          `--- Obsidian Sync (automatic — no agent action required) ---\n` +
+          `When this session ends, Polaris runs extractSessionToKnowledge server-side. It calls DeepSeek to summarize what happened, then writes:\n` +
+          `  - architectural changes → 2-Architecture.md\n` +
+          `  - roadmap / build-plan updates → 3-Build-Plan.md\n` +
+          `  - external API / tool / config changes → 7-Integrations.md\n` +
+          `  - changelog row → 4-Changelog.md (only if package.json was bumped)\n` +
+          `Sessions folder for transcripts: ${matched.obsidianSessionsDir}\n` +
+          `Knowledge base folder: ${matched.obsidianDir}\n` +
+          `You do NOT need to manually write to any of these files. To trigger a changelog row at session end, just make sure to bump the version in package.json before stopping work.`
         );
       }
 
