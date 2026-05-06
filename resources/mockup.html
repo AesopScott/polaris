@@ -1548,12 +1548,17 @@
   <div id="cross-check-panel" class="projects-panel hidden palette" style="width:720px;max-height:700px;">
     <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
     <div class="preview-toolbar" style="cursor:default;">
-      <span style="flex:1;font-size:13px;font-weight:800;">Cross-Check History</span>
-      <button onclick="wsSend({ type:'get-cross-check-history', limit: 200 })" style="padding:4px 10px;border-radius:5px;border:1px solid #444;font-size:11px;background:#1e293b;color:#cbd5e1;cursor:pointer;">⟳ Refresh</button>
+      <span style="flex:1;font-size:13px;font-weight:800;">Cross-Check</span>
+      <button onclick="runPreBuildCheck()" style="padding:4px 10px;border-radius:5px;border:none;font-size:11px;background:#3b82f6;color:#fff;font-weight:700;cursor:pointer;">▶ Run Pre-Build Check</button>
+      <button onclick="wsSend({ type:'get-cross-check-history', limit: 200 })" style="padding:4px 10px;border-radius:5px;border:1px solid #444;font-size:11px;background:#1e293b;color:#cbd5e1;cursor:pointer;">⟳ History</button>
       <button class="preview-close-btn" onclick="toggleCrossCheckPanel()">✕</button>
     </div>
-    <div id="cross-check-list" style="overflow-y:auto;max-height:620px;padding:8px 12px;font-size:11px;">
-      <div style="padding:24px;text-align:center;opacity:0.4;">Open the panel to load history.</div>
+    <div id="pre-build-check-section" style="border-bottom:1px solid #1f2937;padding:10px 14px;font-size:11px;">
+      <div id="pre-build-check-status" style="color:#64748b;">Click <strong>Run Pre-Build Check</strong> to review all working-tree changes against the configured reviewer model. The Build button will gate on a fresh check.</div>
+      <div id="pre-build-check-results" style="display:none;margin-top:10px;"></div>
+    </div>
+    <div id="cross-check-list" style="overflow-y:auto;max-height:540px;padding:8px 12px;font-size:11px;">
+      <div style="padding:16px;text-align:center;opacity:0.4;">History — click ⟳ History to load.</div>
     </div>
   </div>
 
@@ -2915,17 +2920,76 @@
         break;
       }
       case 'build-result': {
-        pushDebugLog(`[build] ${msg.ok ? 'started' : 'failed'}: ${msg.message}`);
+        pushDebugLog(`[build] ${msg.ok ? 'started' : 'rejected'}: ${msg.message}`);
         if (msg.ok) {
-          // Subtle UI dim + non-blocking notice. The script will kill Polaris
-          // within seconds; nothing else for the user to do here.
           document.body.style.transition = 'opacity 0.3s';
           document.body.style.opacity = '0.55';
           document.body.style.pointerEvents = 'none';
           alert(msg.message);
+        } else if (msg.requiresCheck) {
+          // Pre-build check gate: stale or missing. Offer to run check first.
+          if (confirm(msg.message + '\n\nRun pre-build cross-check now?')) {
+            runPreBuildCheck();
+          } else if (confirm('Build anyway WITHOUT running the cross-check?\n\nThis is unusual — only do it if you know the changes are safe.')) {
+            executeBuild(true); // skipCheck=true
+          }
         } else {
           alert('Build failed to start:\n' + msg.message);
         }
+        break;
+      }
+      case 'pre-build-check-progress': {
+        const statusEl = document.getElementById('pre-build-check-status');
+        if (!statusEl) break;
+        statusEl.style.color = '#94a3b8';
+        if (msg.phase === 'start') {
+          statusEl.innerHTML = msg.total === 0
+            ? '✓ No working-tree changes — nothing to review.'
+            : `⟳ Reviewing ${msg.total} changed file(s)…`;
+        } else if (msg.phase === 'reviewing') {
+          statusEl.innerHTML = `⟳ Reviewing ${msg.completed + 1}/${msg.total}: <code>${escHtml(msg.file)}</code>`;
+        }
+        break;
+      }
+      case 'pre-build-check-complete': {
+        const statusEl = document.getElementById('pre-build-check-status');
+        const resultsEl = document.getElementById('pre-build-check-results');
+        if (!statusEl || !resultsEl) break;
+        const verdictColor = msg.verdict === 'PASS' ? '#22c55e' : (msg.verdict === 'FAIL' ? '#ef4444' : '#f59e0b');
+        const verdictIcon = msg.verdict === 'PASS' ? '✓' : (msg.verdict === 'FAIL' ? '✗' : '⚠');
+        statusEl.style.color = verdictColor;
+        statusEl.innerHTML = `<strong>${verdictIcon} ${msg.verdict}</strong> — ${escHtml(msg.summary)}`;
+        if ((msg.files || []).length > 0) {
+          resultsEl.style.display = 'block';
+          resultsEl.innerHTML = msg.files.map(f => {
+            const c = f.verdict === 'PASS' ? '#22c55e' : (f.verdict === 'FAIL' ? '#ef4444' : '#f59e0b');
+            const issuesHtml = (f.issues || []).length
+              ? `<ul style="margin:4px 0 0 16px;padding:0;color:#94a3b8;font-size:10px;">${f.issues.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>`
+              : '';
+            return `<div style="border-left:3px solid ${c};padding:6px 10px;margin:6px 0;background:rgba(15,23,42,0.5);border-radius:3px;">
+              <div style="display:flex;align-items:center;gap:8px;font-family:'Consolas',monospace;font-size:11px;">
+                <span style="color:${c};font-weight:700;">${f.verdict}</span>
+                <span style="color:#cbd5e1;">${escHtml(f.file)}</span>
+                <span style="color:#64748b;font-size:9px;margin-left:auto;">${(f.ms||0)}ms</span>
+              </div>
+              <div style="color:#94a3b8;font-size:10px;margin-top:3px;">${escHtml(f.summary || '')}</div>
+              ${issuesHtml}
+            </div>`;
+          }).join('');
+        } else {
+          resultsEl.style.display = 'block';
+          resultsEl.innerHTML = `<div style="padding:8px;color:#64748b;font-size:10px;">No changed files — repo state is clean.</div>`;
+        }
+        pushDebugLog(`[pre-build-check] ${msg.verdict}: ${msg.summary}`);
+        break;
+      }
+      case 'pre-build-check-error': {
+        const statusEl = document.getElementById('pre-build-check-status');
+        if (statusEl) {
+          statusEl.style.color = '#ef4444';
+          statusEl.innerHTML = '✗ Cross-check failed: ' + escHtml(msg.message || 'unknown');
+        }
+        pushDebugLog(`[pre-build-check] error: ${msg.message}`);
         break;
       }
 
@@ -9017,14 +9081,33 @@
   window.onbDismiss         = onbDismiss;
   window.onbClose           = onbClose;
 
-  function executeBuild() {
-    if (!confirm("Run build-install.ps1?\n\nPolaris will close shortly. The build runs in a separate PowerShell window and the new version will install automatically.")) return;
-    // Direct server-side action — no agent session, no LLM, no token cost.
-    // Server spawns powershell.exe detached so it survives Polaris's death
-    // (the script kills Polaris.exe to free dist file locks).
-    wsSend({ type: 'run-build' });
+  function executeBuild(skipCheck) {
+    if (!skipCheck) {
+      // First click: server checks pre-build cross-check freshness. If stale,
+      // server replies build-result {ok:false, requiresCheck:true} and the
+      // handler will prompt the user to run cross-check first.
+      wsSend({ type: 'run-build' });
+      return;
+    }
+    if (!confirm("Build without running cross-check?\n\nPolaris will close shortly. The build runs in a separate PowerShell window and the new version will install automatically.")) return;
+    wsSend({ type: 'run-build', skipCheck: true });
   }
   window.executeBuild = executeBuild;
+
+  function runPreBuildCheck() {
+    const statusEl = document.getElementById('pre-build-check-status');
+    const resultsEl = document.getElementById('pre-build-check-results');
+    if (statusEl) {
+      statusEl.style.color = '#94a3b8';
+      statusEl.innerHTML = '⟳ Starting pre-build check…';
+    }
+    if (resultsEl) resultsEl.style.display = 'none';
+    // Make sure the panel is visible
+    const panel = document.getElementById('cross-check-panel');
+    if (panel?.classList.contains('hidden')) panel.classList.remove('hidden');
+    wsSend({ type: 'run-pre-build-check' });
+  }
+  window.runPreBuildCheck = runPreBuildCheck;
 
   // ── Boot ──────────────────────────────────────────────────────────────────────
 

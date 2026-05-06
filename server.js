@@ -1706,6 +1706,145 @@ function loadAllCrossChecks(limit = 200) {
   return all.sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, limit);
 }
 
+// ─── Pre-build cross-check ───────────────────────────────────────────────────
+// Aggregate cross-check pass over every file changed since the last check.
+// Build button gates on this — if the repo state hasn't been reviewed, build
+// is rejected and the UI prompts the user to run the check first.
+const PRE_BUILD_CHECK_PATH = path.join(POLARIS_DIR, 'pre-build-check.json');
+
+function getRepoSnapshot(sourcePath) {
+  try {
+    const head = execSync('git rev-parse HEAD', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const status = execSync('git status --porcelain', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return { head, status };
+  } catch {
+    return { head: null, status: null };
+  }
+}
+
+function getPreBuildCheckStatus(sourcePath) {
+  const current = getRepoSnapshot(sourcePath);
+  let state = null;
+  try { state = JSON.parse(fs.readFileSync(PRE_BUILD_CHECK_PATH, 'utf8')); } catch {}
+  if (!state) return { fresh: false, lastCheckedAt: null, currentSnapshot: current };
+  const fresh = state.repoHead === current.head && state.repoStatus === current.status;
+  return {
+    fresh,
+    lastCheckedAt: state.lastCheckedAt,
+    lastVerdict: state.verdict,
+    fileCount: (state.files || []).length,
+    passCount: (state.files || []).filter(f => f.verdict === 'PASS').length,
+    failCount: (state.files || []).filter(f => f.verdict === 'FAIL').length,
+    errorCount: (state.files || []).filter(f => f.verdict === 'ERROR').length,
+  };
+}
+
+// List files changed in the working tree (uncommitted) plus any committed
+// since some baseline. For pre-build check we just look at working-tree
+// changes — committed-but-not-built changes are already "in HEAD" and would
+// only matter if we tracked a separate "last-built commit" tag.
+function getChangedFiles(sourcePath) {
+  try {
+    const out = execSync('git status --porcelain', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    return out.split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+      .map(l => {
+        // porcelain v1: "XY filename" — XY is the status code, possibly with
+        // " -> " for renames. We just want the filename.
+        const m = l.match(/^.{1,3}\s+(?:.+\s->\s)?(.+)$/);
+        return m ? m[1].replace(/^"|"$/g, '') : null;
+      })
+      .filter(Boolean)
+      .filter(f => !f.startsWith('dist/') && !f.startsWith('node_modules/') && !f.endsWith('.lock'));
+  } catch {
+    return [];
+  }
+}
+
+async function runPreBuildCheck(ws, sourcePath) {
+  const config = readConfig();
+  const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
+  const model = config.crossCheckModel || CROSS_CHECK_DEFAULT_MODEL;
+  const files = getChangedFiles(sourcePath);
+
+  sendTo(ws, { type: 'pre-build-check-progress', phase: 'start', total: files.length });
+
+  if (files.length === 0) {
+    // Nothing to review; record an empty pass so the build can proceed.
+    const snapshot = getRepoSnapshot(sourcePath);
+    fs.writeFileSync(PRE_BUILD_CHECK_PATH, JSON.stringify({
+      lastCheckedAt: new Date().toISOString(),
+      repoHead: snapshot.head,
+      repoStatus: snapshot.status,
+      verdict: 'PASS',
+      files: [],
+      summary: 'No changes to review.',
+    }, null, 2), 'utf8');
+    sendTo(ws, { type: 'pre-build-check-complete', verdict: 'PASS', files: [], summary: 'No changes to review.' });
+    return;
+  }
+
+  if (!apiKey) {
+    sendTo(ws, { type: 'pre-build-check-error', message: 'No OpenRouter API key configured — cannot run reviewer model.' });
+    return;
+  }
+
+  const results = [];
+  for (let i = 0; i < files.length; i++) {
+    const rel = files[i];
+    const abs = path.join(sourcePath, rel);
+    let newContent = '';
+    try { newContent = fs.readFileSync(abs, 'utf8'); } catch {}
+    let originalContent = '';
+    try {
+      originalContent = execSync(`git show HEAD:"${rel}"`, { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    } catch { /* new file — original is empty */ }
+
+    sendTo(ws, { type: 'pre-build-check-progress', phase: 'reviewing', completed: i, total: files.length, file: rel });
+
+    const review = await crossCheckChange({
+      sessionId: 'pre-build-check',
+      sessionPrompt: 'Pre-build cross-check across all working-tree changes.',
+      filePath: abs,
+      originalContent,
+      newContent,
+      model,
+      apiKey,
+    });
+    results.push({
+      file: rel,
+      verdict: review.verdict,
+      summary: review.summary,
+      issues: review.issues || [],
+      ms: review.ms,
+    });
+  }
+
+  // Aggregate verdict: FAIL if any file FAILed, ERROR if any errored (and no FAILs), otherwise PASS
+  const verdict = results.some(r => r.verdict === 'FAIL') ? 'FAIL'
+                : results.some(r => r.verdict === 'ERROR') ? 'ERROR'
+                : 'PASS';
+  const passCount = results.filter(r => r.verdict === 'PASS').length;
+  const summary = `${passCount}/${results.length} files passed reviewer (${model.split('/').pop()}).`;
+
+  const snapshot = getRepoSnapshot(sourcePath);
+  fs.writeFileSync(PRE_BUILD_CHECK_PATH, JSON.stringify({
+    lastCheckedAt: new Date().toISOString(),
+    repoHead: snapshot.head,
+    repoStatus: snapshot.status,
+    verdict,
+    files: results,
+    summary,
+    model,
+  }, null, 2), 'utf8');
+
+  sendTo(ws, {
+    type: 'pre-build-check-complete',
+    verdict, files: results, summary, model,
+  });
+}
+
 function toolGlob({ pattern, path: searchPath }, workDir) {
   const base = searchPath || workDir || process.cwd();
   // Convert glob to regex — escape special chars first, then expand * and ? wildcards
@@ -3634,7 +3773,39 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'run-pre-build-check') {
+    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
+    runPreBuildCheck(ws, sourcePath).catch(e => {
+      console.error('[pre-build-check] failed:', e);
+      sendTo(ws, { type: 'pre-build-check-error', message: e.message });
+    });
+    return;
+  }
+
+  if (type === 'get-pre-build-check-status') {
+    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
+    sendTo(ws, { type: 'pre-build-check-status', ...getPreBuildCheckStatus(sourcePath) });
+    return;
+  }
+
   if (type === 'run-build') {
+    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
+    // Pre-build cross-check gate: build only proceeds if a cross-check has been
+    // run against the current repo state. If not, return early with a flag the
+    // UI uses to prompt the user to run a check first. msg.skipCheck = true
+    // bypasses the gate (e.g. the user explicitly chose "build anyway").
+    if (!msg.skipCheck) {
+      const status = getPreBuildCheckStatus(sourcePath);
+      if (!status.fresh) {
+        sendTo(ws, { type: 'build-result', ok: false, requiresCheck: true,
+          message: status.lastCheckedAt
+            ? `Repo state has changed since last cross-check (${status.lastCheckedAt}). Run cross-check first.`
+            : 'No cross-check has been run against this repo state yet. Run cross-check first.',
+          status,
+        });
+        return;
+      }
+    }
     // Direct execution of the build-install script. NOT through an agent
     // session — that path was confused: agent's confirmation rules made it
     // ask before running, paid LLM tokens for a script invocation, and got
@@ -3644,7 +3815,6 @@ function handleMessage(ws, raw) {
     // (build-install.ps1 kills Polaris.exe early to free dist file locks).
     // detached + stdio:'ignore' + child.unref() gives the PowerShell process
     // its own process group so it runs to completion independently.
-    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
     const fullScript = path.join(sourcePath, 'scripts', 'build-install.ps1');
     if (!fs.existsSync(fullScript)) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
