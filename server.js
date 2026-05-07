@@ -1564,6 +1564,15 @@ function maybeSetTestOnGitCommit(command, sessionId) {
   }
 }
 
+const TEST_PHRASES    = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
+const WAITING_PHRASES = /\b(what\s+do\s+you\s+(think|want|prefer)|would\s+you\s+like|do\s+you\s+want|should\s+I|shall\s+I|which\s+(would|do)\s+you|any\s+(other\s+)?(questions?|feedback|thoughts?)|want\s+me\s+to|let\s+me\s+know|does\s+that\s+(work|help|make\s+sense))\b|\?(\s*$|\s*\n)/i;
+
+function inferTermStatus(lastText) {
+  if (TEST_PHRASES.test(lastText))    return 'test';
+  if (WAITING_PHRASES.test(lastText)) return 'waiting';
+  return 'done';
+}
+
 function toolSetStatus({ status } = {}, sessionId) {
   const ALLOWED = ['test', 'waiting', 'done'];
   if (!ALLOWED.includes(status)) return `Invalid status "${status}". Allowed: ${ALLOWED.join(', ')}.`;
@@ -3281,7 +3290,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     const msgs = session.messages;
     const lastAssistant = msgs && [...msgs].reverse().find(m => m.role === 'assistant' && m.content?.trim());
     const lastText = lastAssistant?.content?.trim() ?? '';
-    termStatus = lastText.endsWith('?') ? 'waiting' : 'done';
+    termStatus = inferTermStatus(lastText);
   }
   if (s) { s.status = termStatus; s.endAt = Date.now(); }
   saveSessionMessages(sessionId);
@@ -3696,14 +3705,10 @@ function spawnMaxChat(sessionId, prompt, config) {
     let termStatus;
     if (code !== 0) {
       termStatus = 'error';
-    } else if (session.isChat) {
-      const testPhrases    = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
-      const waitingPhrases = /\b(what\s+do\s+you\s+(think|want|prefer)|would\s+you\s+like|do\s+you\s+want|should\s+I|shall\s+I|which\s+(would|do)\s+you|any\s+(other\s+)?(questions?|feedback|thoughts?)|want\s+me\s+to|let\s+me\s+know|does\s+that\s+(work|help|make\s+sense))\b|\?(\s*$|\s*\n)/i;
-      if (committedDuringRun || testPhrases.test(lastAssistantText)) termStatus = 'test';
-      else if (waitingPhrases.test(lastAssistantText)) termStatus = 'waiting';
-      else termStatus = 'done';
+    } else if (committedDuringRun) {
+      termStatus = 'test';
     } else {
-      termStatus = 'done';
+      termStatus = inferTermStatus(lastAssistantText);
     }
     session.status = termStatus;
     session.endAt = Date.now();
@@ -3844,8 +3849,7 @@ function spawnChat(sessionId, prompt, config) {
       if (rem) { accText += rem; broadcast({ type: 'line', sessionId, text: rem, role: 'assistant' }); }
       session.chatBuffer = '';
       const fullText = accText.trim();
-      const testPhrases = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
-      const termStatus = testPhrases.test(fullText) ? 'test' : /\?\s*$/.test(fullText) ? 'waiting' : 'done';
+      const termStatus = inferTermStatus(fullText);
       session.status = termStatus;
       session.endAt  = Date.now();
       broadcast({ type: 'session-status', sessionId, status: termStatus });
