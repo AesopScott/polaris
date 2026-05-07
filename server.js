@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, exec, execSync } = require('child_process');
+const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const WebSocket = require('ws');
@@ -409,7 +409,7 @@ function brevoPost(payload) {
 // â"€â"€â"€ Git helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function runGit(args, cwd) {
   return new Promise(resolve => {
-    exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd, windowsHide: true }, (err, stdout) => {
+    execFile('git', args, { cwd, windowsHide: true }, (err, stdout) => {
       resolve(err ? '' : stdout.trim());
     });
   });
