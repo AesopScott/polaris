@@ -7664,6 +7664,12 @@
     const grid = document.getElementById('mcp-catalog-grid');
     if (!grid) return;
     grid.innerHTML = '';
+    // A catalog entry is "natively connected" if its id loosely matches any key
+    // in ~/.mcp.json (e.g. catalog id "obsidian" matches native key "mcp-obsidian").
+    const isNative = id => (native || []).some(n => {
+      const a = id.toLowerCase(), b = n.toLowerCase();
+      return a === b || b.includes(a) || a.includes(b);
+    });
     for (const entry of catalog) {
       if (entry.hidden) continue;
       const card = document.createElement('div');
@@ -7672,8 +7678,9 @@
 
       if (entry.oauthFlow) {
         const isEnabled = enabled.includes(entry.id);
-        const badgeText = isEnabled ? 'Connected' : 'Not connected';
-        const badgeClass = isEnabled ? 'mcp-badge-enabled' : 'mcp-badge-disabled';
+        const nativeConn = !isEnabled && isNative(entry.id);
+        const badgeText = isEnabled ? 'Connected' : nativeConn ? 'Connected (native)' : 'Not connected';
+        const badgeClass = (isEnabled || nativeConn) ? 'mcp-badge-enabled' : 'mcp-badge-disabled';
         card.innerHTML = `
           <div class="mcp-catalog-card-header">
             <span class="mcp-catalog-name">${entry.emoji} ${escHtml(entry.name)}</span>
@@ -7724,11 +7731,12 @@
       }
 
       const isEnabled = enabled.includes(entry.id);
+      const nativeConn = !isEnabled && isNative(entry.id);
       const hasCreds  = credentials[entry.id] && Object.values(credentials[entry.id]).some(v => v);
       const hasNoCreds = !entry.credentials || entry.credentials.length === 0;
-      const status    = isEnabled ? 'enabled' : (hasCreds || hasNoCreds) ? 'disabled' : 'needs';
-      const badgeText = status === 'enabled' ? 'Enabled' : status === 'needs' ? 'Needs credentials' : 'Not enabled';
-      const badgeClass = `mcp-badge-${status}`;
+      const status    = isEnabled ? 'enabled' : nativeConn ? 'native' : (hasCreds || hasNoCreds) ? 'disabled' : 'needs';
+      const badgeText = status === 'enabled' ? 'Enabled' : status === 'native' ? 'Connected (native)' : status === 'needs' ? 'Needs credentials' : 'Not enabled';
+      const badgeClass = status === 'native' ? 'mcp-badge-enabled' : `mcp-badge-${status}`;
 
       const credFields = (entry.credentials || []).map(c => {
         const isFile   = c.type === 'filepath';
