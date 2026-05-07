@@ -22,7 +22,6 @@ const LOCKS_PATH    = path.join(POLARIS_DIR, 'locks.json');
 const VERSIONS_PATH = path.join(POLARIS_DIR, 'file-versions.json');
 const VERSIONS_LOG_PATH = path.join(POLARIS_DIR, 'file-versions-log.jsonl');
 const VERSIONS_LOG_CAP = 1000;
-const ROUTINE_NOTIFICATION_PATH = path.join(POLARIS_DIR, 'routine_notifications.json');
 
 const CROSS_CHECKS_DIR = path.join(POLARIS_DIR, 'cross-checks');
 const SOURCE_BACKUPS_DIR = path.join(POLARIS_DIR, 'source-backups');
@@ -557,17 +556,6 @@ function watchGlobalFiles() {
     });
   }
 
-  // Watch POLARIS_DIR for routine notification file updates
-  try {
-    fs.watch(POLARIS_DIR, (eventType, filename) => {
-      if (filename === 'routine_notifications.json') {
-        const notifications = readJSON(ROUTINE_NOTIFICATION_PATH, null);
-        if (notifications) broadcast({ type: 'event-routine-notification', notifications });
-      }
-    });
-  } catch (e) {
-    console.warn('[routine-notifications] Could not watch for notifications:', e.message);
-  }
 }
 
 // â"€â"€â"€ State â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -4266,7 +4254,7 @@ const httpServer = http.createServer((req, res) => {
       if (method === 'tools/list') {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [
           { name: 'SetProject', description: 'Set the active project for this session. Call immediately after the user names their project.', inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit for no project (scratch).' } }, required: [] } },
-          { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'] } }, required: ['status'] } },
+          { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
         ]}}));
       }
       if (method === 'tools/call') {
@@ -4716,13 +4704,22 @@ function handleMessage(ws, raw) {
     }
     if (projectName) spaceAppendEvent(projectName, { type: 'session-launch', sessionId: id, concurrentCount: sessions.size });
 
-    // Routines go through DeepSeek direct API — no CLI cold-load, ~1000Ã— cheaper per fire
     if (routineTag) {
-      const routeMsg = `[routing] routineTag="${routineTag}" → DeepSeek direct API (bypassing Claude CLI)`;
-      console.log(routeMsg);
-      broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
-      broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
-      spawnDeepSeekRoutine(id, prompt, readConfig());
+      const cfg = readConfig();
+      const routineModel = msg.model || '';
+      if (routineModel === 'chat') {
+        const routeMsg = `[routing] routineTag="${routineTag}" model=chat → chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
+        console.log(routeMsg);
+        broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
+        broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
+        spawnChatRouter(id, prompt, cfg);
+      } else {
+        const routeMsg = `[routing] routineTag="${routineTag}" → DeepSeek direct API`;
+        console.log(routeMsg);
+        broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
+        broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
+        spawnDeepSeekRoutine(id, prompt, cfg);
+      }
     } else {
       console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
       runDirectAgent(id, prompt, effectiveWorkDir);
@@ -4892,6 +4889,12 @@ function handleMessage(ws, raw) {
       return true;
     }).reverse();
     writeJSON(ROUTINE_NOTIFICATIONS_PATH, trimmed);
+    return;
+  }
+
+  if (type === 'get-routine-notifications') {
+    const notifications = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+    sendTo(ws, { type: 'event-routine-notifications', notifications });
     return;
   }
 
@@ -5697,7 +5700,8 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'get-mcp-catalog') {
-    sendTo(ws, { type: 'mcp-catalog', catalog: MCP_CATALOG, enabled: getEnabledMcpServers(), credentials: maskedMcpCredentials(), instances: getMcpInstances() });
+    const nativeServers = getConnectedMcpServers(); // from ~/.mcp.json (Claude Code native)
+    sendTo(ws, { type: 'mcp-catalog', catalog: MCP_CATALOG, enabled: getEnabledMcpServers(), credentials: maskedMcpCredentials(), instances: getMcpInstances(), native: nativeServers });
     return;
   }
 
@@ -6426,7 +6430,6 @@ wss.on('connection', (ws) => {
       supportEnabled: !!BREVO_API_KEY,
       appVersion: require('./package.json').version,
       recentCommits,
-      routineNotifications: readJSON(ROUTINE_NOTIFICATION_PATH, null),
       connectedMcpServers: getConnectedMcpServers(),
     });
 
