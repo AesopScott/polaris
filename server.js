@@ -3051,6 +3051,23 @@ function spawnMaxChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
+  const startMs = Date.now();
+  const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
+  const dlog = (label, text) => {
+    const t = ((Date.now() - startMs) / 1000).toFixed(3);
+    try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': ' + String(text).slice(0, 500) : ''}\n`, 'utf8'); } catch {}
+  };
+  try {
+    fs.appendFileSync(diagPath,
+      `=== DIAG ${new Date().toISOString()} ===\n` +
+      `SESSION: ${sessionId}\n` +
+      `MODEL: claude-cli (Max plan)\n` +
+      `MODE: max-cli\n` +
+      `WORKDIR: ${os.tmpdir()}\n` +
+      `--- USER PROMPT ---\n${prompt}\n` +
+      `--- LOOP ---\n`, 'utf8');
+  } catch {}
+
   // Rebuild conversation prompt from history. The latest user line is already
   // pushed by the launch-chat handler before this fires, so it's included.
   const history = (session.lines || [])
@@ -3058,8 +3075,10 @@ function spawnMaxChat(sessionId, prompt, config) {
     .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
     .join('\n\n');
   const fullPrompt = history || prompt;
+  dlog('PROMPT_BUILD', `historyTurns=${(session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
+  dlog('SPAWN', `bin=${claudeBin} args=-p shell=true cwd=${os.tmpdir()}`);
   let proc;
   try {
     proc = spawn(claudeBin, ['-p'], {
@@ -3068,6 +3087,7 @@ function spawnMaxChat(sessionId, prompt, config) {
       shell: true,  // required on Windows so `claude.cmd` is resolvable
     });
   } catch (e) {
+    dlog('SPAWN_ERR', e.message);
     broadcast({ type: 'line', sessionId, text: `Failed to spawn Claude CLI: ${e.message}. Install Claude Code and run "claude login" with your Max account, or set config.chatBackend = "openrouter" to use the API path.`, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
     session.status = 'error';
@@ -3075,14 +3095,21 @@ function spawnMaxChat(sessionId, prompt, config) {
     return;
   }
   session.proc = proc;
+  dlog('PID', proc.pid);
 
+  let totalOutBytes = 0;
+  let chunkCount = 0;
   proc.stdout.on('data', chunk => {
     const text = chunk.toString();
+    totalOutBytes += chunk.length;
+    chunkCount++;
+    dlog('STDOUT_CHUNK', `bytes=${chunk.length} text=${text.replace(/\n/g, '\\n').slice(0, 200)}`);
     if (text.trim()) broadcast({ type: 'line', sessionId, text, role: 'assistant' });
   });
 
   proc.stderr.on('data', chunk => {
     const text = chunk.toString();
+    dlog('STDERR', text.slice(0, 400));
     // Surface anything that looks like an error or auth/rate prompt
     if (/error|fail|invalid|unauthor|rate.?limit|login|claude login/i.test(text)) {
       broadcast({ type: 'line', sessionId, text: `[claude] ${text.slice(0, 800)}`, role: 'error' });
@@ -3090,12 +3117,14 @@ function spawnMaxChat(sessionId, prompt, config) {
   });
 
   proc.on('close', code => {
+    dlog('CLOSE', `code=${code} chunks=${chunkCount} bytes=${totalOutBytes}`);
     session.status = code === 0 ? 'done' : 'error';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
   });
 
   proc.on('error', err => {
+    dlog('ERROR', err.code === 'ENOENT' ? 'CLI_NOT_FOUND (claude binary missing on PATH)' : `${err.code || ''} ${err.message}`);
     if (err.code === 'ENOENT') {
       broadcast({
         type: 'line', sessionId, role: 'error',
@@ -3113,7 +3142,9 @@ function spawnMaxChat(sessionId, prompt, config) {
   try {
     proc.stdin.write(fullPrompt);
     proc.stdin.end();
+    dlog('STDIN_SENT', `bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
   } catch (e) {
+    dlog('STDIN_ERR', e.message);
     broadcast({ type: 'line', sessionId, text: `Failed to send prompt to Claude CLI: ${e.message}`, role: 'error' });
   }
 }
