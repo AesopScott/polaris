@@ -3,7 +3,7 @@
 Scott's personal AI command center â€” parallel agent sessions, real API control, Electron desktop UI.
 
 ## Critical rules
-1. **Propose before acting.** State the planned change, wait for explicit yes. Never assume approval.
+1. **Propose before writing.** For file edits and writes, state the planned change and wait for explicit yes. Reads, searches, and tool calls proceed without asking.
 2. **Three zones:** Source (`C:\Users\scott\Code\Polaris`) — edit only here, requires `npm run dist` rebuild. Installed app (`C:\Users\scott\AppData\Local\Programs\Polaris\resources`) — never touch. Runtime data (`C:\Users\scott\AppData\Roaming\.claude\polaris\` AND the user's `Downloads` folder) — only places for runtime reads/writes.
 3. **Versioning:** state file's current version before editing, new version after. Versions in `%APPDATA%\.claude\polaris\file-versions.json`.
 4. **Locks:** check `locks.json` before any write; locked files need explicit approval.
