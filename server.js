@@ -50,14 +50,15 @@ const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
 // â"€â"€â"€ App-level secrets (gitignored, baked into build) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-// ─── Brevo email (support tickets) ───────────────────────────────────────────
-const BREVO_API_KEY         = 'POLARIS_BREVO_KEY_REDACTED';
-const BREVO_SENDER_EMAIL    = 'ravenshroud@gmail.com';
-const BREVO_RECIPIENT_EMAIL = 'scott@aesopacademy.org';
-
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
 catch { console.log('[polaris] secrets.js not found'); }
+
+// ─── Brevo email (support tickets) ───────────────────────────────────────────
+// API key sourced from gitignored secrets.js so the secret never lands in git.
+const BREVO_API_KEY         = APP_SECRETS.brevoApiKey || '';
+const BREVO_SENDER_EMAIL    = 'ravenshroud@gmail.com';
+const BREVO_RECIPIENT_EMAIL = 'scott@aesopacademy.org';
 
 // â"€â"€â"€ MCP Catalog â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
