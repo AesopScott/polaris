@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Polaris</title>
 <link rel="stylesheet" href="/js/vs2015.min.css">
-<script src="/js/highlight.min.js" defer></script>
-<script src="/js/marked.min.js" defer></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/marked.min.js"></script>
 <style>
   @font-face {
     font-family: 'CascadiaCode';
@@ -699,6 +699,10 @@
   .file-chip { display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: #1e3a5f; color: #60a5fa; border: 1px solid #3b82f6; }
   .file-chip button { background: none; border: none; cursor: pointer; color: inherit; font-size: 10px; padding: 0; line-height: 1; opacity: 0.7; }
   .file-chip button:hover { opacity: 1; }
+  .image-chip { display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: #1e1a3a; color: #a78bfa; border: 1px solid #7c3aed; }
+  .image-chip button { background: none; border: none; cursor: pointer; color: inherit; font-size: 10px; padding: 0; line-height: 1; opacity: 0.7; }
+  .image-chip button:hover { opacity: 1; }
+  .prompt-wrap.drag-over .prompt-area { border-color: #3b82f6 !important; box-shadow: 0 0 0 2px rgba(59,130,246,0.3) !important; }
 
   /* Resume mode banner */
   .resume-banner {
@@ -2960,7 +2964,8 @@
   let protectedPatterns = ['*.md']; // file patterns requiring approval before modification
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, ts } }
-  const pendingFiles = []; // [{ name, content }]
+  const pendingFiles = [];  // [{ name, content }]
+  const pendingImages = []; // [{ name, path }] — image files passed to vision-capable models
 
   // ── Connection ────────────────────────────────────────────────────────────────
   function wsConnect() {
@@ -5071,13 +5076,28 @@
   window.toggleDebugPanel = toggleDebugPanel;
 
   // ── File upload (launch bar) ───────────────────────────────────────────────────
-  function openFilePicker() {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h';
-    fileInput.onchange = () => {
-      const file = fileInput.files[0];
-      if (!file) return;
+  const IMAGE_MIME = new Set(['image/jpeg','image/png','image/gif','image/webp','image/bmp','image/svg+xml']);
+  const IMAGE_EXT  = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
+
+  function attachFile(file) {
+    const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(file.name);
+    if (isImage) {
+      // In Electron the File object carries a .path property with the absolute OS path.
+      const imgPath = file.path;
+      if (!imgPath) return;
+      const idx = pendingImages.push({ name: file.name, path: imgPath }) - 1;
+      document.querySelectorAll('.file-chips').forEach(container => {
+        const chip = document.createElement('div');
+        chip.className = 'image-chip';
+        chip.dataset.imageIdx = idx;
+        chip.innerHTML = `🖼 ${file.name} <button title="Remove">✕</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          pendingImages.splice(idx, 1);
+          document.querySelectorAll(`.image-chip[data-image-idx="${idx}"]`).forEach(c => c.remove());
+        });
+        container.appendChild(chip);
+      });
+    } else {
       const reader = new FileReader();
       reader.onload = e => {
         const idx = pendingFiles.push({ name: file.name, content: e.target.result }) - 1;
@@ -5098,7 +5118,21 @@
         if (promptEl) { updateTokenCount(promptEl); promptEl.focus(); }
       };
       reader.readAsText(file);
-    };
+    }
+    const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+    if (promptEl) promptEl.focus();
+  }
+
+  function handleFileDrop(files) {
+    for (const file of files) attachFile(file);
+  }
+
+  function openFilePicker() {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg';
+    fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f); };
     fileInput.click();
   }
   window.triggerUpload = openFilePicker;
@@ -5187,7 +5221,7 @@
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model });
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
@@ -8873,6 +8907,25 @@
           phIdx = Math.max(phIdx - 1, -1);
           el.value = phIdx >= 0 ? (promptHistoryStore[phIdx] || '') : ''; updateTokenCount(el);
         }
+      });
+    });
+
+    // File drag-and-drop onto the prompt area
+    document.querySelectorAll('.prompt-wrap').forEach(wrap => {
+      wrap.addEventListener('dragover', e => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        wrap.classList.add('drag-over');
+      });
+      wrap.addEventListener('dragleave', e => {
+        if (!wrap.contains(e.relatedTarget)) wrap.classList.remove('drag-over');
+      });
+      wrap.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        wrap.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) handleFileDrop(e.dataTransfer.files);
       });
     });
 

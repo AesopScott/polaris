@@ -4088,11 +4088,12 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'resume') {
-    const { sessionId, prompt, displayPrompt, resumeId, model } = msg;
+    const { sessionId, prompt, displayPrompt, resumeId, model, projectName } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     session.status = 'running';
     session.lastPrompt = prompt;
+    if (projectName !== undefined) session.projectName = projectName || null;
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
     // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
     if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
