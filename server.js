@@ -5830,68 +5830,70 @@ wss.on('connection', (ws) => {
   // Send server timezone offset so the renderer can display local time correctly
   sendTo(ws, { type: 'server-tz', tzOffsetMin: new Date().getTimezoneOffset() });
 
-  // Send current session list on connect
-  sendTo(ws, {
-    type: 'init',
-    sessions: Array.from(sessions.values()).map(s => ({
-      id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
-      model: s.model || null, isChat: s.isChat || false,
-      status: s.status, startAt: s.startAt, endAt: s.endAt || null,
-      resumeId: s.claudeSessionId || null,
-      lastPrompt: s.lastPrompt || null,
-      height: s.height || null,
-      column: s.column != null ? s.column : null,
-      pinned: !!s.pinned,
-      lines: (s.lines || []).slice(-300),
-      lastUsage: s.lastUsage || null,
-      totalCost: s.totalCost || 0,
-    })),
-    history: readJSON(HISTORY_PATH, []),
-    config:  maskedConfig(readConfig()),
-    protectedPatterns: (readConfig().protectedPatterns || ['*.md']),
-    installId: getInstallId(),
-    supportEnabled: !!(APP_SECRETS.brevoApiKey && APP_SECRETS.brevoApiKey !== 'PASTE_YOUR_BREVO_KEY_HERE'),
-    appVersion: require('./package.json').version,
-  });
-
-  // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
-  // First send whatever's cached (instant), then trigger a refresh in the
-  // background and send the updated dict when ready.
-  sendTo(ws, { type: 'model-costs', costs: buildModelCostsDict() });
-  ensureOpenRouterCatalog(false).then(() => {
-    sendTo(ws, { type: 'model-costs', costs: buildModelCostsDict() });
-  }).catch(() => {});
-
-  // Fire one-time `app-update` event if the version has changed since last launch
-  try {
-    const cfg = readJSON(CONFIG_PATH, {});
-    const current = require('./package.json').version;
-    if (cfg.lastSeenVersion !== current) {
-      const previous = cfg.lastSeenVersion || null;
-      cfg.lastSeenVersion = current;
-      writeJSON(CONFIG_PATH, cfg);
-      // Defer slightly so client init handlers settle first
-      setTimeout(() => {
-        sendTo(ws, { type: 'event-app-update', from: previous, to: current });
-      }, 500);
-    }
-  } catch (e) { console.error('[app-update] check failed:', e.message); }
-
-  // Send the last 5 commits on every launch
+  // Fetch last 5 commits then send init (commits travel in the init payload)
   (async () => {
+    let recentCommits = [];
     try {
       const logOutput = await runGit(['log', '-5', '--format=%h%x09%s%x09%an%x09%ai'], __dirname);
-      if (!logOutput) return;
-      const commits = logOutput.split('\n').filter(Boolean).map(line => {
-        const [hash, subject, author, date] = line.split('\t');
-        return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
-      }).filter(c => c.hash);
-      if (commits.length > 0) {
-        setTimeout(() => {
-          sendTo(ws, { type: 'event-git-changes', commits });
-        }, 700);
+      if (logOutput) {
+        recentCommits = logOutput.split('\n').filter(Boolean).map(line => {
+          const [hash, subject, author, date] = line.split('\t');
+          return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
+        }).filter(c => c.hash);
       }
-    } catch (e) { console.error('[git-changes] check failed:', e.message); }
+    } catch (e) { console.error('[git-changes] log failed:', e.message); }
+
+    // Send current session list on connect
+    sendTo(ws, {
+      type: 'init',
+      sessions: Array.from(sessions.values()).map(s => ({
+        id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
+        model: s.model || null, isChat: s.isChat || false,
+        status: s.status, startAt: s.startAt, endAt: s.endAt || null,
+        resumeId: s.claudeSessionId || null,
+        lastPrompt: s.lastPrompt || null,
+        height: s.height || null,
+        column: s.column != null ? s.column : null,
+        pinned: !!s.pinned,
+        lines: (s.lines || []).slice(-300),
+        lastUsage: s.lastUsage || null,
+        totalCost: s.totalCost || 0,
+      })),
+      history: readJSON(HISTORY_PATH, []),
+      config:  maskedConfig(readConfig()),
+      protectedPatterns: (readConfig().protectedPatterns || ['*.md']),
+      installId: getInstallId(),
+      supportEnabled: !!(APP_SECRETS.brevoApiKey && APP_SECRETS.brevoApiKey !== 'PASTE_YOUR_BREVO_KEY_HERE'),
+      appVersion: require('./package.json').version,
+      recentCommits,
+    });
+
+    // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
+    // First send whatever's cached (instant), then trigger a refresh in the
+    // background and send the updated dict when ready.
+    sendTo(ws, { type: 'model-costs', costs: buildModelCostsDict() });
+    ensureOpenRouterCatalog(false).then(() => {
+      sendTo(ws, { type: 'model-costs', costs: buildModelCostsDict() });
+    }).catch(() => {});
+
+    // Fire one-time `app-update` event if the version has changed since last launch
+    try {
+      const cfg = readJSON(CONFIG_PATH, {});
+      const current = require('./package.json').version;
+      if (cfg.lastSeenVersion !== current) {
+        const previous = cfg.lastSeenVersion || null;
+        cfg.lastSeenVersion = current;
+        writeJSON(CONFIG_PATH, cfg);
+        setTimeout(() => {
+          sendTo(ws, { type: 'event-app-update', from: previous, to: current });
+        }, 500);
+      }
+    } catch (e) { console.error('[app-update] check failed:', e.message); }
+
+    // Fire event-git-changes so routines with that trigger still work
+    if (recentCommits.length > 0) {
+      sendTo(ws, { type: 'event-git-changes', commits: recentCommits });
+    }
   })();
 
   ws.on('message', raw => handleMessage(ws, raw));

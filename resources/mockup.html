@@ -3269,6 +3269,9 @@
         wsSend({ type: 'get-locks' });
         wsSend({ type: 'get-versions' });
         wsSend({ type: 'get-tickets' });
+        if (msg.recentCommits && msg.recentCommits.length > 0) {
+          setTimeout(() => showChangelogPopup(msg.recentCommits), 1000);
+        }
         break;
 
       case 'session-created':
