@@ -813,6 +813,7 @@ function broadcast(data) {
     }
   }
   const msg = JSON.stringify(data);
+  if (!wss) return;
   for (const client of wss.clients) {
     if (client.readyState === WebSocket.OPEN) client.send(msg);
   }
@@ -1037,6 +1038,14 @@ function stopAllLiveServers() {
 process.on('SIGINT',  () => { stopAllLiveServers(); process.exit(0); });
 process.on('SIGTERM', () => { stopAllLiveServers(); process.exit(0); });
 process.on('exit',    () => { stopAllLiveServers(); });
+
+process.on('uncaughtException', (err) => {
+  console.error('[server] uncaughtException — server continuing:', err.stack || err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.stack : String(reason);
+  console.error('[server] unhandledRejection — server continuing:', msg);
+});
 
 function watchSessionFiles(sessionId, workDir) {
   if (!fs.existsSync(workDir)) return;
@@ -4787,7 +4796,7 @@ function handleMessage(ws, raw) {
       }
     } else {
       console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
-      runDirectAgent(id, prompt, effectiveWorkDir);
+      runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
     }
     return;
   }
@@ -4823,7 +4832,7 @@ function handleMessage(ws, raw) {
     if (session.isChat) {
       spawnChatRouter(sessionId, prompt, readConfig());
     } else {
-      runDirectAgent(sessionId, prompt, session.workDir);
+      runDirectAgent(sessionId, prompt, session.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
       // Mirror prompt to linked fork session
       const forkId = forkMap.get(sessionId);
       if (forkId) {
@@ -4832,7 +4841,7 @@ function handleMessage(ws, raw) {
           forkSession.status = 'running';
           broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
           broadcast({ type: 'line', sessionId: forkId, text: displayPrompt || prompt, role: 'user' });
-          runDirectAgent(forkId, prompt, forkSession.workDir);
+          runDirectAgent(forkId, prompt, forkSession.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
         }
       }
     }
