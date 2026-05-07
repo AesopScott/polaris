@@ -3102,7 +3102,8 @@
             resumeId: s.resumeId || null,
             lastPrompt: s.lastPrompt || null,
             lines: s.lines || [],
-            usage: null, height: s.height || null, column: s.column != null ? s.column : null,
+            usage: s.lastUsage || null, totalCost: s.totalCost || 0,
+            height: s.height || null, column: s.column != null ? s.column : null,
             pinned: !!s.pinned,
           };
         });
@@ -3119,6 +3120,7 @@
         }
         supportEnabled = !!msg.supportEnabled;
         renderGrid();
+        (msg.sessions || []).forEach(s => { if (s.lastUsage) updateContextBar(s.id, s.lastUsage); });
         if (!msg.config?.skipOnboarding) setTimeout(initOnboardingPrompt, 900);
         wsSend({ type: 'get-locks' });
         wsSend({ type: 'get-versions' });
@@ -3214,6 +3216,7 @@
           if (!s.isChat) {
             const turnCost = estimateCost(msg.usage.input_tokens || 0, msg.usage.output_tokens || 0, s.model);
             s.totalCost = (s.totalCost || 0) + turnCost;
+            wsSend({ type: 'cost-update', sessionId: msg.sessionId, totalCost: s.totalCost });
           }
           updateContextBar(msg.sessionId, msg.usage);
           accumulateUsage(s.model || resolveModel('balanced'), msg.usage);

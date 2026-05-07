@@ -499,6 +499,8 @@ function serializeSession(s) {
     column: s.column != null ? s.column : null,
     pinned: !!s.pinned,
     lines: (s.lines || []).slice(-300),
+    lastUsage: s.lastUsage || null,
+    totalCost: s.totalCost || 0,
   };
 }
 
@@ -725,6 +727,12 @@ function broadcast(data) {
 
 function sendTo(ws, data) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
+}
+
+function broadcastUsage(sessionId, usage, claudeSessionId, routineTag) {
+  const sess = sessions.get(sessionId);
+  if (sess) sess.lastUsage = usage;
+  broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId, routineTag });
 }
 
 // â"€â"€â"€ File versioning â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -2796,7 +2804,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     if (result.usage) {
       const usage = { input_tokens: result.usage.prompt_tokens || 0, output_tokens: result.usage.completion_tokens || 0 };
       appendTokenLog(sessionId, model, usage);
-      broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId: null, routineTag: session.routineTag || null });
+      broadcastUsage(sessionId, usage, null, session.routineTag || null);
       dlog('TOKENS', `in=${usage.input_tokens} out=${usage.output_tokens}`);
     }
 
@@ -2984,7 +2992,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
           };
           s.outputTokens = usage.output_tokens;
           appendTokenLog(sessionId, model, usage);
-          broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId: null, routineTag: s.routineTag || null });
+          broadcastUsage(sessionId, usage, null, s.routineTag || null);
 
           // Cost estimate for deepseek-chat: $0.27/MTok in, $1.10/MTok out (cache-miss rate)
           const cost = (usage.input_tokens * 0.27 + usage.output_tokens * 1.10) / 1_000_000;
@@ -3045,7 +3053,7 @@ function handleStreamEvent(sessionId, msg) {
     // Live token usage update
     if (msg.message.usage) {
       appendTokenLog(sessionId, s?.model, msg.message.usage);
-      broadcast({ type: 'context-usage', sessionId, usage: msg.message.usage, claudeSessionId: null, routineTag: s?.routineTag || null });
+      broadcastUsage(sessionId, msg.message.usage, null, s?.routineTag || null);
     }
   }
 
@@ -3056,7 +3064,7 @@ function handleStreamEvent(sessionId, msg) {
       if (msg.session_id) s.claudeSessionId = msg.session_id;
     }
     if (msg.usage) appendTokenLog(sessionId, s?.model, msg.usage);
-    broadcast({ type: 'context-usage', sessionId, usage: msg.usage, claudeSessionId: msg.session_id || null, routineTag: s?.routineTag || null });
+    if (msg.usage) broadcastUsage(sessionId, msg.usage, msg.session_id || null, s?.routineTag || null);
   }
 }
 
@@ -3250,7 +3258,7 @@ function spawnMaxChat(sessionId, prompt, config) {
     if (finalUsage) {
       const modelTag = finalModel || 'claude-cli (Max plan)';
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
-      broadcast({ type: 'context-usage', sessionId, usage: finalUsage, claudeSessionId: session.claudeSessionId || null, routineTag: null });
+      broadcastUsage(sessionId, finalUsage, session.claudeSessionId || null, null);
     }
     session.status = code === 0 ? 'done' : 'error';
     session.endAt = Date.now();
@@ -4004,6 +4012,12 @@ function handleMessage(ws, raw) {
   if (type === 'session-column') {
     const s = sessions.get(msg.sessionId);
     if (s) { s.column = msg.column != null ? msg.column : null; saveSessions(); }
+    return;
+  }
+
+  if (type === 'cost-update') {
+    const s = sessions.get(msg.sessionId);
+    if (s) { s.totalCost = msg.totalCost || 0; }
     return;
   }
 
@@ -5470,6 +5484,8 @@ wss.on('connection', (ws) => {
       column: s.column != null ? s.column : null,
       pinned: !!s.pinned,
       lines: (s.lines || []).slice(-300),
+      lastUsage: s.lastUsage || null,
+      totalCost: s.totalCost || 0,
     })),
     history: readJSON(HISTORY_PATH, []),
     config:  maskedConfig(readConfig()),
