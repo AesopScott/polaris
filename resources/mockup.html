@@ -2669,8 +2669,8 @@
       ['--card-stripe-color','--card-header-tint','--card-header-border','--card-title-color']
         .forEach(p => card.style.removeProperty(p));
     }
-    if (s.status === 'waiting') card.style.setProperty('--card-stripe-color', '#fbbf24');
-    else if (s.status === 'test') card.style.setProperty('--card-stripe-color', '#ef4444');
+    const INIT_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444' };
+    if (INIT_STRIPE[s.status]) card.style.setProperty('--card-stripe-color', INIT_STRIPE[s.status]);
     const existingChip = card.querySelector('.card-project-chip');
     if (chipLabel) {
       const chipEl = document.createElement('span');
@@ -3093,6 +3093,8 @@
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
+  const pendingDocs   = []; // [{ name, dataUrl }] — DOCX/PDF files (server extracts text)
+  const pendingAudio  = []; // [{ name, dataUrl }] — MP3/MP4 audio files
   const pendingLineImages = {}; // sessionId → images[] buffered until the user line event arrives
 
   // ── Connection ────────────────────────────────────────────────────────────────
@@ -4755,9 +4757,8 @@
     else if (status === 'waiting') card.classList.add('status-waiting-card');
     else if (status === 'test') card.classList.add('status-test-card');
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
-    const stripeColor = status === 'waiting' ? '#fbbf24'
-      : status === 'test' ? '#ef4444'
-      : (card.dataset.projectColor || null);
+    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444' };
+    const stripeColor = STATUS_STRIPE[status] || card.dataset.projectColor || null;
     if (stripeColor) card.style.setProperty('--card-stripe-color', stripeColor);
     else card.style.removeProperty('--card-stripe-color');
     if (status === 'done' || status === 'waiting' || status === 'test') {
@@ -5413,22 +5414,44 @@
   // ── File upload (launch bar) ───────────────────────────────────────────────────
   const IMAGE_MIME = new Set(['image/jpeg','image/png','image/gif','image/webp','image/bmp','image/svg+xml']);
   const IMAGE_EXT  = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
+  const DOC_MIME   = new Set(['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword']);
+  const DOC_EXT    = /\.(pdf|docx?)$/i;
+  const AUDIO_MIME = new Set(['audio/mpeg','audio/mp4','audio/wav','audio/ogg','audio/webm','audio/x-m4a','audio/aac','video/mp4']);
+  const AUDIO_EXT  = /\.(mp3|mp4|wav|m4a|ogg|webm|aac)$/i;
+
+  function makeChip(className, label, onRemove) {
+    const chip = document.createElement('div');
+    chip.className = className;
+    chip.innerHTML = `${label} <button title="Remove">✕</button>`;
+    chip.querySelector('button').addEventListener('click', onRemove);
+    return chip;
+  }
 
   function attachFile(file) {
-    const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(file.name || '');
-    if (isImage) {
+    const name = file.name || 'file';
+    const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(name);
+    const isDoc   = !isImage && (DOC_MIME.has(file.type) || DOC_EXT.test(name));
+    const isAudio = !isImage && !isDoc && (AUDIO_MIME.has(file.type) || AUDIO_EXT.test(name));
+
+    if (isImage || isDoc || isAudio) {
       const reader = new FileReader();
       reader.onload = ev => {
-        const name = file.name || 'image.png';
-        const idx = pendingImages.push({ name, dataUrl: ev.target.result }) - 1;
+        let idx, chipClass, label;
+        if (isImage) {
+          idx = pendingImages.push({ name, dataUrl: ev.target.result }) - 1;
+          chipClass = 'image-chip'; label = `🖼 ${name}`;
+        } else if (isDoc) {
+          idx = pendingDocs.push({ name, dataUrl: ev.target.result }) - 1;
+          chipClass = 'file-chip'; label = `📄 ${name}`;
+        } else {
+          idx = pendingAudio.push({ name, dataUrl: ev.target.result }) - 1;
+          chipClass = 'file-chip'; label = `🎵 ${name}`;
+        }
+        const arr = isImage ? pendingImages : isDoc ? pendingDocs : pendingAudio;
         document.querySelectorAll('.file-chips').forEach(container => {
-          const chip = document.createElement('div');
-          chip.className = 'image-chip';
-          chip.dataset.imageIdx = idx;
-          chip.innerHTML = `🖼 ${name} <button title="Remove">✕</button>`;
-          chip.querySelector('button').addEventListener('click', () => {
-            pendingImages.splice(idx, 1);
-            document.querySelectorAll(`.image-chip[data-image-idx="${idx}"]`).forEach(c => c.remove());
+          const chip = makeChip(chipClass, label, () => {
+            arr.splice(idx, 1);
+            chip.remove();
           });
           container.appendChild(chip);
         });
@@ -5437,28 +5460,25 @@
       };
       reader.readAsDataURL(file);
       return;
-    } else {
-      const reader = new FileReader();
-      reader.onload = e => {
-        const idx = pendingFiles.push({ name: file.name, content: e.target.result }) - 1;
-        document.querySelectorAll('.file-chips').forEach(container => {
-          const chip = document.createElement('div');
-          chip.className = 'file-chip';
-          chip.dataset.fileIdx = idx;
-          chip.innerHTML = `📎 ${file.name} <button title="Remove">✕</button>`;
-          chip.querySelector('button').addEventListener('click', () => {
-            pendingFiles.splice(idx, 1);
-            document.querySelectorAll(`.file-chip[data-file-idx="${idx}"]`).forEach(c => c.remove());
-            const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
-            if (promptEl) updateTokenCount(promptEl);
-          });
-          container.appendChild(chip);
-        });
-        const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
-        if (promptEl) { updateTokenCount(promptEl); promptEl.focus(); }
-      };
-      reader.readAsText(file);
     }
+
+    // Plain text file
+    const reader = new FileReader();
+    reader.onload = e => {
+      const idx = pendingFiles.push({ name, content: e.target.result }) - 1;
+      document.querySelectorAll('.file-chips').forEach(container => {
+        const chip = makeChip('file-chip', `📎 ${name}`, () => {
+          pendingFiles.splice(idx, 1);
+          chip.remove();
+          const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+          if (promptEl) updateTokenCount(promptEl);
+        });
+        container.appendChild(chip);
+      });
+      const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+      if (promptEl) { updateTokenCount(promptEl); promptEl.focus(); }
+    };
+    reader.readAsText(file);
     const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
     if (promptEl) promptEl.focus();
   }
