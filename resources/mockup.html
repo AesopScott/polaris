@@ -2201,12 +2201,34 @@
     const sel = card?.querySelector('[data-preview-file]');
     if (!sel) return;
     const recent = (s.modifiedFiles || []).slice(0, 10);
+    const attachments = (s.attachedImages || []);
     const prev = sel.value;
-    sel.innerHTML = '<option value="">— Pick a recently edited file —</option>' +
-      recent.map(f => `<option value="${escHtmlAttr(f)}"${f === prev ? ' selected' : ''}>${escHtml(f)}</option>`).join('');
-    if (!prev && recent.length) {
-      sel.value = recent[0];
-      renderCardPreview(sid, recent[0]);
+    sel.innerHTML = '<option value="">— Pick a file or attachment —</option>';
+    if (recent.length) {
+      const grp = document.createElement('optgroup');
+      grp.label = 'Agent files';
+      recent.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f; opt.textContent = f;
+        if (f === prev) opt.selected = true;
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    }
+    if (attachments.length) {
+      const grp = document.createElement('optgroup');
+      grp.label = 'Attachments';
+      attachments.forEach((img, i) => {
+        const opt = document.createElement('option');
+        opt.value = `__attach__:${i}`; opt.textContent = `🖼 ${img.name}`;
+        if (`__attach__:${i}` === prev) opt.selected = true;
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    }
+    if (!prev) {
+      if (recent.length) { sel.value = recent[0]; renderCardPreview(sid, recent[0]); }
+      else if (attachments.length) { sel.value = '__attach__:0'; renderCardPreview(sid, '__attach__:0'); }
     }
     if (!sel.dataset.previewWired) {
       sel.dataset.previewWired = '1';
@@ -2216,7 +2238,19 @@
 
   function renderCardPreview(sid, relPath) {
     const s = sessionStore[sid];
-    if (!s || !s.workDir || !relPath) return;
+    if (!s || !relPath) return;
+    if (relPath.startsWith('__attach__:')) {
+      const idx = parseInt(relPath.slice(11));
+      const img = s.attachedImages?.[idx];
+      const card = document.querySelector(`.card[data-sid="${sid}"]`);
+      const body = card?.querySelector('[data-preview-body]');
+      if (!body) return;
+      body.innerHTML = img?.dataUrl
+        ? `<div style="padding:12px;text-align:center;"><img src="${escHtmlAttr(img.dataUrl)}" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>`
+        : `<div class="preview-drawer-empty">Attachment not available.</div>`;
+      return;
+    }
+    if (!s.workDir) return;
     const card = document.querySelector(`.card[data-sid="${sid}"]`);
     const body = card?.querySelector('[data-preview-body]');
     if (!body) return;
@@ -3319,6 +3353,8 @@
         if (msg.role === 'user' && pendingLineImages[msg.sessionId]) {
           line.images = pendingLineImages[msg.sessionId];
           delete pendingLineImages[msg.sessionId];
+          if (!s.attachedImages) s.attachedImages = [];
+          s.attachedImages.push(...line.images);
         }
         s.lines.push(line);
         if (msg.role === 'user') s.lastPrompt = msg.text;
@@ -4122,6 +4158,8 @@
         .cc-btn-approve:hover { background: #15803d; }
         .cc-btn-reject { background: #dc2626; color: #fff; }
         .cc-btn-reject:hover { background: #b91c1c; }
+        .cc-btn-check { background: #2563eb; color: #fff; margin-left: auto; }
+        .cc-btn-check:hover { background: #1d4ed8; }
       `;
       document.head.appendChild(s);
     }
@@ -4193,6 +4231,13 @@
     reject.onclick  = () => decide('reject');
     actions.appendChild(approve);
     actions.appendChild(reject);
+    if (msg.verdict !== 'PASS') {
+      const check = document.createElement('button');
+      check.className = 'cc-btn cc-btn-check';
+      check.textContent = 'Check';
+      check.onclick = () => launchCrossCheckValidation(msg);
+      actions.appendChild(check);
+    }
     wrap.appendChild(actions);
 
     const wasAtBottom = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
@@ -4275,11 +4320,29 @@
     restore.onclick = () => decide('restore');
     actions.appendChild(keep);
     actions.appendChild(restore);
+    if (msg.verdict !== 'PASS') {
+      const check = document.createElement('button');
+      check.className = 'cc-btn cc-btn-check';
+      check.textContent = 'Check';
+      check.onclick = () => launchCrossCheckValidation(msg);
+      actions.appendChild(check);
+    }
     wrap.appendChild(actions);
 
     const wasAtBottom = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
     term.appendChild(wrap);
     if (wasAtBottom) term.scrollTop = term.scrollHeight;
+  }
+
+  function launchCrossCheckValidation(msg) {
+    const session = window.sessionStore?.[msg.sessionId];
+    const workDir = session?.workDir || '';
+    const projectName = session?.projectName || '';
+    const issueLines = Array.isArray(msg.issues) && msg.issues.length
+      ? '\n\nIssues:\n' + msg.issues.map(i => `- ${i}`).join('\n')
+      : '';
+    const prompt = `Cross-check ${msg.verdict} on ${msg.operation} of ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease validate whether this is a real problem and suggest how to fix it.`;
+    wsSend({ type: 'launch', prompt, workDir, projectName });
   }
 
   // ── Grid rendering ────────────────────────────────────────────────────────────
@@ -5067,6 +5130,9 @@
           ? `<ul style="margin:3px 0 0 0;padding-left:16px;color:#94a3b8;font-size:10px;line-height:1.5;">${issues.map(iss => `<li>${escHtml(iss)}</li>`).join('')}</ul>`
           : '';
         const ts2      = e.ts ? new Date(e.ts).toLocaleTimeString() : '';
+        const checkBtn = (v === 'FAIL' || v === 'ERROR')
+          ? `<button onclick="event.stopPropagation(); launchCheckSession(${i})" style="padding:1px 8px;border-radius:3px;border:none;background:#2563eb;color:#fff;font-size:9px;font-weight:700;cursor:pointer;flex-shrink:0;font-family:inherit;">Check</button>`
+          : '';
         return `<div class="cc-history-row" data-idx="${i}" onclick="openCrossCheckDetail(${i})"
             style="padding:7px 10px 7px 20px;border-bottom:1px solid #161e2e;cursor:pointer;border-left:3px solid ${vc2}40;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${summary ? '3px' : '0'};">
@@ -5075,6 +5141,7 @@
             <span style="color:#93c5fd;font-family:'Consolas',monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${escHtml(e.filePath || '')}">${escHtml(fname)}</span>
             <span style="font-size:10px;flex-shrink:0;">${decisionTag(e.userDecision)}</span>
             <span style="font-size:10px;color:#475569;flex-shrink:0;font-family:'Consolas',monospace;">${ts2}</span>
+            ${checkBtn}
           </div>
           ${summary ? `<div style="color:#94a3b8;font-size:10px;line-height:1.5;">${summary}</div>` : ''}
           ${issHtml}
@@ -5136,6 +5203,29 @@
     document.getElementById('cross-check-detail-overlay').classList.remove('hidden');
   }
   window.openCrossCheckDetail = openCrossCheckDetail;
+
+  function launchCrossCheckValidation(msg) {
+    const sess = window.sessionStore?.[msg.sessionId] || {};
+    const issueLines = Array.isArray(msg.issues) && msg.issues.length
+      ? '\n\nIssues:\n' + msg.issues.map(i => `- ${i}`).join('\n')
+      : '';
+    const prompt = `Cross-check ${msg.verdict} on ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease review and fix the issues identified above.`;
+    wsSend({ type: 'launch-chat', prompt, workDir: sess.workDir, projectName: sess.projectName });
+  }
+  window.launchCrossCheckValidation = launchCrossCheckValidation;
+
+  function launchCheckSession(idx) {
+    const e = _crossCheckEntries[idx];
+    if (!e) return;
+    launchCrossCheckValidation({
+      sessionId: e.sessionId,
+      filePath: e.filePath,
+      verdict: e.review?.verdict || 'FAIL',
+      summary: e.review?.summary || '',
+      issues: e.review?.issues || [],
+    });
+  }
+  window.launchCheckSession = launchCheckSession;
 
   function closeCrossCheckDetail() {
     document.getElementById('cross-check-detail-overlay').classList.add('hidden');
