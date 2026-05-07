@@ -4931,15 +4931,28 @@
   // ── Cross-Check History panel ─────────────────────────────────────────────────
   let _crossCheckEntries = [];
 
+  function closeCrossCheckPanel() {
+    const panel = document.getElementById('cross-check-panel');
+    if (!panel || panel.classList.contains('hidden')) return;
+    panel.classList.add('hidden');
+    const overlay = document.getElementById('overlay-bg');
+    if (overlay) overlay.classList.add('hidden');
+  }
+  window.closeCrossCheckPanel = closeCrossCheckPanel;
+
   function toggleCrossCheckPanel() {
     const panel = document.getElementById('cross-check-panel');
     if (!panel) return;
+    const overlay = document.getElementById('overlay-bg');
     const isOpen = !panel.classList.contains('hidden');
     if (isOpen) {
       panel.classList.add('hidden');
+      if (overlay) overlay.classList.add('hidden');
     } else {
+      closeActivePanel(); // close any other open panel first
       panel.style.zIndex = '1002';
       panel.classList.remove('hidden');
+      if (overlay) overlay.classList.remove('hidden');
       wsSend({ type: 'get-cross-check-history', limit: 200 });
     }
   }
@@ -5146,8 +5159,8 @@
         `<div style="font-size:10px;opacity:0.45;font-style:italic;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">…${escHtml(ex)}…</div>`
       ).join('');
       return `<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:10px 14px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
-          <span style="font-size:12px;font-weight:700;">${escHtml(a.sessionName || a.sessionId)}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+          <span style="font-size:12px;font-weight:700;color:var(--text,#e2e8f0);">${escHtml(a.sessionName || a.sessionId)}</span>
           <span style="font-size:10px;opacity:0.4;">${escHtml(date)}</span>
         </div>
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">${model}${proj}${msgs}</div>
@@ -9215,6 +9228,7 @@
     closeSpace();
     closeSupport();
     closeDocs();
+    closeCrossCheckPanel();
   }
   window.closeActivePanel = closeActivePanel;
 

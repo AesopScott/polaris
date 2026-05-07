@@ -2319,9 +2319,9 @@ function toolGlob({ pattern, path: searchPath }, workDir) {
   // Convert glob to regex — escape special chars first, then expand * and ? wildcards
   const regexStr = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex chars (not * or ?)
-    .replace(/\*\*/g, 'Â§DSÂ§')              // protect ** before replacing single *
+    .replace(/\*\*/g, '__DSTAR__')           // protect ** before replacing single *
     .replace(/\*/g, '[^/\\\\]*')           // * → any non-separator chars
-    .replace(/Â§DSÂ§/g, '.*')               // ** → anything including separators
+    .replace(/__DSTAR__/g, '.*')           // ** → anything including separators
     .replace(/\?/g, '[^/\\\\]');           // ? → single non-separator char
   const rx = new RegExp(`(^|[/\\\\])${regexStr}$`, 'i');
   const results = [];
@@ -3547,8 +3547,11 @@ function spawnMaxChat(sessionId, prompt, config) {
     if (code !== 0) {
       termStatus = 'error';
     } else if (session.isChat) {
-      const testPhrases = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
-      termStatus = testPhrases.test(lastAssistantText) ? 'test' : 'waiting';
+      const testPhrases    = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
+      const waitingPhrases = /\b(what\s+do\s+you\s+(think|want|prefer)|would\s+you\s+like|do\s+you\s+want|should\s+I|shall\s+I|which\s+(would|do)\s+you|any\s+(other\s+)?(questions?|feedback|thoughts?)|want\s+me\s+to|let\s+me\s+know|does\s+that\s+(work|help|make\s+sense))\b|\?(\s*$|\s*\n)/i;
+      if (testPhrases.test(lastAssistantText)) termStatus = 'test';
+      else if (waitingPhrases.test(lastAssistantText)) termStatus = 'waiting';
+      else termStatus = 'done';
     } else {
       termStatus = 'done';
     }
