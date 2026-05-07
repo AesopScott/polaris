@@ -1534,6 +1534,12 @@ function toolSetProject({ projectName } = {}, sessionId) {
   return matched ? `Project set to "${matched.name}".` : 'Project cleared (no project / scratch).';
 }
 
+function maybeSetTestOnGitCommit(command, sessionId) {
+  if (/\bgit\s+(commit|push)\b/.test(command)) {
+    toolSetStatus({ status: 'test' }, sessionId);
+  }
+}
+
 function toolSetStatus({ status } = {}, sessionId) {
   const ALLOWED = ['test', 'waiting', 'done'];
   if (!ALLOWED.includes(status)) return `Invalid status "${status}". Allowed: ${ALLOWED.join(', ')}.`;
@@ -2520,6 +2526,7 @@ async function toolBash({ command, timeout: tms }, workDir, sessionId) {
       }
     } catch {}
   }
+  maybeSetTestOnGitCommit(command, sessionId);
   return warnings.length ? output + '\n\n' + warnings.join('\n') : output;
 }
 
@@ -2553,6 +2560,7 @@ async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
       }
     } catch {}
   }
+  maybeSetTestOnGitCommit(command, sessionId);
   return warnings.length ? output + '\n\n' + warnings.join('\n') : output;
 }
 
@@ -5752,13 +5760,17 @@ function handleMessage(ws, raw) {
       const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(sessionsDir, `${safeName}.md`);
       fs.writeFileSync(filePath, content || '', 'utf8');
+      sendTo(ws, { type: 'obsidian-progress', step: 'file-written', filePath });
       // git add + commit + push in the vault repo (best-effort)
       const vaultGit = runGit(['add', filePath], vaultRoot)
         .then(() => runGit(['commit', '-m', `chore: add ${projectName || 'Polaris'} session ${safeName}`], vaultRoot))
         .then(() => runGit(['push'], vaultRoot))
+        .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'vault-git' }))
         .catch(() => {});
       const codeGit = proj && proj.workDir
-        ? runGit(['push'], proj.workDir).catch(() => {})
+        ? runGit(['push'], proj.workDir)
+            .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
+            .catch(() => {})
         : Promise.resolve();
       Promise.all([vaultGit, codeGit])
         .finally(() => sendTo(ws, { type: 'obsidian-up-done', filePath }));
