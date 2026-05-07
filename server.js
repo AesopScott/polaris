@@ -295,6 +295,21 @@ function getMcpInstances() {
   return (readConfig().mcp_instances || {});
 }
 
+const MCP_JSON_PATH = path.join(os.homedir(), '.mcp.json');
+
+function syncServerToMcpJson(id, serverConfig) {
+  const mcp = readJSON(MCP_JSON_PATH, {});
+  mcp.mcpServers = mcp.mcpServers || {};
+  mcp.mcpServers[id] = serverConfig;
+  writeJSON(MCP_JSON_PATH, mcp);
+}
+
+function removeServerFromMcpJson(id) {
+  const mcp = readJSON(MCP_JSON_PATH, {});
+  if (mcp.mcpServers) delete mcp.mcpServers[id];
+  writeJSON(MCP_JSON_PATH, mcp);
+}
+
 function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -3801,17 +3816,10 @@ async function spawnMaxChat(sessionId, prompt, config) {
   try {
     const mcpJsonPath = path.join(cwd, '.mcp.json');
     const existing = readJSON(mcpJsonPath, {});
-    const isPolarisChat = cwd === CHAT_DIR;
-    const managedServers = isPolarisChat ? {} : (() => {
-      const all = readClaudeJson().mcpServers || {};
-      const { polaris: _p, ...rest } = all;
-      return rest;
-    })();
     const mcpConfig = {
       ...existing,
       mcpServers: {
         ...(existing.mcpServers || {}),
-        ...managedServers,
         polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` },
       },
     };
@@ -5759,9 +5767,20 @@ function handleMessage(ws, raw) {
 
   if (type === 'save-mcp-servers') {
     const claudeConfigPath = path.join(os.homedir(), '.claude.json');
-    const cfg = readJSON(claudeConfigPath, {});
-    cfg.mcpServers = msg.servers || {};
-    writeJSON(claudeConfigPath, cfg);
+    const oldCj = readJSON(claudeConfigPath, {});
+    const oldPanelKeys = new Set(Object.keys(oldCj.mcpServers || {}));
+    oldCj.mcpServers = msg.servers || {};
+    writeJSON(claudeConfigPath, oldCj);
+    // Sync ~/.mcp.json: remove old panel entries, add new ones (never touch polaris)
+    const mcp = readJSON(MCP_JSON_PATH, {});
+    mcp.mcpServers = mcp.mcpServers || {};
+    for (const k of oldPanelKeys) {
+      if (k !== 'polaris') delete mcp.mcpServers[k];
+    }
+    for (const [k, v] of Object.entries(msg.servers || {})) {
+      if (k !== 'polaris') mcp.mcpServers[k] = v;
+    }
+    writeJSON(MCP_JSON_PATH, mcp);
     sendTo(ws, { type: 'mcp-servers-saved' });
     return;
   }
@@ -5804,6 +5823,7 @@ function handleMessage(ws, raw) {
         };
       }
       writeClaudeJson(cj);
+      for (const inst of builtInstances) syncServerToMcpJson(inst.slug, cj.mcpServers[inst.slug]);
       sendTo(ws, { type: 'mcp-server-enabled', id, ok: true });
       return;
     }
@@ -5837,6 +5857,7 @@ function handleMessage(ws, raw) {
       cj.mcpServers[id] = { command: entry.command, args: entry.args, env };
     }
     writeClaudeJson(cj);
+    syncServerToMcpJson(id, cj.mcpServers[id]);
     sendTo(ws, { type: 'mcp-server-enabled', id, ok: true });
     return;
   }
@@ -5856,6 +5877,11 @@ function handleMessage(ws, raw) {
       delete cj.mcpServers[id];
     }
     writeClaudeJson(cj);
+    if (entry && entry.multiInstance && slug) {
+      removeServerFromMcpJson(slug);
+    } else {
+      removeServerFromMcpJson(id);
+    }
     sendTo(ws, { type: 'mcp-server-disabled', id, ok: true });
     return;
   }
