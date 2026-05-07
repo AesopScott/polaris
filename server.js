@@ -6497,7 +6497,7 @@ wss.on('connection', (ws) => {
       supportEnabled: !!BREVO_API_KEY,
       appVersion: require('./package.json').version,
       recentCommits,
-      connectedMcpServers: getEnabledMcpServers().filter(s => s !== 'polaris'),
+      connectedMcpServers: [...new Set([...getEnabledMcpServers(), ...getConnectedMcpServers()])].filter(s => s !== 'polaris'),
     });
 
     // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
