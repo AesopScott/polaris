@@ -697,6 +697,26 @@
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   .routine-notif-item:last-child { border-bottom: none; }
+
+  /* Factory Coming Soon Popup */
+  #factory-coming-soon-popup {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 10000; display: flex; flex-direction: column; align-items: center;
+    width: 380px; padding: 36px 32px 28px;
+    background: var(--card-bg); color: var(--text);
+    border-radius: 14px; border: 1px solid rgba(212,175,55,0.4);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(212,175,55,0.15);
+    text-align: center;
+  }
+  #factory-coming-soon-popup.hidden { display: none; }
+  #factory-coming-soon-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.55); cursor: pointer; }
+  #factory-coming-soon-backdrop.hidden { display: none; }
+  .factory-cs-icon { font-size: 40px; margin-bottom: 12px; line-height: 1; }
+  .factory-cs-title { font-size: 20px; font-weight: 800; letter-spacing: 0.02em; margin-bottom: 4px; background: linear-gradient(135deg, #d4af37, #f5e07a, #d4af37); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .factory-cs-badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; background: rgba(212,175,55,0.15); border: 1px solid rgba(212,175,55,0.35); color: #d4af37; margin-bottom: 16px; }
+  .factory-cs-desc { font-size: 13px; line-height: 1.6; opacity: 0.75; margin-bottom: 24px; }
+  .factory-cs-close { padding: 8px 28px; border-radius: 8px; border: 1px solid rgba(212,175,55,0.4); background: rgba(212,175,55,0.1); color: #d4af37; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .factory-cs-close:hover { background: rgba(212,175,55,0.2); border-color: rgba(212,175,55,0.7); }
   .routine-notif-bullet { color: #4ade80; font-size: 10px; flex-shrink: 0; }
 
   /* Close All dialog */
@@ -975,6 +995,33 @@
   #onb-audio-dot.active { opacity: 1; animation: onbPulse 1s ease infinite; }
   @keyframes onbPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.6);opacity:0.5} }
 
+  /* Onboarding account cards */
+  .onb-account-card {
+    border: 2px solid rgba(96,165,250,0.15); border-radius: 12px;
+    background: rgba(96,165,250,0.03); cursor: pointer;
+    transition: all 0.18s; overflow: hidden;
+  }
+  .onb-account-card:hover { border-color: rgba(96,165,250,0.4); background: rgba(96,165,250,0.06); }
+  .onb-account-card.selected { border-color: #60a5fa; background: rgba(96,165,250,0.10); }
+  .onb-acct-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+  .onb-acct-check {
+    width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(96,165,250,0.35);
+    flex-shrink: 0; transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+  }
+  .onb-account-card.selected .onb-acct-check {
+    background: #3b82f6; border-color: #3b82f6;
+  }
+  .onb-account-card.selected .onb-acct-check::after { content: '✓'; font-size: 11px; color: #fff; font-weight: 800; }
+  .onb-acct-icon { font-size: 22px; flex-shrink: 0; }
+  .onb-acct-name { font-size: 13px; font-weight: 700; color: #e2e8f0; }
+  .onb-acct-desc { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .onb-acct-value {
+    font-size: 12px; color: #94a3b8; line-height: 1.65;
+    padding: 0 16px; max-height: 0; overflow: hidden;
+    transition: max-height 0.25s ease, padding 0.25s ease;
+  }
+  .onb-account-card.selected .onb-acct-value { max-height: 120px; padding: 0 16px 14px; }
+
   /* Preview Panel — floating, draggable, resizable */
   .preview-panel {
     position: fixed; z-index: 999;
@@ -1000,6 +1047,7 @@
     cursor: pointer; font-size: 12px; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; background: #ef4444; color: #fff;
+    position: relative; z-index: 20;
   }
   .preview-close-btn:hover { background: #dc2626; }
   .preview-urlbar {
@@ -1161,7 +1209,8 @@
     </div>
 
     <!-- Middle: Version + Session Search + Live Clock -->
-    <div class="header-center">
+    <div class="header-center" style="gap:20px;">
+      <button id="btn-manifest" class="hbtn btn-config" onclick="openManifest()" data-tooltip="Manage public/private flags for all features and secrets — controls what ships in the public build" style="width:auto;padding:8px 18px;flex-shrink:0;"><span class="lbl">Manifest</span></button>
       <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px;width:40%;">
         <div id="header-version" style="text-align:center;display:block;padding:3px 14px;background:linear-gradient(180deg,rgba(96,165,250,0.18),rgba(96,165,250,0.06));border:1px solid rgba(96,165,250,0.35);border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.14em;color:#93c5fd;box-shadow:0 0 10px rgba(96,165,250,0.15),inset 0 1px 0 rgba(255,255,255,0.08);white-space:nowrap;">v—</div>
         <div style="position:relative;display:flex;align-items:center;">
@@ -1183,7 +1232,7 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
-        <button class="hbtn btn-gold" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
+        <button id="btn-factory" class="hbtn btn-gold" onclick="openFactoryComingSoon()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
@@ -1260,7 +1309,7 @@
       <!-- Resume banner spans all 3 columns -->
       <div class="resume-banner" style="grid-column:1/-1;">
         <span>↩ Resuming: <strong class="resume-session-name"></strong></span>
-        <button onclick="clearResumeMode()">✕ Cancel</button>
+        <button onclick="clearResumeMode()">✕ Deselect</button>
       </div>
 
       <!-- Row 2: mode toggle | spacer | Model selector -->
@@ -1380,6 +1429,42 @@
       <div class="panel-section">
         <div class="context-label accent-label">SESSION TIMEOUT (MINUTES)</div>
         <input type="number" id="settings-timeout" class="panel-input" value="10" min="1" max="120" style="width:100px;" />
+      </div>
+      <div class="panel-section">
+        <div class="context-label accent-label">CLOCK TIMEZONE</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="settings-timezone" class="panel-input" style="width:280px;cursor:pointer;">
+            <option value="">System Default</option>
+            <optgroup label="United States">
+              <option value="America/New_York">Eastern (New York)</option>
+              <option value="America/Chicago">Central (Chicago)</option>
+              <option value="America/Denver">Mountain (Denver)</option>
+              <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+              <option value="America/Anchorage">Alaska (Anchorage)</option>
+              <option value="America/Phoenix">Arizona (no DST)</option>
+              <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+            </optgroup>
+            <optgroup label="Europe">
+              <option value="UTC">UTC</option>
+              <option value="Europe/London">London (GMT/BST)</option>
+              <option value="Europe/Paris">Paris (CET/CEST)</option>
+              <option value="Europe/Berlin">Berlin (CET/CEST)</option>
+              <option value="Europe/Moscow">Moscow (MSK)</option>
+            </optgroup>
+            <optgroup label="Asia / Pacific">
+              <option value="Asia/Dubai">Dubai (GST)</option>
+              <option value="Asia/Kolkata">India (IST)</option>
+              <option value="Asia/Singapore">Singapore (SGT)</option>
+              <option value="Asia/Tokyo">Tokyo (JST)</option>
+              <option value="Asia/Shanghai">Shanghai (CST)</option>
+              <option value="Australia/Sydney">Sydney (AEST/AEDT)</option>
+              <option value="Pacific/Auckland">Auckland (NZST/NZDT)</option>
+            </optgroup>
+          </select>
+          <button id="settings-sync-time-btn" onclick="syncTimeNow()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Sync</button>
+          <span id="settings-sync-status" style="font-size:10px;opacity:0.6;"></span>
+        </div>
+        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Controls the clock displayed in the header. "System Default" uses your device's local timezone. Sync pulls the accurate time from the server (Windows NTP).</div>
       </div>
       <div class="panel-section">
         <div class="context-label accent-label">OBSIDIAN VAULT PATH</div>
@@ -1829,6 +1914,25 @@
     </div>
   </div>
 
+  <!-- Manifest Panel -->
+  <div class="projects-panel hidden palette" id="manifest-panel" style="width:680px;max-height:80vh;">
+    <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar" style="cursor:default;">
+      <span style="flex:1;font-size:13px;font-weight:800;">Build Manifest</span>
+      <button class="preview-close-btn" onclick="closeManifest()">✕</button>
+    </div>
+    <div style="display:flex;border-bottom:1px solid var(--border);padding:0 16px;background:var(--header-bg);flex-shrink:0;">
+      <button class="conn-tab active" data-mtab="features" onclick="switchManifestTab('features')">Features</button>
+      <button class="conn-tab" data-mtab="secrets" onclick="switchManifestTab('secrets')">Secrets</button>
+    </div>
+    <div id="manifest-features-pane" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;"></div>
+    <div id="manifest-secrets-pane" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;display:none;"></div>
+    <div class="projects-footer">
+      <span id="manifest-status" style="font-size:11px;color:var(--text-muted);flex:1;"></span>
+      <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveManifest()">💾 Save Manifest</button>
+    </div>
+  </div>
+
   <!-- SPACE Productivity Panel -->
   <div class="projects-panel hidden palette" id="space-panel" style="width:580px;">
     <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
@@ -2069,6 +2173,18 @@
     </div>
   </div>
 
+  <!-- Factory Coming Soon Popup -->
+  <div id="factory-coming-soon-backdrop" class="hidden" onclick="closeFactoryComingSoon()"></div>
+  <div id="factory-coming-soon-popup" class="hidden">
+    <div class="factory-cs-icon">⚙️</div>
+    <div class="factory-cs-title">AI Factory</div>
+    <div class="factory-cs-badge">Coming in v2.0</div>
+    <div class="factory-cs-desc">
+      AI Factory is an autonomous build pipeline that turns a prompt into a fully built, tested, and deployed application — end to end.
+    </div>
+    <button class="factory-cs-close" onclick="closeFactoryComingSoon()">Got it</button>
+  </div>
+
   <!-- Code Health Panel -->
   <div class="preview-panel hidden palette" id="code-health-panel" style="width:860px;height:560px;top:80px;left:40px;">
     <div class="resize-handle resize-tl"></div>
@@ -2141,7 +2257,56 @@
         <input type="checkbox" id="onb-skip-check" /> Don't ask me again
       </label>
     </div>
-    <!-- Screen 2: Level picker -->
+    <!-- Screen 2: Account check -->
+    <div id="onb-screen-accounts" class="onb-modal onb-screen">
+      <div class="onb-title">Connect your accounts</div>
+      <div class="onb-sub">Polaris gets dramatically more powerful with these services.<br>Check the ones you already have — we'll show you what you unlock.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;text-align:left;">
+
+        <div class="onb-account-card" id="onb-acct-claude" onclick="onbToggleAccount('claude')">
+          <div class="onb-acct-header">
+            <div class="onb-acct-check"></div>
+            <div class="onb-acct-icon">🤖</div>
+            <div>
+              <div class="onb-acct-name">Claude / Anthropic</div>
+              <div class="onb-acct-desc">Powers every AI session, agent, and routine in Polaris</div>
+            </div>
+          </div>
+          <div class="onb-acct-value">You'll need an <strong style="color:#e2e8f0;">Anthropic API key</strong> (console.anthropic.com) or an <strong style="color:#e2e8f0;">OpenRouter key</strong> (openrouter.ai). This is the engine behind everything Polaris does — without it, nothing runs.</div>
+        </div>
+
+        <div class="onb-account-card" id="onb-acct-obsidian" onclick="onbToggleAccount('obsidian')">
+          <div class="onb-acct-header">
+            <div class="onb-acct-check"></div>
+            <div class="onb-acct-icon">📝</div>
+            <div>
+              <div class="onb-acct-name">Obsidian</div>
+              <div class="onb-acct-desc">Gives your AI a long-term memory that persists across sessions</div>
+            </div>
+          </div>
+          <div class="onb-acct-value">Polaris writes session notes, project context, and AI memory directly to your vault. Install the <strong style="color:#e2e8f0;">Local REST API plugin</strong> in Obsidian to connect it. Your AI will actually remember your work over time.</div>
+        </div>
+
+        <div class="onb-account-card" id="onb-acct-github" onclick="onbToggleAccount('github')">
+          <div class="onb-acct-header">
+            <div class="onb-acct-check"></div>
+            <div class="onb-acct-icon">🐙</div>
+            <div>
+              <div class="onb-acct-name">GitHub</div>
+              <div class="onb-acct-desc">Code intelligence — review PRs, track issues, search repos in-session</div>
+            </div>
+          </div>
+          <div class="onb-acct-value">With a <strong style="color:#e2e8f0;">Personal Access Token</strong>, Polaris can read your repos, monitor CI, review pull requests, and search your codebase directly from any AI session.</div>
+        </div>
+
+      </div>
+      <div style="font-size:11px;color:#475569;margin-bottom:22px;">More available after setup: OpenRouter, Google Drive, ElevenLabs, Brave Search, and more.</div>
+      <div class="onb-actions">
+        <button class="onb-btn-primary" onclick="onbShowScreen('level')">Continue →</button>
+        <button class="onb-btn-secondary" onclick="onbShowScreen('prompt')">← Back</button>
+      </div>
+    </div>
+    <!-- Screen 3: Level picker -->
     <div id="onb-screen-level" class="onb-modal onb-screen">
       <div class="onb-title">What's your AI experience level?</div>
       <div class="onb-sub">We'll tailor the tour to what's most useful for you.</div>
@@ -2822,7 +2987,6 @@
         pill.style.background = color + '1a';
         pill.textContent = projectName;
       }
-      if (btnLabel) btnLabel.textContent = projectName;
       if (btnProjects) {
         btnProjects.style.borderColor = color + 'aa';
         btnProjects.style.color = color;
@@ -3199,6 +3363,7 @@
   let phIdx = -1;
   let debugLogs = [];
   let resumeTarget = null; // { sessionId, name, resumeId, model } | null
+  let launchBarAutoMinimized = false;
   let floatScrollHandler = null;
   let sessionOrder = [];   // ordered array of session IDs for render sequence
   let dragId = null;       // session ID currently being dragged
@@ -3393,6 +3558,7 @@
           if (verEl) verEl.textContent = `v${msg.appVersion}`;
         }
         supportEnabled = !!msg.supportEnabled;
+        if (msg.uiToken) window._uiToken = msg.uiToken;
         renderGrid();
         (msg.sessions || []).forEach(s => { if (s.lastUsage) updateContextBar(s.id, s.lastUsage); });
         if (!msg.config?.skipOnboarding) setTimeout(initOnboardingPrompt, 900);
@@ -3405,6 +3571,14 @@
         if ((msg.connectedMcpServers || []).length === 0) {
           showMcpDisconnectedBanner();
         }
+        break;
+
+      case 'connect-approval-required':
+        showConnectApprovalBanner(msg);
+        break;
+
+      case 'connect-approval-complete':
+        // Banner is already removed by respondConnectApproval; nothing to do here.
         break;
 
       case 'session-created':
@@ -3987,6 +4161,19 @@
         }
         break;
 
+      case 'manifest':
+        renderManifestPanel(msg.manifest);
+        break;
+
+      case 'manifest-saved': {
+        const statusEl = document.getElementById('manifest-status');
+        if (statusEl) {
+          statusEl.textContent = msg.ok ? '✓ Saved' : '✗ ' + (msg.error || 'Error');
+          setTimeout(() => { statusEl.textContent = ''; }, 2500);
+        }
+        break;
+      }
+
       case 'mcp-catalog':
         window._mcpCatalog = msg.catalog;
         window._mcpInstances = msg.instances || {};
@@ -4015,6 +4202,23 @@
           if (resultEl) resultEl.innerHTML = `<span style="color:#f87171;">✗ ${escHtml(msg.error || 'Unknown error')}</span>`;
           const btn = document.getElementById('gdrive-connect-btn');
           if (btn) { btn.disabled = false; btn.textContent = 'Connect with Google Drive'; }
+        }
+        break;
+      }
+
+      case 'espanso-replacements':
+        renderEspansoRows(msg.rules || []);
+        break;
+
+      case 'espanso-saved': {
+        const resultEl = document.getElementById('mcp-result-wispr');
+        if (resultEl) {
+          resultEl.style.color = msg.ok ? '#86efac' : '#f87171';
+          resultEl.textContent = msg.ok ? 'Saved.' : (msg.error || 'Save failed.');
+          if (msg.ok) {
+            renderEspansoRows(msg.rules || []);
+            setTimeout(() => { resultEl.textContent = ''; }, 2000);
+          }
         }
         break;
       }
@@ -5818,6 +6022,13 @@
       return;
     }
     resumeTarget = { sessionId, name: s.name, resumeId: s.resumeId, model: model || null };
+    const _lb = document.querySelector('.launch-bar');
+    const _lbBtn = _lb?.querySelector('.launch-minimize-btn');
+    if (_lb && !_lb.classList.contains('minimized')) {
+      _lb.classList.add('minimized');
+      if (_lbBtn) { _lbBtn.textContent = '▢'; _lbBtn.title = 'Maximize'; }
+      launchBarAutoMinimized = true;
+    }
     document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
     const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
     if (card) {
@@ -5885,6 +6096,13 @@
 
   window.clearResumeMode = function () {
     resumeTarget = null;
+    const _lb = document.querySelector('.launch-bar');
+    const _lbBtn = _lb?.querySelector('.launch-minimize-btn');
+    if (_lb && launchBarAutoMinimized) {
+      _lb.classList.remove('minimized');
+      if (_lbBtn) { _lbBtn.textContent = '_'; _lbBtn.title = 'Minimize'; }
+      launchBarAutoMinimized = false;
+    }
     pendingFiles.length = 0;
     document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
     document.querySelectorAll('.palette').forEach(app => {
@@ -6146,6 +6364,11 @@
     if (cfg.braveSearchApiKey !== undefined) {
       const inp = document.getElementById('settings-brave-key');
       if (inp) inp.value = cfg.braveSearchApiKey;
+    }
+    if (cfg.timezone !== undefined) {
+      const sel = document.getElementById('settings-timezone');
+      if (sel) sel.value = cfg.timezone || '';
+      if (cfg.timezone) { window.appTimezone = cfg.timezone; } else { delete window.appTimezone; }
     }
 
     // Restore datalist entries
@@ -6531,10 +6754,12 @@
     const useDirectAnthr  = document.getElementById('settings-use-direct-anthropic')?.checked || false;
     const anthropicModel  = document.getElementById('settings-anthropic-model')?.value?.trim() || 'claude-sonnet-4-6';
     const defaultForkModel = document.getElementById('settings-fork-model')?.value?.trim() || '';
+    const timezone        = document.getElementById('settings-timezone')?.value || '';
     applyPromptStyle(promptStyle);
+    if (timezone) { window.appTimezone = timezone; } else { delete window.appTimezone; }
     const cfg = {
       defaultModel: model, promptStyle, sessionTimeout: timeout, obsidianVaultPath: vault,
-      githubUsername: ghUser, defaultForkModel,
+      githubUsername: ghUser, defaultForkModel, timezone,
       openRouterApiKey: orKey, openRouterFloorModel: orFloor,
       openRouterSonnetModel: orSonnet, openRouterOpusModel: orOpus,
       openRouterFloorProvider: orFloorProvider, openRouterSonnetProvider: orSonnetProvider, openRouterOpusProvider: orOpusProvider,
@@ -6554,6 +6779,30 @@
   window.openSettings  = openSettings;
   window.closeSettings = closeSettings;
   window.saveSettings  = saveSettings;
+
+  async function syncTimeNow() {
+    const btn = document.getElementById('settings-sync-time-btn');
+    const status = document.getElementById('settings-sync-status');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    if (status) status.textContent = '';
+    try {
+      const t0 = Date.now();
+      const res = await fetch('/api/time');
+      const t1 = Date.now();
+      const data = await res.json();
+      const rtt = t1 - t0;
+      window.timeSyncOffset = data.unixtime_ms + Math.round(rtt / 2) - t1;
+      window.timeSyncedAt = Date.now();
+      if (btn) { btn.textContent = '✓ Synced'; }
+      if (status) { status.textContent = `offset ${window.timeSyncOffset > 0 ? '+' : ''}${window.timeSyncOffset}ms`; }
+      setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Sync'; } }, 2500);
+    } catch {
+      if (btn) { btn.textContent = '✗ Error'; }
+      if (status) status.textContent = 'sync failed';
+      setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Sync'; } }, 2500);
+    }
+  }
+  window.syncTimeNow = syncTimeNow;
 
   function openUIPanel() {
     document.getElementById('ui-panel').classList.remove('hidden');
@@ -7332,6 +7581,17 @@
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
 
+  function openFactoryComingSoon() {
+    document.getElementById('factory-coming-soon-popup')?.classList.remove('hidden');
+    document.getElementById('factory-coming-soon-backdrop')?.classList.remove('hidden');
+  }
+  function closeFactoryComingSoon() {
+    document.getElementById('factory-coming-soon-popup')?.classList.add('hidden');
+    document.getElementById('factory-coming-soon-backdrop')?.classList.add('hidden');
+  }
+  window.openFactoryComingSoon  = openFactoryComingSoon;
+  window.closeFactoryComingSoon = closeFactoryComingSoon;
+
   window.showMcpDisconnectedBanner = showMcpDisconnectedBanner;
 
   let _routineNotifId = null;
@@ -7650,7 +7910,7 @@
       }
     });
     mcpServers = newServers;
-    wsSend({ type: 'save-mcp-servers', servers: mcpServers });
+    wsSend({ type: 'save-mcp-servers', servers: mcpServers, uiToken: window._uiToken });
     pushDebugLog(`[mcp] Saved ${Object.keys(mcpServers).length} server(s) — restart Claude CLI to apply`);
   }
   window.saveMcpServers = saveMcpServers;
@@ -7765,6 +8025,34 @@
       const card = document.createElement('div');
       card.className = 'mcp-catalog-card';
       card.dataset.mcpId = entry.id;
+
+      if (entry.type === 'local-tool' && entry.localTool === 'espanso') {
+        card.style.width = '280px';
+        card.innerHTML = `
+          <div class="mcp-catalog-card-header">
+            <span class="mcp-catalog-name">${entry.emoji} ${escHtml(entry.name)}</span>
+            <span class="mcp-badge-disabled" id="wispr-badge">Local tool</span>
+          </div>
+          <div class="mcp-catalog-desc">${escHtml(entry.description)}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="fbtn" style="padding:3px 10px;font-size:11px;" onclick="toggleEspansoForm()">Configure</button>
+          </div>
+          <div class="mcp-catalog-form" id="mcp-form-wispr">
+            <div style="display:flex;gap:4px;margin-bottom:4px;">
+              <span style="font-size:10px;font-weight:700;width:94px;opacity:0.6;">TRIGGER</span>
+              <span style="font-size:10px;font-weight:700;flex:1;opacity:0.6;">REPLACE WITH</span>
+            </div>
+            <div id="espanso-dict-rows"></div>
+            <button class="fbtn" style="padding:3px 10px;font-size:11px;margin-top:4px;margin-bottom:8px;" onclick="addEspansoRow()">+ Add rule</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="fbtn" style="background:#1e3a5f;color:#93c5fd;padding:3px 10px;font-size:11px;" onclick="saveEspansoReplacements()">Save</button>
+            </div>
+            <div class="mcp-result" id="mcp-result-wispr"></div>
+          </div>
+        `;
+        grid.appendChild(card);
+        continue;
+      }
 
       if (entry.oauthFlow) {
         const isEnabled = enabled.includes(entry.id);
@@ -7950,7 +8238,7 @@
       const credPath = document.getElementById(row.dataset.pathId)?.value.trim() || '';
       if (name) instances.push({ name, credPath });
     }
-    wsSend({ type: 'enable-mcp-server', id: entryId, instances });
+    wsSend({ type: 'enable-mcp-server', id: entryId, instances, uiToken: window._uiToken });
   }
 
   function startGdriveOAuth(btn) {
@@ -7958,7 +8246,7 @@
     btn.textContent = 'Opening browser…';
     const resultEl = document.getElementById('mcp-result-gdrive');
     if (resultEl) resultEl.innerHTML = '';
-    wsSend({ type: 'gdrive-oauth-start' });
+    wsSend({ type: 'gdrive-oauth-start', uiToken: window._uiToken });
   }
 
   function toggleMcpForm(id) {
@@ -7984,15 +8272,69 @@
       const inp = document.getElementById(`mcp-cred-${id}-${c.key}`);
       credentials[c.key] = inp ? inp.value.trim() : '';
     }
-    wsSend({ type: 'enable-mcp-server', id, credentials });
+    wsSend({ type: 'enable-mcp-server', id, credentials, uiToken: window._uiToken });
   }
 
   function disableMcpServer(id) {
-    wsSend({ type: 'disable-mcp-server', id });
+    wsSend({ type: 'disable-mcp-server', id, uiToken: window._uiToken });
   }
 
   function launchChromeDebug() {
     wsSend({ type: 'launch-chrome' });
+  }
+
+  function toggleEspansoForm() {
+    const form = document.getElementById('mcp-form-wispr');
+    if (!form) return;
+    const opening = !form.classList.contains('open');
+    form.classList.toggle('open');
+    if (opening) wsSend({ type: 'get-espanso-replacements' });
+  }
+
+  function renderEspansoRows(rules) {
+    const container = document.getElementById('espanso-dict-rows');
+    if (!container) return;
+    container.innerHTML = '';
+    for (const rule of rules) container.appendChild(makeEspansoRow(rule.trigger, rule.replace));
+    const badge = document.getElementById('wispr-badge');
+    if (badge) {
+      if (rules.length > 0) {
+        badge.textContent = `${rules.length} rule${rules.length !== 1 ? 's' : ''}`;
+        badge.className = 'mcp-badge-enabled';
+      } else {
+        badge.textContent = 'No rules';
+        badge.className = 'mcp-badge-disabled';
+      }
+    }
+  }
+
+  function makeEspansoRow(trigger, replace) {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;gap:4px;align-items:center;margin-bottom:4px;';
+    div.innerHTML = `
+      <input type="text" class="dir-field espanso-trigger" placeholder="trigger" value="${escHtml(trigger || '')}" style="width:90px;font-size:11px;height:26px;padding:3px 6px;">
+      <span style="font-size:11px;opacity:0.5;">→</span>
+      <input type="text" class="dir-field espanso-replace" placeholder="replace with" value="${escHtml(replace || '')}" style="flex:1;font-size:11px;height:26px;padding:3px 6px;">
+      <button class="fbtn" style="padding:3px 7px;font-size:11px;background:#7f1d1d;color:#fca5a5;" onclick="this.parentElement.remove()">✕</button>
+    `;
+    return div;
+  }
+
+  function addEspansoRow() {
+    const container = document.getElementById('espanso-dict-rows');
+    if (container) container.appendChild(makeEspansoRow('', ''));
+  }
+
+  function saveEspansoReplacements() {
+    const container = document.getElementById('espanso-dict-rows');
+    if (!container) return;
+    const rules = [];
+    for (const row of container.children) {
+      const trigger = row.querySelector('.espanso-trigger')?.value.trim() || '';
+      const replace = row.querySelector('.espanso-replace')?.value.trim() || '';
+      if (trigger) rules.push({ trigger, replace });
+    }
+    wsSend({ type: 'save-espanso-replacements', rules });
   }
 
   window.toggleMcpForm       = toggleMcpForm;
@@ -8004,10 +8346,110 @@
   window.addFirebaseProject  = addFirebaseProject;
   window.pickFirebaseJson    = pickFirebaseJson;
   window.saveFirebaseProjects = saveFirebaseProjects;
+  window.toggleEspansoForm   = toggleEspansoForm;
+  window.addEspansoRow       = addEspansoRow;
+  window.saveEspansoReplacements = saveEspansoReplacements;
   function closeConnections() {
     document.getElementById('connections-panel').classList.add('hidden');
     document.getElementById('overlay-bg').classList.add('hidden');
   }
+
+  // ── Manifest Panel ────────────────────────────────────────────────────────
+  let _manifest = null;
+
+  function openManifest() {
+    document.getElementById('manifest-panel').classList.remove('hidden');
+    document.getElementById('overlay-bg').classList.remove('hidden');
+    wsSend({ type: 'get-manifest' });
+  }
+
+  function closeManifest() {
+    document.getElementById('manifest-panel').classList.add('hidden');
+    document.getElementById('overlay-bg').classList.add('hidden');
+  }
+
+  function switchManifestTab(tab) {
+    document.querySelectorAll('[data-mtab]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mtab === tab);
+    });
+    document.getElementById('manifest-features-pane').style.display = tab === 'features' ? 'flex' : 'none';
+    document.getElementById('manifest-secrets-pane').style.display  = tab === 'secrets'  ? 'flex' : 'none';
+  }
+
+  function renderManifestPanel(manifest) {
+    _manifest = JSON.parse(JSON.stringify(manifest));
+
+    const makeRow = (item, type) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border);';
+      const isPublic = item.public;
+      row.innerHTML = `
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${escHtml(item.description || '')}${type === 'secrets' && item.required ? ' <span style="color:#f59e0b;font-weight:700;">REQUIRED</span>' : ''}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0;">
+          <input type="checkbox" data-id="${escHtml(item.id)}" data-type="${type}" ${isPublic ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;accent-color:#60a5fa;">
+          <span style="font-size:11px;font-weight:700;color:${isPublic ? '#86efac' : '#f87171'};" data-badge="${escHtml(item.id)}">${isPublic ? 'PUBLIC' : 'PRIVATE'}</span>
+        </label>`;
+      const cb = row.querySelector('input[type=checkbox]');
+      cb.addEventListener('change', () => {
+        const badge = row.querySelector(`[data-badge="${item.id}"]`);
+        const arr = type === 'features' ? _manifest.features : _manifest.secrets;
+        const entry = arr.find(x => x.id === item.id);
+        if (entry) entry.public = cb.checked;
+        badge.textContent = cb.checked ? 'PUBLIC' : 'PRIVATE';
+        badge.style.color  = cb.checked ? '#86efac' : '#f87171';
+      });
+      return row;
+    };
+
+    const fp = document.getElementById('manifest-features-pane');
+    const sp = document.getElementById('manifest-secrets-pane');
+    fp.innerHTML = '';
+    sp.innerHTML = '';
+    manifest.features.forEach(f => fp.appendChild(makeRow(f, 'features')));
+    manifest.secrets.forEach(s  => sp.appendChild(makeRow(s,  'secrets')));
+  }
+
+  function saveManifest() {
+    if (!_manifest) return;
+    wsSend({ type: 'save-manifest', manifest: _manifest });
+  }
+
+  window.openManifest   = openManifest;
+  window.closeManifest  = closeManifest;
+  window.switchManifestTab = switchManifestTab;
+  window.saveManifest   = saveManifest;
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function showConnectApprovalBanner({ approvalId, description }) {
+    document.querySelectorAll('.connect-approval-banner').forEach(el => el.remove());
+    const banner = document.createElement('div');
+    banner.className = 'connect-approval-banner';
+    banner.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9999',
+      'background:#7c3aed', 'color:#fff', 'padding:10px 16px',
+      'display:flex', 'align-items:center', 'gap:10px',
+      'font-size:12px', 'font-family:monospace',
+      'box-shadow:0 2px 8px rgba(0,0,0,.45)',
+    ].join(';');
+    const safeDesc = description ? description.replace(/</g, '&lt;') : approvalId;
+    banner.innerHTML = `
+      <span style="flex:1">&#9888;&#xFE0F; Session requested Connect-tab change: <strong>${safeDesc}</strong></span>
+      <button onclick="respondConnectApproval('${approvalId}',true)"
+        style="background:#10b981;border:none;color:#fff;padding:3px 11px;border-radius:4px;cursor:pointer;font-size:12px;font-family:monospace">Approve</button>
+      <button onclick="respondConnectApproval('${approvalId}',false)"
+        style="background:#ef4444;border:none;color:#fff;padding:3px 11px;border-radius:4px;cursor:pointer;font-size:12px;font-family:monospace">Deny</button>
+    `;
+    document.body.prepend(banner);
+  }
+
+  function respondConnectApproval(approvalId, approved) {
+    wsSend({ type: 'connect-approval-response', approvalId, approved });
+    document.querySelectorAll('.connect-approval-banner').forEach(el => el.remove());
+  }
+  window.respondConnectApproval = respondConnectApproval;
   function renderConnections(data) {
     const el = document.getElementById('connections-content');
     if (!el) return;
@@ -8509,24 +8951,29 @@
       </tr>`;
     }).join('');
 
-    const section = (title, color, table) =>
+    const blurbStyle = 'font-size:10px;opacity:0.5;margin-bottom:8px;line-height:1.5;font-style:italic;';
+    const section = (title, color, blurb, table) =>
       `<div style="margin-bottom:20px;">
-        <div style="font-size:11px;font-weight:800;color:${color};letter-spacing:0.08em;margin-bottom:6px;">${title}</div>
+        <div style="font-size:11px;font-weight:800;color:${color};letter-spacing:0.08em;margin-bottom:4px;">${title}</div>
+        <div style="${blurbStyle}">${blurb}</div>
         ${table}
       </div>`;
 
     el.innerHTML =
       section('CHURN HOTSPOTS — Most Frequently Changed Files', '#ef4444',
+        'Files that change most often are your biggest risk surface. High churn can signal poor separation of concerns, frequent bug fixes, or heavily contested code — and these files are most likely to introduce regressions and merge conflicts.',
         `<table style="${tableStyle}"><thead><tr>
           <th style="${thStyle}">FILE</th><th style="${thStyle}text-align:right;">COMMITS</th>
           <th style="${thStyle}text-align:right;">+LINES</th><th style="${thStyle}text-align:right;">-LINES</th>
           <th style="${thStyle}">CHURN</th></tr></thead><tbody>${churnRows || '<tr><td colspan="5" style="padding:8px;opacity:0.4;">No git history found.</td></tr>'}</tbody></table>`) +
       section('CONTRIBUTORS', '#3b82f6',
+        'Shows who has been active in the repo. Heavily skewed ownership is a bus-factor risk — if one author dominates, knowledge is siloed. Use this to plan cross-training and prioritise who should review what.',
         `<table style="${tableStyle}"><thead><tr>
           <th style="${thStyle}">AUTHOR</th><th style="${thStyle}">EMAIL</th>
           <th style="${thStyle}text-align:right;">COMMITS</th><th style="${thStyle}text-align:right;">SHARE</th>
           <th style="${thStyle}"></th></tr></thead><tbody>${authorRows || '<tr><td colspan="5" style="padding:8px;opacity:0.4;">No git history found.</td></tr>'}</tbody></table>`) +
       section('COMPLEXITY HOTSPOTS — JS/TS Files', '#fbbf24',
+        'Files with many functions, branches, and loops are harder to test and easier to break. A high score is a signal to refactor — or at minimum to apply extra scrutiny when reviewing changes. Score = functions + branches + loops.',
         `<table style="${tableStyle}"><thead><tr>
           <th style="${thStyle}">FILE</th><th style="${thStyle}text-align:right;">LINES</th>
           <th style="${thStyle}text-align:right;">FN</th><th style="${thStyle}text-align:right;">BR</th>
@@ -9702,46 +10149,30 @@
   window.camCancel        = camCancel;
 
   // ── Header live clock ────────────────────────────────────────────────────────
-  // window.timeSyncOffset (ms) and window.timeSyncedAt (ms epoch) are set by the
-  // time-sync routine. The ✓ shows only if the last sync was within 90 minutes.
-  const TIME_SYNC_STALE_MS = 90 * 60 * 1000;
-  window.timeSyncOffset = window.timeSyncOffset || 0;
-  window.timeSyncedAt   = window.timeSyncedAt   || 0;
   (function startHeaderClock() {
-    function fmtAgo(ms) {
-      const sec = Math.round(ms / 1000);
-      if (sec < 60) return sec + 's ago';
-      const min = Math.round(sec / 60);
-      if (min < 60) return min + 'm ago';
-      const hr = Math.round(min / 60);
-      return hr + 'h ago';
-    }
     let lastCelebrationHour = -1;
     const countdownColors = ['#f87171','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee','#818cf8','#e879f9','#f472b6','#fff'];
 
     function tick() {
       const els = document.querySelectorAll('#header-clock');
       if (!els.length) return;
-      const utcMs = Date.now() + (window.timeSyncOffset || 0);
-      const tzOffsetMs = (window.serverTzOffsetMin !== undefined ? window.serverTzOffsetMin : new Date().getTimezoneOffset()) * 60000;
-      const local = new Date(utcMs - tzOffsetMs);
-      const h24 = local.getUTCHours();
+      const now = new Date();
+      const tz = window.appTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const timeParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false
+      }).formatToParts(now).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+      const h24 = parseInt(timeParts.hour) % 24;
+      const min = parseInt(timeParts.minute);
+      const sec = parseInt(timeParts.second);
       const h12 = h24 % 12 || 12;
-      const min = local.getUTCMinutes();
-      const sec = local.getUTCSeconds();
       const ampm = h24 < 12 ? 'AM' : 'PM';
       const time = h12 + ':' + String(min).padStart(2,'0') + ':' + String(sec).padStart(2,'0') + ' ' + ampm;
-      const tz = (new Date().toString().match(/\(([^)]+)\)/) || [])[1] || '';
-      const tzAbbr = tz.split(' ').map(w => w[0]).join('');
-      const sinceSync = window.timeSyncedAt ? Date.now() - window.timeSyncedAt : Infinity;
-      const isFresh   = window.timeSyncOffset !== undefined && sinceSync < TIME_SYNC_STALE_MS && window.timeSyncedAt > 0;
-      const checkmark = isFresh ? ' ✓' : '';
-      const tooltip   = !window.timeSyncedAt
-        ? 'Local clock — not synced'
-        : isFresh
-          ? `Time-synced ${fmtAgo(sinceSync)} (offset: ${window.timeSyncOffset}ms)`
-          : `Sync is stale — last sync was ${fmtAgo(sinceSync)} (threshold: 90 min)`;
-      els.forEach(el => { el.textContent = `${time}${tzAbbr ? '  ' + tzAbbr : ''}${checkmark}`; el.title = tooltip; });
+      const tzAbbrParts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(now);
+      const tzAbbr = (tzAbbrParts.find(p => p.type === 'timeZoneName') || {}).value || '';
+      const synced = window.timeSyncedAt && (Date.now() - window.timeSyncedAt) < 90 * 60000;
+      const syncMark = synced ? ' ✓' : '';
+      const syncTitle = synced ? ` · NTP synced (offset ${window.timeSyncOffset > 0 ? '+' : ''}${window.timeSyncOffset}ms)` : '';
+      els.forEach(el => { el.textContent = `${time}${tzAbbr ? '  ' + tzAbbr : ''}${syncMark}`; el.title = (window.appTimezone ? `Clock: ${tz}` : 'System clock') + syncTitle; });
 
       // 10-second countdown flash (last 10 seconds of any hour)
       const inCountdown = min === 59 && sec >= 50;
@@ -9805,6 +10236,7 @@
     closeSupport();
     closeDocs();
     closeCrossCheckPanel();
+    closeManifest();
   }
   window.closeActivePanel = closeActivePanel;
 
@@ -10331,13 +10763,27 @@
   }
 
   function onbShowScreen(name) {
-    ['prompt', 'level', 'final'].forEach(s => {
+    ['prompt', 'accounts', 'level', 'final'].forEach(s => {
       const el = document.getElementById(`onb-screen-${s}`);
       if (el) el.classList.toggle('active', s === name);
     });
   }
 
-  function onbStartLevelPick() { onbShowScreen('level'); }
+  function onbStartLevelPick() { onbShowScreen('accounts'); }
+
+  const _onbAccounts = new Set();
+  function onbToggleAccount(id) {
+    const card = document.getElementById(`onb-acct-${id}`);
+    if (!card) return;
+    if (_onbAccounts.has(id)) {
+      _onbAccounts.delete(id);
+      card.classList.remove('selected');
+    } else {
+      _onbAccounts.add(id);
+      card.classList.add('selected');
+    }
+    wsSend({ type: 'save-config', config: { onboardingAccounts: Array.from(_onbAccounts) } });
+  }
 
   function onbSelectLevel(level) {
     _onbLevel = level;

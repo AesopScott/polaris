@@ -61,6 +61,15 @@ let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
 catch (e) { console.log('[polaris] mcp-catalog.json not found:', e.message); }
 
+const MANIFEST_PATH = path.join(RESOURCES_PATH, 'feature-manifest.json');
+function readManifest() {
+  try { return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')); }
+  catch (e) { return { features: [], secrets: [] }; }
+}
+function writeManifest(data) {
+  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(data, null, 2), 'utf8');
+}
+
 const GLOBAL_CLAUDE_PATH   = path.join(__dirname, 'CLAUDE.md');
 const USER_CLAUDE_PATH     = path.join(os.homedir(), '.claude', 'CLAUDE.md');
 const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
@@ -310,6 +319,25 @@ function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+function parseEspansoYaml(content) {
+  const rules = [];
+  const re = /- trigger:\s*["']?([^"'\n]+?)["']?\s*\n\s+replace:\s*["']?([^"'\n]+?)["']?\s*(?:\n|$)/g;
+  let m;
+  while ((m = re.exec(content)) !== null) rules.push({ trigger: m[1].trim(), replace: m[2].trim() });
+  return rules;
+}
+
+function buildEspansoYaml(rules) {
+  if (!rules.length) return 'matches:\n';
+  const lines = ['matches:'];
+  for (const r of rules) {
+    const t   = r.trigger.includes('"') ? `'${r.trigger}'`  : `"${r.trigger}"`;
+    const rep = r.replace.includes('"') ? `'${r.replace}'`  : `"${r.replace}"`;
+    lines.push(`  - trigger: ${t}`, `    replace: ${rep}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
 function maskedMcpCredentials() {
   const cfg = readConfig();
   const creds = cfg.mcp_credentials || {};
@@ -528,6 +556,12 @@ function watchGlobalFiles() {
 const sessions = new Map();   // sessionId → session object
 const forkMap  = new Map();   // primarySessionId → forkSessionId
 let   wss      = null;
+
+// Connect-tab write protection — token is generated at startup and sent only to the main UI window.
+// Any WebSocket message that modifies MCP server config must include this token; otherwise the
+// request is queued and broadcast as an approval prompt so the user can allow or deny it.
+const UI_TOKEN = crypto.randomBytes(32).toString('hex');
+const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
 
 // â"€â"€â"€ Session persistence â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function serializeSession(s) {
@@ -2824,6 +2858,15 @@ function getMcpServerConfigs() {
   return readClaudeJson().mcpServers || {};
 }
 
+function isCatalogManagedKey(key, catalogIds) {
+  if (key === 'polaris') return true;
+  if (catalogIds.has(key)) return true;
+  for (const entry of MCP_CATALOG) {
+    if (entry.multiInstance && key.startsWith(`${entry.id}-`)) return true;
+  }
+  return false;
+}
+
 function mcpSend(state, message) {
   state.proc.stdin.write(JSON.stringify(message) + '\n');
 }
@@ -4937,6 +4980,22 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'get-manifest') {
+    sendTo(ws, { type: 'manifest', manifest: readManifest() });
+    return;
+  }
+
+  if (type === 'save-manifest') {
+    const { manifest } = msg;
+    if (!manifest || !Array.isArray(manifest.features) || !Array.isArray(manifest.secrets)) {
+      sendTo(ws, { type: 'manifest-saved', ok: false, error: 'Invalid manifest structure' });
+      return;
+    }
+    writeManifest(manifest);
+    sendTo(ws, { type: 'manifest-saved', ok: true });
+    return;
+  }
+
   if (type === 'test-openrouter-key') {
     const { apiKey } = msg;
     if (!apiKey) {
@@ -5720,24 +5779,50 @@ function handleMessage(ws, raw) {
   if (type === 'get-mcp-servers') {
     const claudeConfigPath = path.join(os.homedir(), '.claude.json');
     const cfg = readJSON(claudeConfigPath, {});
-    sendTo(ws, { type: 'mcp-servers', servers: cfg.mcpServers || {} });
+    const catalogIds = new Set(MCP_CATALOG.map(e => e.id));
+    const customServers = Object.fromEntries(
+      Object.entries(cfg.mcpServers || {}).filter(([k]) => !isCatalogManagedKey(k, catalogIds))
+    );
+    sendTo(ws, { type: 'mcp-servers', servers: customServers });
+    return;
+  }
+
+  // Connect-tab write gate: block unauthenticated modifications and queue for user approval
+  const CONNECT_WRITE_TYPES = ['save-mcp-servers', 'enable-mcp-server', 'disable-mcp-server', 'gdrive-oauth-start'];
+  if (CONNECT_WRITE_TYPES.includes(type) && msg.uiToken !== UI_TOKEN) {
+    const approvalId = crypto.randomUUID();
+    const descriptionMap = {
+      'save-mcp-servers':  `Save custom MCP servers (${Object.keys(msg.servers || {}).length} server(s))`,
+      'enable-mcp-server': `Enable MCP server: ${msg.id}`,
+      'disable-mcp-server': `Disable MCP server: ${msg.id}`,
+      'gdrive-oauth-start': 'Connect Google Drive via OAuth',
+    };
+    pendingConnectApprovals.set(approvalId, { msg, ws });
+    broadcast({ type: 'connect-approval-required', approvalId, operation: type, description: descriptionMap[type] || type });
+    console.log(`[connect-gate] Queued approval ${approvalId} for ${type}`);
     return;
   }
 
   if (type === 'save-mcp-servers') {
     const claudeConfigPath = path.join(os.homedir(), '.claude.json');
     const oldCj = readJSON(claudeConfigPath, {});
-    const oldPanelKeys = new Set(Object.keys(oldCj.mcpServers || {}));
-    oldCj.mcpServers = msg.servers || {};
+    const catalogIds = new Set(MCP_CATALOG.map(e => e.id));
+    // Track which custom keys existed before so we can clean up ~/.mcp.json
+    const oldCustomKeys = Object.keys(oldCj.mcpServers || {}).filter(k => !isCatalogManagedKey(k, catalogIds));
+    // Preserve catalog-managed and polaris entries; replace only custom entries
+    const preserved = Object.fromEntries(
+      Object.entries(oldCj.mcpServers || {}).filter(([k]) => isCatalogManagedKey(k, catalogIds))
+    );
+    oldCj.mcpServers = { ...preserved, ...(msg.servers || {}) };
     writeJSON(claudeConfigPath, oldCj);
-    // Sync ~/.mcp.json: remove old panel entries, add new ones (never touch polaris)
+    // Sync ~/.mcp.json: remove old custom entries, add new ones (never touch catalog-managed)
     const mcp = readJSON(MCP_JSON_PATH, {});
     mcp.mcpServers = mcp.mcpServers || {};
-    for (const k of oldPanelKeys) {
-      if (k !== 'polaris') delete mcp.mcpServers[k];
+    for (const k of oldCustomKeys) {
+      delete mcp.mcpServers[k];
     }
     for (const [k, v] of Object.entries(msg.servers || {})) {
-      if (k !== 'polaris') mcp.mcpServers[k] = v;
+      mcp.mcpServers[k] = v;
     }
     writeJSON(MCP_JSON_PATH, mcp);
     sendTo(ws, { type: 'mcp-servers-saved' });
@@ -5926,6 +6011,50 @@ function handleMessage(ws, raw) {
         tokenReq.end();
       });
     });
+    return;
+  }
+
+  if (type === 'get-espanso-replacements') {
+    const espansoPath = path.join(APPDATA, 'espanso', 'match', 'base.yml');
+    try {
+      if (!fs.existsSync(espansoPath)) {
+        sendTo(ws, { type: 'espanso-replacements', rules: [] });
+        return;
+      }
+      const content = fs.readFileSync(espansoPath, 'utf8');
+      sendTo(ws, { type: 'espanso-replacements', rules: parseEspansoYaml(content) });
+    } catch (e) {
+      sendTo(ws, { type: 'espanso-replacements', rules: [], error: e.message });
+    }
+    return;
+  }
+
+  if (type === 'save-espanso-replacements') {
+    const espansoDir  = path.join(APPDATA, 'espanso', 'match');
+    const espansoPath = path.join(espansoDir, 'base.yml');
+    try {
+      if (!fs.existsSync(espansoDir)) fs.mkdirSync(espansoDir, { recursive: true });
+      fs.writeFileSync(espansoPath, buildEspansoYaml(msg.rules || []), 'utf8');
+      sendTo(ws, { type: 'espanso-saved', ok: true, rules: msg.rules || [] });
+    } catch (e) {
+      sendTo(ws, { type: 'espanso-saved', ok: false, error: e.message });
+    }
+    return;
+  }
+
+  if (type === 'connect-approval-response') {
+    const { approvalId, approved } = msg;
+    const pending = pendingConnectApprovals.get(approvalId);
+    if (!pending) {
+      sendTo(ws, { type: 'connect-approval-complete', approvalId, ok: false, error: 'Approval not found or expired' });
+      return;
+    }
+    pendingConnectApprovals.delete(approvalId);
+    broadcast({ type: 'connect-approval-complete', approvalId, approved });
+    if (approved) {
+      const targetWs = pending.ws.readyState === WebSocket.OPEN ? pending.ws : ws;
+      handleMessage(targetWs, JSON.stringify({ ...pending.msg, uiToken: UI_TOKEN }));
+    }
     return;
   }
 
@@ -6483,6 +6612,7 @@ wss.on('connection', (ws) => {
       appVersion: require('./package.json').version,
       recentCommits,
       connectedMcpServers: [...new Set([...getEnabledMcpServers(), ...getConnectedMcpServers()])].filter(s => s !== 'polaris'),
+      uiToken: UI_TOKEN,
     });
 
     // Send the OpenRouter model-costs dict so estimateCost can do exact matches.

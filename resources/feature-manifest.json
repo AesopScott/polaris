@@ -1,0 +1,135 @@
+{
+  "features": [
+    {
+      "id": "github-mcp",
+      "name": "GitHub Integration",
+      "description": "Read repos, search code, manage issues and PRs via MCP",
+      "public": true
+    },
+    {
+      "id": "obsidian-mcp",
+      "name": "Obsidian Knowledge Base",
+      "description": "Sync session notes and project memory to an Obsidian vault",
+      "public": true
+    },
+    {
+      "id": "google-drive-mcp",
+      "name": "Google Drive",
+      "description": "Read and write files in Google Drive via OAuth",
+      "public": true
+    },
+    {
+      "id": "youcom-search",
+      "name": "You.com Web Search",
+      "description": "Web search via You.com (free tier: 100/day, no key required)",
+      "public": true
+    },
+    {
+      "id": "brave-search",
+      "name": "Brave Search",
+      "description": "Alternative web search via Brave (2000 free searches/month)",
+      "public": true
+    },
+    {
+      "id": "elevenlabs-tts",
+      "name": "ElevenLabs Text-to-Speech",
+      "description": "AI voice narration for onboarding tour and session playback",
+      "public": true
+    },
+    {
+      "id": "deepseek-routines",
+      "name": "DeepSeek Routines",
+      "description": "Use DeepSeek as an alternative model for scheduled routines",
+      "public": true
+    },
+    {
+      "id": "support-tickets",
+      "name": "Support Tickets",
+      "description": "In-app bug report and feature request submission via Brevo email",
+      "public": true
+    },
+    {
+      "id": "brevo-mcp",
+      "name": "Brevo Email MCP",
+      "description": "Send transactional email via Brevo API through MCP",
+      "public": true
+    },
+    {
+      "id": "firebase-backend",
+      "name": "Firebase Backend",
+      "description": "Firestore, Firebase Auth, and cloud hosting integration",
+      "public": true
+    },
+    {
+      "id": "aesop-course-creator",
+      "name": "Aesop Course Creator",
+      "description": "Aesop Academy course authoring tools and panel",
+      "public": false
+    }
+  ],
+  "secrets": [
+    {
+      "id": "anthropicApiKey",
+      "name": "Anthropic API Key",
+      "description": "Required for direct Claude API access and agent sessions",
+      "public": true,
+      "required": true
+    },
+    {
+      "id": "openRouterApiKey",
+      "name": "OpenRouter API Key",
+      "description": "Primary model routing — required for multi-model agent support",
+      "public": true,
+      "required": true
+    },
+    {
+      "id": "openAiApiKey",
+      "name": "OpenAI API Key",
+      "description": "Optional — enables GPT-4o and other OpenAI models via OpenRouter",
+      "public": true,
+      "required": false
+    },
+    {
+      "id": "deepSeekApiKey",
+      "name": "DeepSeek API Key",
+      "description": "Optional — enables DeepSeek models for routines and agents",
+      "public": true,
+      "required": false
+    },
+    {
+      "id": "elevenLabsApiKey",
+      "name": "ElevenLabs API Key",
+      "description": "Optional — enables AI voice narration in the onboarding tour",
+      "public": true,
+      "required": false
+    },
+    {
+      "id": "braveSearchApiKey",
+      "name": "Brave Search API Key",
+      "description": "Optional — enables Brave web search (2000 free searches/month)",
+      "public": true,
+      "required": false
+    },
+    {
+      "id": "brevoApiKey",
+      "name": "Brevo Email API Key",
+      "description": "Optional — users provide their own Brevo account for email features",
+      "public": true,
+      "required": false
+    },
+    {
+      "id": "googleOAuth",
+      "name": "Google OAuth Client",
+      "description": "Optional — users provide their own Google OAuth client for Drive integration",
+      "public": true,
+      "required": false
+    },
+    {
+      "id": "firebase",
+      "name": "Firebase Service Account",
+      "description": "Optional — users provide their own Firebase project credentials",
+      "public": true,
+      "required": false
+    }
+  ]
+}

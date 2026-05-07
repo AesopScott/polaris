@@ -136,5 +136,37 @@
       }
     ],
     "prerequisiteWarning": null
+  },
+  {
+    "id": "wispr",
+    "name": "Wispr Flow",
+    "emoji": "🎤",
+    "description": "Manage Espanso text replacements for Wispr Flow voice dictation — fix misheard words without editing YAML files",
+    "type": "local-tool",
+    "localTool": "espanso"
+  },
+  {
+    "id": "elevenlabs",
+    "name": "ElevenLabs",
+    "emoji": "🔊",
+    "description": "Text-to-speech, voice cloning, and audio generation — create and manage voices from your ElevenLabs account",
+    "productUrl": "https://elevenlabs.io",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@elevenlabs/mcp"],
+    "env": {
+      "ELEVENLABS_API_KEY": "{{ELEVENLABS_API_KEY}}"
+    },
+    "credentials": [
+      {
+        "key": "ELEVENLABS_API_KEY",
+        "label": "API Key",
+        "type": "secret",
+        "required": true,
+        "hint": "elevenlabs.io → Profile → API Keys → Create API Key",
+        "setupGuideUrl": "https://elevenlabs.io/app/settings/api-keys"
+      }
+    ],
+    "prerequisiteWarning": null
   }
 ]
