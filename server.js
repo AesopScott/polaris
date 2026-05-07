@@ -478,6 +478,12 @@ function syncGlobalToProjects() {
       results.push({ file: name, status: 'skipped', reason: 'source not found' });
       continue;
     }
+    // Strip any existing PROJECT-SPECIFIC section from the source so the Polaris CLAUDE.md
+    // (which is both source and destination) doesn't accumulate duplicate markers on each sync.
+    if (projectSpecific) {
+      const srcMarkerPos = globalContent.indexOf(PROJECT_SPECIFIC_MARKER);
+      if (srcMarkerPos !== -1) globalContent = globalContent.slice(0, srcMarkerPos).trimEnd();
+    }
 
     for (const project of projects) {
       if (polarisOnly && (project.name || '').toLowerCase() !== 'polaris') continue;
@@ -493,7 +499,13 @@ function syncGlobalToProjects() {
             const idx = existing.indexOf(PROJECT_SPECIFIC_MARKER);
             if (idx !== -1) projectSection = existing.slice(idx + PROJECT_SPECIFIC_MARKER.length);
           }
-          fs.writeFileSync(dest, `${globalContent}\n\n${PROJECT_SPECIFIC_MARKER}${projectSection}`, 'utf8');
+          const newContent = `${globalContent}\n\n${PROJECT_SPECIFIC_MARKER}${projectSection}`;
+          // Skip write if content is unchanged — prevents infinite watch→sync→write→watch loop.
+          if (fs.existsSync(dest) && fs.readFileSync(dest, 'utf8') === newContent) {
+            results.push({ file: name, project: project.name || project.workDir, status: 'unchanged' });
+            continue;
+          }
+          fs.writeFileSync(dest, newContent, 'utf8');
         }
         results.push({ file: name, project: project.name || project.workDir, status: 'ok' });
       } catch (e) {
@@ -2067,6 +2079,25 @@ async function toolEdit({ file_path, old_string, new_string, replace_all }, work
   return `Edited: ${file_path}`;
 }
 
+// Finds the first balanced JSON object in a string, ignoring trailing prose or extra objects.
+function extractFirstJson(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return null;
+}
+
 // ─── Cross-Check engine (Phase 2) ────────────────────────────────────────────
 // Reviews proposed file changes via a configurable model before they hit disk.
 // Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 — at
@@ -2194,13 +2225,13 @@ Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-li
   if (result.error) {
     return { verdict: 'ERROR', summary: result.error, issues: [], model: useModel, ms, usage: null };
   }
-  // Robust JSON extraction — model sometimes wraps in code fences or prose.
-  const jsonMatch = (result.content || '').match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  // Robust JSON extraction — find the first balanced {} object, ignoring trailing prose/objects.
+  const jsonStr = extractFirstJson(result.content || '');
+  if (!jsonStr) {
     return { verdict: 'ERROR', summary: 'No JSON in reviewer response', issues: [result.content?.slice(0, 200) || ''], model: useModel, ms, usage: result.usage };
   }
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonStr);
     // Preserve PASS/FAIL/ERROR distinctly so the UI can show "reviewer broke" vs
     // "reviewer flagged a real problem." Anything outside the known set is treated
     // as ERROR so the user sees the raw verdict and can decide manually.
