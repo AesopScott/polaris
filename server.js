@@ -3742,7 +3742,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
             const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
             broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'tool' });
             dlog('TOOL_USE', summary);
-            if ((part.name === 'Bash' || part.name === 'computer') && /\bgit\s+(commit|push)\b/i.test(JSON.stringify(part.input || {}))) {
+            if ((part.name === 'Bash' || part.name === 'PowerShell' || part.name === 'computer') && /\bgit\s+(commit|push)\b/i.test(JSON.stringify(part.input || {}))) {
               committedDuringRun = true;
             }
           }
