@@ -3112,15 +3112,23 @@ function spawnMaxChat(sessionId, prompt, config) {
     } catch (e) { dlog('WATCHER_ERR', e.message); }
   }
 
-  // Rebuild conversation prompt from history. The latest user line is already
-  // pushed by the launch-chat handler before this fires, so it's included.
-  const history = (session.lines || [])
-    .filter(l => l.role === 'user' || l.role === 'assistant')
-    .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
-    .join('\n\n');
-  const polarisContext = buildPolarisContextBlock(config);
-  const fullPrompt = polarisContext + '\n\n' + (history || prompt);
-  dlog('PROMPT_BUILD', `historyTurns=${(session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
+  // On turn 2+, the CLI already has the conversation history stored on disk
+  // under session.claudeSessionId — just send the new user message.
+  // On turn 1, send full Polaris context + history as before.
+  const isResume = !!session.claudeSessionId;
+  let fullPrompt;
+  if (isResume) {
+    fullPrompt = prompt;
+  } else {
+    const history = (session.lines || [])
+      .filter(l => l.role === 'user' || l.role === 'assistant')
+      .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
+      .join('\n\n');
+    const polarisContext = buildPolarisContextBlock(config);
+    fullPrompt = polarisContext + '\n\n' + (history || prompt);
+  }
+  const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
+  dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
   // Translate session tier → Claude Code --model flag.
@@ -3131,7 +3139,9 @@ function spawnMaxChat(sessionId, prompt, config) {
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
+  // --resume reuses the CLI session on disk (turn 2+), skipping history rebuild.
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel];
+  if (isResume) args.push('--resume', session.claudeSessionId);
   dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
   let proc;
   try {
