@@ -5813,35 +5813,19 @@ wss.on('connection', (ws) => {
     }
   } catch (e) { console.error('[app-update] check failed:', e.message); }
 
-  // Check for new git commits since last launch
+  // Send the last 5 commits on every launch
   (async () => {
     try {
-      const currentCommit = await runGit(['rev-parse', 'HEAD'], __dirname);
-      if (!currentCommit) return;
-      const cfg = readJSON(CONFIG_PATH, {});
-      const lastCommit = cfg.lastSeenCommit;
-      const logRange = lastCommit && lastCommit !== currentCommit
-        ? [lastCommit, currentCommit]   // known range
-        : (!lastCommit ? ['fallback'] : null); // first run — show recent history
-      if (logRange) {
-        const logArgs = logRange[0] === 'fallback'
-          ? ['log', '-5', '--format=%h|||%s|||%an|||%as']
-          : ['log', `${logRange[0]}..HEAD`, '--format=%h|||%s|||%an|||%as'];
-        const logOutput = await runGit(logArgs, __dirname);
-        const commits = logOutput.split('\n').filter(Boolean).map(line => {
-          const [hash, subject, author, date] = line.split('|||');
-          return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
-        }).filter(c => c.hash);
-        if (commits.length > 0) {
-          const fromCommit = (lastCommit || '').slice(0, 7) || null;
-          setTimeout(() => {
-            sendTo(ws, { type: 'event-git-changes', commits, fromCommit, toCommit: currentCommit.slice(0, 7) });
-          }, 700);
-        }
-      }
-      if (currentCommit !== lastCommit) {
-        cfg.lastSeenCommit = currentCommit;
-        writeJSON(CONFIG_PATH, cfg);
+      const logOutput = await runGit(['log', '-5', '--format=%h|||%s|||%an|||%ai'], __dirname);
+      if (!logOutput) return;
+      const commits = logOutput.split('\n').filter(Boolean).map(line => {
+        const [hash, subject, author, date] = line.split('|||');
+        return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
+      }).filter(c => c.hash);
+      if (commits.length > 0) {
+        setTimeout(() => {
+          sendTo(ws, { type: 'event-git-changes', commits });
+        }, 700);
       }
     } catch (e) { console.error('[git-changes] check failed:', e.message); }
   })();
