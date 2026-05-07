@@ -5656,12 +5656,12 @@
         const rect = card.getBoundingClientRect();
         const floatW = Math.min(Math.max(rect.width, 280), 640);
         floatEl.style.width = floatW + 'px';
-        const floatHeight = 120;
+        floatEl.style.left = Math.max(8, rect.left + (rect.width - floatW) / 2) + 'px';
+        floatEl.classList.add('visible');
+        const floatHeight = floatEl.offsetHeight;
         let top = rect.top - floatHeight - 8;
         if (top < 60) top = rect.bottom + 8;
-        floatEl.style.left = Math.max(8, rect.left + (rect.width - floatW) / 2) + 'px';
         floatEl.style.top = top + 'px';
-        floatEl.classList.add('visible');
       }
     }
     const projColor = s.projectName ? (window.getProjectColorByName && window.getProjectColorByName(s.projectName)) : null;
