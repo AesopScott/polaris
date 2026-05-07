@@ -2196,6 +2196,32 @@ async function runPreBuildCheck(ws, sourcePath) {
     baseVersion = saved.version || null;
   } catch {}
 
+  // Fallback: no saved head — find the commit that bumped package.json to the
+  // current version. That's the effective "last build" boundary.
+  if (!baseCommit) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(sourcePath, 'package.json'), 'utf8'));
+      baseVersion = pkg.version;
+      const hashes = execSync('git log --format=%H -- package.json', {
+        cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'],
+      }).toString().trim().split('\n').filter(Boolean);
+      for (const hash of hashes) {
+        try {
+          const pkgAtHash = JSON.parse(
+            execSync(`git show "${hash}":package.json`, {
+              cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'],
+            }).toString()
+          );
+          if (pkgAtHash.version === pkg.version) {
+            baseCommit = hash; // keep updating to get the oldest matching commit
+          } else {
+            break; // older version found — done
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
   const files = getChangedFiles(sourcePath, baseCommit);
   const baseLabel = baseVersion ? `v${baseVersion}` : (baseCommit ? baseCommit.slice(0, 7) : 'last commit');
 
@@ -5614,7 +5640,12 @@ function handleMessage(ws, raw) {
       const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(dir, `${safeName}.md`);
       fs.writeFileSync(filePath, content || '', 'utf8');
-      sendTo(ws, { type: 'obsidian-up-done', filePath });
+      // git add + commit + push in the vault repo (best-effort — failures don't block Obsidian write)
+      runGit(['add', filePath], vaultPath)
+        .then(() => runGit(['commit', '-m', `chore: add Polaris session ${safeName}`], vaultPath))
+        .then(() => runGit(['push'], vaultPath))
+        .catch(() => {})
+        .finally(() => sendTo(ws, { type: 'obsidian-up-done', filePath }));
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian Up failed: ${e.message}` });
     }

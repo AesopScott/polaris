@@ -3150,9 +3150,10 @@
         if (!statusEl) break;
         statusEl.style.color = '#94a3b8';
         if (msg.phase === 'start') {
+          const baseTxt = msg.baseLabel ? ` since ${escHtml(msg.baseLabel)}` : '';
           statusEl.innerHTML = msg.total === 0
-            ? '✓ No working-tree changes — nothing to review.'
-            : `⟳ Reviewing ${msg.total} changed file(s)…`;
+            ? `✓ No changes${baseTxt} — nothing to review.`
+            : `⟳ Reviewing ${msg.total} file(s) changed${baseTxt}…`;
         } else if (msg.phase === 'reviewing') {
           statusEl.innerHTML = `⟳ Reviewing ${msg.completed + 1}/${msg.total}: <code>${escHtml(msg.file)}</code>`;
         }
@@ -9043,7 +9044,7 @@
       return `<div id="cam-row-${s.id}" class="cam-session-row">
         ${pill}
         <span class="cam-name">${escHtml(s.name || 'Untitled Session')}</span>
-        <button onclick="camRowPush('${s.id}')" style="background:#3b82f6;color:#fff;">Push to Obsidian</button>
+        <button onclick="camRowPush('${s.id}')" style="background:#3b82f6;color:#fff;">Push to Obsidian and Git</button>
         <button onclick="camRowArchive('${s.id}')" style="background:#78350f;color:#fcd34d;">Archive</button>
         <button onclick="camRowSkip('${s.id}')" style="background:#374151;color:#d1d5db;">Skip</button>
       </div>`;
@@ -9063,7 +9064,7 @@
     if (!s) return;
     const row = document.getElementById('cam-row-' + sid);
     if (row) row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.textContent = b.textContent === 'Skip' ? 'Skip' : 'Pushing…'; });
-    camOnObsidianDone = () => { camOnObsidianDone = null; camMarkDone(sid, '✓ Pushed', '#4ade80'); };
+    camOnObsidianDone = () => { camOnObsidianDone = null; camMarkDone(sid, '✓ Obsidian + Git', '#4ade80'); };
     wsSend({ type: 'obsidian-up', sessionName: s.name, content: (s.lines || []).map(l => l.text).join('\n') });
   }
 
