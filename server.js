@@ -409,7 +409,7 @@ function brevoPost(payload) {
 // â"€â"€â"€ Git helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function runGit(args, cwd) {
   return new Promise(resolve => {
-    exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd }, (err, stdout) => {
+    exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd, windowsHide: true }, (err, stdout) => {
       resolve(err ? '' : stdout.trim());
     });
   });
@@ -5820,18 +5820,22 @@ wss.on('connection', (ws) => {
       if (!currentCommit) return;
       const cfg = readJSON(CONFIG_PATH, {});
       const lastCommit = cfg.lastSeenCommit;
-      if (lastCommit && lastCommit !== currentCommit) {
-        const logOutput = await runGit(
-          ['log', `${lastCommit}..HEAD`, '--format=%h|||%s|||%an|||%as'],
-          __dirname
-        );
+      const logRange = lastCommit && lastCommit !== currentCommit
+        ? [lastCommit, currentCommit]   // known range
+        : (!lastCommit ? ['fallback'] : null); // first run — show recent history
+      if (logRange) {
+        const logArgs = logRange[0] === 'fallback'
+          ? ['log', '--since=90 days ago', '--format=%h|||%s|||%an|||%as']
+          : ['log', `${logRange[0]}..HEAD`, '--format=%h|||%s|||%an|||%as'];
+        const logOutput = await runGit(logArgs, __dirname);
         const commits = logOutput.split('\n').filter(Boolean).map(line => {
           const [hash, subject, author, date] = line.split('|||');
           return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
         }).filter(c => c.hash);
         if (commits.length > 0) {
+          const fromCommit = (lastCommit || '').slice(0, 7) || null;
           setTimeout(() => {
-            sendTo(ws, { type: 'event-git-changes', commits, fromCommit: lastCommit.slice(0, 7), toCommit: currentCommit.slice(0, 7) });
+            sendTo(ws, { type: 'event-git-changes', commits, fromCommit, toCommit: currentCommit.slice(0, 7) });
           }, 700);
         }
       }
