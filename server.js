@@ -22,6 +22,7 @@ const LOCKS_PATH    = path.join(POLARIS_DIR, 'locks.json');
 const VERSIONS_PATH = path.join(POLARIS_DIR, 'file-versions.json');
 const VERSIONS_LOG_PATH = path.join(POLARIS_DIR, 'file-versions-log.jsonl');
 const VERSIONS_LOG_CAP = 1000;
+const ROUTINE_NOTIFICATION_PATH = path.join(POLARIS_DIR, 'routine_notifications.json');
 
 const CROSS_CHECKS_DIR = path.join(POLARIS_DIR, 'cross-checks');
 const SOURCE_BACKUPS_DIR = path.join(POLARIS_DIR, 'source-backups');
@@ -44,14 +45,20 @@ const SPACE_DIR     = path.join(POLARIS_DIR, 'space');
 const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
+const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
 // â"€â"€â"€ App-level secrets (gitignored, baked into build) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Brevo email (support tickets) ───────────────────────────────────────────
+const BREVO_API_KEY         = 'POLARIS_BREVO_KEY_REDACTED';
+const BREVO_SENDER_EMAIL    = 'ravenshroud@gmail.com';
+const BREVO_RECIPIENT_EMAIL = 'scott@aesopacademy.org';
+
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
-catch { console.log('[polaris] secrets.js not found — Support feature will be disabled'); }
+catch { console.log('[polaris] secrets.js not found'); }
 
 // â"€â"€â"€ MCP Catalog â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
@@ -93,7 +100,7 @@ const BASE_SYSTEM_PROMPT = [
 function buildSystemPrompt(config) {
   const patterns = config.protectedPatterns || ['*.md', '*.json'];
   const patternRule = `Protected file patterns — these file types require explicit user approval before ANY modification. State the planned change and wait for confirmation before writing: ${patterns.join(', ')}`;
-  const mcpServers = Object.keys(readClaudeJson().mcpServers || {});
+  const mcpServers = getConnectedMcpServers();
   const mcpLine = mcpServers.length > 0
     ? `You have the following MCP servers connected and their tools are available to you: ${mcpServers.join(', ')}. Use them proactively when relevant.`
     : '';
@@ -265,6 +272,25 @@ function getEnabledMcpServers() {
   return Object.keys(readClaudeJson().mcpServers || {});
 }
 
+// Returns MCP server names from the actual Claude Code config files:
+// ~/.mcp.json (global) and optionally {workDir}/.mcp.json (project-level).
+// This reflects what Claude Code actually has connected, unlike ~/.claude.json
+// which only tracks Polaris-managed servers.
+function getConnectedMcpServers(workDir) {
+  const servers = new Set();
+  try {
+    const g = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.mcp.json'), 'utf8'));
+    for (const k of Object.keys(g.mcpServers || {})) servers.add(k);
+  } catch {}
+  if (workDir) {
+    try {
+      const p = JSON.parse(fs.readFileSync(path.join(workDir, '.mcp.json'), 'utf8'));
+      for (const k of Object.keys(p.mcpServers || {})) servers.add(k);
+    } catch {}
+  }
+  return [...servers];
+}
+
 function getMcpInstances() {
   return (readConfig().mcp_instances || {});
 }
@@ -312,7 +338,7 @@ function redactDebugLog(lines, maxPrivacy) {
 }
 
 async function submitSupportTicket(ws, msg) {
-  if (!APP_SECRETS.brevoApiKey || APP_SECRETS.brevoApiKey === 'PASTE_YOUR_BREVO_KEY_HERE') {
+  if (!BREVO_API_KEY) {
     sendTo(ws, { type: 'support-ticket-result', ok: false, error: 'Brevo API key not configured. Support is unavailable in this build.' });
     return;
   }
@@ -382,8 +408,9 @@ async function submitSupportTicket(ws, msg) {
   }));
 
   const payload = {
-    sender:    { email: APP_SECRETS.brevoSenderEmail || 'no-reply@aesopacademy.org', name: 'Polaris Support' },
-    to:        [{ email: APP_SECRETS.brevoRecipientEmail || 'scott@aesopacademy.org' }],
+    sender:    { email: BREVO_SENDER_EMAIL, name: 'Polaris Support' },
+    to:        [{ email: BREVO_RECIPIENT_EMAIL }],
+    cc:        [{ email: 'ravenshroud@gmail.com' }],
     replyTo:   userInfo.email !== 'not provided' ? { email: userInfo.email, name: userInfo.name } : undefined,
     subject,
     htmlContent,
@@ -424,7 +451,7 @@ function brevoPost(payload) {
       path: '/v3/smtp/email',
       method: 'POST',
       headers: {
-        'api-key': APP_SECRETS.brevoApiKey,
+        'api-key': BREVO_API_KEY,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
         'Accept': 'application/json',
@@ -528,6 +555,18 @@ function watchGlobalFiles() {
       const results = syncGlobalToProjects();
       broadcast({ type: 'sync-complete', results });
     });
+  }
+
+  // Watch POLARIS_DIR for routine notification file updates
+  try {
+    fs.watch(POLARIS_DIR, (eventType, filename) => {
+      if (filename === 'routine_notifications.json') {
+        const notifications = readJSON(ROUTINE_NOTIFICATION_PATH, null);
+        if (notifications) broadcast({ type: 'event-routine-notification', notifications });
+      }
+    });
+  } catch (e) {
+    console.warn('[routine-notifications] Could not watch for notifications:', e.message);
   }
 }
 
@@ -1516,12 +1555,16 @@ function buildPolarisContextBlock(config, session) {
     ? config.routines.map(r => `  - ${r.name || r.id || '(unnamed)'}${r.schedule ? ` [${r.schedule}]` : ''}`).join('\n')
     : '';
 
-  const mcpServers = Object.keys(readClaudeJson().mcpServers || {});
+  const mcpServers = getConnectedMcpServers(session?.workDir);
 
   const lines = [
     '=== POLARIS CONTEXT (injected by server) ===',
     'You are running inside Polaris, a Claude Code SDK-based AI assistant host built by Scott.',
   ];
+
+  if (session && session.id) {
+    lines.push('', `Session ID: ${session.id}`);
+  }
 
   // Make the project-picker behavior contractual instead of relying on the
   // model to infer it from a list of options. If a project is set on the
@@ -1533,7 +1576,7 @@ function buildPolarisContextBlock(config, session) {
     lines.push(
       '',
       'Current session project: (none selected)',
-      'BEFORE doing anything else, ask the user which project this session should work in. Use the Available projects list below as the choices, plus a "no project (scratch)" option for one-off tasks. Do not begin the user\'s actual request until they have picked. Once the user tells you the project, call the SetProject tool with the exact project name before responding further.',
+      `BEFORE doing anything else, ask the user which project this session should work in. Use the Available projects list below as the choices, plus a "no project (scratch)" option for one-off tasks. Do not begin the user's actual request until they have picked. Once the user tells you the project, run this command (fill in the exact project name from the list), then continue:\ncurl -s -X POST http://127.0.0.1:${PORT}/set-project -H "Content-Type: application/json" -d "{\\"sessionId\\":\\"${session?.id}\\",\\"projectName\\":\\"PROJECT_NAME\\"}"`,
     );
   }
 
@@ -1611,7 +1654,7 @@ function inferTermStatus(lastText) {
 }
 
 function toolSetStatus({ status } = {}, sessionId) {
-  const ALLOWED = ['test', 'waiting', 'done'];
+  const ALLOWED = ['test', 'waiting', 'done', 'broken'];
   if (!ALLOWED.includes(status)) return `Invalid status "${status}". Allowed: ${ALLOWED.join(', ')}.`;
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
@@ -3177,7 +3220,10 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     for (const aud of agentAudio) {
       if (aud && aud.dataUrl) {
         const match = aud.dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-        if (match) blocks.push({ type: 'image_url', image_url: { url: aud.dataUrl } });
+        if (match) {
+          const format = match[1].split('/')[1] || 'mp3';
+          blocks.push({ type: 'input_audio', input_audio: { data: match[2], format } });
+        }
       }
     }
     if (blocks.length > 1) messageContent = blocks;
@@ -3713,6 +3759,23 @@ async function spawnMaxChat(sessionId, prompt, config) {
   } else {
     stdinPayload = fullPrompt;
   }
+  // Write .mcp.json so the Claude Code CLI can call Polaris-native tools (SetProject, SetStatus)
+  try {
+    const mcpJsonPath = path.join(cwd, '.mcp.json');
+    const existing = readJSON(mcpJsonPath, {});
+    const mcpConfig = {
+      ...existing,
+      mcpServers: {
+        ...(existing.mcpServers || {}),
+        polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` },
+      },
+    };
+    fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2), 'utf8');
+    dlog('MCP_JSON_WRITE', mcpJsonPath);
+  } catch (e) {
+    dlog('MCP_JSON_WRITE_ERR', e.message);
+  }
+
   dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
   let proc;
   try {
@@ -3731,6 +3794,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
   session.proc = proc;
   dlog('PID', proc.pid);
+  if (session.aborted) { proc.kill(); return; }
 
   // Stream-json parser: each line is a JSON event. Tolerate non-JSON lines
   // (older CLI builds may emit a banner before events).
@@ -4112,6 +4176,129 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // ─── Polaris MCP endpoint — exposes Polaris tools to Claude Code CLI ──────────
+  // Claude Code (Max plan) sessions can't access DIRECT_TOOLS (those go to the
+  // OpenRouter path). This HTTP MCP endpoint bridges the gap so SetProject,
+  // SetStatus, and QueryMemory are available to the Claude Code harness too.
+  if (req.method === 'OPTIONS' && req.url.startsWith('/polaris-mcp')) {
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
+    res.end();
+    return;
+  }
+  if (req.method === 'POST' && req.url.startsWith('/polaris-mcp')) {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+      let rpc;
+      try { rpc = JSON.parse(body); } catch {
+        res.writeHead(400, CORS); res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })); return;
+      }
+      const { id, method, params } = rpc;
+      const ok  = result => { res.writeHead(200, CORS); res.end(JSON.stringify({ jsonrpc: '2.0', id, result })); };
+      const err = (code, message) => { res.writeHead(200, CORS); res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } })); };
+
+      if (method === 'initialize') {
+        ok({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'polaris', version: '1.0' } });
+      } else if (method === 'notifications/initialized') {
+        res.writeHead(204); res.end();
+      } else if (method === 'tools/list') {
+        ok({ tools: [
+          {
+            name: 'SetProject',
+            description: 'Set the active project for this Polaris session. Call immediately after the user tells you which project to work on.',
+            inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from Available projects, or omit for no project (scratch).' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
+          },
+          {
+            name: 'SetStatus',
+            description: 'Set the session card status in the Polaris UI. Use "test" after delivering work, "waiting" when expecting user input, "done" when complete.',
+            inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'] }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['status', 'polaris_session_id'] },
+          },
+          {
+            name: 'QueryMemory',
+            description: 'Query the project knowledge base loaded from Obsidian. Omit filename to get all project context.',
+            inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
+          },
+        ] });
+      } else if (method === 'tools/call') {
+        const toolName = params && params.name;
+        const args = (params && params.arguments) || {};
+        const sessionId = args.polaris_session_id;
+        if (!sessionId) { err(-32602, 'Missing polaris_session_id'); return; }
+        try {
+          let result;
+          if      (toolName === 'SetProject')   result = toolSetProject(args, sessionId);
+          else if (toolName === 'SetStatus')    result = toolSetStatus(args, sessionId);
+          else if (toolName === 'QueryMemory')  result = await toolQueryMemory(args, sessionId);
+          else { err(-32601, `Unknown tool: ${toolName}`); return; }
+          ok({ content: [{ type: 'text', text: String(result) }] });
+        } catch (e) {
+          err(-32603, e.message);
+        }
+      } else {
+        err(-32601, `Unknown method: ${method}`);
+      }
+    });
+    return;
+  }
+
+  // MCP HTTP endpoint — exposes Polaris-native tools (SetProject, SetStatus) to Claude Code CLI
+  if (req.method === 'POST' && req.url.startsWith('/mcp/')) {
+    const sessionId = req.url.slice(5).split('?')[0];
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      let rpc;
+      try { rpc = JSON.parse(body); } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const { id, method, params } = rpc;
+      if (!('id' in rpc)) return res.end(''); // notification — no response
+      if (method === 'initialize') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'polaris-native', version: '1.0.0' },
+        }}));
+      }
+      if (method === 'tools/list') {
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [
+          { name: 'SetProject', description: 'Set the active project for this session. Call immediately after the user names their project.', inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit for no project (scratch).' } }, required: [] } },
+          { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'] } }, required: ['status'] } },
+        ]}}));
+      }
+      if (method === 'tools/call') {
+        const { name, arguments: args } = params || {};
+        let result;
+        if (name === 'SetProject') result = toolSetProject(args || {}, sessionId);
+        else if (name === 'SetStatus') result = toolSetStatus(args || {}, sessionId);
+        else return res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown tool: ${name}` } }));
+        return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(result) }] } }));
+      }
+      res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } }));
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/set-project') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { sessionId, projectName } = JSON.parse(body);
+        const result = toolSetProject({ projectName }, sessionId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
@@ -4477,7 +4664,12 @@ function handleMessage(ws, raw) {
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
-    const imgLabel = Array.isArray(images) && images.length ? '\n' + images.filter(i => i?.name).map(i => `📎 ${i.name}`).join('  ') : '';
+    const launchAttachments = [
+      ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
+      ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
+      ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
+    ];
+    const imgLabel = launchAttachments.length ? '\n' + launchAttachments.join('  ') : '';
     broadcast({ type: 'line', sessionId: id, text: prompt + imgLabel, role: 'user' });
     saveSessions();
     spawnChatRouter(id, prompt, config);
@@ -4544,14 +4736,25 @@ function handleMessage(ws, raw) {
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     session.status = 'running';
     session.lastPrompt = prompt;
-    if (projectName !== undefined) session.projectName = projectName || null;
+    if (projectName !== undefined) {
+      const newProject = projectName || null;
+      if (newProject !== session.projectName) {
+        session.projectName = newProject;
+        if (newProject) broadcast({ type: 'session-project-changed', sessionId, projectName: newProject, workDir: session.workDir });
+      }
+    }
     if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
     if (Array.isArray(docs)   && docs.length)   session.pendingDocs   = docs.filter(d => d && typeof d.dataUrl === 'string');
     if (Array.isArray(audio)  && audio.length)  session.pendingAudio  = audio.filter(a => a && typeof a.dataUrl === 'string');
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
     // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
     if (session.isChat) {
-      const imgLabel2 = Array.isArray(images) && images.length ? '\n' + images.filter(i => i?.name).map(i => `📎 ${i.name}`).join('  ') : '';
+      const resumeAttachments = [
+        ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
+        ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
+        ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
+      ];
+      const imgLabel2 = resumeAttachments.length ? '\n' + resumeAttachments.join('  ') : '';
       broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
     }
     broadcast({ type: 'session-status', sessionId, status: 'running' });
@@ -4673,6 +4876,22 @@ function handleMessage(ws, raw) {
 
   if (type === 'get-history') {
     sendTo(ws, { type: 'history', history: readJSON(HISTORY_PATH, []) });
+    return;
+  }
+
+  if (type === 'dismiss-routine-notification') {
+    const { id } = msg;
+    const notifs = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+    // Mark dismissed but keep for "View Last Run"; trim to latest per routine name
+    const marked = notifs.map(n => n.id === id ? { ...n, dismissed: true } : n);
+    const seen = new Set();
+    const trimmed = [...marked].reverse().filter(n => {
+      const key = n.routineName || n.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).reverse();
+    writeJSON(ROUTINE_NOTIFICATIONS_PATH, trimmed);
     return;
   }
 
@@ -5885,6 +6104,13 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'delete-ticket') {
+    const tickets = readJSON(TICKETS_PATH, []).filter(t => t.id !== msg.id);
+    writeJSON(TICKETS_PATH, tickets);
+    sendTo(ws, { type: 'tickets', tickets, installId: getInstallId() });
+    return;
+  }
+
   if (type === 'browse-dir') {
     const { dirPath } = msg;
     if (!dirPath) return;
@@ -6121,6 +6347,19 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();
+  // Ensure the 'polaris' MCP server is trusted by the Claude Code CLI
+  try {
+    const ccSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const ccSettings = readJSON(ccSettingsPath, {});
+    const enabled = Array.isArray(ccSettings.enabledMcpjsonServers) ? ccSettings.enabledMcpjsonServers : [];
+    if (!enabled.includes('polaris')) {
+      ccSettings.enabledMcpjsonServers = [...enabled, 'polaris'];
+      writeJSON(ccSettingsPath, ccSettings);
+      console.log('[polaris] Added "polaris" to enabledMcpjsonServers in ~/.claude/settings.json');
+    }
+  } catch (e) {
+    console.warn('[polaris] Could not update ~/.claude/settings.json:', e.message);
+  }
 });
 
 wss = new WebSocket.Server({ server: httpServer });
@@ -6184,9 +6423,11 @@ wss.on('connection', (ws) => {
       config:  maskedConfig(readConfig()),
       protectedPatterns: (readConfig().protectedPatterns || ['*.md']),
       installId: getInstallId(),
-      supportEnabled: !!(APP_SECRETS.brevoApiKey && APP_SECRETS.brevoApiKey !== 'PASTE_YOUR_BREVO_KEY_HERE'),
+      supportEnabled: !!BREVO_API_KEY,
       appVersion: require('./package.json').version,
       recentCommits,
+      routineNotifications: readJSON(ROUTINE_NOTIFICATION_PATH, null),
+      connectedMcpServers: getConnectedMcpServers(),
     });
 
     // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
@@ -6215,6 +6456,14 @@ wss.on('connection', (ws) => {
     if (recentCommits.length > 0) {
       sendTo(ws, { type: 'event-git-changes', commits: recentCommits });
     }
+
+    // Send any pending routine notifications (e.g. from the architecture audit routine)
+    try {
+      const routineNotifs = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+      if (routineNotifs.length > 0) {
+        setTimeout(() => sendTo(ws, { type: 'event-routine-notifications', notifications: routineNotifs }), 1400);
+      }
+    } catch (e) { console.error('[routine-notifs] read failed:', e.message); }
   })();
 
   ws.on('message', raw => handleMessage(ws, raw));
@@ -6223,3 +6472,11 @@ wss.on('connection', (ws) => {
 });
 
 wss.on('error', err => console.error('[polaris] WSS error:', err));
+
+// Watch for routine notifications written by scheduled routines and push to clients
+fs.watchFile(ROUTINE_NOTIFICATIONS_PATH, { persistent: false, interval: 2000 }, () => {
+  try {
+    const notifications = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+    if (notifications.length > 0) broadcast({ type: 'event-routine-notifications', notifications });
+  } catch {}
+});

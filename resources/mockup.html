@@ -40,6 +40,7 @@
     display: flex; gap: 12px; align-items: center; position: relative;
   }
   .notif-banner .dismiss { padding: 2px 10px; border-radius: 4px; border: 1px solid currentColor; cursor: pointer; font-size: 11px; }
+  .notif-banner.warn { background: #78350f; color: #fde68a; }
 
   /* Header */
   .ticker-wrap { width: 100%; background: linear-gradient(90deg, #0d1117 0%, #0f1a2e 40%, #130f1f 70%, #0d1117 100%); border-bottom: 1px solid rgba(96,165,250,0.2); height: 26px; display: flex; align-items: center; -webkit-app-region: drag; }
@@ -333,6 +334,28 @@
         0 24px 80px rgba(0,0,0,0.3);
     }
   }
+  /* Broken cards pulse bright orange — session died, needs manual recreation */
+  .card.status-broken-card {
+    animation: cardBrokenPulse 2s ease-in-out infinite;
+  }
+  @keyframes cardBrokenPulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 1px rgba(249,115,22,0.35),
+        0 0 18px rgba(249,115,22,0.18),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(249,115,22,0.8),
+        0 0 36px rgba(249,115,22,0.5),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+  }
   .card-resize-handle { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: 10; }
   .card-resize-handle:hover, .card-resize-handle.dragging { background: rgba(59,130,246,0.35); }
   .card.dragging { opacity: 0.35; }
@@ -510,6 +533,7 @@
   .status-error   { background: #7f1d1d20; color: #ef4444; }
   .status-waiting { background: #78350f20; color: #fbbf24; }
   .status-test    { background: #4c1d9520; color: #ef4444; }
+  .status-broken  { background: #7c2d0820; color: #f97316; }
   .dot-run { background: #3b82f6; }
   .dot-done { background: #22c55e; }
   .dot-err { background: #ef4444; }
@@ -627,6 +651,7 @@
   #changelog-popup.hidden { display: none; }
   #changelog-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.45); cursor: pointer; }
   #changelog-backdrop.hidden { display: none; }
+
   .changelog-commit {
     display: grid;
     grid-template-columns: 20px 52px 64px 52px 72px 1fr;
@@ -643,6 +668,27 @@
   .changelog-hash { font-family: 'Consolas', monospace; font-size: 10px; color: #60a5fa; }
   .changelog-date { font-size: 10px; opacity: 0.4; }
   .changelog-subject { line-height: 1.45; }
+
+  /* Routine Notification Popup */
+  #routine-notif-popup {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 10000; display: flex; flex-direction: column;
+    width: 460px; max-height: 380px;
+    background: var(--card-bg); color: var(--text);
+    border-radius: 10px; border: 1px solid var(--border);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+  }
+  #routine-notif-popup.hidden { display: none; }
+  #routine-notif-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.45); cursor: pointer; }
+  #routine-notif-backdrop.hidden { display: none; }
+  .routine-notif-ts { font-size: 10px; opacity: 0.4; margin-bottom: 10px; }
+  .routine-notif-item {
+    display: flex; gap: 8px; align-items: baseline;
+    padding: 5px 0; font-size: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .routine-notif-item:last-child { border-bottom: none; }
+  .routine-notif-bullet { color: #4ade80; font-size: 10px; flex-shrink: 0; }
 
   /* Close All dialog */
   #close-all-modal {
@@ -1992,6 +2038,18 @@
     </div>
   </div>
 
+  <!-- Routine Notification Popup -->
+  <div id="routine-notif-backdrop" class="hidden" onclick="closeRoutineNotifPopup()"></div>
+  <div id="routine-notif-popup" class="hidden palette">
+    <div class="preview-toolbar">
+      <span id="routine-notif-title" style="flex:1;font-size:13px;font-weight:800;">Architecture Notes Updated</span>
+      <button class="preview-close-btn" onclick="closeRoutineNotifPopup()">✕</button>
+    </div>
+    <div style="padding:14px 18px;overflow-y:auto;flex:1;">
+      <div id="routine-notif-list"></div>
+    </div>
+  </div>
+
   <!-- Code Health Panel -->
   <div class="preview-panel hidden palette" id="code-health-panel" style="width:860px;height:560px;top:80px;left:40px;">
     <div class="resize-handle resize-tl"></div>
@@ -2709,7 +2767,7 @@
       ['--card-stripe-color','--card-header-tint','--card-header-border','--card-title-color']
         .forEach(p => card.style.removeProperty(p));
     }
-    const INIT_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444' };
+    const INIT_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
     if (INIT_STRIPE[s.status]) card.style.setProperty('--card-stripe-color', INIT_STRIPE[s.status]);
     const existingChip = card.querySelector('.card-project-chip');
     if (chipLabel) {
@@ -3324,6 +3382,9 @@
         wsSend({ type: 'get-tickets' });
         if (msg.recentCommits && msg.recentCommits.length > 0) {
           setTimeout(() => showChangelogPopup(msg.recentCommits), 1000);
+        }
+        if ((msg.connectedMcpServers || []).length === 0) {
+          showMcpDisconnectedBanner();
         }
         break;
 
@@ -4008,6 +4069,14 @@
         break;
       }
 
+      case 'event-routine-notifications': {
+        if (msg.notifications && msg.notifications.length > 0) {
+          _allRoutineNotifs = msg.notifications;
+          setTimeout(() => showRoutineNotifPopup(msg.notifications), 800);
+        }
+        break;
+      }
+
       case 'session-pinned': {
         const s = sessionStore[msg.sessionId];
         if (s) s.pinned = !!msg.pinned;
@@ -4447,12 +4516,13 @@
       + (s.pinned ? ' pinned' : '')
       + (s.status === 'running' ? ' status-running-card' : '')
       + (s.status === 'waiting' ? ' status-waiting-card' : '')
-      + (s.status === 'test'    ? ' status-test-card'    : '');
+      + (s.status === 'test'    ? ' status-test-card'    : '')
+      + (s.status === 'broken'  ? ' status-broken-card'  : '');
     el.dataset.sid = s.id;
     if (s.height) el.style.height = s.height;
 
-    const statusClass = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' }[s.status] || 'status-running';
-    const statusLabel = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' }[s.status] || s.status;
+    const statusClass = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' }[s.status] || 'status-running';
+    const statusLabel = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', broken: 'Broken' }[s.status] || s.status;
     const rerunSnippet = '';
 
     let chipLabel = '';
@@ -4817,8 +4887,9 @@
     if (status === 'running') card.classList.add('status-running-card');
     else if (status === 'waiting') card.classList.add('status-waiting-card');
     else if (status === 'test') card.classList.add('status-test-card');
+    else if (status === 'broken') card.classList.add('status-broken-card');
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
-    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444' };
+    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
     const stripeColor = STATUS_STRIPE[status] || card.dataset.projectColor || null;
     if (stripeColor) card.style.setProperty('--card-stripe-color', stripeColor);
     else card.style.removeProperty('--card-stripe-color');
@@ -5461,6 +5532,22 @@
       el.textContent = connected ? 'Connected' : 'Disconnected';
       el.style.color = connected ? '#22c55e' : '#ef4444';
     });
+  }
+
+  function showMcpDisconnectedBanner() {
+    if (document.getElementById('mcp-disconnected-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'mcp-disconnected-banner';
+    banner.className = 'notif-banner warn';
+    banner.innerHTML = '⚠ No MCP servers connected — tools like Obsidian and Google Drive won\'t be available. Check <strong>~/.mcp.json</strong> or configure servers in the Connections tab. <button class="dismiss">Dismiss</button>';
+    banner.querySelector('.dismiss').addEventListener('click', () => banner.remove());
+    const app = document.getElementById('app-p1');
+    const ticker = app?.querySelector('.ticker-wrap');
+    if (ticker && ticker.nextSibling) {
+      app.insertBefore(banner, ticker.nextSibling);
+    } else if (app) {
+      app.prepend(banner);
+    }
   }
 
   // ── Debug log ─────────────────────────────────────────────────────────────────
@@ -7038,6 +7125,7 @@
         <td style="text-align:center;">
           <div style="display:flex;gap:3px;justify-content:center;">
             <button class="fbtn" style="background:#3b82f6;color:#fff;padding:2px 6px;" onclick="launchRoutine(${i})" title="Launch now">▶</button>
+            <button class="fbtn" style="background:#7c3aed;color:#fff;padding:2px 6px;" onclick="viewLastRoutineRun(${JSON.stringify(r.name || '')})" title="View last run">↺</button>
             <button class="card-btn" onclick="deleteRoutineRow(${i})" title="Remove">✕</button>
           </div>
         </td>`;
@@ -7129,6 +7217,61 @@
   }
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
+
+  let _routineNotifId = null;
+  let _allRoutineNotifs = [];
+
+  function _renderRoutineNotif(notif) {
+    const titleEl = document.getElementById('routine-notif-title');
+    if (titleEl) titleEl.textContent = notif.title || 'Notes Updated';
+    const list = document.getElementById('routine-notif-list');
+    if (list) {
+      const ts = notif.timestamp ? new Date(notif.timestamp).toLocaleString() : '';
+      list.innerHTML = (ts ? `<div class="routine-notif-ts">${escHtml(ts)}</div>` : '') +
+        (notif.items || []).map(item =>
+          `<div class="routine-notif-item"><span class="routine-notif-bullet">●</span><span>${escHtml(item)}</span></div>`
+        ).join('');
+    }
+    _routineNotifId = notif.dismissed ? null : notif.id;
+    document.getElementById('routine-notif-popup')?.classList.remove('hidden');
+    document.getElementById('routine-notif-backdrop')?.classList.remove('hidden');
+  }
+
+  function showRoutineNotifPopup(notifications) {
+    if (!notifications || !notifications.length) return;
+    _allRoutineNotifs = notifications;
+    const unread = notifications.filter(n => !n.dismissed);
+    if (!unread.length) return;
+    _renderRoutineNotif(unread[0]);
+  }
+
+  function closeRoutineNotifPopup() {
+    document.getElementById('routine-notif-popup')?.classList.add('hidden');
+    document.getElementById('routine-notif-backdrop')?.classList.add('hidden');
+    if (_routineNotifId) {
+      wsSend({ type: 'dismiss-routine-notification', id: _routineNotifId });
+      // Update local cache so viewLastRoutineRun still works after dismiss
+      _allRoutineNotifs = _allRoutineNotifs.map(n =>
+        n.id === _routineNotifId ? { ...n, dismissed: true } : n
+      );
+      _routineNotifId = null;
+    }
+  }
+
+  function viewLastRoutineRun(routineName) {
+    const match = [..._allRoutineNotifs].reverse().find(n => (n.routineName || '') === routineName);
+    if (match) { _renderRoutineNotif(match); return; }
+    // No cached entry — ask server for latest
+    wsSend({ type: 'get-routine-notifications' });
+    setTimeout(() => {
+      const m = [..._allRoutineNotifs].reverse().find(n => (n.routineName || '') === routineName);
+      if (m) _renderRoutineNotif(m);
+    }, 600);
+  }
+
+  window.showRoutineNotifPopup  = showRoutineNotifPopup;
+  window.closeRoutineNotifPopup = closeRoutineNotifPopup;
+  window.viewLastRoutineRun     = viewLastRoutineRun;
 
   const STATUS_CYCLE = ['done', 'test', 'waiting', 'error'];
   const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' };
