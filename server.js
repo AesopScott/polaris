@@ -4338,14 +4338,14 @@ function handleMessage(ws, raw) {
     const name = generateSessionName(prompt);
     const config = readConfig();
     // Default model label reflects the active backend + chosen tier. Max plan
-    // exposes Sonnet 4.6 (default) and Opus 4.7; Floor falls back to Sonnet
-    // since Max has no Haiku. OpenRouter fallback uses config.chatModel.
+    // exposes Sonnet 4.6 (balanced), Opus 4.7 (power), Haiku 4.5 (floor).
+    // OpenRouter fallback uses config.chatModel.
     const backend = (config.chatBackend || 'max').toLowerCase();
     const chatTier = (tier || 'balanced').toLowerCase();
     const maxModelLabel = chatTier === 'power'
       ? 'anthropic/claude-opus-4-7 (Max plan)'
       : chatTier === 'floor'
-        ? 'anthropic/claude-haiku-4-5 (Max plan)'
+        ? 'anthropic/claude-haiku-4-5-20251001 (Max plan)'
         : 'anthropic/claude-sonnet-4-6 (Max plan)';
     const chatModel = backend === 'max'
       ? maxModelLabel
