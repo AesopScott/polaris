@@ -3041,6 +3041,91 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
+// spawnMaxChat — chat-mode backend that spawns the Claude Code CLI and bills
+// against the user's Max plan instead of OpenRouter API. Conversation history
+// is rebuilt into the prompt each turn (no CLI session-id tracking needed —
+// Max plan covers the cost). Prompt is piped via stdin to avoid Windows'
+// 8191-char command-line limit. Default backend; `config.chatBackend = 'openrouter'`
+// switches to the legacy spawnChat path.
+function spawnMaxChat(sessionId, prompt, config) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  // Rebuild conversation prompt from history. The latest user line is already
+  // pushed by the launch-chat handler before this fires, so it's included.
+  const history = (session.lines || [])
+    .filter(l => l.role === 'user' || l.role === 'assistant')
+    .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
+    .join('\n\n');
+  const fullPrompt = history || prompt;
+
+  const claudeBin = config.claudeBinaryPath || 'claude';
+  let proc;
+  try {
+    proc = spawn(claudeBin, ['-p'], {
+      cwd: os.tmpdir(),
+      env: process.env,
+      shell: true,  // required on Windows so `claude.cmd` is resolvable
+    });
+  } catch (e) {
+    broadcast({ type: 'line', sessionId, text: `Failed to spawn Claude CLI: ${e.message}. Install Claude Code and run "claude login" with your Max account, or set config.chatBackend = "openrouter" to use the API path.`, role: 'error' });
+    broadcast({ type: 'session-status', sessionId, status: 'error' });
+    session.status = 'error';
+    session.endAt = Date.now();
+    return;
+  }
+  session.proc = proc;
+
+  proc.stdout.on('data', chunk => {
+    const text = chunk.toString();
+    if (text.trim()) broadcast({ type: 'line', sessionId, text, role: 'assistant' });
+  });
+
+  proc.stderr.on('data', chunk => {
+    const text = chunk.toString();
+    // Surface anything that looks like an error or auth/rate prompt
+    if (/error|fail|invalid|unauthor|rate.?limit|login|claude login/i.test(text)) {
+      broadcast({ type: 'line', sessionId, text: `[claude] ${text.slice(0, 800)}`, role: 'error' });
+    }
+  });
+
+  proc.on('close', code => {
+    session.status = code === 0 ? 'done' : 'error';
+    session.endAt = Date.now();
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+  });
+
+  proc.on('error', err => {
+    if (err.code === 'ENOENT') {
+      broadcast({
+        type: 'line', sessionId, role: 'error',
+        text: `Claude CLI not found. Install Claude Code (https://docs.claude.com/claude-code), then run "claude login" with your Max account. ` +
+              `Or set config.chatBackend = "openrouter" to use the legacy API path.`,
+      });
+    } else {
+      broadcast({ type: 'line', sessionId, text: `Claude CLI error: ${err.message}`, role: 'error' });
+    }
+    session.status = 'error';
+    session.endAt = Date.now();
+    broadcast({ type: 'session-status', sessionId, status: 'error' });
+  });
+
+  try {
+    proc.stdin.write(fullPrompt);
+    proc.stdin.end();
+  } catch (e) {
+    broadcast({ type: 'line', sessionId, text: `Failed to send prompt to Claude CLI: ${e.message}`, role: 'error' });
+  }
+}
+
+// spawnChatRouter — dispatches chat sessions to the configured backend.
+// Default 'max' (Claude CLI under Max plan). 'openrouter' uses spawnChat.
+function spawnChatRouter(sessionId, prompt, config) {
+  const backend = (config.chatBackend || 'max').toLowerCase();
+  if (backend === 'openrouter') return spawnChat(sessionId, prompt, config);
+  return spawnMaxChat(sessionId, prompt, config);
+}
+
 function spawnChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -3577,7 +3662,7 @@ function handleMessage(ws, raw) {
     broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: null, model: chatModel, isChat: true });
     broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
     saveSessions();
-    spawnChat(id, prompt, config);
+    spawnChatRouter(id, prompt, config);
     return;
   }
 
@@ -3643,7 +3728,7 @@ function handleMessage(ws, raw) {
     if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
     broadcast({ type: 'session-status', sessionId, status: 'running' });
     if (session.isChat) {
-      spawnChat(sessionId, prompt, readConfig());
+      spawnChatRouter(sessionId, prompt, readConfig());
     } else {
       runDirectAgent(sessionId, prompt, session.workDir);
       // Mirror prompt to linked fork session

@@ -1118,10 +1118,10 @@
       <!-- Row 2: mode toggle | spacer | Model selector -->
       <div style="display:flex;align-items:center;gap:10px;margin-top:15px;">
         <div class="mode-toggle">
-          <button class="mode-btn active" data-mode="chat">Chat</button>
+          <button class="mode-btn active" data-mode="chat">Max</button>
           <button class="mode-btn" data-mode="code">Code</button>
         </div>
-        <span class="mode-hint text-muted" style="font-size:10px;">DeepSeek web chat · no agent tools, no working directory</span>
+        <span class="mode-hint text-muted" style="font-size:10px;">Claude Max via local CLI · billed against your Max plan · no agent tools, no working directory</span>
       </div>
       <div></div>
       <div style="display:flex;flex-direction:column;gap:4px;width:110px;">
@@ -2487,12 +2487,12 @@
     const ctxRow = bar.querySelector('.launch-context-row');
     if (ctxRow) { ctxRow.style.opacity = mode === 'chat' ? '0.35' : ''; ctxRow.style.pointerEvents = mode === 'chat' ? 'none' : ''; }
     const hint = bar.querySelector('.mode-hint');
-    if (hint) hint.textContent = mode === 'chat' ? 'DeepSeek web chat · no agent tools, no working directory' : buildCodeHint();
+    if (hint) hint.textContent = mode === 'chat' ? 'Claude Max via local CLI · billed against your Max plan · no agent tools, no working directory' : buildCodeHint();
     const promptEl = bar.closest('.palette')?.querySelector('.prompt-area');
     if (promptEl) promptEl.placeholder = mode === 'chat' ? 'Describe what you want to discuss...' : 'Describe what you want this agent to do...';
     const launchBtn = bar.querySelector('.launch-action-btn');
     if (launchBtn && !resumeTarget) launchBtn.innerHTML = mode === 'chat'
-      ? '<span class="icon">💬</span><span class="lbl">Chat</span>'
+      ? '<span class="icon">💬</span><span class="lbl">Max</span>'
       : '<span class="icon">▶</span><span class="lbl">Launch</span>';
   }
 
@@ -8409,7 +8409,7 @@
       const isChat  = s.isChat;
       const color   = !isChat && project && window.getProjectColorByName ? window.getProjectColorByName(project) : null;
       const pill    = isChat
-        ? `<span style="font-size:10px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);border-radius:4px;padding:1px 6px;flex-shrink:0;">Chat</span>`
+        ? `<span style="font-size:10px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);border-radius:4px;padding:1px 6px;flex-shrink:0;">Max</span>`
         : color
           ? `<span style="font-size:10px;font-weight:700;color:${color};background:${color}22;border:1px solid ${color}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${escHtml(project)}</span>`
           : '';
