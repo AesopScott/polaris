@@ -5782,12 +5782,12 @@
     for (const file of files) attachFile(file, sourceEl);
   }
 
-  function openFilePicker() {
+  function openFilePicker(sourceEl) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
     fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,.webm,.aac';
-    fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f); };
+    fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f, sourceEl); };
     fileInput.click();
   }
   window.triggerUpload = openFilePicker;
@@ -10512,6 +10512,7 @@
       <div class="file-chips"></div>
       <textarea class="prompt-area" id="float-prompt-area" placeholder="Continue this session..." style="height:54px;"></textarea>
       <span class="token-count text-muted">~0 / 200k tokens</span>
+      <button class="upload-btn" title="Attach a file" onclick="triggerUpload(this)">⬆ Upload</button>
     </div>
     <button class="launch-btn launch-action-btn" id="float-launch-btn" style="width:110px;flex-shrink:0;" onclick="doLaunch()">
       <span class="icon">↩</span><span class="lbl">Resume</span>
