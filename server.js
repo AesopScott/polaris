@@ -2131,6 +2131,7 @@ function loadAllCrossChecks(limit = 200) {
 // Build button gates on this — if the repo state hasn't been reviewed, build
 // is rejected and the UI prompts the user to run the check first.
 const PRE_BUILD_CHECK_PATH = path.join(POLARIS_DIR, 'pre-build-check.json');
+const LAST_BUILD_HEAD_PATH = path.join(POLARIS_DIR, 'last-build-head.json');
 
 function getRepoSnapshot(sourcePath) {
   try {
@@ -2159,39 +2160,48 @@ function getPreBuildCheckStatus(sourcePath) {
   };
 }
 
-// List files changed in the working tree (uncommitted) plus any committed
-// since some baseline. For pre-build check we just look at working-tree
-// changes — committed-but-not-built changes are already "in HEAD" and would
-// only matter if we tracked a separate "last-built commit" tag.
-function getChangedFiles(sourcePath) {
+// List files changed since baseCommit (all commits since last build) plus any
+// uncommitted working-tree changes. baseCommit is the git SHA saved when the
+// last build was triggered; falls back to uncommitted-only if absent.
+function getChangedFiles(sourcePath, baseCommit) {
+  const skip = f => f.startsWith('dist/') || f.startsWith('node_modules/') || f.endsWith('.lock');
+  const files = new Set();
   try {
+    if (baseCommit) {
+      const committed = execSync(`git diff "${baseCommit}"..HEAD --name-only`, {
+        cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'],
+      }).toString();
+      committed.split('\n').map(l => l.trim()).filter(Boolean).forEach(f => files.add(f));
+    }
     const out = execSync('git status --porcelain', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    return out.split('\n')
-      .map(l => l.trim())
-      .filter(Boolean)
-      .map(l => {
-        // porcelain v1: "XY filename" — XY is the status code, possibly with
-        // " -> " for renames. We just want the filename.
-        const m = l.match(/^.{1,3}\s+(?:.+\s->\s)?(.+)$/);
-        return m ? m[1].replace(/^"|"$/g, '') : null;
-      })
-      .filter(Boolean)
-      .filter(f => !f.startsWith('dist/') && !f.startsWith('node_modules/') && !f.endsWith('.lock'));
-  } catch {
-    return [];
-  }
+    out.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+      const m = l.match(/^.{1,3}\s+(?:.+\s->\s)?(.+)$/);
+      return m ? m[1].replace(/^"|"$/g, '') : null;
+    }).filter(Boolean).forEach(f => files.add(f));
+  } catch {}
+  return [...files].filter(f => !skip(f));
 }
 
 async function runPreBuildCheck(ws, sourcePath) {
   const config = readConfig();
   const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
   const model = config.crossCheckModel || CROSS_CHECK_DEFAULT_MODEL;
-  const files = getChangedFiles(sourcePath);
 
-  sendTo(ws, { type: 'pre-build-check-progress', phase: 'start', total: files.length });
+  // Read the git SHA from when the last build was triggered
+  let baseCommit = null;
+  let baseVersion = null;
+  try {
+    const saved = JSON.parse(fs.readFileSync(LAST_BUILD_HEAD_PATH, 'utf8'));
+    baseCommit = saved.head || null;
+    baseVersion = saved.version || null;
+  } catch {}
+
+  const files = getChangedFiles(sourcePath, baseCommit);
+  const baseLabel = baseVersion ? `v${baseVersion}` : (baseCommit ? baseCommit.slice(0, 7) : 'last commit');
+
+  sendTo(ws, { type: 'pre-build-check-progress', phase: 'start', total: files.length, baseLabel });
 
   if (files.length === 0) {
-    // Nothing to review; record an empty pass so the build can proceed.
     const snapshot = getRepoSnapshot(sourcePath);
     fs.writeFileSync(PRE_BUILD_CHECK_PATH, JSON.stringify({
       lastCheckedAt: new Date().toISOString(),
@@ -2199,9 +2209,10 @@ async function runPreBuildCheck(ws, sourcePath) {
       repoStatus: snapshot.status,
       verdict: 'PASS',
       files: [],
-      summary: 'No changes to review.',
+      groups: [],
+      summary: `No changes since ${baseLabel}.`,
     }, null, 2), 'utf8');
-    sendTo(ws, { type: 'pre-build-check-complete', verdict: 'PASS', files: [], summary: 'No changes to review.' });
+    sendTo(ws, { type: 'pre-build-check-complete', verdict: 'PASS', files: [], groups: [], summary: `No changes since ${baseLabel}.`, baseLabel });
     return;
   }
 
@@ -2218,14 +2229,15 @@ async function runPreBuildCheck(ws, sourcePath) {
     try { newContent = fs.readFileSync(abs, 'utf8'); } catch {}
     let originalContent = '';
     try {
-      originalContent = execSync(`git show HEAD:"${rel}"`, { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    } catch { /* new file — original is empty */ }
+      const base = baseCommit || 'HEAD';
+      originalContent = execSync(`git show ${base}:"${rel}"`, { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    } catch { /* new file or not in base commit */ }
 
     sendTo(ws, { type: 'pre-build-check-progress', phase: 'reviewing', completed: i, total: files.length, file: rel });
 
     const review = await crossCheckChange({
       sessionId: 'pre-build-check',
-      sessionPrompt: 'Pre-build cross-check across all working-tree changes.',
+      sessionPrompt: `Pre-build cross-check: all changes since ${baseLabel}.`,
       filePath: abs,
       originalContent,
       newContent,
@@ -2241,12 +2253,23 @@ async function runPreBuildCheck(ws, sourcePath) {
     });
   }
 
-  // Aggregate verdict: FAIL if any file FAILed, ERROR if any errored (and no FAILs), otherwise PASS
+  // Group results by configured project (match sourcePath → project name)
+  const projects = (config.projects || []).filter(p => p.workDir);
+  const normSource = sourcePath.replace(/\\/g, '/').toLowerCase();
+  const groups = [];
+
+  // Find which configured project owns this sourcePath
+  const ownerProject = projects.find(p => p.workDir.replace(/\\/g, '/').toLowerCase() === normSource);
+  const projectLabel = ownerProject ? (ownerProject.name || ownerProject.workDir) : 'Polaris';
+
+  // All files belong to the same source dir, so one group
+  groups.push({ project: projectLabel, workDir: sourcePath, files: results });
+
   const verdict = results.some(r => r.verdict === 'FAIL') ? 'FAIL'
                 : results.some(r => r.verdict === 'ERROR') ? 'ERROR'
                 : 'PASS';
   const passCount = results.filter(r => r.verdict === 'PASS').length;
-  const summary = `${passCount}/${results.length} files passed reviewer (${model.split('/').pop()}).`;
+  const summary = `${passCount}/${results.length} files passed since ${baseLabel} (${model.split('/').pop()}).`;
 
   const snapshot = getRepoSnapshot(sourcePath);
   fs.writeFileSync(PRE_BUILD_CHECK_PATH, JSON.stringify({
@@ -2255,14 +2278,14 @@ async function runPreBuildCheck(ws, sourcePath) {
     repoStatus: snapshot.status,
     verdict,
     files: results,
+    groups,
     summary,
     model,
+    baseCommit,
+    baseVersion,
   }, null, 2), 'utf8');
 
-  sendTo(ws, {
-    type: 'pre-build-check-complete',
-    verdict, files: results, summary, model,
-  });
+  sendTo(ws, { type: 'pre-build-check-complete', verdict, files: results, groups, summary, model, baseLabel });
 }
 
 function toolGlob({ pattern, path: searchPath }, workDir) {
@@ -4684,6 +4707,13 @@ function handleMessage(ws, raw) {
     // Routed through "cmd /c start" because Electron is a GUI app with no
     // console — spawning powershell.exe directly produces no visible window
     // even with windowsHide:false. "start" explicitly creates a new console.
+    // Save the current git HEAD so the next pre-build check diffs from here
+    try {
+      const head = execSync('git rev-parse HEAD', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      const pkg = JSON.parse(fs.readFileSync(path.join(sourcePath, 'package.json'), 'utf8'));
+      fs.writeFileSync(LAST_BUILD_HEAD_PATH, JSON.stringify({ head, version: pkg.version, builtAt: new Date().toISOString() }), 'utf8');
+    } catch {}
+
     const fullScript = path.join(sourcePath, 'scripts', 'build-install.ps1');
     if (!fs.existsSync(fullScript)) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
