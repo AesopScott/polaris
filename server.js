@@ -5648,7 +5648,7 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'obsidian-up') {
-    const { sessionName, content } = msg;
+    const { sessionName, content, projectName } = msg;
     const config = readConfig();
     const vaultPath = config.obsidianVaultPath;
     if (!vaultPath) {
@@ -5661,11 +5661,17 @@ function handleMessage(ws, raw) {
       const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(dir, `${safeName}.md`);
       fs.writeFileSync(filePath, content || '', 'utf8');
-      // git add + commit + push in the vault repo (best-effort — failures don't block Obsidian write)
-      runGit(['add', filePath], vaultPath)
+      // git add + commit + push in the vault repo (best-effort)
+      const vaultGit = runGit(['add', filePath], vaultPath)
         .then(() => runGit(['commit', '-m', `chore: add Polaris session ${safeName}`], vaultPath))
         .then(() => runGit(['push'], vaultPath))
-        .catch(() => {})
+        .catch(() => {});
+      // also push the project's code repo so code changes land before window closes
+      const proj = (config.projects || []).find(p => p.name === projectName);
+      const codeGit = proj && proj.workDir
+        ? runGit(['push'], proj.workDir).catch(() => {})
+        : Promise.resolve();
+      Promise.all([vaultGit, codeGit])
         .finally(() => sendTo(ws, { type: 'obsidian-up-done', filePath }));
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian Up failed: ${e.message}` });

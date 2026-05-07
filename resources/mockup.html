@@ -9084,7 +9084,7 @@
     const row = document.getElementById('cam-row-' + sid);
     if (row) row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.textContent = b.textContent === 'Skip' ? 'Skip' : 'Pushing…'; });
     camOnObsidianDone = () => { camOnObsidianDone = null; camMarkDone(sid, '✓ Obsidian + Git', '#4ade80'); };
-    wsSend({ type: 'obsidian-up', sessionName: s.name, content: (s.lines || []).map(l => l.text).join('\n') });
+    wsSend({ type: 'obsidian-up', sessionName: s.name, projectName: s.projectName || null, content: (s.lines || []).map(l => l.text).join('\n') });
   }
 
   function camRowArchive(sid) {
