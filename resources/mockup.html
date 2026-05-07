@@ -611,6 +611,8 @@
     box-shadow: 0 8px 40px rgba(0,0,0,0.7);
   }
   #changelog-popup.hidden { display: none; }
+  #changelog-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.45); cursor: pointer; }
+  #changelog-backdrop.hidden { display: none; }
   .changelog-commit {
     display: grid;
     grid-template-columns: 24px 52px 80px 1fr;
@@ -1976,6 +1978,7 @@
   <div id="close-all-modal" class="palette"></div>
 
   <!-- Startup Changelog Popup -->
+  <div id="changelog-backdrop" class="hidden" onclick="closeChangelogPopup()"></div>
   <div id="changelog-popup" class="hidden palette">
     <div class="preview-toolbar">
       <span id="changelog-title" style="flex:1;font-size:13px;font-weight:800;">What's New</span>
@@ -6909,10 +6912,14 @@
     const titleEl = document.getElementById('changelog-title');
     if (titleEl) titleEl.textContent = window.appVersion ? `What's New — v${window.appVersion}` : "What's New";
     el.classList.remove('hidden');
+    const bd = document.getElementById('changelog-backdrop');
+    if (bd) bd.classList.remove('hidden');
   }
   function closeChangelogPopup() {
     const el = document.getElementById('changelog-popup');
     if (el) el.classList.add('hidden');
+    const bd = document.getElementById('changelog-backdrop');
+    if (bd) bd.classList.add('hidden');
   }
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
