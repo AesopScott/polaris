@@ -5895,7 +5895,9 @@ wss.on('connection', (ws) => {
   (async () => {
     let recentCommits = [];
     try {
-      const logOutput = await runGit(['log', '-5', '--format=%h%x09%s%x09%an%x09%ai'], __dirname);
+      const polarisProject = (readConfig().projects || []).find(p => p.name === 'Polaris');
+      const gitDir = (polarisProject && polarisProject.workDir) || __dirname;
+      const logOutput = await runGit(['log', '-5', '--format=%h%x09%s%x09%an%x09%ai'], gitDir);
       if (logOutput) {
         recentCommits = logOutput.split('\n').filter(Boolean).map(line => {
           const [hash, subject, author, date] = line.split('\t');
