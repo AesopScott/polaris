@@ -1116,7 +1116,7 @@
         <!-- Row 3 -->
         <button class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
-        <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Versions</span></button>
+        <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Version</span></button>
         <button class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
         <button id="btn-connect" class="hbtn btn-systems" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
         <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
@@ -3259,6 +3259,7 @@
           if (idEl) idEl.textContent = msg.installId;
         }
         if (msg.appVersion) {
+          window.appVersion = msg.appVersion;
           const verEl = document.getElementById('header-version');
           if (verEl) verEl.textContent = `v${msg.appVersion}`;
         }
@@ -6889,9 +6890,7 @@
       ).join('');
     }
     const vEl = document.getElementById('changelog-version');
-    if (vEl) vEl.textContent = (window.gitChangesFrom && window.gitChangesTo)
-      ? `${window.gitChangesFrom} → ${window.gitChangesTo}`
-      : '';
+    if (vEl) vEl.textContent = window.appVersion ? `v${window.appVersion}` : '';
     el.classList.remove('hidden');
   }
   function closeChangelogPopup() {

@@ -5699,18 +5699,24 @@ function handleMessage(ws, raw) {
       return;
     }
     try {
-      const dir = path.join(vaultPath, 'Polaris_Sessions');
-      fs.mkdirSync(dir, { recursive: true });
+      const proj = (config.projects || []).find(p => p.name === projectName);
+      // Derive vault root from the project's absolute obsidianDir, same logic as scaffoldObsidianProject
+      const buildPath = proj?.obsidianDir && path.isAbsolute(path.normalize(proj.obsidianDir))
+        ? path.normalize(proj.obsidianDir)
+        : path.join(vaultPath, proj?.obsidianDir || '');
+      const vaultRoot = proj?.obsidianDir ? path.dirname(buildPath) : vaultPath;
+      const sessionsDir = proj?.obsidianSessionsDir && path.isAbsolute(path.normalize(proj.obsidianSessionsDir))
+        ? path.normalize(proj.obsidianSessionsDir)
+        : path.join(vaultRoot, proj?.obsidianSessionsDir || `${projectName || 'Polaris'}_Sessions`);
+      fs.mkdirSync(sessionsDir, { recursive: true });
       const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
-      const filePath = path.join(dir, `${safeName}.md`);
+      const filePath = path.join(sessionsDir, `${safeName}.md`);
       fs.writeFileSync(filePath, content || '', 'utf8');
       // git add + commit + push in the vault repo (best-effort)
-      const vaultGit = runGit(['add', filePath], vaultPath)
-        .then(() => runGit(['commit', '-m', `chore: add Polaris session ${safeName}`], vaultPath))
-        .then(() => runGit(['push'], vaultPath))
+      const vaultGit = runGit(['add', filePath], vaultRoot)
+        .then(() => runGit(['commit', '-m', `chore: add ${projectName || 'Polaris'} session ${safeName}`], vaultRoot))
+        .then(() => runGit(['push'], vaultRoot))
         .catch(() => {});
-      // also push the project's code repo so code changes land before window closes
-      const proj = (config.projects || []).find(p => p.name === projectName);
       const codeGit = proj && proj.workDir
         ? runGit(['push'], proj.workDir).catch(() => {})
         : Promise.resolve();
@@ -5903,7 +5909,7 @@ wss.on('connection', (ws) => {
     try {
       const polarisProject = (readConfig().projects || []).find(p => p.name === 'Polaris');
       const gitDir = (polarisProject && polarisProject.workDir) || __dirname;
-      const logOutput = await runGit(['log', '-5', '--format=%h%x09%s%x09%an%x09%ai'], gitDir);
+      const logOutput = await runGit(['log', '-15', '--format=%h%x09%s%x09%an%x09%ai'], gitDir);
       if (logOutput) {
         recentCommits = logOutput.split('\n').filter(Boolean).map(line => {
           const [hash, subject, author, date] = line.split('\t');
