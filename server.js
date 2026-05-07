@@ -2830,13 +2830,14 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
       const callId = assistantMsg.tool_calls[tcIdx]?.id || tc.id;
       let toolInput;
       try { toolInput = JSON.parse(tc.arguments); } catch { toolInput = {}; }
-      broadcast({ type: 'line', sessionId, text: `⚙ ${toolDisplayLabel(tc.name, toolInput)}`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `⚙ ${toolDisplayLabel(tc.name, toolInput)}`, role: 'tool' });
       dlog('TOOL', `${tc.name} ${tc.arguments.slice(0,200)}`);
       let toolResult;
       try { toolResult = await executeDirectTool(tc.name, toolInput, workDir, sessionId); }
       catch (err) { toolResult = `Error: ${err.message}`; dlog('TOOL_ERR', err.message); }
       const resultStr = String(toolResult).slice(0, 50000);
       dlog('TOOL_RESULT', resultStr.slice(0, 200));
+      broadcast({ type: 'line', sessionId, text: `  ↳ ${resultStr.slice(0, 400)}${resultStr.length > 400 ? '…' : ''}`, role: 'tool' });
       session.messages.push({ role: 'tool', tool_call_id: callId, content: resultStr });
     }
   }
@@ -2850,7 +2851,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
       lastMsg.content && lastMsg.content.trim().length > 0;
     if (!lastIsAssistantText) {
       dlog('CONTINUATION', 'Loop ended without final assistant text — requesting final answer');
-      broadcast({ type: 'line', sessionId, text: '⚙ Requesting final answer...', role: 'system' });
+      broadcast({ type: 'line', sessionId, text: '⚙ Requesting final answer...', role: 'tool' });
       session.messages.push({ role: 'user', content: 'Please provide your final answer based on everything you have done so far.' });
       const contResult = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
       if (!contResult.error && contResult.textAccum) {
@@ -3196,7 +3197,7 @@ function spawnMaxChat(sessionId, prompt, config) {
             broadcast({ type: 'line', sessionId, text: part.text, role: 'assistant' });
           } else if (part.type === 'tool_use') {
             const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
-            broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'system' });
+            broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'tool' });
             dlog('TOOL_USE', summary);
           }
         }

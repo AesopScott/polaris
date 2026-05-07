@@ -4039,6 +4039,7 @@
             <button class="card-btn" title="Preview — render output of files this session has edited" data-action="toggle-preview" data-preview-btn>👁</button>
             <button class="card-btn" title="Archive session — remove from grid and save for later" data-action="archive">📦</button>
             <button class="card-btn ${s.isForked ? 'fork-linked' : (s.forkActive ? 'fork-active' : '')}" title="${s.isForked ? 'Forked — click to promote to independent session' : (s.forkActive ? 'Fork active — click to stop mirroring' : 'Fork — mirror all prompts to a second model')}" data-action="fork" data-fork-btn>⑂</button>
+            <button class="card-btn" title="Verbose — show tool calls and responses" data-action="toggle-verbose" data-verb-btn>≡</button>
             <button class="card-btn" title="Stop" data-action="stop">■</button>
           </div>
         </div>
@@ -4267,7 +4268,7 @@
 
   function makeLineEl(line, sessionId) {
     const div = document.createElement('div');
-    div.className = { user: 't-user', assistant: 't-normal', error: 't-warn' }[line.role] || 't-normal';
+    div.className = { user: 't-user', assistant: 't-normal', error: 't-warn', tool: 't-verb' }[line.role] || 't-normal';
     div.textContent = line.text;
     if (sessionId) {
       const s = sessionStore[sessionId];
@@ -4486,6 +4487,12 @@
           const model = cfg.defaultForkModel || cfg.openRouterFloorModel || 'openrouter/auto';
           wsSend({ type: 'start-fork', primarySessionId: sessionId, forkModelId: model });
         }
+        break;
+      }
+      case 'toggle-verbose': {
+        const isOn = cardEl.classList.toggle('verbose-on');
+        const btn = cardEl.querySelector('[data-verb-btn]');
+        if (btn) btn.classList.toggle('verb-active', isOn);
         break;
       }
     }
