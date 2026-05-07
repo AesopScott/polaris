@@ -3194,9 +3194,13 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     releaseSessionMemory(sessionId);
     return;
   }
-  if (s) { s.status = 'done'; s.endAt = Date.now(); }
+  // Preserve any status the agent explicitly set via SetStatus (e.g. 'test', 'waiting').
+  // Only fall back to 'done' if the agent didn't set one.
+  const AGENT_TERMINAL_STATUSES = new Set(['test', 'waiting', 'done']);
+  const termStatus = (s && AGENT_TERMINAL_STATUSES.has(s.status)) ? s.status : 'done';
+  if (s) { s.status = termStatus; s.endAt = Date.now(); }
   saveSessionMessages(sessionId);
-  broadcast({ type: 'session-status', sessionId, status: 'done' });
+  broadcast({ type: 'session-status', sessionId, status: termStatus });
   autoObsidianForSession(sessionId);
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   releaseSessionMemory(sessionId);
