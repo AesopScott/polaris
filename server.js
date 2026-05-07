@@ -54,11 +54,6 @@ let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
 catch { console.log('[polaris] secrets.js not found'); }
 
-// ─── Brevo email (support tickets) ───────────────────────────────────────────
-// API key sourced from gitignored secrets.js so the secret never lands in git.
-const BREVO_API_KEY         = APP_SECRETS.brevoApiKey || '';
-const BREVO_SENDER_EMAIL    = 'ravenshroud@gmail.com';
-const BREVO_RECIPIENT_EMAIL = 'scott@aesopacademy.org';
 
 // â"€â"€â"€ MCP Catalog â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
@@ -354,8 +349,8 @@ function redactDebugLog(lines, maxPrivacy) {
 }
 
 async function submitSupportTicket(ws, msg) {
-  if (!BREVO_API_KEY) {
-    sendTo(ws, { type: 'support-ticket-result', ok: false, error: 'Brevo API key not configured. Support is unavailable in this build.' });
+  if (!getMcpServerConfigs().brevo) {
+    sendTo(ws, { type: 'support-ticket-result', ok: false, error: 'Brevo is not connected. Configure it in the Connections panel to enable support tickets.' });
     return;
   }
 
@@ -366,7 +361,6 @@ async function submitSupportTicket(ws, msg) {
   const submittedAt = Date.now();
   const sessionsArr = Array.from(sessions.values());
 
-  // Auto-included diagnostics (privacy-aware)
   const diagnostics = {
     appVersion:    require('./package.json').version,
     platform:      process.platform,
@@ -375,7 +369,6 @@ async function submitSupportTicket(ws, msg) {
     installId,
     activeSessions: sessionsArr.length,
     currentProject: maxPrivacy ? '[redacted]' : (config.lastProject || 'none'),
-    recentDebugLog: [], // filled by client because debug log lives there
   };
 
   const userInfo = {
@@ -415,77 +408,30 @@ async function submitSupportTicket(ws, msg) {
 
   const textContent = lines.join('\n');
   const htmlContent = `<pre style="font-family:Consolas,monospace;font-size:12px;line-height:1.5;">${textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+  const subject     = `[Polaris ${msg.ticketType || 'Other'}${msg.severity ? ' / ' + msg.severity : ''}] ${msg.subject || '(no subject)'}`;
 
-  const subject = `[Polaris ${msg.ticketType || 'Other'}${msg.severity ? ' / ' + msg.severity : ''}] ${msg.subject || '(no subject)'}`;
-
-  const attachments = (msg.attachments || []).filter(a => a && a.name && a.base64).slice(0, 5).map(a => ({
-    name: a.name,
-    content: a.base64,
-  }));
-
-  const payload = {
-    sender:    { email: BREVO_SENDER_EMAIL, name: 'Polaris Support' },
-    to:        [{ email: BREVO_RECIPIENT_EMAIL }],
-    cc:        [{ email: 'ravenshroud@gmail.com' }],
-    replyTo:   userInfo.email !== 'not provided' ? { email: userInfo.email, name: userInfo.name } : undefined,
-    subject,
-    htmlContent,
-    textContent,
-    attachment: attachments.length ? attachments : undefined,
-  };
-
-  const ok = await brevoPost(payload).catch(e => ({ ok: false, error: e.message }));
-
-  if (ok.ok === false) {
-    sendTo(ws, { type: 'support-ticket-result', ok: false, error: ok.error || 'Email send failed' });
+  try {
+    await callMcpTool('brevo', 'send_email', {
+      to:      [{ email: 'scott@aesopacademy.org' }],
+      from:    { email: 'ravenshroud@gmail.com', name: 'Polaris Support' },
+      replyTo: userInfo.email !== 'not provided' ? { email: userInfo.email, name: userInfo.name } : undefined,
+      subject,
+      htmlContent,
+      textContent,
+    });
+  } catch (e) {
+    sendTo(ws, { type: 'support-ticket-result', ok: false, error: e.message || 'Email send failed' });
     return;
   }
 
-  // Save local ticket record
   const tickets = readJSON(TICKETS_PATH, []);
-  tickets.unshift({
-    id: ticketId,
-    type: msg.ticketType,
-    severity: msg.severity || null,
-    subject: msg.subject || '(no subject)',
-    submittedAt,
-    status: 'open',
-    resolvedAt: null,
-    attachmentCount: attachments.length,
-  });
+  tickets.unshift({ id: ticketId, type: msg.ticketType, severity: msg.severity || null, subject: msg.subject || '(no subject)', submittedAt, status: 'open', resolvedAt: null });
   writeJSON(TICKETS_PATH, tickets);
 
   sendTo(ws, { type: 'support-ticket-result', ok: true, ticketId, installId });
   broadcast({ type: 'tickets', tickets, installId });
 }
 
-function brevoPost(payload) {
-  return new Promise((resolve) => {
-    const body = JSON.stringify(payload);
-    const opts = {
-      hostname: 'api.brevo.com',
-      path: '/v3/smtp/email',
-      method: 'POST',
-      headers: {
-        'api-key': BREVO_API_KEY,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'Accept': 'application/json',
-      },
-    };
-    const req = https.request(opts, res => {
-      let chunks = '';
-      res.on('data', c => chunks += c);
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve({ ok: true });
-        else resolve({ ok: false, error: `Brevo ${res.statusCode}: ${chunks.slice(0, 200)}` });
-      });
-    });
-    req.on('error', e => resolve({ ok: false, error: e.message }));
-    req.write(body);
-    req.end();
-  });
-}
 
 // â"€â"€â"€ Git helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function runGit(args, cwd) {
@@ -6530,7 +6476,7 @@ wss.on('connection', (ws) => {
       config:  maskedConfig(readConfig()),
       protectedPatterns: (readConfig().protectedPatterns || ['*.md']),
       installId: getInstallId(),
-      supportEnabled: !!BREVO_API_KEY,
+      supportEnabled: !!getMcpServerConfigs().brevo,
       appVersion: require('./package.json').version,
       recentCommits,
       connectedMcpServers: [...new Set([...getEnabledMcpServers(), ...getConnectedMcpServers()])].filter(s => s !== 'polaris'),
