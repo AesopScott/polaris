@@ -1319,11 +1319,12 @@
       <div class="panel-section">
         <div class="context-label accent-label">OBSIDIAN VAULT PATH</div>
         <input type="text" id="settings-vault-path" class="panel-input" placeholder="e.g. C:\Users\scott\Obsidian\MyVault" style="width:100%;" />
+        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Don't have Obsidian? Get it at <a href="#" onclick="openExternal('https://obsidian.md'); return false;" style="color:var(--accent);">obsidian.md</a></div>
       </div>
       <div class="panel-section">
         <div class="context-label accent-label">GITHUB USERNAME</div>
         <input type="text" id="settings-github-username" class="panel-input" placeholder="e.g. AesopScott" style="width:100%;" />
-        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Used by the Projects panel's repo selector to fetch your public repos. Public repos only — private repos require a token (not yet supported).</div>
+        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Used by the Projects panel's repo selector to fetch your public repos. Public repos only — private repos require a token (not yet supported). Don't have GitHub? Sign up at <a href="#" onclick="openExternal('https://github.com/signup'); return false;" style="color:var(--accent);">github.com/signup</a></div>
       </div>
       <div class="panel-section">
         <div class="context-label accent-label">DEFAULT FORK MODEL</div>
@@ -1349,6 +1350,7 @@
             <button onclick="testOpenRouterKey()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
           <span id="or-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
+          <div style="font-size:10px;opacity:0.5;margin-top:4px;">Get your key at <a href="#" onclick="openExternal('https://openrouter.ai/settings/keys'); return false;" style="color:var(--accent);">openrouter.ai/settings/keys</a></div>
         </div>
         <div class="panel-section">
           <div class="context-label accent-label">FLOOR MODEL</div>
@@ -1464,6 +1466,7 @@
             <button onclick="testAnthropicKey()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
           <span id="anthropic-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
+          <div style="font-size:10px;opacity:0.5;margin-top:4px;">Get your key at <a href="#" onclick="openExternal('https://console.anthropic.com/settings/keys'); return false;" style="color:var(--accent);">console.anthropic.com</a></div>
         </div>
         <div class="panel-section">
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
@@ -1483,6 +1486,7 @@
             <button onclick="testOpenAiKey()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
           </div>
           <span id="openai-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
+          <div style="font-size:10px;opacity:0.5;margin-top:4px;">Get your key at <a href="#" onclick="openExternal('https://platform.openai.com/api-keys'); return false;" style="color:var(--accent);">platform.openai.com/api-keys</a></div>
         </div>
         <div class="panel-section">
           <div class="context-label accent-label">ELEVENLABS API KEY</div>
@@ -1501,25 +1505,6 @@
           </div>
           <span id="brave-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Enables full web search in agent sessions. Free tier: 2,000 queries/month. Get a key at <a href="#" onclick="openExternal('https://brave.com/search/api/'); return false;" style="color:var(--accent);">brave.com/search/api</a></div>
-        </div>
-      </div>
-      <div style="padding:14px 16px;border-radius:8px;background:rgba(56,189,248,0.09);border:1px solid rgba(56,189,248,0.18);display:flex;flex-direction:column;gap:16px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">DEEPSEEK (CHAT — web login)</div>
-        <div class="panel-section">
-          <div class="context-label accent-label">EMAIL</div>
-          <input type="email" id="settings-ds-email" class="panel-input" placeholder="you@example.com" style="width:100%;" />
-        </div>
-        <div class="panel-section">
-          <div class="context-label accent-label">PASSWORD</div>
-          <input type="password" id="settings-ds-password" class="panel-input" placeholder="••••••••" style="width:100%;" />
-        </div>
-        <div class="panel-section">
-          <div class="context-label accent-label">CHAT MODEL</div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input type="text" id="settings-ds-model" class="panel-input" value="deepseek/deepseek-chat" style="flex:1;" />
-            <button onclick="testChatModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
-          </div>
-          <span id="chat-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
       <div style="padding:14px 16px;border-radius:8px;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.18);display:flex;flex-direction:column;gap:16px;">
@@ -3137,6 +3122,7 @@
   let phIdx = -1;
   let debugLogs = [];
   let resumeTarget = null; // { sessionId, name, resumeId, model } | null
+  let floatScrollHandler = null;
   let sessionOrder = [];   // ordered array of session IDs for render sequence
   let dragId = null;       // session ID currently being dragged
   let dragOverTarget = null; // last tracked drop target { cardId, pos, colIdx }
@@ -5653,15 +5639,21 @@
       // Show floating prompt launcher positioned above this card
       const floatEl = document.getElementById('float-launcher');
       if (floatEl) {
-        const rect = card.getBoundingClientRect();
-        const floatW = Math.min(Math.max(rect.width, 280), 640);
-        floatEl.style.width = floatW + 'px';
-        floatEl.style.left = Math.max(8, rect.left + (rect.width - floatW) / 2) + 'px';
+        const positionFloat = () => {
+          const r = card.getBoundingClientRect();
+          const floatW = Math.min(Math.max(r.width, 280), 640);
+          floatEl.style.width = floatW + 'px';
+          floatEl.style.left = Math.max(8, r.left + (r.width - floatW) / 2) + 'px';
+          const floatHeight = floatEl.offsetHeight;
+          let top = r.top - floatHeight - 8;
+          if (top < 60) top = r.bottom + 8;
+          floatEl.style.top = top + 'px';
+        };
         floatEl.classList.add('visible');
-        const floatHeight = floatEl.offsetHeight;
-        let top = rect.top - floatHeight - 8;
-        if (top < 60) top = rect.bottom + 8;
-        floatEl.style.top = top + 'px';
+        positionFloat();
+        if (floatScrollHandler) window.removeEventListener('scroll', floatScrollHandler, true);
+        floatScrollHandler = positionFloat;
+        window.addEventListener('scroll', floatScrollHandler, true);
       }
     }
     const projColor = s.projectName ? (window.getProjectColorByName && window.getProjectColorByName(s.projectName)) : null;
@@ -5723,7 +5715,11 @@
       if (launchBtn) launchBtn.innerHTML = '<span class="icon">▶</span><span class="lbl">Launch</span>';
       if (chips)     chips.innerHTML = '';
     });
-    // Hide floating launcher
+    // Hide floating launcher and remove scroll tracking
+    if (floatScrollHandler) {
+      window.removeEventListener('scroll', floatScrollHandler, true);
+      floatScrollHandler = null;
+    }
     const floatEl = document.getElementById('float-launcher');
     if (floatEl && floatEl.classList.contains('visible')) {
       floatEl.classList.remove('visible');
@@ -7514,7 +7510,7 @@
             <span class="mcp-catalog-name">${entry.emoji} ${escHtml(entry.name)}</span>
             <span class="${badgeClass}">${badgeText}</span>
           </div>
-          <div class="mcp-catalog-desc">${escHtml(entry.description)}</div>
+          <div class="mcp-catalog-desc">${escHtml(entry.description)}${entry.productUrl ? ` <a href="#" onclick="event.preventDefault();openExternal('${entry.productUrl}')" style="font-size:10px;color:#60a5fa;">Get ${escHtml(entry.name)} ↗</a>` : ''}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
             <button id="gdrive-connect-btn" class="fbtn" style="padding:4px 10px;font-size:11px;background:#1e3a5f;color:#93c5fd;" onclick="startGdriveOAuth(this)">
               ${isEnabled ? 'Reconnect Google Drive' : 'Connect with Google Drive'}
@@ -7537,7 +7533,7 @@
             <span class="mcp-catalog-name">${entry.emoji} ${escHtml(entry.name)}</span>
             <span class="${badgeClass}">${badgeText}</span>
           </div>
-          <div class="mcp-catalog-desc">${escHtml(entry.description)}</div>
+          <div class="mcp-catalog-desc">${escHtml(entry.description)}${entry.productUrl ? ` <a href="#" onclick="event.preventDefault();openExternal('${entry.productUrl}')" style="font-size:10px;color:#60a5fa;">Get ${escHtml(entry.name)} ↗</a>` : ''}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="fbtn" style="padding:3px 10px;font-size:11px;" onclick="toggleMcpForm('${entry.id}')">Configure</button>
           </div>
@@ -7578,7 +7574,7 @@
           : `<input type="password" id="mcp-cred-${entry.id}-${c.key}" class="dir-field" placeholder="${ph}" style="flex:1;font-size:11px;height:26px;padding:3px 6px;">
              <button class="fbtn" style="padding:3px 7px;font-size:11px;" onclick="toggleMcpReveal('${entry.id}','${c.key}')">👁</button>`;
         const guide = c.setupGuideUrl
-          ? `<a href="#" onclick="event.preventDefault();wsSend({type:'open-path',mode:'open',filePath:'${c.setupGuideUrl}'})" style="font-size:10px;color:#60a5fa;">Setup guide ↗</a> `
+          ? `<a href="#" onclick="event.preventDefault();openExternal('${c.setupGuideUrl}')" style="font-size:10px;color:#60a5fa;">Get API key ↗</a> `
           : '';
         return `<div style="margin-bottom:8px;">
           <label class="mcp-cred-label">${escHtml(c.label)}${c.required ? ' <span style="color:#f87171;">*</span>' : ''}</label>
@@ -7597,7 +7593,7 @@
           <span class="mcp-catalog-name">${entry.emoji} ${escHtml(entry.name)}</span>
           <span class="${badgeClass}">${badgeText}</span>
         </div>
-        <div class="mcp-catalog-desc">${escHtml(entry.description)}</div>
+        <div class="mcp-catalog-desc">${escHtml(entry.description)}${entry.productUrl ? ` <a href="#" onclick="event.preventDefault();openExternal('${entry.productUrl}')" style="font-size:10px;color:#60a5fa;">Get ${escHtml(entry.name)} ↗</a>` : ''}</div>
         ${entry.prerequisiteWarning ? `<div class="mcp-prereq">⚠ ${escHtml(entry.prerequisiteWarning)}</div>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="fbtn" style="padding:3px 10px;font-size:11px;" onclick="toggleMcpForm('${entry.id}')">Configure</button>
@@ -8517,7 +8513,10 @@
       const att  = t.attachmentCount ? ` <span style="opacity:0.5;">📎${t.attachmentCount}</span>` : '';
       const action = t.status === 'open'
         ? `<button onclick="markTicketResolved('${t.id}')" style="padding:3px 8px;border-radius:4px;border:none;background:rgba(34,197,94,0.2);color:#4ade80;font-size:10px;font-weight:700;cursor:pointer;">Mark Resolved</button>`
-        : `<button onclick="reopenTicket('${t.id}')" style="padding:3px 8px;border-radius:4px;border:none;background:rgba(251,191,36,0.2);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;">Reopen</button>`;
+        : `<div style="display:flex;gap:6px;">
+            <button onclick="reopenTicket('${t.id}')" style="padding:3px 8px;border-radius:4px;border:none;background:rgba(251,191,36,0.2);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;">Reopen</button>
+            <button onclick="deleteTicket('${t.id}')" style="padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.2);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;">Delete</button>
+           </div>`;
       return `<div class="sup-ticket-row">
         <span class="sup-ticket-status ${t.status}">${t.status}</span>
         <div style="flex:1;min-width:0;">
@@ -8531,6 +8530,7 @@
 
   function markTicketResolved(id) { wsSend({ type: 'update-ticket-status', id, status: 'resolved' }); }
   function reopenTicket(id)       { wsSend({ type: 'update-ticket-status', id, status: 'open' }); }
+  function deleteTicket(id)       { wsSend({ type: 'delete-ticket', id }); }
 
   window.toggleSupport       = toggleSupport;
   window.closeSupport        = closeSupport;
@@ -8539,6 +8539,7 @@
   window.submitSupportForm   = submitSupportForm;
   window.markTicketResolved  = markTicketResolved;
   window.reopenTicket        = reopenTicket;
+  window.deleteTicket        = deleteTicket;
 
   // ── In-app confirm dialog (replaces native confirm() to avoid Electron focus bug) ──
   function confirmInApp(message, onYes, onNo) {
