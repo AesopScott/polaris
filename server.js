@@ -5418,6 +5418,12 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'set-session-status') {
+    const result = toolSetStatus({ status: msg.status }, msg.sessionId);
+    console.log(`[set-session-status] ${msg.sessionId} → ${msg.status}: ${result}`);
+    return;
+  }
+
   if (type === 'restart') {
     broadcast({ type: 'line', sessionId: null, text: 'Server restarting…', role: 'error' });
     setTimeout(() => process.exit(0), 300);

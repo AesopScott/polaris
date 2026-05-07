@@ -357,7 +357,7 @@
   .card-title { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; color: var(--card-title-color, #60a5fa); }
   .card-title.selected-title { font-weight: 900; }
   .card-title-rename-input { background: rgba(0,0,0,0.55); border: 1px solid #3b82f6; border-radius: 4px; color: #93c5fd; font-size: 12px; font-weight: 700; font-family: inherit; padding: 1px 5px; width: 130px; outline: none; caret-color: #60a5fa; }
-  .status-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .status-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
   .card-btns { display: grid; grid-template-rows: repeat(2, 22px); grid-auto-flow: column; gap: 4px; justify-content: flex-end; }
   /* Grid with exactly 2 rows of 22px and column-flow auto-placement: buttons
      fill row 1 left-to-right, then wrap to row 2. Deterministic 2-row layout
@@ -2554,6 +2554,12 @@
 
   function applyProject(select) {
     const name = select.value;
+    if (name === '__new_project__') {
+      select.value = select.dataset.prevValue || '— None —';
+      toggleProjects();
+      return;
+    }
+    select.dataset.prevValue = name;
     const proj = projectsList.find(p => p.name === name);
     const bar  = select.closest('.launch-bar');
     const inputs = bar.querySelectorAll('input.dir-field');
@@ -3001,11 +3007,10 @@
         if (p.name === current) opt.selected = true;
         sel.appendChild(opt);
       });
-      // Hint at the bottom — disabled so it can't be selected, just instructive
+      // Selectable shortcut at the bottom — choosing it opens the Projects panel
       const hint = document.createElement('option');
-      hint.value = '__new_project_hint__';
-      hint.textContent = '+ New project — click the Projects button above to create one';
-      hint.disabled = true;
+      hint.value = '__new_project__';
+      hint.textContent = '+ New project';
       hint.style.fontStyle = 'italic';
       hint.style.opacity = '0.6';
       sel.appendChild(hint);
@@ -4431,7 +4436,7 @@
         ${headerChip}
         <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span class="status-badge ${statusClass}">${statusLabel}</span>
+          <span class="status-badge ${statusClass}" onclick="cycleSessionStatus('${escHtml(s.id)}')" title="Click to change status">${statusLabel}</span>
           <div class="card-btns">
             <button class="card-btn" title="Diagnostic log" data-action="show-diag">📋</button>
             <button class="card-btn" title="Re-run" data-action="rerun">↺</button>
@@ -5416,8 +5421,9 @@
   const IMAGE_EXT  = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
   const DOC_MIME   = new Set(['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword']);
   const DOC_EXT    = /\.(pdf|docx?)$/i;
-  const AUDIO_MIME = new Set(['audio/mpeg','audio/mp4','audio/wav','audio/ogg','audio/webm','audio/x-m4a','audio/aac','video/mp4']);
-  const AUDIO_EXT  = /\.(mp3|mp4|wav|m4a|ogg|webm|aac)$/i;
+  const AUDIO_MIME = new Set(['audio/mpeg','audio/mp4','audio/wav','audio/ogg','audio/webm','audio/x-m4a','audio/aac']);
+  const AUDIO_EXT  = /\.(mp3|wav|m4a|ogg|webm|aac)$/i;
+  const VIDEO_MIME = /^video\//;
 
   function makeChip(className, label, onRemove) {
     const chip = document.createElement('div');
@@ -5429,6 +5435,10 @@
 
   function attachFile(file) {
     const name = file.name || 'file';
+    if (VIDEO_MIME.test(file.type)) {
+      alert(`Video files are not supported.\n\nPolaris accepts images (JPEG, PNG, GIF, WebP), audio files (MP3, WAV, M4A, OGG, WebM, AAC), PDFs, and Word documents.`);
+      return;
+    }
     const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(name);
     const isDoc   = !isImage && (DOC_MIME.has(file.type) || DOC_EXT.test(name));
     const isAudio = !isImage && !isDoc && (AUDIO_MIME.has(file.type) || AUDIO_EXT.test(name));
@@ -5491,7 +5501,7 @@
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.mp4,.wav,.m4a,.ogg,.webm,.aac';
+    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,.webm,.aac';
     fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f); };
     fileInput.click();
   }
@@ -6988,6 +6998,25 @@
   }
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
+
+  const STATUS_CYCLE = ['done', 'test', 'waiting', 'running', 'error'];
+  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' };
+  const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' };
+  function cycleSessionStatus(sessionId) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
+    if (!card) return;
+    const badge = card.querySelector('.status-badge');
+    if (!badge) return;
+    const current = badge.textContent.trim().toLowerCase();
+    const idx = STATUS_CYCLE.indexOf(current);
+    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+    badge.className = 'status-badge ' + (STATUS_CLASS[next] || 'status-done');
+    badge.textContent = STATUS_LABEL[next] || next;
+    wsSend({ type: 'set-session-status', sessionId, status: next });
+  }
+  window.cycleSessionStatus = cycleSessionStatus;
 
   // ── API Balance ───────────────────────────────────────────────────────────────
   function openApiBalance() {
