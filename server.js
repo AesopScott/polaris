@@ -8,6 +8,8 @@ const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const WebSocket = require('ws');
+const mammoth = require('mammoth');
+const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 
 // â"€â"€â"€ Paths â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const APPDATA      = process.env.APPDATA || os.homedir();
@@ -160,6 +162,28 @@ function readConfig() {
   const result = { ...raw };
   for (const key of SENSITIVE_KEYS) { if (result[key]) result[key] = decryptSecret(result[key]); }
   return result;
+}
+
+// Extract readable text from a base64-encoded DOCX or PDF file.
+async function extractDocText(dataUrl, filename) {
+  try {
+    const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/s);
+    if (!match) return null;
+    const buffer = Buffer.from(match[1], 'base64');
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === '.docx' || ext === '.doc') {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value || null;
+    }
+    if (ext === '.pdf') {
+      const data = await pdfParse(buffer);
+      return data.text || null;
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[docs] text extraction failed for ${filename}:`, e.message);
+    return null;
+  }
 }
 
 function maskedConfig(cfg) {
@@ -3093,15 +3117,39 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   // Restore persisted message history on first use (survives server restarts)
   if (!session.messages) session.messages = loadSessionMessages(sessionId);
 
-  // Build user message content: attach any images as vision content blocks.
+  // Extract text from any DOCX/PDF docs and prepend to the user message.
+  const agentDocs  = session.pendingDocs  || [];
+  const agentAudio = session.pendingAudio || [];
+  session.pendingDocs  = [];
+  session.pendingAudio = [];
+  let effectiveMessage = userMessage;
+  for (const doc of agentDocs) {
+    if (!doc.dataUrl || !doc.name) continue;
+    const text = await extractDocText(doc.dataUrl, doc.name);
+    if (text) {
+      effectiveMessage = `--- File: ${doc.name} ---\n${text.trim()}\n--- End: ${doc.name} ---\n\n` + effectiveMessage;
+      broadcast({ type: 'line', sessionId, text: `[document extracted: ${doc.name} (${text.length} chars)]`, role: 'system' });
+    } else {
+      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} — could not extract text]`, role: 'system' });
+    }
+  }
+
+  // Build user message content: attach images and audio as multimodal content blocks.
   const agentImages = session.pendingImages || [];
   session.pendingImages = [];
-  let messageContent = userMessage;
-  if (agentImages.length) {
-    const imageBlocks = agentImages
-      .filter(i => i && i.dataUrl)
-      .map(i => ({ type: 'image_url', image_url: { url: i.dataUrl } }));
-    if (imageBlocks.length) messageContent = [{ type: 'text', text: userMessage }, ...imageBlocks];
+  let messageContent = effectiveMessage;
+  if (agentImages.length || agentAudio.length) {
+    const blocks = [{ type: 'text', text: effectiveMessage }];
+    for (const img of agentImages) {
+      if (img && img.dataUrl) blocks.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+    }
+    for (const aud of agentAudio) {
+      if (aud && aud.dataUrl) {
+        const match = aud.dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+        if (match) blocks.push({ type: 'image_url', image_url: { url: aud.dataUrl } });
+      }
+    }
+    if (blocks.length > 1) messageContent = blocks;
   }
   session.messages.push({ role: 'user', content: messageContent });
   if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
@@ -3503,7 +3551,7 @@ function httpsPost(hostname, path, headers, body) {
 // Max plan covers the cost). Prompt is piped via stdin to avoid Windows'
 // 8191-char command-line limit. Default backend; `config.chatBackend = 'openrouter'`
 // switches to the legacy spawnChat path.
-function spawnMaxChat(sessionId, prompt, config) {
+async function spawnMaxChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
@@ -3581,13 +3629,33 @@ function spawnMaxChat(sessionId, prompt, config) {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel];
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
+  const chatDocs   = session.pendingDocs   || [];
+  const chatAudio  = session.pendingAudio  || [];
   session.pendingImages = [];
+  session.pendingDocs   = [];
+  session.pendingAudio  = [];
 
-  // Build stdin payload. When images are attached, switch to stream-json input
-  // format so the CLI receives multimodal content blocks (text + base64 images).
-  // Without images, plain text is simpler and avoids any format-version quirks.
+  // Extract text from DOCX/PDF docs and prepend to the prompt.
+  let docTextPrefix = '';
+  for (const doc of chatDocs) {
+    if (!doc.dataUrl || !doc.name) continue;
+    const text = await extractDocText(doc.dataUrl, doc.name);
+    if (text) {
+      docTextPrefix += `--- File: ${doc.name} ---\n${text.trim()}\n--- End: ${doc.name} ---\n\n`;
+      dlog('DOC_EXTRACT', `name=${doc.name} chars=${text.length}`);
+      broadcast({ type: 'line', sessionId, text: `[document extracted: ${doc.name} (${text.length} chars)]`, role: 'system' });
+    } else {
+      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} — could not extract text]`, role: 'system' });
+    }
+  }
+  if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
+
+  // Build stdin payload. When images or audio are attached, switch to stream-json
+  // input format so the CLI receives multimodal content blocks.
+  // Without binary attachments, plain text is simpler and avoids format quirks.
+  const hasMultimodal = chatImages.length > 0 || chatAudio.length > 0;
   let stdinPayload;
-  if (chatImages.length) {
+  if (hasMultimodal) {
     args.push('--input-format', 'stream-json');
     const contentBlocks = [{ type: 'text', text: fullPrompt }];
     for (const img of chatImages) {
@@ -3596,10 +3664,21 @@ function spawnMaxChat(sessionId, prompt, config) {
       if (!match) continue;
       contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
     }
+    for (const aud of chatAudio) {
+      if (!aud.dataUrl) continue;
+      const match = aud.dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+      if (!match) continue;
+      contentBlocks.push({ type: 'document', source: { type: 'base64', media_type: match[1], data: match[2] } });
+    }
     stdinPayload = JSON.stringify({ type: 'user', message: { role: 'user', content: contentBlocks } }) + '\n';
-    dlog('IMAGE_ATTACH', `count=${chatImages.length} contentBlocks=${contentBlocks.length}`);
-    const imageNames = chatImages.filter(i => i.dataUrl).map(i => i.name).join(', ');
-    broadcast({ type: 'line', sessionId, text: `[${chatImages.filter(i=>i.dataUrl).length} image(s) attached: ${imageNames}]`, role: 'system' });
+    if (chatImages.length) {
+      dlog('IMAGE_ATTACH', `count=${chatImages.length}`);
+      broadcast({ type: 'line', sessionId, text: `[${chatImages.length} image(s) attached: ${chatImages.filter(i=>i.dataUrl).map(i=>i.name).join(', ')}]`, role: 'system' });
+    }
+    if (chatAudio.length) {
+      dlog('AUDIO_ATTACH', `count=${chatAudio.length}`);
+      broadcast({ type: 'line', sessionId, text: `[${chatAudio.length} audio file(s) attached: ${chatAudio.filter(a=>a.dataUrl).map(a=>a.name).join(', ')}]`, role: 'system' });
+    }
   } else {
     stdinPayload = fullPrompt;
   }
@@ -4331,7 +4410,7 @@ function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, workDir, projectName, tier, images } = msg;
+    const { prompt, workDir, projectName, tier, images, docs, audio } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     const effectiveWorkDir = (workDir && workDir.trim()) ? workDir.trim() : null;
@@ -4363,6 +4442,8 @@ function handleMessage(ws, raw) {
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
       pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
+      pendingDocs:   Array.isArray(docs)   ? docs.filter(d => d && typeof d.dataUrl === 'string')   : [],
+      pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
     const imgLabel = Array.isArray(images) && images.length ? '\n' + images.filter(i => i?.name).map(i => `📎 ${i.name}`).join('  ') : '';
@@ -4387,7 +4468,9 @@ function handleMessage(ws, raw) {
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages });
+    const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
+    const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
+    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
     saveSessions();
@@ -4425,13 +4508,15 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'resume') {
-    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images } = msg;
+    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     session.status = 'running';
     session.lastPrompt = prompt;
     if (projectName !== undefined) session.projectName = projectName || null;
     if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
+    if (Array.isArray(docs)   && docs.length)   session.pendingDocs   = docs.filter(d => d && typeof d.dataUrl === 'string');
+    if (Array.isArray(audio)  && audio.length)  session.pendingAudio  = audio.filter(a => a && typeof a.dataUrl === 'string');
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
     // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
     if (session.isChat) {
@@ -6023,13 +6108,22 @@ wss.on('connection', (ws) => {
           const [hash, fullHash, subject, author, date] = line.split('\t');
           return { hash: hash || '', fullHash: fullHash || '', subject: subject || '', author: author || '', date: date || '' };
         }).filter(c => c.hash);
-        const versions = await Promise.all(entries.map(c =>
+        const rawVersions = await Promise.all(entries.map(c =>
           runGit(['show', `${c.fullHash}:package.json`], gitDir).then(pkg => {
             const m = pkg.match(/"version"\s*:\s*"([^"]+)"/);
             return m ? m[1] : '';
           }).catch(() => '')
         ));
-        recentCommits = entries.map((c, i) => ({ hash: c.hash, subject: c.subject, author: c.author, date: c.date, version: versions[i], projectName, projectColor }));
+        // Walk newest-first. Commits not yet included in a version bump ship in
+        // the currently installed version (which may be ahead of the last commit).
+        const currentPkgVer = require('./package.json').version;
+        let shippedIn = currentPkgVer;
+        recentCommits = entries.map((c, i) => {
+          if (rawVersions[i + 1] !== undefined && rawVersions[i] !== rawVersions[i + 1]) {
+            shippedIn = rawVersions[i];
+          }
+          return { hash: c.hash, subject: c.subject, author: c.author, date: c.date, version: shippedIn, projectName, projectColor };
+        });
       }
     } catch (e) { console.error('[git-changes] log failed:', e.message); }
 
