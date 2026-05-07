@@ -7785,38 +7785,6 @@
       grid.appendChild(card);
     }
 
-    // Native servers — configured in ~/.mcp.json by Claude Code directly, not managed by Polaris
-    const nativeList = (native || []).filter(n => n !== 'polaris');
-    let nativeSection = document.getElementById('mcp-native-section');
-    if (nativeList.length > 0) {
-      if (!nativeSection) {
-        nativeSection = document.createElement('div');
-        nativeSection.id = 'mcp-native-section';
-        nativeSection.className = 'mcp-catalog-section';
-        const catalogSection = grid.closest('.mcp-catalog-section');
-        if (catalogSection && catalogSection.nextSibling) {
-          catalogSection.parentNode.insertBefore(nativeSection, catalogSection.nextSibling);
-        } else {
-          grid.closest('#conn-mcp-pane').appendChild(nativeSection);
-        }
-      }
-      nativeSection.innerHTML = `
-        <div class="mcp-catalog-label">Native (Claude Code) <span style="font-size:10px;opacity:0.6;font-weight:400;text-transform:none;">— from ~/.mcp.json, available to chat sessions only</span></div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-          ${nativeList.map(name => `
-            <div class="mcp-catalog-card" style="width:210px;">
-              <div class="mcp-catalog-card-header">
-                <span class="mcp-catalog-name">${escHtml(name)}</span>
-                <span class="mcp-badge-enabled">Connected</span>
-              </div>
-              <div class="mcp-catalog-desc" style="font-size:10px;opacity:0.6;">Managed outside Polaris via ~/.mcp.json</div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-    } else if (nativeSection) {
-      nativeSection.remove();
-    }
   }
 
   function makeFirebaseRow(entryId, name, credPath) {
