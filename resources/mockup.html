@@ -1977,8 +1977,7 @@
   <!-- Startup Changelog Popup -->
   <div id="changelog-popup" class="hidden palette">
     <div class="preview-toolbar">
-      <span style="flex:1;font-size:13px;font-weight:800;">What's New</span>
-      <span id="changelog-version" style="font-size:11px;opacity:0.45;margin-right:8px;font-family:'Consolas',monospace;"></span>
+      <span id="changelog-title" style="flex:1;font-size:13px;font-weight:800;">What's New</span>
       <button class="preview-close-btn" onclick="closeChangelogPopup()">✕</button>
     </div>
     <div style="padding:14px 18px;overflow-y:auto;flex:1;">
@@ -6889,8 +6888,8 @@
         </div>`
       ).join('');
     }
-    const vEl = document.getElementById('changelog-version');
-    if (vEl) vEl.textContent = window.appVersion ? `v${window.appVersion}` : '';
+    const titleEl = document.getElementById('changelog-title');
+    if (titleEl) titleEl.textContent = window.appVersion ? `What's New — v${window.appVersion}` : "What's New";
     el.classList.remove('hidden');
   }
   function closeChangelogPopup() {
@@ -9036,6 +9035,7 @@
   let camToClose = [];
   let camPending = new Set();
   let camOnObsidianDone = null;
+  let camCurrentPushSid = null;
 
   function closeAllSessions() {
     const all = Object.values(sessionStore).filter(s => s.status !== 'closed');
@@ -9073,7 +9073,8 @@
         <span>Close All Sessions</span>
         <button onclick="camCancel()" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;line-height:1;">✕</button>
       </div>
-      <div class="cam-list">${rows}</div>`;
+      <div class="cam-list">${rows}</div>
+      <div id="cam-footer" style="padding:12px 16px;display:flex;justify-content:flex-end;"></div>`;
     modal.style.display = 'flex';
   }
 
@@ -9081,8 +9082,16 @@
     const s = sessionStore[sid];
     if (!s) return;
     const row = document.getElementById('cam-row-' + sid);
-    if (row) row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; b.textContent = b.textContent === 'Skip' ? 'Skip' : 'Pushing…'; });
-    camOnObsidianDone = () => { camOnObsidianDone = null; camMarkDone(sid, '✓ Obsidian + Git', '#4ade80'); };
+    if (row) {
+      row.querySelectorAll('button').forEach(b => b.remove());
+      const progressEl = document.createElement('div');
+      progressEl.id = 'cam-progress-' + sid;
+      progressEl.style.cssText = 'font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
+      progressEl.innerHTML = `<span id="cam-pushing-${sid}" style="opacity:0.5;">Pushing…</span>`;
+      row.appendChild(progressEl);
+    }
+    camCurrentPushSid = sid;
+    camOnObsidianDone = () => { camOnObsidianDone = null; camCurrentPushSid = null; camMarkDone(sid, null, '#4ade80'); };
     wsSend({ type: 'obsidian-up', sessionName: s.name, projectName: s.projectName || null, content: (s.lines || []).map(l => l.text).join('\n') });
   }
 
@@ -9110,7 +9119,12 @@
       row.appendChild(done);
       row.style.opacity = '0.45';
     }
-    if (camPending.size === 0) setTimeout(camFinish, 600);
+    if (camPending.size === 0) {
+      const footer = document.getElementById('cam-footer');
+      if (footer) {
+        footer.innerHTML = `<button onclick="camFinish()" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 18px;font-size:12px;font-weight:600;cursor:pointer;">Done</button>`;
+      }
+    }
   }
 
   function camCancel() {
