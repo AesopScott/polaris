@@ -1300,6 +1300,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask the user a clarifying question and wait for their response before continuing.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask' }, options: { type: 'array', items: { type: 'string' }, description: 'Optional predefined answer choices' } }, required: ['question'] } } },
   { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
   { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Call with no arguments at session start to load all project context. Pass filename to retrieve a specific file.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Omit to get all project memory.' } }, required: [] } } },
+  { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir) {
@@ -1391,7 +1392,7 @@ function buildPolarisContextBlock(config, session) {
     lines.push(
       '',
       'Current session project: (none selected)',
-      'BEFORE doing anything else, ask the user which project this session should work in. Use the Available projects list below as the choices, plus a "no project (scratch)" option for one-off tasks. Do not begin the user\'s actual request until they have picked.',
+      'BEFORE doing anything else, ask the user which project this session should work in. Use the Available projects list below as the choices, plus a "no project (scratch)" option for one-off tasks. Do not begin the user\'s actual request until they have picked. Once the user tells you the project, call the SetProject tool with the exact project name before responding further.',
     );
   }
 
@@ -1419,6 +1420,17 @@ function toolQueryMemory({ filename } = {}, sessionId) {
     return key ? `=== ${key} ===\n${mem[key]}` : `File not found in project memory: ${filename}`;
   }
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
+}
+
+function toolSetProject({ projectName } = {}, sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session) return 'Session not found.';
+  const cfg = readConfig();
+  const matched = projectName ? (cfg.projects || []).find(p => p.name === projectName) : null;
+  session.projectName = matched ? matched.name : null;
+  session.workDir = matched ? (matched.workDir || session.workDir) : session.workDir;
+  broadcast({ type: 'session-project-changed', sessionId, projectName: session.projectName, workDir: session.workDir });
+  return matched ? `Project set to "${matched.name}".` : 'Project cleared (no project / scratch).';
 }
 
 // assertWritable — enforces two rules before any write:
@@ -2650,6 +2662,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
     case 'TodoWrite':  return toolTodoWrite(input, sessionId);
     case 'QueryMemory': return toolQueryMemory(input, sessionId);
+    case 'SetProject':  return toolSetProject(input, sessionId);
     default:           return `Unknown tool: ${name}`;
   }
 }
@@ -2839,19 +2852,14 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   // Restore persisted message history on first use (survives server restarts)
   if (!session.messages) session.messages = loadSessionMessages(sessionId);
 
-  // Build user message content: attach any dropped images as vision content blocks.
+  // Build user message content: attach any images as vision content blocks.
   const agentImages = session.pendingImages || [];
   session.pendingImages = [];
   let messageContent = userMessage;
   if (agentImages.length) {
-    const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', svg:'image/svg+xml' };
     const imageBlocks = agentImages
-      .filter(p => { try { return fs.existsSync(p); } catch { return false; } })
-      .map(p => {
-        const mime = mimeMap[path.extname(p).toLowerCase().slice(1)] || 'image/jpeg';
-        const b64 = fs.readFileSync(p).toString('base64');
-        return { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } };
-      });
+      .filter(i => i && i.dataUrl)
+      .map(i => ({ type: 'image_url', image_url: { url: i.dataUrl } }));
     if (imageBlocks.length) messageContent = [{ type: 'text', text: userMessage }, ...imageBlocks];
   }
   session.messages.push({ role: 'user', content: messageContent });
@@ -3298,11 +3306,9 @@ function spawnMaxChat(sessionId, prompt, config) {
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
-  // Translate session tier → Claude Code --model flag.
-  // Max plan supports Sonnet (default) and Opus; Floor falls back to Sonnet
-  // since Max has no Haiku tier.
+  // Translate session tier → Claude Code --model flag: floor=haiku, balanced=sonnet, power=opus.
   const tierForCli = (session.tier || 'balanced').toLowerCase();
-  const cliModel = tierForCli === 'power' ? 'opus' : 'sonnet';
+  const cliModel = tierForCli === 'power' ? 'opus' : tierForCli === 'floor' ? 'haiku' : 'sonnet';
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
@@ -3310,11 +3316,16 @@ function spawnMaxChat(sessionId, prompt, config) {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel];
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
-  for (const imgPath of chatImages) {
-    if (fs.existsSync(imgPath)) args.push('--image', imgPath);
-  }
   session.pendingImages = [];
-  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd} images=${chatImages.length}`);
+  const tmpImageFiles = [];
+  for (const img of chatImages) {
+    const m = img.dataUrl && img.dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!m) continue;
+    const ext = (m[1].split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
+    const tmpPath = path.join(os.tmpdir(), `polaris-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
+    try { fs.writeFileSync(tmpPath, Buffer.from(m[2], 'base64')); tmpImageFiles.push(tmpPath); args.push('--image', tmpPath); } catch {}
+  }
+  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd} images=${tmpImageFiles.length}`);
   let proc;
   try {
     proc = spawn(claudeBin, args, {
@@ -3404,6 +3415,7 @@ function spawnMaxChat(sessionId, prompt, config) {
 
   proc.on('close', async code => {
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
+    for (const f of tmpImageFiles) { try { fs.unlinkSync(f); } catch {} }
     if (finalUsage) {
       const modelTag = finalModel || 'claude-cli (Max plan)';
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
@@ -4039,7 +4051,9 @@ function handleMessage(ws, raw) {
     const chatTier = (tier || 'balanced').toLowerCase();
     const maxModelLabel = chatTier === 'power'
       ? 'anthropic/claude-opus-4-7 (Max plan)'
-      : 'anthropic/claude-sonnet-4-6 (Max plan)';
+      : chatTier === 'floor'
+        ? 'anthropic/claude-haiku-4-5 (Max plan)'
+        : 'anthropic/claude-sonnet-4-6 (Max plan)';
     const chatModel = backend === 'max'
       ? maxModelLabel
       : (config.chatModel || 'deepseek/deepseek-chat');
@@ -4049,7 +4063,7 @@ function handleMessage(ws, raw) {
       status: 'running', startAt: Date.now(),
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
-      pendingImages: Array.isArray(images) ? images.filter(p => typeof p === 'string' && p) : [],
+      pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
     broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
@@ -4072,7 +4086,7 @@ function handleMessage(ws, raw) {
     const name = generateSessionName(prompt);
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
-    const launchImages = Array.isArray(msg.images) ? msg.images.filter(p => typeof p === 'string' && p) : [];
+    const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
@@ -4117,7 +4131,7 @@ function handleMessage(ws, raw) {
     session.status = 'running';
     session.lastPrompt = prompt;
     if (projectName !== undefined) session.projectName = projectName || null;
-    if (Array.isArray(images) && images.length) session.pendingImages = images.filter(p => typeof p === 'string' && p);
+    if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
     // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
     if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });

@@ -3162,6 +3162,17 @@
         break;
       }
 
+      case 'session-project-changed': {
+        const s = sessionStore[msg.sessionId];
+        if (s) {
+          s.projectName = msg.projectName || null;
+          if (msg.workDir) s.workDir = msg.workDir;
+          refreshCardColor(msg.sessionId);
+          updateMiniCards();
+        }
+        break;
+      }
+
       case 'session-status': {
         const s = sessionStore[msg.sessionId];
         if (s) { s.status = msg.status; updateCardStatus(msg.sessionId, msg.status); }
@@ -4370,7 +4381,7 @@
       s[storeKey] = color;
       const card = grid.querySelector(`[data-sid="${sid}"]`);
       if (!card) return;
-      card.querySelectorAll(`.${cls}`).forEach(el => el.style.color = color);
+      card.querySelectorAll(`.${cls}:not(.md-render)`).forEach(el => el.style.color = color);
       const slider = card.querySelector(`.color-hue-slider[data-role="${sliderRole}"]`);
       if (slider && slider.value != hue) slider.value = hue;
     });
@@ -5082,23 +5093,28 @@
   const IMAGE_EXT  = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
 
   function attachFile(file) {
-    const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(file.name);
+    const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(file.name || '');
     if (isImage) {
-      // In Electron the File object carries a .path property with the absolute OS path.
-      const imgPath = file.path;
-      if (!imgPath) return;
-      const idx = pendingImages.push({ name: file.name, path: imgPath }) - 1;
-      document.querySelectorAll('.file-chips').forEach(container => {
-        const chip = document.createElement('div');
-        chip.className = 'image-chip';
-        chip.dataset.imageIdx = idx;
-        chip.innerHTML = `🖼 ${file.name} <button title="Remove">✕</button>`;
-        chip.querySelector('button').addEventListener('click', () => {
-          pendingImages.splice(idx, 1);
-          document.querySelectorAll(`.image-chip[data-image-idx="${idx}"]`).forEach(c => c.remove());
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const name = file.name || 'image.png';
+        const idx = pendingImages.push({ name, dataUrl: ev.target.result }) - 1;
+        document.querySelectorAll('.file-chips').forEach(container => {
+          const chip = document.createElement('div');
+          chip.className = 'image-chip';
+          chip.dataset.imageIdx = idx;
+          chip.innerHTML = `🖼 ${name} <button title="Remove">✕</button>`;
+          chip.querySelector('button').addEventListener('click', () => {
+            pendingImages.splice(idx, 1);
+            document.querySelectorAll(`.image-chip[data-image-idx="${idx}"]`).forEach(c => c.remove());
+          });
+          container.appendChild(chip);
         });
-        container.appendChild(chip);
-      });
+        const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+        if (promptEl) promptEl.focus();
+      };
+      reader.readAsDataURL(file);
+      return;
     } else {
       const reader = new FileReader();
       reader.onload = e => {
@@ -5218,23 +5234,23 @@
       fullPrompt = `${fileBlocks}\n\n${f.prompt}`;
       pendingFiles.length = 0;
     }
-    const imagePaths = pendingImages.map(i => i.path);
+    const imagePayload = pendingImages.map(i => ({ name: i.name, dataUrl: i.dataUrl }));
     pendingImages.length = 0;
     document.querySelectorAll('.file-chips').forEach(c => c.innerHTML = '');
     const mode = getLaunchMode();
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePaths });
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePaths });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload });
     } else {
-      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePaths });
+      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload });
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }
@@ -8910,6 +8926,20 @@
           e.preventDefault();
           phIdx = Math.max(phIdx - 1, -1);
           el.value = phIdx >= 0 ? (promptHistoryStore[phIdx] || '') : ''; updateTokenCount(el);
+        }
+      });
+    });
+
+    // Clipboard image paste into the prompt area
+    document.querySelectorAll('.prompt-area').forEach(el => {
+      el.addEventListener('paste', e => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) attachFile(file);
+          }
         }
       });
     });
