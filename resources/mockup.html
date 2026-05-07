@@ -200,6 +200,23 @@
     box-shadow: 0 0 20px rgba(96,165,250,0.06);
   }
 
+  /* Floating prompt launcher — hovers above the selected session card */
+  #float-launcher {
+    position: fixed; z-index: 9900; display: none; flex-direction: column; gap: 8px;
+    padding: 10px 12px; border-radius: 12px;
+    background: var(--launch-bg, #0d1117);
+    border: 1px solid rgba(96,165,250,0.45);
+    box-shadow: 0 -4px 32px rgba(0,0,0,0.65), 0 0 0 1px rgba(96,165,250,0.15), 0 8px 32px rgba(96,165,250,0.1);
+    min-width: 280px; max-width: 640px;
+  }
+  #float-launcher.visible { display: flex; }
+  #float-launcher .float-row { display: flex; gap: 8px; align-items: flex-end; }
+  #float-drag-handle {
+    text-align: center; font-size: 10px; opacity: 0.35;
+    letter-spacing: 3px; cursor: move; padding: 2px 0; user-select: none;
+  }
+  #float-drag-handle:hover { opacity: 0.7; }
+
   /* Launch button row — left-aligned under prompt */
   .launch-action-row { display: flex; align-items: center; gap: 10px; }
   .launch-btn {
@@ -5607,7 +5624,9 @@
     const project  = select?.value === '— None —' ? null : (select?.value || null);
     const tier     = app.querySelector('.model-select')?.value || 'balanced';
     const model    = resolveModel(tier);
-    const promptEl = app.querySelector('.prompt-area');
+    const floatEl  = document.getElementById('float-launcher');
+    const useFloat = floatEl && floatEl.classList.contains('visible');
+    const promptEl = useFloat ? floatEl.querySelector('.prompt-area') : app.querySelector('.prompt-area');
     const prompt   = promptEl?.value?.trim() || '';
     return { prompt, workDir, projectName: project, model, tier, promptEl };
   }
@@ -5626,6 +5645,19 @@
     if (card) {
       card.classList.add('selected');
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Show floating prompt launcher positioned above this card
+      const floatEl = document.getElementById('float-launcher');
+      if (floatEl) {
+        const rect = card.getBoundingClientRect();
+        const floatW = Math.min(Math.max(rect.width, 280), 640);
+        floatEl.style.width = floatW + 'px';
+        const floatHeight = 120;
+        let top = rect.top - floatHeight - 8;
+        if (top < 60) top = rect.bottom + 8;
+        floatEl.style.left = Math.max(8, rect.left + (rect.width - floatW) / 2) + 'px';
+        floatEl.style.top = top + 'px';
+        floatEl.classList.add('visible');
+      }
     }
     const projColor = s.projectName ? (window.getProjectColorByName && window.getProjectColorByName(s.projectName)) : null;
     document.querySelectorAll('.palette').forEach(app => {
@@ -5661,8 +5693,10 @@
         projSel.value = s.projectName;
       }
     });
-    const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
-    if (promptEl) { promptEl.value = ''; promptEl.select(); }
+    const floatEl2 = document.getElementById('float-launcher');
+    const useFloat2 = floatEl2 && floatEl2.classList.contains('visible');
+    const promptEl = useFloat2 ? floatEl2.querySelector('.prompt-area') : document.querySelector('.palette:not(.hidden) .prompt-area');
+    if (promptEl) { promptEl.value = ''; promptEl.focus(); }
   }
 
   window.clearResumeMode = function () {
@@ -5684,13 +5718,39 @@
       if (launchBtn) launchBtn.innerHTML = '<span class="icon">▶</span><span class="lbl">Launch</span>';
       if (chips)     chips.innerHTML = '';
     });
+    // Hide floating launcher
+    const floatEl = document.getElementById('float-launcher');
+    if (floatEl && floatEl.classList.contains('visible')) {
+      floatEl.classList.remove('visible');
+    }
   };
 
   document.addEventListener('click', e => {
     if (!resumeTarget) return;
-    if (e.target.closest('.card') || e.target.closest('.launch-bar')) return;
+    if (e.target.closest('.card') || e.target.closest('.launch-bar') || e.target.closest('#float-launcher')) return;
     window.clearResumeMode();
   });
+
+  // Drag float launcher by its handle
+  (function () {
+    let dragging = false, dx = 0, dy = 0;
+    const handle   = document.getElementById('float-drag-handle');
+    const launcher = document.getElementById('float-launcher');
+    if (!handle || !launcher) return;
+    handle.addEventListener('mousedown', e => {
+      dragging = true;
+      const r = launcher.getBoundingClientRect();
+      dx = e.clientX - r.left;
+      dy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      launcher.style.left = Math.max(0, e.clientX - dx) + 'px';
+      launcher.style.top  = Math.max(0, e.clientY - dy) + 'px';
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+  })();
 
   function getLaunchMode() {
     return document.querySelector('.palette:not(.hidden) .mode-btn.active')?.dataset?.mode || 'chat';
@@ -10170,6 +10230,20 @@
 
 })();
 </script>
+
+<!-- Floating prompt launcher — positions above the selected session card -->
+<div id="float-launcher">
+  <div id="float-drag-handle">⠿⠿⠿⠿⠿</div>
+  <div class="float-row">
+    <div class="prompt-wrap prompt-style-2" id="float-prompt-wrap" style="flex:1;min-width:0;">
+      <textarea class="prompt-area" id="float-prompt-area" placeholder="Continue this session..." style="height:54px;"></textarea>
+      <span class="token-count text-muted">~0 / 200k tokens</span>
+    </div>
+    <button class="launch-btn launch-action-btn" id="float-launch-btn" style="width:110px;flex-shrink:0;" onclick="doLaunch()">
+      <span class="icon">↩</span><span class="lbl">Resume</span>
+    </button>
+  </div>
+</div>
 </body>
 </html>
 
