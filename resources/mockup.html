@@ -496,7 +496,7 @@
   .status-done    { background: #16653120; color: #22c55e; }
   .status-error   { background: #7f1d1d20; color: #ef4444; }
   .status-waiting { background: #78350f20; color: #fbbf24; }
-  .status-test    { background: #4c1d9520; color: #a78bfa; }
+  .status-test    { background: #4c1d9520; color: #ef4444; }
   .dot-run { background: #3b82f6; }
   .dot-done { background: #22c55e; }
   .dot-err { background: #ef4444; }
@@ -3897,7 +3897,8 @@
         window.gitChanges = msg.commits || [];
         window.gitChangesFrom = msg.fromCommit;
         window.gitChangesTo = msg.toCommit;
-        pushDebugLog(`[git-changes] ${msg.commits?.length || 0} new commit(s) since ${msg.fromCommit || '?'}`);
+        pushDebugLog(`[git-changes] ${(msg.commits || []).length} commit(s) received`);
+        if (window.gitChanges.length > 0) showChangelogPopup(window.gitChanges);
         (routinesList || []).forEach(r => {
           if (r.triggerType === 'event' && r.triggerValue === 'git-changes') fireRoutine(r);
         });
