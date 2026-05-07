@@ -4113,7 +4113,7 @@
       <div class="card-resize-handle" data-resize></div>`;
 
     const term = el.querySelector('[data-term]');
-    s.lines.forEach(l => term.appendChild(makeLineEl(l, s.id)));
+    mergeConsecutiveAssistantLines(s.lines).forEach(l => term.appendChild(makeLineEl(l, s.id)));
     term.scrollTop = term.scrollHeight;
 
     el.querySelectorAll('[data-action]').forEach(btn => {
@@ -4244,6 +4244,23 @@
     } catch (e) {
       // Leave as plain text if parsing fails
     }
+  }
+
+  // Merge consecutive `assistant`-role chunks into one logical line so each
+  // historical render produces one div per assistant turn (not one per
+  // streaming token). Without this, on any re-render of a done session the
+  // chunks each become their own md-render div and wrap one phrase per line.
+  function mergeConsecutiveAssistantLines(lines) {
+    const merged = [];
+    for (const line of lines) {
+      const last = merged[merged.length - 1];
+      if (line.role === 'assistant' && last && last.role === 'assistant') {
+        last.text += line.text;
+      } else {
+        merged.push({ ...line });
+      }
+    }
+    return merged;
   }
 
   function makeLineEl(line, sessionId) {
