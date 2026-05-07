@@ -1066,9 +1066,10 @@ function scaffoldObsidianProject(project, vaultPath) {
   } catch (e) {
     console.error('[obsidian-scaffold] failed:', e.message);
   }
-  // Fire git scaffold async — don't block config-saved response
+  // Fire git scaffolds async — don't block config-saved response
   scaffoldGitRepo(project).catch(e => console.error('[scaffold-git] unhandled:', e.message));
 }
+
 
 async function scaffoldGitRepo(project) {
   const { name, workDir, repo } = project;
@@ -5811,19 +5812,13 @@ function handleMessage(ws, raw) {
       const filePath = path.join(sessionsDir, `${safeName}.md`);
       fs.writeFileSync(filePath, content || '', 'utf8');
       sendTo(ws, { type: 'obsidian-progress', step: 'file-written', filePath });
-      // git add + commit + push in the vault repo (best-effort)
-      const vaultGit = runGit(['add', filePath], vaultRoot)
-        .then(() => runGit(['commit', '-m', `chore: add ${projectName || 'Polaris'} session ${safeName}`], vaultRoot))
-        .then(() => runGit(['push'], vaultRoot))
-        .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'vault-git' }))
-        .catch(() => {});
       const codeGit = proj && proj.workDir
         ? runGit(['push'], proj.workDir)
             .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
             .catch(() => {})
         : Promise.resolve();
       pendingGitPushes++;
-      Promise.all([vaultGit, codeGit])
+      Promise.all([codeGit])
         .finally(() => { sendTo(ws, { type: 'obsidian-up-done', filePath }); onGitPushComplete(); });
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian Up failed: ${e.message}` });
@@ -6012,12 +6007,19 @@ wss.on('connection', (ws) => {
     try {
       const polarisProject = (readConfig().projects || []).find(p => p.name === 'Polaris');
       const gitDir = (polarisProject && polarisProject.workDir) || __dirname;
-      const logOutput = await runGit(['log', '-15', '--format=%h%x09%s%x09%an%x09%ai'], gitDir);
+      const logOutput = await runGit(['log', '-15', '--format=%h%x09%H%x09%s%x09%an%x09%ai'], gitDir);
       if (logOutput) {
-        recentCommits = logOutput.split('\n').filter(Boolean).map(line => {
-          const [hash, subject, author, date] = line.split('\t');
-          return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
+        const entries = logOutput.split('\n').filter(Boolean).map(line => {
+          const [hash, fullHash, subject, author, date] = line.split('\t');
+          return { hash: hash || '', fullHash: fullHash || '', subject: subject || '', author: author || '', date: date || '' };
         }).filter(c => c.hash);
+        const versions = await Promise.all(entries.map(c =>
+          runGit(['show', `${c.fullHash}:package.json`], gitDir).then(pkg => {
+            const m = pkg.match(/"version"\s*:\s*"([^"]+)"/);
+            return m ? m[1] : '';
+          }).catch(() => '')
+        ));
+        recentCommits = entries.map((c, i) => ({ hash: c.hash, subject: c.subject, author: c.author, date: c.date, version: versions[i] }));
       }
     } catch (e) { console.error('[git-changes] log failed:', e.message); }
 

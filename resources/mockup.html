@@ -616,7 +616,7 @@
   #changelog-backdrop.hidden { display: none; }
   .changelog-commit {
     display: grid;
-    grid-template-columns: 24px 52px 80px 1fr;
+    grid-template-columns: 58px 52px 80px 1fr;
     gap: 10px;
     padding: 7px 0;
     border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -624,7 +624,7 @@
     font-size: 12px;
   }
   .changelog-commit:last-child { border-bottom: none; }
-  .changelog-num { font-size: 10px; opacity: 0.65; text-align: right; }
+  .changelog-num { font-size: 10px; opacity: 0.75; color: var(--tag-text); font-family: 'Consolas', monospace; }
   .changelog-hash { font-family: 'Consolas', monospace; font-size: 10px; color: #60a5fa; }
   .changelog-date { font-size: 10px; opacity: 0.4; }
   .changelog-subject { line-height: 1.45; }
@@ -6903,7 +6903,7 @@
     if (list) {
       list.innerHTML = (commits || []).map((c, i) =>
         `<div class="changelog-commit">
-          <span class="changelog-num">${i + 1}</span>
+          <span class="changelog-num">${c.version ? 'v' + escHtml(c.version) : (i + 1)}</span>
           <span class="changelog-hash">${escHtml(c.hash || '')}</span>
           <span class="changelog-date">${escHtml(c.date || '')}</span>
           <span class="changelog-subject">${escHtml(c.subject || '')}</span>
