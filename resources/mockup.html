@@ -67,6 +67,8 @@
   .stats { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; align-items: flex-start; }
   .stat { display: flex; align-items: center; gap: 5px; }
   .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
+  #filter-completed-label, #filter-running-label { transition: opacity 0.15s; }
+  #filter-completed-label:hover, #filter-running-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
   .btn-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
@@ -1160,8 +1162,8 @@
 
     <!-- Right third: Completed + Running Sessions on one row -->
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
-      <span class="stat"><span style="color:#fff;display:inline-block;width:14px;text-align:center;">4</span> <span class="stat-completed">Completed Sessions</span></span>
-      <span class="stat"><span style="color:#fff;display:inline-block;width:14px;text-align:center;">2</span> <span class="stat-running">Running Sessions</span></span>
+      <span class="stat"><span data-stat-completed style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-completed" id="filter-completed-label" onclick="toggleSessionFilter('completed')" style="cursor:pointer;" title="Filter to completed sessions">Completed Sessions</span></span>
+      <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
     </div>
 
   </div>
@@ -4809,6 +4811,40 @@
     const completed = vals.filter(s => s.status !== 'running').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-completed]').forEach(el => el.textContent = completed);
+    applySessionFilter();
+  }
+
+  let sessionFilter = null;
+
+  window.toggleSessionFilter = function(type) {
+    sessionFilter = (sessionFilter === type) ? null : type;
+    applySessionFilter();
+    const completedLabel = document.getElementById('filter-completed-label');
+    const runningLabel   = document.getElementById('filter-running-label');
+    if (!completedLabel || !runningLabel) return;
+    if (!sessionFilter) {
+      completedLabel.style.textDecoration = '';
+      completedLabel.style.opacity = '';
+      runningLabel.style.textDecoration = '';
+      runningLabel.style.opacity = '';
+    } else {
+      const filteringRunning = sessionFilter === 'running';
+      completedLabel.style.textDecoration = filteringRunning ? '' : 'underline';
+      completedLabel.style.opacity        = filteringRunning ? '0.4' : '';
+      runningLabel.style.textDecoration   = filteringRunning ? 'underline' : '';
+      runningLabel.style.opacity          = filteringRunning ? '' : '0.4';
+    }
+  };
+
+  function applySessionFilter() {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    grid.querySelectorAll('.card').forEach(card => {
+      const s = sessionStore[card.dataset.sid];
+      if (!s || !sessionFilter) { card.style.display = ''; return; }
+      const isRunning = s.status === 'running';
+      card.style.display = (sessionFilter === 'running' ? isRunning : !isRunning) ? '' : 'none';
+    });
   }
 
   function updateMiniCards() {
