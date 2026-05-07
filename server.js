@@ -3318,9 +3318,24 @@ function spawnMaxChat(sessionId, prompt, config) {
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
   session.pendingImages = [];
+
+  // Build stdin payload. When images are attached, switch to stream-json input
+  // format so the CLI receives multimodal content blocks (text + base64 images).
+  // Without images, plain text is simpler and avoids any format-version quirks.
+  let stdinPayload;
   if (chatImages.length) {
-    // Claude Code CLI (-p mode) does not support image input — notify the user and continue with text only.
-    broadcast({ type: 'line', sessionId, text: `⚠ Image attachments are not supported in Max mode. Switch to Agent mode for vision tasks. (${chatImages.length} image${chatImages.length > 1 ? 's' : ''} ignored)`, role: 'system' });
+    args.push('--input-format', 'stream-json');
+    const contentBlocks = [{ type: 'text', text: fullPrompt }];
+    for (const img of chatImages) {
+      if (!img.dataUrl) continue;
+      const match = img.dataUrl.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/s);
+      if (!match) continue;
+      contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+    }
+    stdinPayload = JSON.stringify({ type: 'user', message: { role: 'user', content: contentBlocks } }) + '\n';
+    dlog('IMAGE_ATTACH', `count=${chatImages.length} contentBlocks=${contentBlocks.length}`);
+  } else {
+    stdinPayload = fullPrompt;
   }
   dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
   let proc;
@@ -3463,9 +3478,9 @@ function spawnMaxChat(sessionId, prompt, config) {
   });
 
   try {
-    proc.stdin.write(fullPrompt);
+    proc.stdin.write(stdinPayload);
     proc.stdin.end();
-    dlog('STDIN_SENT', `bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
+    dlog('STDIN_SENT', `bytes=${Buffer.byteLength(stdinPayload,'utf8')}`);
   } catch (e) {
     dlog('STDIN_ERR', e.message);
     broadcast({ type: 'line', sessionId, text: `Failed to send prompt to Claude CLI: ${e.message}`, role: 'error' });
