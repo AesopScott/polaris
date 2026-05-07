@@ -504,7 +504,8 @@
   .palette [data-stream-role="assistant"] { margin-bottom: 8px; white-space: pre-wrap; color: #C5C5C5; font-weight: 500; }
   /* Monaco-style markdown rendering — applied after stream completes */
   [data-stream-role="assistant"].md-render { white-space: normal; }
-  .md-render { line-height: 1.55; color: #C5C5C5; }
+  /* .t-normal.md-render uses 0-2-0 specificity to beat .p1 .t-normal (also 0-2-0) by source order */
+  .t-normal.md-render { line-height: 1.55; color: #C5C5C5; }
   .md-render p { margin: 0 0 6px 0; }
   .md-render h1, .md-render h2, .md-render h3, .md-render h4 { color: #569CD6; font-weight: 600; margin: 10px 0 4px 0; }
   .md-render h1 { font-size: 1.15em; }
@@ -4386,6 +4387,7 @@
       })();
       div.innerHTML = marked.parse(raw, { breaks: true, gfm: true });
       div.classList.add('md-render');
+      div.style.color = '';
       div.style.whiteSpace = '';
       if (typeof hljs !== 'undefined') {
         div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
@@ -5215,22 +5217,24 @@
       const fileBlocks = pendingFiles.map(pf => `--- File: ${pf.name} ---\n${pf.content}\n--- End: ${pf.name} ---`).join('\n\n');
       fullPrompt = `${fileBlocks}\n\n${f.prompt}`;
       pendingFiles.length = 0;
-      document.querySelectorAll('.file-chips').forEach(c => c.innerHTML = '');
     }
+    const imagePaths = pendingImages.map(i => i.path);
+    pendingImages.length = 0;
+    document.querySelectorAll('.file-chips').forEach(c => c.innerHTML = '');
     const mode = getLaunchMode();
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName });
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePaths });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePaths });
     } else {
-      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier });
+      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePaths });
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }

@@ -2838,12 +2838,28 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
 
   // Restore persisted message history on first use (survives server restarts)
   if (!session.messages) session.messages = loadSessionMessages(sessionId);
-  session.messages.push({ role: 'user', content: userMessage });
+
+  // Build user message content: attach any dropped images as vision content blocks.
+  const agentImages = session.pendingImages || [];
+  session.pendingImages = [];
+  let messageContent = userMessage;
+  if (agentImages.length) {
+    const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', svg:'image/svg+xml' };
+    const imageBlocks = agentImages
+      .filter(p => { try { return fs.existsSync(p); } catch { return false; } })
+      .map(p => {
+        const mime = mimeMap[path.extname(p).toLowerCase().slice(1)] || 'image/jpeg';
+        const b64 = fs.readFileSync(p).toString('base64');
+        return { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } };
+      });
+    if (imageBlocks.length) messageContent = [{ type: 'text', text: userMessage }, ...imageBlocks];
+  }
+  session.messages.push({ role: 'user', content: messageContent });
   if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
 
   const tier  = session.tier || 'floor';
-  const hasImage = Array.isArray(userMessage)
-    ? userMessage.some(p => p.type === 'image_url' || p.type === 'image')
+  const hasImage = Array.isArray(messageContent)
+    ? messageContent.some(p => p.type === 'image_url' || p.type === 'image')
     : false;
   const effectiveTier = hasImage && tier === 'floor' ? 'balanced' : tier;
   // session.model wins when the launcher specifies an explicit model — used by
@@ -3293,7 +3309,12 @@ function spawnMaxChat(sessionId, prompt, config) {
   // --resume reuses the CLI session on disk (turn 2+), skipping history rebuild.
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel];
   if (isResume) args.push('--resume', session.claudeSessionId);
-  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
+  const chatImages = session.pendingImages || [];
+  for (const imgPath of chatImages) {
+    if (fs.existsSync(imgPath)) args.push('--image', imgPath);
+  }
+  session.pendingImages = [];
+  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd} images=${chatImages.length}`);
   let proc;
   try {
     proc = spawn(claudeBin, args, {
@@ -3999,7 +4020,7 @@ function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, workDir, projectName, tier } = msg;
+    const { prompt, workDir, projectName, tier, images } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     const effectiveWorkDir = (workDir && workDir.trim()) ? workDir.trim() : null;
@@ -4028,6 +4049,7 @@ function handleMessage(ws, raw) {
       status: 'running', startAt: Date.now(),
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
+      pendingImages: Array.isArray(images) ? images.filter(p => typeof p === 'string' && p) : [],
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
     broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
@@ -4050,7 +4072,8 @@ function handleMessage(ws, raw) {
     const name = generateSessionName(prompt);
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag });
+    const launchImages = Array.isArray(msg.images) ? msg.images.filter(p => typeof p === 'string' && p) : [];
+    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
     saveSessions();
@@ -4088,12 +4111,13 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'resume') {
-    const { sessionId, prompt, displayPrompt, resumeId, model, projectName } = msg;
+    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     session.status = 'running';
     session.lastPrompt = prompt;
     if (projectName !== undefined) session.projectName = projectName || null;
+    if (Array.isArray(images) && images.length) session.pendingImages = images.filter(p => typeof p === 'string' && p);
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
     // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
     if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
