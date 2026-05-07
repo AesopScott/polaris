@@ -3161,16 +3161,19 @@
         if (msg.claudeSessionId) s.resumeId = msg.claudeSessionId;
         if (msg.usage) {
           s.usage = msg.usage;
-          const turnCost = estimateCost(msg.usage.input_tokens || 0, msg.usage.output_tokens || 0, s.model);
-          s.totalCost = (s.totalCost || 0) + turnCost;
+          if (!s.isChat) {
+            const turnCost = estimateCost(msg.usage.input_tokens || 0, msg.usage.output_tokens || 0, s.model);
+            s.totalCost = (s.totalCost || 0) + turnCost;
+          }
           updateContextBar(msg.sessionId, msg.usage);
           accumulateUsage(s.model || resolveModel('balanced'), msg.usage);
           if (msg.routineTag) addRoutineTokens(msg.routineTag, msg.usage);
-          // update persistent cost display on card footer
-          const costCard = document.querySelector(`[data-sid="${msg.sessionId}"]`);
-          if (costCard) {
-            const costEl = costCard.querySelector('[data-session-cost]');
-            if (costEl) costEl.textContent = s.totalCost >= 0.01 ? `$${s.totalCost.toFixed(3)}` : `$${s.totalCost.toFixed(5)}`;
+          if (!s.isChat) {
+            const costCard = document.querySelector(`[data-sid="${msg.sessionId}"]`);
+            if (costCard) {
+              const costEl = costCard.querySelector('[data-session-cost]');
+              if (costEl) costEl.textContent = s.totalCost >= 0.01 ? `$${s.totalCost.toFixed(3)}` : `$${s.totalCost.toFixed(5)}`;
+            }
           }
         }
         break;
@@ -4069,7 +4072,7 @@
       <div class="context-bar-wrap">
         <div class="context-label-bar">
           <span>Context Window${s.model ? ` <span style="opacity:0.55;font-weight:400;">(${s.model.split('/').pop()})</span>` : ''}</span>
-          <span><span data-ctx-tokens>0</span> tokens · <span data-ctx-pct>0%</span><span data-ctx-cost style="color:#f59e0b;"></span></span>
+          <span><span data-ctx-tokens>0</span> tokens · <span data-ctx-pct>0%</span>${s.isChat ? '' : '<span data-ctx-cost style="color:#f59e0b;"></span>'}</span>
         </div>
         <div class="context-bar"><div class="context-fill" data-ctx-fill style="width:0%"></div></div>
       </div>
@@ -4094,10 +4097,10 @@
           <span style="font-size:11px;font-weight:700;" data-speed-ttft>—</span>
           <span style="font-size:8px;opacity:0.4;">ms</span>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;border-right:1px solid var(--border);min-width:56px;">
+        ${s.isChat ? '' : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;border-right:1px solid var(--border);min-width:56px;">
           <span style="font-size:8px;opacity:0.4;letter-spacing:0.05em;">COST</span>
           <span style="font-size:11px;font-weight:700;color:#f59e0b;" data-session-cost>—</span>
-        </div>
+        </div>`}
         <div class="footer-btns">
           <button class="fbtn" data-action="copy">Copy</button>
           <button class="fbtn" data-action="clear">Clear</button>
@@ -4373,8 +4376,10 @@
     if (pctEl) pctEl.textContent = pct + '%';
     if (tokEl) tokEl.textContent = `${formatTokens(total)} / ${formatTokens(limit)}`;
     const costEl = card.querySelector('[data-ctx-cost]');
-    const totalCost = (sessionStore[sessionId] || {}).totalCost || 0;
-    if (costEl) costEl.textContent = totalCost > 0 ? ` · ~$${totalCost.toFixed(4)}` : '';
+    if (costEl) {
+      const totalCost = (sessionStore[sessionId] || {}).totalCost || 0;
+      costEl.textContent = !s.isChat && totalCost > 0 ? ` · ~$${totalCost.toFixed(4)}` : '';
+    }
   }
 
   // ── Card actions ──────────────────────────────────────────────────────────────
