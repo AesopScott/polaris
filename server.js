@@ -409,7 +409,7 @@ function brevoPost(payload) {
 // â"€â"€â"€ Git helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function runGit(args, cwd) {
   return new Promise(resolve => {
-    execFile('git', args, { cwd, windowsHide: true }, (err, stdout) => {
+    exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd, windowsHide: true }, (err, stdout) => {
       resolve(err ? '' : stdout.trim());
     });
   });
@@ -5880,10 +5880,10 @@ wss.on('connection', (ws) => {
   // Send the last 5 commits on every launch
   (async () => {
     try {
-      const logOutput = await runGit(['log', '-5', '--format=%h|||%s|||%an|||%ai'], __dirname);
+      const logOutput = await runGit(['log', '-5', '--format=%h%x09%s%x09%an%x09%ai'], __dirname);
       if (!logOutput) return;
       const commits = logOutput.split('\n').filter(Boolean).map(line => {
-        const [hash, subject, author, date] = line.split('|||');
+        const [hash, subject, author, date] = line.split('\t');
         return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
       }).filter(c => c.hash);
       if (commits.length > 0) {
