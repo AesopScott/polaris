@@ -4709,6 +4709,38 @@
   }
   window.closeCrossCheckDetail = closeCrossCheckDetail;
 
+  // ── Inline confirm overlay (used by archive, etc.) ────────────────────────────
+  function showInlineConfirm(cardEl, message, onConfirm) {
+    const existing = cardEl.querySelector('.inline-confirm-overlay');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'inline-confirm-overlay';
+    overlay.style.cssText = [
+      'position:absolute', 'bottom:0', 'left:0', 'right:0',
+      'background:rgba(20,20,30,0.96)', 'border-top:1px solid rgba(255,255,255,0.12)',
+      'padding:10px 14px', 'display:flex', 'flex-direction:column', 'gap:8px',
+      'z-index:50', 'border-radius:0 0 8px 8px',
+    ].join(';');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'font-size:12px;opacity:0.85;line-height:1.4;';
+    msg.textContent = message;
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:8px;';
+    const yes = document.createElement('button');
+    yes.textContent = 'Yes, Archive';
+    yes.style.cssText = 'flex:1;padding:5px 10px;font-size:11px;background:#c0392b;border:none;border-radius:4px;color:#fff;cursor:pointer;';
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Cancel';
+    cancel.style.cssText = 'flex:1;padding:5px 10px;font-size:11px;background:rgba(255,255,255,0.1);border:none;border-radius:4px;color:#fff;cursor:pointer;';
+    const dismiss = () => overlay.remove();
+    yes.onclick = () => { dismiss(); onConfirm(); };
+    cancel.onclick = dismiss;
+    btns.append(yes, cancel);
+    overlay.append(msg, btns);
+    cardEl.style.position = 'relative';
+    cardEl.appendChild(overlay);
+  }
+
   // ── Archive panel ─────────────────────────────────────────────────────────────
   let _archiveViewSessionId = null;
 
