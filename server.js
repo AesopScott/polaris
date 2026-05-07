@@ -3386,6 +3386,7 @@ function spawnMaxChat(sessionId, prompt, config) {
   let eventCount = 0;
   let finalUsage = null;
   let finalModel = null;
+  let lastAssistantText = '';
 
   proc.stdout.on('data', chunk => {
     totalOutBytes += chunk.length;
@@ -3409,8 +3410,10 @@ function spawnMaxChat(sessionId, prompt, config) {
         if (evt.model)      finalModel = evt.model;
         dlog('SYSTEM', `session_id=${evt.session_id || ''} model=${evt.model || ''}`);
       } else if (t === 'assistant' && evt.message?.content) {
+        lastAssistantText = '';
         for (const part of evt.message.content) {
           if (part.type === 'text' && part.text) {
+            lastAssistantText += part.text;
             broadcast({ type: 'line', sessionId, text: part.text, role: 'assistant' });
           } else if (part.type === 'tool_use') {
             const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
@@ -3455,7 +3458,16 @@ function spawnMaxChat(sessionId, prompt, config) {
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
       broadcastUsage(sessionId, finalUsage, session.claudeSessionId || null, null);
     }
-    session.status = code === 0 ? 'done' : 'error';
+    let termStatus;
+    if (code !== 0) {
+      termStatus = 'error';
+    } else if (session.isChat) {
+      const testPhrases = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
+      termStatus = testPhrases.test(lastAssistantText) ? 'test' : 'waiting';
+    } else {
+      termStatus = 'done';
+    }
+    session.status = termStatus;
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
 

@@ -277,6 +277,50 @@
         0 24px 80px rgba(0,0,0,0.3);
     }
   }
+  /* Waiting cards pulse amber — waiting for user reply */
+  .card.status-waiting-card {
+    animation: cardWaitingPulse 3s ease-in-out infinite;
+  }
+  @keyframes cardWaitingPulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 1px rgba(251,191,36,0.35),
+        0 0 18px rgba(251,191,36,0.18),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(251,191,36,0.7),
+        0 0 32px rgba(251,191,36,0.4),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+  }
+  /* Test cards pulse purple — waiting for user to test a change */
+  .card.status-test-card {
+    animation: cardTestPulse 3s ease-in-out infinite;
+  }
+  @keyframes cardTestPulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 1px rgba(167,139,250,0.35),
+        0 0 18px rgba(167,139,250,0.18),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(167,139,250,0.7),
+        0 0 32px rgba(167,139,250,0.4),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+  }
   .card-resize-handle { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: 10; }
   .card-resize-handle:hover, .card-resize-handle.dragging { background: rgba(59,130,246,0.35); }
   .card.dragging { opacity: 0.35; }
@@ -451,6 +495,8 @@
   .status-running { background: #1d4ed820; color: #60a5fa; }
   .status-done    { background: #16653120; color: #22c55e; }
   .status-error   { background: #7f1d1d20; color: #ef4444; }
+  .status-waiting { background: #78350f20; color: #fbbf24; }
+  .status-test    { background: #4c1d9520; color: #a78bfa; }
   .dot-run { background: #3b82f6; }
   .dot-done { background: #22c55e; }
   .dot-err { background: #ef4444; }
@@ -4227,12 +4273,14 @@
     const el = document.createElement('div');
     el.className = 'card'
       + (s.pinned ? ' pinned' : '')
-      + (s.status === 'running' ? ' status-running-card' : '');
+      + (s.status === 'running' ? ' status-running-card' : '')
+      + (s.status === 'waiting' ? ' status-waiting-card' : '')
+      + (s.status === 'test'    ? ' status-test-card'    : '');
     el.dataset.sid = s.id;
     if (s.height) el.style.height = s.height;
 
-    const statusClass = { running: 'status-running', done: 'status-done', error: 'status-error' }[s.status] || 'status-running';
-    const statusLabel = { running: 'Running', done: 'Done', error: 'Error' }[s.status] || s.status;
+    const statusClass = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' }[s.status] || 'status-running';
+    const statusLabel = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' }[s.status] || s.status;
     const rerunSnippet = '';
 
     let chipLabel = '';
@@ -4577,11 +4625,15 @@
     if (!card) return;
     const badge = card.querySelector('.status-badge');
     if (badge) {
-      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error' }[status] || 'status-running');
-      badge.textContent = { running: 'Running', done: 'Done', error: 'Error' }[status] || status;
+      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' }[status] || 'status-running');
+      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' }[status] || status;
     }
+    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card');
+    if (status === 'running') card.classList.add('status-running-card');
+    else if (status === 'waiting') card.classList.add('status-waiting-card');
+    else if (status === 'test') card.classList.add('status-test-card');
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
-    if (status === 'done') {
+    if (status === 'done' || status === 'waiting' || status === 'test') {
       const term = card.querySelector('[data-term]');
       if (term) {
         term.querySelectorAll('[data-stream-role="assistant"]:not(.md-render)').forEach(renderAssistantMarkdown);
