@@ -1637,14 +1637,11 @@
       <span style="flex:1;font-size:13px;font-weight:800;">File Versions</span>
       <button class="preview-close-btn" onclick="closeVersions()">✕</button>
     </div>
-    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--header-bg);gap:12px;">
-      <input type="text" id="versions-filter-input" placeholder="Filter Registry by file path…" oninput="filterVersions()" style="flex:1;padding:5px 10px;border-radius:5px;border:1px solid #444;font-size:12px;background:var(--input-bg);color:var(--text);" />
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:flex-end;align-items:center;background:var(--header-bg);">
       <button onclick="refreshVersions()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">↺ Refresh</button>
     </div>
     <div class="projects-panel-body" style="padding:0;display:flex;flex-direction:column;overflow:hidden;">
-      <div style="padding:6px 16px;font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.55;text-transform:uppercase;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">Registry <span id="versions-registry-count" style="opacity:0.5;font-weight:400;margin-left:6px;"></span></div>
-      <div id="versions-registry" style="overflow-y:auto;max-height:240px;padding:4px 0;"></div>
-      <div style="padding:6px 16px;font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.55;text-transform:uppercase;background:rgba(255,255,255,0.02);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">Changelog <span id="versions-changelog-count" style="opacity:0.5;font-weight:400;margin-left:6px;"></span></div>
+      <div style="padding:6px 16px;font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.55;text-transform:uppercase;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">Sessions <span id="versions-changelog-count" style="opacity:0.5;font-weight:400;margin-left:6px;"></span></div>
       <div id="versions-changelog" style="overflow-y:auto;flex:1;padding:4px 0;"></div>
     </div>
   </div>
@@ -7584,13 +7581,14 @@
         </div>`;
       }).join('') : '';
 
-      const projectChip = project ? (() => { const c = (window.getProjectColorByName && window.getProjectColorByName(project)) || '#a78bfa'; return `<span style="font-size:10px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${escHtml(project)}</span>`; })() : '';
+      const projectColor = project ? ((window.getProjectColorByName && window.getProjectColorByName(project)) || '#a78bfa') : null;
+      const projectChip = projectColor ? `<span style="font-size:10px;font-weight:700;color:${projectColor};background:${projectColor}22;border:1px solid ${projectColor}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${escHtml(project)}</span>` : '';
 
       return `<div style="border-bottom:1px solid var(--border);">
         <div onclick="toggleChangelogGroup('${escHtmlAttr(sid)}')" style="cursor:pointer;padding:6px 16px;font-size:11px;font-weight:700;color:var(--tag-text);background:rgba(255,255,255,0.03);display:flex;align-items:center;gap:8px;user-select:none;">
           <span style="opacity:0.5;flex-shrink:0;width:12px;">${expanded ? '▼' : '▶'}</span>
           ${projectChip}
-          <span>${escHtml(name)}</span>
+          <span${projectColor ? ` style="color:${projectColor};"` : ''}>${escHtml(name)}</span>
           <span style="font-size:10px;font-weight:400;opacity:0.5;margin-left:auto;">${dateStr} · ${fileCount} file${fileCount !== 1 ? 's' : ''}</span>
         </div>
         ${body}
