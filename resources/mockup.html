@@ -211,11 +211,6 @@
   }
   #float-launcher.visible { display: flex; }
   #float-launcher .float-row { display: flex; gap: 8px; align-items: flex-end; }
-  #float-drag-handle {
-    text-align: center; font-size: 10px; opacity: 0.35;
-    letter-spacing: 3px; cursor: move; padding: 2px 0; user-select: none;
-  }
-  #float-drag-handle:hover { opacity: 0.7; }
 
   /* Launch button row — left-aligned under prompt */
   .launch-action-row { display: flex; align-items: center; gap: 10px; }
@@ -493,6 +488,7 @@
   .palette .session-grid { background: var(--bg); }
   .palette .text-muted { color: var(--text-muted); }
   .palette .context-label { color: var(--text-muted); }
+  .palette .accent-label { color: #ffffff; }
 
   /* Button category colors — fixed across all palettes */
   /* Button column colors — gradient applies to text (.lbl) only, not the button body
@@ -1307,6 +1303,7 @@
       <button class="preview-close-btn" onclick="closeSettings()">✕</button>
     </div>
     <div class="projects-panel-body" style="padding:20px;display:flex;flex-direction:column;gap:20px;">
+      <div style="display:flex;flex-direction:column;gap:16px;padding:14px 16px;border-radius:8px;background:rgba(99,102,241,0.09);border:1px solid rgba(99,102,241,0.18);">
       <div class="panel-section">
         <div class="context-label accent-label">DEFAULT TIER</div>
         <select id="settings-default-model" class="panel-input" style="width:240px;cursor:pointer;">
@@ -1337,7 +1334,8 @@
         <span id="fork-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         <div style="font-size:10px;opacity:0.45;margin-top:4px;">Model used when forking a session. Leave blank to use the Floor model.</div>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
+      </div>
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(251,146,60,0.09);border:1px solid rgba(251,146,60,0.18);display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;display:flex;align-items:center;gap:10px;">
           <span>OPENROUTER</span>
           <button onclick="refreshOpenRouterCatalog()" style="padding:3px 10px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0;text-transform:none;">↻ Refresh Pricing</button>
@@ -1396,7 +1394,7 @@
         </div>
       </div>
       <!-- ── Benchmark Runner ───────────────────────────────────────────── -->
-      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px;">
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(34,197,94,0.09);border:1px solid rgba(34,197,94,0.18);display:flex;flex-direction:column;gap:12px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">PERFORMANCE BENCHMARK</div>
         <div style="font-size:10px;color:#64748b;line-height:1.4;">Per-model TTFT and tok/s on a chat prompt. Reads queue from <code>5-Performance-Benchmark.md</code>.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1421,7 +1419,7 @@
       </div>
 
       <!-- ── Agent Eval ─────────────────────────────────────────────────── -->
-      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px;">
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(168,85,247,0.09);border:1px solid rgba(168,85,247,0.18);display:flex;flex-direction:column;gap:12px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">AGENT EVAL</div>
         <div style="font-size:10px;color:#64748b;line-height:1.4;">Per-model agent-loop evaluation. Drives scripted fixtures (Read, Edit, multi-turn) against each model and asserts on tool calls + filesystem state. Reads queue from <code>5-Agentic-Benchmark.md</code>.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1457,7 +1455,7 @@
         </div>
       </div>
 
-      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(6,182,212,0.09);border:1px solid rgba(6,182,212,0.18);display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">API KEYS</div>
         <div class="panel-section">
           <div class="context-label accent-label">ANTHROPIC API KEY</div>
@@ -1505,7 +1503,7 @@
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Enables full web search in agent sessions. Free tier: 2,000 queries/month. Get a key at <a href="#" onclick="openExternal('https://brave.com/search/api/'); return false;" style="color:var(--accent);">brave.com/search/api</a></div>
         </div>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(56,189,248,0.09);border:1px solid rgba(56,189,248,0.18);display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">DEEPSEEK (CHAT — web login)</div>
         <div class="panel-section">
           <div class="context-label accent-label">EMAIL</div>
@@ -1524,7 +1522,7 @@
           <span id="chat-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:16px;">
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(239,68,68,0.09);border:1px solid rgba(239,68,68,0.18);display:flex;flex-direction:column;gap:16px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">DEEPSEEK (DIRECT API — for routines)</div>
         <div class="panel-section">
           <div class="context-label accent-label">API KEY</div>
@@ -3360,6 +3358,7 @@
         }
         if (!sessionOrder.includes(msg.sessionId)) sessionOrder.push(msg.sessionId);
         renderGrid();
+        if (msg.projectName) applyNavProjectTheme(msg.projectName);
         if (!msg.isForked) enterResumeMode(msg.sessionId, null);
         break;
 
@@ -4351,17 +4350,6 @@
     if (wasAtBottom) term.scrollTop = term.scrollHeight;
   }
 
-  function launchCrossCheckValidation(msg) {
-    const session = window.sessionStore?.[msg.sessionId];
-    const workDir = session?.workDir || '';
-    const projectName = session?.projectName || '';
-    const issueLines = Array.isArray(msg.issues) && msg.issues.length
-      ? '\n\nIssues:\n' + msg.issues.map(i => `- ${i}`).join('\n')
-      : '';
-    const prompt = `Cross-check ${msg.verdict} on ${msg.operation} of ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease validate whether this is a real problem and suggest how to fix it.`;
-    wsSend({ type: 'launch', prompt, workDir, projectName });
-  }
-
   // ── Grid rendering ────────────────────────────────────────────────────────────
   function getActiveGrid() {
     return document.querySelector('.palette:not(.hidden) .session-grid');
@@ -4516,7 +4504,7 @@
         ${headerChip}
         <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span class="status-badge ${statusClass}" onclick="cycleSessionStatus('${escHtml(s.id)}')" title="Click to change status">${statusLabel}</span>
+          <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
           <div class="card-btns">
             <button class="card-btn" title="Diagnostic log" data-action="show-diag">📋</button>
             <button class="card-btn" title="Re-run" data-action="rerun">↺</button>
@@ -4601,6 +4589,8 @@
         </div>
       </div>
       <div class="card-resize-handle" data-resize></div>`;
+
+    el.querySelector('.status-badge').addEventListener('click', () => cycleSessionStatus(s.id));
 
     const term = el.querySelector('[data-term]');
     mergeConsecutiveAssistantLines(s.lines).forEach(l => term.appendChild(makeLineEl(l, s.id)));
@@ -5226,7 +5216,8 @@
     const issueLines = Array.isArray(msg.issues) && msg.issues.length
       ? '\n\nIssues:\n' + msg.issues.map(i => `- ${i}`).join('\n')
       : '';
-    const prompt = `Cross-check ${msg.verdict} on ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease review and fix the issues identified above.`;
+    const opPart = msg.operation ? ` on ${msg.operation}` : '';
+    const prompt = `Cross-check ${msg.verdict}${opPart} of ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease review and fix the issues identified above.`;
     wsSend({ type: 'launch-chat', prompt, workDir: sess.workDir, projectName: sess.projectName });
   }
   window.launchCrossCheckValidation = launchCrossCheckValidation;
@@ -5540,7 +5531,7 @@
     return chip;
   }
 
-  function attachFile(file) {
+  function attachFile(file, sourceEl) {
     const name = file.name || 'file';
     if (VIDEO_MIME.test(file.type)) {
       alert(`Video files are not supported.\n\nPolaris accepts images (JPEG, PNG, GIF, WebP), audio files (MP3, WAV, M4A, OGG, WebM, AAC), PDFs, and Word documents.`);
@@ -5550,29 +5541,41 @@
     const isDoc   = !isImage && (DOC_MIME.has(file.type) || DOC_EXT.test(name));
     const isAudio = !isImage && !isDoc && (AUDIO_MIME.has(file.type) || AUDIO_EXT.test(name));
 
+    const inFloat = !!(sourceEl && sourceEl.closest('#float-launcher'));
+    const getChipsContainers = () => inFloat
+      ? [document.querySelector('#float-launcher .file-chips')].filter(Boolean)
+      : [...document.querySelectorAll('.file-chips')].filter(el => !el.closest('#float-launcher'));
+    const getFocusTarget = () => inFloat
+      ? document.getElementById('float-prompt-area')
+      : document.querySelector('.palette:not(.hidden) .prompt-area');
+
     if (isImage || isDoc || isAudio) {
       const reader = new FileReader();
       reader.onload = ev => {
-        let idx, chipClass, label;
+        let item, chipClass, label;
         if (isImage) {
-          idx = pendingImages.push({ name, dataUrl: ev.target.result }) - 1;
+          item = { name, dataUrl: ev.target.result };
+          pendingImages.push(item);
           chipClass = 'image-chip'; label = `🖼 ${name}`;
         } else if (isDoc) {
-          idx = pendingDocs.push({ name, dataUrl: ev.target.result }) - 1;
+          item = { name, dataUrl: ev.target.result };
+          pendingDocs.push(item);
           chipClass = 'file-chip'; label = `📄 ${name}`;
         } else {
-          idx = pendingAudio.push({ name, dataUrl: ev.target.result }) - 1;
+          item = { name, dataUrl: ev.target.result };
+          pendingAudio.push(item);
           chipClass = 'file-chip'; label = `🎵 ${name}`;
         }
         const arr = isImage ? pendingImages : isDoc ? pendingDocs : pendingAudio;
-        document.querySelectorAll('.file-chips').forEach(container => {
+        getChipsContainers().forEach(container => {
           const chip = makeChip(chipClass, label, () => {
-            arr.splice(idx, 1);
+            const i = arr.indexOf(item);
+            if (i !== -1) arr.splice(i, 1);
             chip.remove();
           });
           container.appendChild(chip);
         });
-        const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+        const promptEl = getFocusTarget();
         if (promptEl) promptEl.focus();
       };
       reader.readAsDataURL(file);
@@ -5582,26 +5585,28 @@
     // Plain text file
     const reader = new FileReader();
     reader.onload = e => {
-      const idx = pendingFiles.push({ name, content: e.target.result }) - 1;
-      document.querySelectorAll('.file-chips').forEach(container => {
+      const item = { name, content: e.target.result };
+      pendingFiles.push(item);
+      getChipsContainers().forEach(container => {
         const chip = makeChip('file-chip', `📎 ${name}`, () => {
-          pendingFiles.splice(idx, 1);
+          const i = pendingFiles.indexOf(item);
+          if (i !== -1) pendingFiles.splice(i, 1);
           chip.remove();
-          const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+          const promptEl = getFocusTarget();
           if (promptEl) updateTokenCount(promptEl);
         });
         container.appendChild(chip);
       });
-      const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+      const promptEl = getFocusTarget();
       if (promptEl) { updateTokenCount(promptEl); promptEl.focus(); }
     };
     reader.readAsText(file);
-    const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+    const promptEl = getFocusTarget();
     if (promptEl) promptEl.focus();
   }
 
-  function handleFileDrop(files) {
-    for (const file of files) attachFile(file);
+  function handleFileDrop(files, sourceEl) {
+    for (const file of files) attachFile(file, sourceEl);
   }
 
   function openFilePicker() {
@@ -5731,26 +5736,6 @@
     window.clearResumeMode();
   });
 
-  // Drag float launcher by its handle
-  (function () {
-    let dragging = false, dx = 0, dy = 0;
-    const handle   = document.getElementById('float-drag-handle');
-    const launcher = document.getElementById('float-launcher');
-    if (!handle || !launcher) return;
-    handle.addEventListener('mousedown', e => {
-      dragging = true;
-      const r = launcher.getBoundingClientRect();
-      dx = e.clientX - r.left;
-      dy = e.clientY - r.top;
-      e.preventDefault();
-    });
-    document.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      launcher.style.left = Math.max(0, e.clientX - dx) + 'px';
-      launcher.style.top  = Math.max(0, e.clientY - dy) + 'px';
-    });
-    document.addEventListener('mouseup', () => { dragging = false; });
-  })();
 
   function getLaunchMode() {
     return document.querySelector('.palette:not(.hidden) .mode-btn.active')?.dataset?.mode || 'chat';
@@ -9577,7 +9562,7 @@
         for (const item of items) {
           if (item.kind === 'file' && item.type.startsWith('image/')) {
             const file = item.getAsFile();
-            if (file) attachFile(file);
+            if (file) attachFile(file, el);
           }
         }
       });
@@ -9598,7 +9583,7 @@
         e.preventDefault();
         e.stopPropagation();
         wrap.classList.remove('drag-over');
-        if (e.dataTransfer.files.length) handleFileDrop(e.dataTransfer.files);
+        if (e.dataTransfer.files.length) handleFileDrop(e.dataTransfer.files, wrap);
       });
     });
 
@@ -10233,9 +10218,9 @@
 
 <!-- Floating prompt launcher — positions above the selected session card -->
 <div id="float-launcher">
-  <div id="float-drag-handle">⠿⠿⠿⠿⠿</div>
   <div class="float-row">
     <div class="prompt-wrap prompt-style-2" id="float-prompt-wrap" style="flex:1;min-width:0;">
+      <div class="file-chips"></div>
       <textarea class="prompt-area" id="float-prompt-area" placeholder="Continue this session..." style="height:54px;"></textarea>
       <span class="token-count text-muted">~0 / 200k tokens</span>
     </div>
