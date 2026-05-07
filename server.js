@@ -3306,9 +3306,10 @@ function spawnMaxChat(sessionId, prompt, config) {
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
-  // Translate session tier → Claude Code --model flag: floor=haiku, balanced=sonnet, power=opus.
+  // Translate session tier → Claude Code --model flag.
+  // Use full model ID for haiku — the 'haiku' shorthand resolves to 3.5, which isn't on Max.
   const tierForCli = (session.tier || 'balanced').toLowerCase();
-  const cliModel = tierForCli === 'power' ? 'opus' : tierForCli === 'floor' ? 'haiku' : 'sonnet';
+  const cliModel = tierForCli === 'power' ? 'opus' : tierForCli === 'floor' ? 'claude-haiku-4-5-20251001' : 'sonnet';
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
@@ -3317,15 +3318,11 @@ function spawnMaxChat(sessionId, prompt, config) {
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
   session.pendingImages = [];
-  const tmpImageFiles = [];
-  for (const img of chatImages) {
-    const m = img.dataUrl && img.dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-    if (!m) continue;
-    const ext = (m[1].split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
-    const tmpPath = path.join(os.tmpdir(), `polaris-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
-    try { fs.writeFileSync(tmpPath, Buffer.from(m[2], 'base64')); tmpImageFiles.push(tmpPath); args.push('--image', tmpPath); } catch {}
+  if (chatImages.length) {
+    // Claude Code CLI (-p mode) does not support image input — notify the user and continue with text only.
+    broadcast({ type: 'line', sessionId, text: `⚠ Image attachments are not supported in Max mode. Switch to Agent mode for vision tasks. (${chatImages.length} image${chatImages.length > 1 ? 's' : ''} ignored)`, role: 'system' });
   }
-  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd} images=${tmpImageFiles.length}`);
+  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
   let proc;
   try {
     proc = spawn(claudeBin, args, {
@@ -3415,7 +3412,6 @@ function spawnMaxChat(sessionId, prompt, config) {
 
   proc.on('close', async code => {
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
-    for (const f of tmpImageFiles) { try { fs.unlinkSync(f); } catch {} }
     if (finalUsage) {
       const modelTag = finalModel || 'claude-cli (Max plan)';
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
