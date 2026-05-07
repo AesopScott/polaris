@@ -750,6 +750,10 @@ function bumpVersion(filePath) {
   return { rel, prev, next };
 }
 
+function isTempFile(filePath) {
+  return /\.tmp\.\d+\.[a-f0-9]+$/i.test(path.basename(filePath));
+}
+
 function appendVersionLog(entry) {
   try {
     fs.appendFileSync(VERSIONS_LOG_PATH, JSON.stringify(entry) + '\n', 'utf8');
@@ -947,6 +951,8 @@ function watchSessionFiles(sessionId, workDir) {
     if (event !== 'change' || !filename) return;
     if (WATCH_EXCLUDE.test(filename)) return;
     const full = path.join(workDir, filename);
+    if (isTempFile(full)) return;
+    try { if (!fs.statSync(full).isFile()) return; } catch { return; }
     const { rel, prev, next } = bumpVersion(full);
     // Track modified files on the session for auto-Obsidian-Up at session end
     const s = sessions.get(sessionId);
@@ -1404,10 +1410,20 @@ function buildPolarisContextBlock(config, session) {
   return lines.join('\n');
 }
 
-function toolRead({ file_path, offset, limit }) {
+function toolRead({ file_path, offset, limit }, sessionId, workDir) {
   const lines = fs.readFileSync(file_path, 'utf8').split('\n');
   const start = offset ? Math.max(0, offset - 1) : 0;
   const end   = limit  ? Math.min(lines.length, start + limit) : lines.length;
+  if (sessionId && workDir && !isTempFile(file_path) && file_path.startsWith(workDir)) {
+    try {
+      const rel = path.relative(process.cwd(), file_path).replace(/\\/g, '/');
+      const version = getVersions()[rel] || '1.0';
+      const s = sessions.get(sessionId);
+      const ts = Date.now();
+      appendVersionLog({ ts, sessionId, sessionName: s?.name || sessionId, file: rel, type: 'read', version });
+      broadcast({ type: 'file-read', sessionId, file: rel, version, ts, sessionName: s?.name || sessionId });
+    } catch { /* non-critical */ }
+  }
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
@@ -2650,7 +2666,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     return await callMcpTool(serverName, toolName, input);
   }
   switch (name) {
-    case 'Read':       return toolRead(input);
+    case 'Read':       return toolRead(input, sessionId, workDir);
     case 'Write':      return await toolWrite(input, workDir, sessionId);
     case 'Edit':       return await toolEdit(input, workDir, sessionId);
     case 'Glob':       return toolGlob(input, workDir);

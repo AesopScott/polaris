@@ -2998,7 +2998,8 @@
   let locksStore = {};     // filePath → { sessions: [] }
   let protectedPatterns = ['*.md']; // file patterns requiring approval before modification
   let versionsStore = {}; // filePath → currentVersion string
-  let sessionFilesMap = {}; // sessionId → { filePath → { version, ts } }
+  let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
+  function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, path }] — image files passed to vision-capable models
 
@@ -3367,15 +3368,21 @@
         break;
 
       case 'versions':
-        versionsStore = msg.versions || {};
+        versionsStore = {};
+        Object.entries(msg.versions || {}).forEach(([k, v]) => { if (!isTempFilePath(k)) versionsStore[k] = v; });
         // Replay historical log into sessionFilesMap so Changelog survives reconnect
         if (Array.isArray(msg.log)) {
           msg.log.forEach(e => {
+            if (isTempFilePath(e.file)) return;
             if (!sessionFilesMap[e.sessionId]) sessionFilesMap[e.sessionId] = {};
-            if (!sessionFilesMap[e.sessionId][e.file]) sessionFilesMap[e.sessionId][e.file] = { version: e.next, changes: [], sessionName: e.sessionName };
-            sessionFilesMap[e.sessionId][e.file].version = e.next;
-            sessionFilesMap[e.sessionId][e.file].sessionName = e.sessionName;
-            sessionFilesMap[e.sessionId][e.file].changes.push({ prev: e.prev, next: e.next, ts: e.ts });
+            if (!sessionFilesMap[e.sessionId][e.file]) sessionFilesMap[e.sessionId][e.file] = { version: e.next || e.version, changes: [], reads: [], sessionName: e.sessionName };
+            if (e.type === 'read') {
+              sessionFilesMap[e.sessionId][e.file].reads.push({ version: e.version, ts: e.ts });
+            } else {
+              sessionFilesMap[e.sessionId][e.file].version = e.next;
+              sessionFilesMap[e.sessionId][e.file].sessionName = e.sessionName;
+              sessionFilesMap[e.sessionId][e.file].changes.push({ prev: e.prev, next: e.next, ts: e.ts });
+            }
           });
         }
         renderVersionsRegistry();
@@ -3383,9 +3390,10 @@
         break;
 
       case 'file-version':
+        if (isTempFilePath(msg.file)) break;
         versionsStore[msg.file] = msg.next;
         if (!sessionFilesMap[msg.sessionId]) sessionFilesMap[msg.sessionId] = {};
-        if (!sessionFilesMap[msg.sessionId][msg.file]) sessionFilesMap[msg.sessionId][msg.file] = { version: msg.next, changes: [], sessionName: msg.sessionName };
+        if (!sessionFilesMap[msg.sessionId][msg.file]) sessionFilesMap[msg.sessionId][msg.file] = { version: msg.next, changes: [], reads: [], sessionName: msg.sessionName };
         sessionFilesMap[msg.sessionId][msg.file].version = msg.next;
         if (msg.sessionName) sessionFilesMap[msg.sessionId][msg.file].sessionName = msg.sessionName;
         sessionFilesMap[msg.sessionId][msg.file].changes.push({ prev: msg.prev, next: msg.next, ts: msg.ts || Date.now() });
@@ -3393,6 +3401,15 @@
         renderVersionsChangelog();
         if (typeof mpHandleVersionBump === 'function') mpHandleVersionBump(msg.file, msg.next);
         if (typeof previewHandleVersionBump === 'function') previewHandleVersionBump(msg.file);
+        break;
+
+      case 'file-read':
+        if (isTempFilePath(msg.file)) break;
+        if (!sessionFilesMap[msg.sessionId]) sessionFilesMap[msg.sessionId] = {};
+        if (!sessionFilesMap[msg.sessionId][msg.file]) sessionFilesMap[msg.sessionId][msg.file] = { version: msg.version, changes: [], reads: [], sessionName: msg.sessionName };
+        sessionFilesMap[msg.sessionId][msg.file].reads.push({ version: msg.version, ts: msg.ts || Date.now() });
+        if (msg.sessionName) sessionFilesMap[msg.sessionId][msg.file].sessionName = msg.sessionName;
+        renderVersionsChangelog();
         break;
 
       case 'code-health':
@@ -7520,7 +7537,7 @@
     const countEl = document.getElementById('versions-registry-count');
     if (!el) return;
     const filterStr = (document.getElementById('versions-filter-input')?.value || '').toLowerCase().trim();
-    const all = Object.entries(versionsStore).sort(([a], [b]) => a.localeCompare(b));
+    const all = Object.entries(versionsStore).filter(([fp]) => !isTempFilePath(fp)).sort(([a], [b]) => a.localeCompare(b));
     const filtered = filterStr ? all.filter(([fp]) => fp.toLowerCase().includes(filterStr)) : all;
     if (countEl) countEl.textContent = filterStr ? `${filtered.length} of ${all.length}` : `${all.length} files`;
     if (filtered.length === 0) {
@@ -7541,14 +7558,13 @@
     const sessionIds = Object.keys(sessionFilesMap);
     if (countEl) countEl.textContent = `${sessionIds.length} session${sessionIds.length !== 1 ? 's' : ''}`;
     if (sessionIds.length === 0) {
-      el.innerHTML = '<div style="padding:14px 16px;font-size:11px;opacity:0.4;">No file edits yet.</div>';
+      el.innerHTML = '<div style="padding:14px 16px;font-size:11px;opacity:0.4;">No file activity yet.</div>';
       return;
     }
-    // Sort sessions by most recent edit first
+    // Sort sessions by most recent activity (write or read) first
     const sortedIds = sessionIds.sort((a, b) => {
-      const lastA = Math.max(...Object.values(sessionFilesMap[a]).flatMap(f => f.changes.map(c => c.ts)));
-      const lastB = Math.max(...Object.values(sessionFilesMap[b]).flatMap(f => f.changes.map(c => c.ts)));
-      return lastB - lastA;
+      const tsOf = sid => Math.max(0, ...Object.values(sessionFilesMap[sid]).flatMap(f => [...f.changes.map(c => c.ts), ...f.reads.map(r => r.ts)]));
+      return tsOf(b) - tsOf(a);
     });
     el.innerHTML = sortedIds.map(sid => {
       const liveSession = sessionStore[sid];
@@ -7557,28 +7573,46 @@
       const name = liveSession?.name || anyName || sid;
       const project = liveSession?.projectName || null;
       const expanded = _changelogExpanded.has(sid);
-      const lastTs = Math.max(...Object.values(filesObj).flatMap(f => f.changes.map(c => c.ts)));
+      const allTs = Object.values(filesObj).flatMap(f => [...f.changes.map(c => c.ts), ...f.reads.map(r => r.ts)]);
+      const lastTs = allTs.length ? Math.max(...allTs) : Date.now();
       const dateStr = new Date(lastTs).toLocaleString();
-      const fileCount = Object.keys(filesObj).length;
+      const writtenCount = Object.values(filesObj).filter(f => f.changes.length > 0).length;
+      const readCount = Object.values(filesObj).filter(f => f.changes.length === 0 && f.reads.length > 0).length;
+      const fileCountLabel = [writtenCount ? `${writtenCount} write${writtenCount !== 1 ? 's' : ''}` : '', readCount ? `${readCount} read${readCount !== 1 ? 's' : ''}` : ''].filter(Boolean).join(', ') || '0 files';
 
-      const body = expanded ? Object.entries(filesObj).sort(([a], [b]) => a.localeCompare(b)).map(([fp, { version, changes }]) => {
-        const changeRows = changes.slice().sort((a, b) => a.ts - b.ts).map(c => {
-          const time = new Date(c.ts).toTimeString().slice(0, 8);
-          return `<div style="display:flex;align-items:baseline;gap:6px;padding:2px 16px 2px 48px;font-size:10px;opacity:0.6;">
-            <span style="flex-shrink:0;">${time}</span>
-            <span style="color:#9ca3af;flex-shrink:0;">v${escHtml(c.prev)}</span>
-            <span style="opacity:0.4;flex-shrink:0;">→</span>
-            <span style="color:#60a5fa;flex-shrink:0;">v${escHtml(c.next)}</span>
+      const body = expanded ? Object.entries(filesObj).sort(([a], [b]) => {
+        const aWrite = filesObj[a].changes.length > 0;
+        const bWrite = filesObj[b].changes.length > 0;
+        if (aWrite !== bWrite) return aWrite ? -1 : 1;
+        return a.localeCompare(b);
+      }).map(([fp, { version, changes, reads }]) => {
+        if (changes.length > 0) {
+          const changeRows = changes.slice().sort((a, b) => a.ts - b.ts).map(c => {
+            const time = new Date(c.ts).toTimeString().slice(0, 8);
+            return `<div style="display:flex;align-items:baseline;gap:6px;padding:2px 16px 2px 48px;font-size:10px;opacity:0.6;">
+              <span style="flex-shrink:0;">${time}</span>
+              <span style="color:#9ca3af;flex-shrink:0;">v${escHtml(c.prev)}</span>
+              <span style="opacity:0.4;flex-shrink:0;">→</span>
+              <span style="color:#60a5fa;flex-shrink:0;">v${escHtml(c.next)}</span>
+            </div>`;
+          }).join('');
+          return `<div style="border-bottom:1px solid rgba(255,255,255,0.03);">
+            <div style="display:flex;align-items:baseline;gap:8px;padding:4px 16px 4px 32px;font-size:11px;">
+              <span style="font-family:'CascadiaCode','Consolas',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(fp)}">${escHtml(fp)}</span>
+              <span style="color:#60a5fa;font-weight:700;flex-shrink:0;">v${escHtml(version)}</span>
+              <span style="opacity:0.35;flex-shrink:0;font-size:10px;">${changes.length}×</span>
+            </div>
+            ${changeRows}
           </div>`;
-        }).join('');
-        return `<div style="border-bottom:1px solid rgba(255,255,255,0.03);">
-          <div style="display:flex;align-items:baseline;gap:8px;padding:4px 16px 4px 32px;font-size:11px;">
-            <span style="font-family:'CascadiaCode','Consolas',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(fp)}">${escHtml(fp)}</span>
-            <span style="color:#60a5fa;font-weight:700;flex-shrink:0;">v${escHtml(version)}</span>
-            <span style="opacity:0.35;flex-shrink:0;font-size:10px;">${changes.length}×</span>
-          </div>
-          ${changeRows}
-        </div>`;
+        } else {
+          const loadedAt = reads.length ? reads[0].version : version;
+          return `<div style="border-bottom:1px solid rgba(255,255,255,0.03);">
+            <div style="display:flex;align-items:baseline;gap:8px;padding:4px 16px 4px 32px;font-size:11px;opacity:0.5;">
+              <span style="font-family:'CascadiaCode','Consolas',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(fp)}">${escHtml(fp)}</span>
+              <span style="color:#9ca3af;flex-shrink:0;font-size:10px;">loaded v${escHtml(loadedAt)}</span>
+            </div>
+          </div>`;
+        }
       }).join('') : '';
 
       const projectColor = project ? ((window.getProjectColorByName && window.getProjectColorByName(project)) || '#a78bfa') : null;
@@ -7589,7 +7623,7 @@
           <span style="opacity:0.5;flex-shrink:0;width:12px;">${expanded ? '▼' : '▶'}</span>
           ${projectChip}
           <span${projectColor ? ` style="color:${projectColor};"` : ''}>${escHtml(name)}</span>
-          <span style="font-size:10px;font-weight:400;opacity:0.5;margin-left:auto;">${dateStr} · ${fileCount} file${fileCount !== 1 ? 's' : ''}</span>
+          <span style="font-size:10px;font-weight:400;opacity:0.5;margin-left:auto;">${dateStr} · ${fileCountLabel}</span>
         </div>
         ${body}
       </div>`;
