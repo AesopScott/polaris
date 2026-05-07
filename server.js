@@ -79,7 +79,7 @@ const BASE_SYSTEM_PROMPT = [
   'End-of-session ritual when source files were modified: (1) Bump `package.json` version — patch increment (1.0.X → 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and that they can install with: & C:\\Users\\scott\\Code\\Polaris\\scripts\\build-install.ps1. The server\'s extractSessionToKnowledge runs automatically and writes a changelog row to Obsidian\'s 4-Changelog.md when it sees the bumped version — you do NOT need to write the changelog manually.',
   'Obsidian writes are automatic. You do NOT need to manually write session notes or numbered-file updates to Obsidian. When this session ends, Polaris runs extractSessionToKnowledge server-side, which calls DeepSeek to distill what happened and writes to 2-Architecture.md / 3-Build-Plan.md / 7-Integrations.md / 4-Changelog.md as appropriate. Your job is to (a) do the work, (b) bump the version if source changed, (c) commit. The Obsidian sync handles itself.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses. Do not give constant "I am reading X", "I have finished Y" status updates — just do the work and provide the final result or the next proposal.',
-  'After delivering work that the user must verify before you continue (a code change, a build, a UI fix), call SetStatus with status="test" as your final action. This puts the session card into a purple "Test" pulsing state so it is visually obvious you are waiting for confirmation. Only call SetStatus("done") when the user has confirmed the work is good, or the task is fully self-contained and needs no verification. Use SetStatus("waiting") when you have asked the user a question and are paused for their reply.',
+  'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The three values and when to use them: (1) SetStatus("test") — after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses so it\'s visually obvious. (2) SetStatus("waiting") — whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("done") — only when the task is fully complete and requires no further verification. The server auto-detects git commits → "test" and a trailing question mark → "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
   'When you need to ask the user a question, need clarification, or require their input before proceeding, you MUST use the AskUserQuestion tool — never write the question as plain text in your response. The AskUserQuestion tool renders a visually prominent interactive prompt in the UI and pauses the session so the user cannot miss it. Plain-text questions get buried in terminal output and are routinely missed.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
@@ -195,6 +195,14 @@ function migrateSecretsToEncrypted() {
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
 const pendingQuestions    = new Map(); // questionId → resolve
+let pendingGitPushes  = 0;  // count of in-flight obsidian-up git operations
+let shutdownRequested = false;
+function onGitPushComplete() {
+  pendingGitPushes--;
+  if (shutdownRequested && pendingGitPushes <= 0) {
+    try { process.send({ type: 'ready-to-quit' }); } catch {}
+  }
+}
 const pendingCrossChecks  = new Map(); // checkId → { resolve, timer }
 
 if (typeof process.on === 'function') {
@@ -208,6 +216,11 @@ if (typeof process.on === 'function') {
       const pending = pendingFilePicks.get(msg.requestId);
       pendingFilePicks.delete(msg.requestId);
       if (pending) sendTo(pending.ws, { type: 'file-picked', path: msg.path || null, error: msg.error || null, replyKey: pending.replyKey });
+    } else if (msg.type === 'shutdown') {
+      shutdownRequested = true;
+      if (pendingGitPushes <= 0) {
+        try { process.send({ type: 'ready-to-quit' }); } catch {}
+      }
     }
   });
 }
@@ -1491,6 +1504,15 @@ function buildPolarisContextBlock(config, session) {
   if (routinesList) lines.push('', 'Configured routines:', routinesList);
   if (mcpServers.length > 0) lines.push('', `Connected MCP servers: ${mcpServers.join(', ')}`);
 
+  lines.push(
+    '',
+    'Session card status: Polaris auto-detects your intent from your final response and updates the session card.',
+    '  - Committed code or delivered work that needs testing → end your response with "Please test this" or "Try it out" — card goes purple (test).',
+    '  - Asking the user a question or waiting for their input → end your response with a "?" — card goes amber (waiting).',
+    '  - Task fully done, no action needed → finish normally — card goes green (done).',
+    'You do not call any tool for this. The server reads your last message and sets the card automatically.',
+  );
+
   lines.push('=== END POLARIS CONTEXT ===');
   return lines.join('\n');
 }
@@ -1536,6 +1558,8 @@ function toolSetProject({ projectName } = {}, sessionId) {
 
 function maybeSetTestOnGitCommit(command, sessionId) {
   if (/\bgit\s+(commit|push)\b/.test(command)) {
+    const session = sessions.get(sessionId);
+    if (session) session.committedDuringRun = true;
     toolSetStatus({ status: 'test' }, sessionId);
   }
 }
@@ -3242,10 +3266,23 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     releaseSessionMemory(sessionId);
     return;
   }
-  // Preserve any status the agent explicitly set via SetStatus (e.g. 'test', 'waiting').
-  // Only fall back to 'done' if the agent didn't set one.
-  const AGENT_TERMINAL_STATUSES = new Set(['test', 'waiting', 'done']);
-  const termStatus = (s && AGENT_TERMINAL_STATUSES.has(s.status)) ? s.status : 'done';
+  // Determine terminal status:
+  // 1. 'waiting' always wins — agent explicitly needs user input.
+  // 2. Any session that committed during the run ends as 'test', even if the agent set 'done'.
+  // 3. Otherwise preserve what the agent set via SetStatus, or auto-detect from the last message.
+  let termStatus;
+  if (s?.status === 'waiting') {
+    termStatus = 'waiting';
+  } else if (s?.committedDuringRun || s?.status === 'test') {
+    termStatus = 'test';
+  } else if (s?.status === 'done') {
+    termStatus = 'done';
+  } else {
+    const msgs = session.messages;
+    const lastAssistant = msgs && [...msgs].reverse().find(m => m.role === 'assistant' && m.content?.trim());
+    const lastText = lastAssistant?.content?.trim() ?? '';
+    termStatus = lastText.endsWith('?') ? 'waiting' : 'done';
+  }
   if (s) { s.status = termStatus; s.endAt = Date.now(); }
   saveSessionMessages(sessionId);
   broadcast({ type: 'session-status', sessionId, status: termStatus });
@@ -3581,6 +3618,7 @@ function spawnMaxChat(sessionId, prompt, config) {
   let finalUsage = null;
   let finalModel = null;
   let lastAssistantText = '';
+  let committedDuringRun = false;
 
   proc.stdout.on('data', chunk => {
     totalOutBytes += chunk.length;
@@ -3613,6 +3651,9 @@ function spawnMaxChat(sessionId, prompt, config) {
             const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
             broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'tool' });
             dlog('TOOL_USE', summary);
+            if ((part.name === 'Bash' || part.name === 'computer') && /\bgit\s+(commit|push)\b/i.test(JSON.stringify(part.input || {}))) {
+              committedDuringRun = true;
+            }
           }
         }
       } else if (t === 'user' && evt.message?.content) {
@@ -3658,7 +3699,7 @@ function spawnMaxChat(sessionId, prompt, config) {
     } else if (session.isChat) {
       const testPhrases    = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
       const waitingPhrases = /\b(what\s+do\s+you\s+(think|want|prefer)|would\s+you\s+like|do\s+you\s+want|should\s+I|shall\s+I|which\s+(would|do)\s+you|any\s+(other\s+)?(questions?|feedback|thoughts?)|want\s+me\s+to|let\s+me\s+know|does\s+that\s+(work|help|make\s+sense))\b|\?(\s*$|\s*\n)/i;
-      if (testPhrases.test(lastAssistantText)) termStatus = 'test';
+      if (committedDuringRun || testPhrases.test(lastAssistantText)) termStatus = 'test';
       else if (waitingPhrases.test(lastAssistantText)) termStatus = 'waiting';
       else termStatus = 'done';
     } else {
@@ -3751,6 +3792,7 @@ function spawnChat(sessionId, prompt, config) {
     messages.push({ role: 'user', content: prompt });
   }
   const payload = JSON.stringify({ model, messages, stream: true });
+  let accText = '';
 
   const req = https.request({
     hostname: 'openrouter.ai',
@@ -3787,6 +3829,7 @@ function spawnChat(sessionId, prompt, config) {
           const data    = JSON.parse(line.slice(6));
           const content = data.choices?.[0]?.delta?.content || '';
           if (!content) continue;
+          accText += content;
           session.chatBuffer = (session.chatBuffer || '') + content;
           const parts = session.chatBuffer.split('\n');
           for (const part of parts.slice(0, -1)) { // Process all but the last part
@@ -3798,11 +3841,14 @@ function spawnChat(sessionId, prompt, config) {
     });
     res.on('end', () => {
       const rem = (session.chatBuffer || '').trim();
-      if (rem) broadcast({ type: 'line', sessionId, text: rem, role: 'assistant' });
-      session.chatBuffer = ''; // Clear the buffer after broadcasting remaining content
-      session.status = 'done';
+      if (rem) { accText += rem; broadcast({ type: 'line', sessionId, text: rem, role: 'assistant' }); }
+      session.chatBuffer = '';
+      const fullText = accText.trim();
+      const testPhrases = /\b(please\s+test|try\s+it\s+out|try\s+this\s+out|test\s+this|let\s+me\s+know\s+if\s+(it|this)\s+works?|try\s+running|you\s+can\s+(?:now\s+)?test|give\s+it\s+a\s+try|give\s+this\s+a\s+try|run\s+the\s+(app|server|test))\b/i;
+      const termStatus = testPhrases.test(fullText) ? 'test' : /\?\s*$/.test(fullText) ? 'waiting' : 'done';
+      session.status = termStatus;
       session.endAt  = Date.now();
-      broadcast({ type: 'session-status', sessionId, status: 'done' });
+      broadcast({ type: 'session-status', sessionId, status: termStatus });
     });
   });
 
@@ -5772,8 +5818,9 @@ function handleMessage(ws, raw) {
             .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
             .catch(() => {})
         : Promise.resolve();
+      pendingGitPushes++;
       Promise.all([vaultGit, codeGit])
-        .finally(() => sendTo(ws, { type: 'obsidian-up-done', filePath }));
+        .finally(() => { sendTo(ws, { type: 'obsidian-up-done', filePath }); onGitPushComplete(); });
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian Up failed: ${e.message}` });
     }
