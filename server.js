@@ -2713,6 +2713,7 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
         return;
       }
       res.on('data', chunk => {
+        if (sessions.get(sessionId)?.aborted) { res.destroy(); return; }
         const raw = chunk.toString();
         if (rawSample.length < 800) rawSample += raw;
         sseBuffer += raw;
@@ -2924,7 +2925,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
-      if (retryCount < 3) {
+      if (!session.aborted && retryCount < 3) {
         retryCount++;
         const wait = retryCount * 2000;
         broadcast({ type: 'line', sessionId, text: `⚠️ API error. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
@@ -2954,7 +2955,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     // Detect empty response — model returned neither text nor tool calls
     const hasContent = result.textAccum || (result.toolCalls && result.toolCalls.length > 0);
     if (!hasContent) {
-      if (retryCount < 3) {
+      if (!session.aborted && retryCount < 3) {
         retryCount++;
         const wait = retryCount * 2000;
         broadcast({ type: 'line', sessionId, text: `⚠️ Empty response. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
@@ -3028,10 +3029,16 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   }
 
   const s = sessions.get(sessionId);
-  if (s) { s.status = s.aborted ? 'error' : 'done'; s.endAt = Date.now(); }
-  saveSessionMessages(sessionId);
   dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
-  broadcast({ type: 'session-status', sessionId, status: s?.aborted ? 'error' : 'done' });
+  if (s?.aborted) {
+    // Stop handler already set status='done' and broadcast — just persist messages and free memory.
+    saveSessionMessages(sessionId);
+    releaseSessionMemory(sessionId);
+    return;
+  }
+  if (s) { s.status = 'done'; s.endAt = Date.now(); }
+  saveSessionMessages(sessionId);
+  broadcast({ type: 'session-status', sessionId, status: 'done' });
   autoObsidianForSession(sessionId);
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   releaseSessionMemory(sessionId);
