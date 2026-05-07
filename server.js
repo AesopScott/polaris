@@ -60,6 +60,8 @@ catch (e) { console.log('[polaris] mcp-catalog.json not found:', e.message); }
 const GLOBAL_CLAUDE_PATH   = path.join(__dirname, 'CLAUDE.md');
 const USER_CLAUDE_PATH     = path.join(os.homedir(), '.claude', 'CLAUDE.md');
 const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
+// Memory sourcing is now handled by the projectMemory loader via MCP-obsidian:
+// it lists everything under Polaris_Build and Polaris_sessions in the vault.
 const PROJECT_SPECIFIC_MARKER = '<!-- PROJECT-SPECIFIC -->';
 const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 
@@ -1557,6 +1559,103 @@ function detectShellWriteTargets(command, workDir) {
   return Array.from(targets);
 }
 
+// ─── Encoding sanity check (Phase 1 of write-gate) ─────────────────────────
+// Catches the most common agent-induced corruption: writes performed in the
+// wrong encoding (e.g. PowerShell here-strings written as UTF-16 / CP1252,
+// rewriting the file with U+FFFD replacement chars and stripping the UTF-8
+// BOM). Two checks: (1) auto-preserve BOM if the original had one — fixes
+// transparently rather than throwing; (2) reject the write if the new
+// content has more U+FFFD replacement chars than the original.
+function hasUtf8BOM(buf) {
+  return buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF;
+}
+
+function countReplacementChars(text) {
+  if (!text) return 0;
+  const m = text.match(/�/g);
+  return m ? m.length : 0;
+}
+
+// preserveBOMAndCheckEncoding — called from toolWrite / toolEdit before
+// fs.writeFileSync. Returns the (possibly BOM-prefixed) content to write.
+// Throws if encoding corruption is detected.
+function preserveBOMAndCheckEncoding(filePath, newContent) {
+  if (!fs.existsSync(filePath)) return newContent;  // new file — nothing to compare
+  let origBuf;
+  try { origBuf = fs.readFileSync(filePath); } catch { return newContent; }
+
+  let finalContent = newContent;
+  // Strip any leading BOM the agent may have included; we'll add it back if the original had one.
+  if (finalContent.charCodeAt(0) === 0xFEFF) finalContent = finalContent.slice(1);
+
+  const origText = origBuf.toString('utf8').replace(/^﻿/, '');
+  const origRepl = countReplacementChars(origText);
+  const newRepl  = countReplacementChars(finalContent);
+  if (newRepl > origRepl) {
+    const projDir = path.basename(path.dirname(filePath));
+    throw new Error(
+      `Encoding check FAILED for "${path.basename(filePath)}": ` +
+      `${newRepl - origRepl} new Unicode replacement char(s) (\\uFFFD) in proposed content. ` +
+      `Common cause: write attempted in wrong encoding (UTF-16 / CP1252 instead of UTF-8). ` +
+      `Backup of original is at %APPDATA%\\.claude\\polaris\\source-backups\\${projDir}\\. ` +
+      `Re-read the file, fix the encoding in your write, and try again.`
+    );
+  }
+
+  // Auto-preserve UTF-8 BOM if original had one.
+  if (hasUtf8BOM(origBuf) && finalContent.charCodeAt(0) !== 0xFEFF) {
+    finalContent = '﻿' + finalContent;
+  }
+  return finalContent;
+}
+
+// snapshotForShellEncodingCheck / verifyShellEncoding — called around shell
+// command execution. Captures raw bytes of write targets before exec; after
+// exec, compares replacement-char counts and BOM presence. Detected damage
+// is appended to the tool result as a strong warning so the agent (and the
+// human reading the terminal) sees it. The corrupted file is not rolled back
+// automatically — the backup taken in Phase 0 is the recovery path.
+function snapshotForShellEncodingCheck(targets) {
+  const snapshots = new Map();
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+    try {
+      const buf = fs.readFileSync(target);
+      snapshots.set(target, {
+        hadBOM: hasUtf8BOM(buf),
+        replCount: countReplacementChars(buf.toString('utf8')),
+      });
+    } catch {}
+  }
+  return snapshots;
+}
+
+function verifyShellEncoding(snapshots) {
+  const warnings = [];
+  for (const [target, snap] of snapshots) {
+    if (!fs.existsSync(target)) continue;
+    let buf;
+    try { buf = fs.readFileSync(target); } catch { continue; }
+    const newRepl  = countReplacementChars(buf.toString('utf8'));
+    const newHasBOM = hasUtf8BOM(buf);
+    const issues = [];
+    if (newRepl > snap.replCount) {
+      issues.push(`+${newRepl - snap.replCount} replacement char(s) (\\uFFFD)`);
+    }
+    if (snap.hadBOM && !newHasBOM) {
+      issues.push('UTF-8 BOM was stripped');
+    }
+    if (issues.length) {
+      const projDir = path.basename(path.dirname(target));
+      warnings.push(
+        `!! ENCODING CORRUPTION in ${target}: ${issues.join(', ')}. ` +
+        `Backup at %APPDATA%\\.claude\\polaris\\source-backups\\${projDir}\\.`
+      );
+    }
+  }
+  return warnings;
+}
+
 // askForCrossCheckApproval — broadcasts cross-check result to UI and waits for
 // the user to approve or reject. Mirror of toolAskUserQuestion's pattern.
 // pendingCrossChecks holds { resolve, timer } so the WS handler can clear the
@@ -1648,8 +1747,9 @@ async function toolWrite({ file_path, content }, workDir, sessionId) {
   if (!approved) {
     throw new Error(`Cross-Check rejected: write to ${path.basename(file_path)} was not approved by the user.`);
   }
+  const finalContent = preserveBOMAndCheckEncoding(file_path, content);
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
-  fs.writeFileSync(file_path, content, 'utf8');
+  fs.writeFileSync(file_path, finalContent, 'utf8');
   return `Written: ${file_path}`;
 }
 
@@ -1666,7 +1766,8 @@ async function toolEdit({ file_path, old_string, new_string, replace_all }, work
   if (!approved) {
     throw new Error(`Cross-Check rejected: edit to ${path.basename(file_path)} was not approved by the user.`);
   }
-  fs.writeFileSync(file_path, updated, 'utf8');
+  const finalContent = preserveBOMAndCheckEncoding(file_path, updated);
+  fs.writeFileSync(file_path, finalContent, 'utf8');
   return `Edited: ${file_path}`;
 }
 
@@ -2047,30 +2148,36 @@ function assertSafeCommand(command, workDir) {
 
 function toolBash({ command, timeout: tms }, workDir) {
   assertSafeCommand(command, workDir);
-  for (const target of detectShellWriteTargets(command, workDir)) {
-    backupBeforeWrite(target, workDir);
-  }
+  const writeTargets = detectShellWriteTargets(command, workDir);
+  for (const target of writeTargets) backupBeforeWrite(target, workDir);
+  const snapshots = snapshotForShellEncodingCheck(writeTargets);
+  let output;
   try {
-    return execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+    output = execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
     const out = e.stdout ? e.stdout.toString() : '';
     const err = e.stderr ? e.stderr.toString() : '';
-    return (out + (err ? '\n' + err : '') || e.message).trim();
+    output = (out + (err ? '\n' + err : '') || e.message).trim();
   }
+  const warnings = verifyShellEncoding(snapshots);
+  return warnings.length ? output + '\n\n' + warnings.join('\n') : output;
 }
 
 function toolPowerShell({ command, timeout: tms }, workDir) {
   assertSafeCommand(command, workDir);
-  for (const target of detectShellWriteTargets(command, workDir)) {
-    backupBeforeWrite(target, workDir);
-  }
+  const writeTargets = detectShellWriteTargets(command, workDir);
+  for (const target of writeTargets) backupBeforeWrite(target, workDir);
+  const snapshots = snapshotForShellEncodingCheck(writeTargets);
+  let output;
   try {
-    return execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+    output = execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
     const out = e.stdout ? e.stdout.toString() : '';
     const err = e.stderr ? e.stderr.toString() : '';
-    return (out + (err ? '\n' + err : '') || e.message).trim();
+    output = (out + (err ? '\n' + err : '') || e.message).trim();
   }
+  const warnings = verifyShellEncoding(snapshots);
+  return warnings.length ? output + '\n\n' + warnings.join('\n') : output;
 }
 
 function toolWebFetch({ url }) {
