@@ -2466,6 +2466,12 @@
     const inputs = bar.querySelectorAll('input.dir-field');
     if (inputs[0]) inputs[0].value = proj ? proj.workDir : '';
     if (inputs[1]) inputs[1].value = proj ? proj.repo    : '';
+    // When a session is selected for resume, sync the project change to the card immediately
+    if (resumeTarget && sessionStore[resumeTarget.sessionId]) {
+      const newProject = (name === '— None —' || !name) ? null : name;
+      sessionStore[resumeTarget.sessionId].projectName = newProject;
+      refreshCardColor(resumeTarget.sessionId);
+    }
     // Mode is intentionally NOT changed here — Max sessions are now full
     // project sessions, so picking a project should leave whichever mode
     // (Max or Code) the user already chose intact.
@@ -2542,6 +2548,50 @@
     return p ? getProjectColor(p) : null;
   }
   window.getProjectColorByName = getProjectColorByName;
+
+  function refreshCardColor(sessionId) {
+    const s = sessionStore[sessionId];
+    const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
+    if (!s || !card) return;
+    let chipLabel = '';
+    let chipColor = null;
+    if (s.projectName) {
+      chipLabel = s.projectName;
+      chipColor = getProjectColorByName(s.projectName);
+    } else if (s.isChat) {
+      chipLabel = 'Max';
+      chipColor = '#a78bfa';
+    }
+    if (chipColor) {
+      const hex = chipColor.replace('#', '');
+      const r = parseInt(hex.substring(0,2), 16);
+      const g = parseInt(hex.substring(2,4), 16);
+      const b = parseInt(hex.substring(4,6), 16);
+      card.style.setProperty('--card-stripe-color', chipColor);
+      card.style.setProperty('--card-header-tint',  `rgba(${r},${g},${b},0.22)`);
+      card.style.setProperty('--card-header-border', `rgba(${r},${g},${b},0.25)`);
+      card.style.setProperty('--card-title-color', chipColor);
+    } else {
+      ['--card-stripe-color','--card-header-tint','--card-header-border','--card-title-color']
+        .forEach(p => card.style.removeProperty(p));
+    }
+    const existingChip = card.querySelector('.card-project-chip');
+    if (chipLabel) {
+      const chipEl = document.createElement('span');
+      chipEl.className = 'card-project-chip';
+      chipEl.style.cssText = `background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;`;
+      chipEl.textContent = chipLabel;
+      if (existingChip) {
+        existingChip.replaceWith(chipEl);
+      } else {
+        const dragHandle = card.querySelector('[data-drag-handle]');
+        if (dragHandle) dragHandle.insertAdjacentElement('afterend', chipEl);
+      }
+    } else if (existingChip) {
+      existingChip.remove();
+    }
+    updateMiniCards();
+  }
 
   function renderProjectsPanel() {
     const tbody = document.getElementById('projects-tbody');
