@@ -3750,14 +3750,23 @@ async function spawnMaxChat(sessionId, prompt, config) {
   } else {
     stdinPayload = fullPrompt;
   }
-  // Write .mcp.json so the Claude Code CLI can call Polaris-native tools (SetProject, SetStatus)
+  // Write .mcp.json so the Claude Code CLI can call Polaris-native tools (SetProject, SetStatus).
+  // For non-Polaris sessions also inject the servers from ~/.claude.json (Connections panel) so
+  // the CLI uses the Polaris-managed config rather than relying on the global ~/.mcp.json.
   try {
     const mcpJsonPath = path.join(cwd, '.mcp.json');
     const existing = readJSON(mcpJsonPath, {});
+    const isPolarisChat = cwd === CHAT_DIR;
+    const managedServers = isPolarisChat ? {} : (() => {
+      const all = readClaudeJson().mcpServers || {};
+      const { polaris: _p, ...rest } = all;
+      return rest;
+    })();
     const mcpConfig = {
       ...existing,
       mcpServers: {
         ...(existing.mcpServers || {}),
+        ...managedServers,
         polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` },
       },
     };
@@ -6433,7 +6442,7 @@ wss.on('connection', (ws) => {
       supportEnabled: !!BREVO_API_KEY,
       appVersion: require('./package.json').version,
       recentCommits,
-      connectedMcpServers: getConnectedMcpServers(),
+      connectedMcpServers: getEnabledMcpServers().filter(s => s !== 'polaris'),
     });
 
     // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
