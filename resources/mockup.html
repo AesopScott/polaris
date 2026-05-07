@@ -616,7 +616,7 @@
   #changelog-backdrop.hidden { display: none; }
   .changelog-commit {
     display: grid;
-    grid-template-columns: 20px 64px 52px 72px 1fr;
+    grid-template-columns: 20px 52px 64px 52px 72px 1fr;
     gap: 10px;
     padding: 7px 0;
     border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -625,6 +625,7 @@
   }
   .changelog-commit:last-child { border-bottom: none; }
   .changelog-num { font-size: 10px; opacity: 0.45; text-align: right; }
+  .changelog-proj { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: 0.03em; background: rgba(255,255,255,0.07); }
   .changelog-ver { font-size: 10px; color: var(--tag-text); font-family: 'Consolas', monospace; }
   .changelog-hash { font-family: 'Consolas', monospace; font-size: 10px; color: #60a5fa; }
   .changelog-date { font-size: 10px; opacity: 0.4; }
@@ -3088,7 +3089,8 @@
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
-  const pendingImages = []; // [{ name, path }] — image files passed to vision-capable models
+  const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
+  const pendingLineImages = {}; // sessionId → images[] buffered until the user line event arrives
 
   // ── Connection ────────────────────────────────────────────────────────────────
   function wsConnect() {
@@ -3291,6 +3293,10 @@
           status: 'running', startAt: Date.now(),
           lines: [], lastPrompt: null, resumeId: null, usage: null, height: null, column: null, pinned: false,
         };
+        if (pendingLineImages['__next__']) {
+          pendingLineImages[msg.sessionId] = pendingLineImages['__next__'];
+          delete pendingLineImages['__next__'];
+        }
         if (!sessionOrder.includes(msg.sessionId)) sessionOrder.push(msg.sessionId);
         renderGrid();
         if (!msg.isForked) enterResumeMode(msg.sessionId, null);
@@ -3300,6 +3306,10 @@
         const s = sessionStore[msg.sessionId];
         if (!s) break;
         const line = { text: msg.text, role: msg.role };
+        if (msg.role === 'user' && pendingLineImages[msg.sessionId]) {
+          line.images = pendingLineImages[msg.sessionId];
+          delete pendingLineImages[msg.sessionId];
+        }
         s.lines.push(line);
         if (msg.role === 'user') s.lastPrompt = msg.text;
         appendLineToCard(msg.sessionId, line);
@@ -4657,7 +4667,18 @@
   function makeLineEl(line, sessionId) {
     const div = document.createElement('div');
     div.className = { user: 't-user', assistant: 't-normal', error: 't-warn', tool: 't-verb' }[line.role] || 't-normal';
-    div.textContent = line.text;
+    if (line.images && line.images.length) {
+      div.appendChild(document.createTextNode(line.text));
+      for (const img of line.images) {
+        const imgEl = document.createElement('img');
+        imgEl.src = img.dataUrl;
+        imgEl.alt = img.name || 'image';
+        imgEl.style.cssText = 'max-width:220px;max-height:160px;border-radius:4px;margin-top:4px;display:block;opacity:0.9;';
+        div.appendChild(imgEl);
+      }
+    } else {
+      div.textContent = line.text;
+    }
     if (sessionId) {
       const s = sessionStore[sessionId];
       if (s) {
@@ -5563,6 +5584,7 @@
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
+      if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
       wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
@@ -5570,8 +5592,10 @@
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
+      if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
       wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload });
     } else {
+      if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
       wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload });
     }
     phIdx = -1;
@@ -6905,6 +6929,7 @@
       list.innerHTML = (commits || []).map((c, i) =>
         `<div class="changelog-commit">
           <span class="changelog-num">${i + 1}</span>
+          <span class="changelog-proj" style="color:${escHtml(c.projectColor || '#4ade80')};">${escHtml(c.projectName || '')}</span>
           <span class="changelog-ver">${c.version ? 'v' + escHtml(c.version) : ''}</span>
           <span class="changelog-hash">${escHtml(c.hash || '')}</span>
           <span class="changelog-date">${escHtml(c.date || '')}</span>

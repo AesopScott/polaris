@@ -3598,6 +3598,8 @@ function spawnMaxChat(sessionId, prompt, config) {
     }
     stdinPayload = JSON.stringify({ type: 'user', message: { role: 'user', content: contentBlocks } }) + '\n';
     dlog('IMAGE_ATTACH', `count=${chatImages.length} contentBlocks=${contentBlocks.length}`);
+    const imageNames = chatImages.filter(i => i.dataUrl).map(i => i.name).join(', ');
+    broadcast({ type: 'line', sessionId, text: `[${chatImages.filter(i=>i.dataUrl).length} image(s) attached: ${imageNames}]`, role: 'system' });
   } else {
     stdinPayload = fullPrompt;
   }
@@ -3703,8 +3705,11 @@ function spawnMaxChat(sessionId, prompt, config) {
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
       broadcastUsage(sessionId, finalUsage, session.claudeSessionId || null, null);
     }
+    // On Windows, Claude CLI exits with code=null when --input-format stream-json
+    // is used without --resume. Treat null as success when we received a valid response.
+    const effectiveCode = (code === null && finalUsage && eventCount > 0) ? 0 : code;
     let termStatus;
-    if (code !== 0) {
+    if (effectiveCode !== 0) {
       termStatus = 'error';
     } else if (committedDuringRun) {
       termStatus = 'test';
@@ -3717,7 +3722,7 @@ function spawnMaxChat(sessionId, prompt, config) {
 
     // Post-hoc cross-check: compare git state after turn to pre-turn snapshot.
     // Files that changed during this Max turn are reviewed via runPostHocCrossCheck.
-    if (session.workDir && code === 0) {
+    if (session.workDir && effectiveCode === 0) {
       try {
         const postTurnDiff = execSync('git diff HEAD --name-only', { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
         const preDiffs = new Set((preTurnDiff || '').split('\n').filter(Boolean));
@@ -4360,7 +4365,8 @@ function handleMessage(ws, raw) {
       pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
-    broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
+    const imgLabel = Array.isArray(images) && images.length ? '\n' + images.filter(i => i?.name).map(i => `📎 ${i.name}`).join('  ') : '';
+    broadcast({ type: 'line', sessionId: id, text: prompt + imgLabel, role: 'user' });
     saveSessions();
     spawnChatRouter(id, prompt, config);
     return;
@@ -4428,7 +4434,10 @@ function handleMessage(ws, raw) {
     if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
     // Chat: spawnChat doesn't broadcast the user line, so do it here.
     // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
-    if (session.isChat) broadcast({ type: 'line', sessionId, text: displayPrompt || prompt, role: 'user' });
+    if (session.isChat) {
+      const imgLabel2 = Array.isArray(images) && images.length ? '\n' + images.filter(i => i?.name).map(i => `📎 ${i.name}`).join('  ') : '';
+      broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
+    }
     broadcast({ type: 'session-status', sessionId, status: 'running' });
     if (session.isChat) {
       spawnChatRouter(sessionId, prompt, readConfig());
@@ -5815,7 +5824,6 @@ function handleMessage(ws, raw) {
       const codeGit = proj && proj.workDir
         ? runGit(['push'], proj.workDir)
             .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
-            .catch(() => {})
         : Promise.resolve();
       pendingGitPushes++;
       Promise.all([codeGit])
@@ -6007,6 +6015,8 @@ wss.on('connection', (ws) => {
     try {
       const polarisProject = (readConfig().projects || []).find(p => p.name === 'Polaris');
       const gitDir = (polarisProject && polarisProject.workDir) || __dirname;
+      const projectName  = polarisProject ? polarisProject.name  : 'Polaris';
+      const projectColor = polarisProject ? polarisProject.color : '#4ade80';
       const logOutput = await runGit(['log', '-15', '--format=%h%x09%H%x09%s%x09%an%x09%as'], gitDir);
       if (logOutput) {
         const entries = logOutput.split('\n').filter(Boolean).map(line => {
@@ -6019,7 +6029,7 @@ wss.on('connection', (ws) => {
             return m ? m[1] : '';
           }).catch(() => '')
         ));
-        recentCommits = entries.map((c, i) => ({ hash: c.hash, subject: c.subject, author: c.author, date: c.date, version: versions[i] }));
+        recentCommits = entries.map((c, i) => ({ hash: c.hash, subject: c.subject, author: c.author, date: c.date, version: versions[i], projectName, projectColor }));
       }
     } catch (e) { console.error('[git-changes] log failed:', e.message); }
 
