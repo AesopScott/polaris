@@ -4438,11 +4438,14 @@
       if (s) {
         if (line.role === 'user' && s.userColor) div.style.color = s.userColor;
         if (line.role === 'assistant' && s.aiColor) div.style.color = s.aiColor;
-        // For historical lines on already-done sessions, render markdown immediately
-        if (line.role === 'assistant' && s.status === 'done') {
+        // Always stamp data-stream-role and rawText on assistant divs so the
+        // CSS color rule applies and updateCardStatus('done') can find them
+        // later — even when the session is still running (e.g. after renderGrid
+        // rebuilds cards mid-stream).
+        if (line.role === 'assistant') {
           div.dataset.streamRole = 'assistant';
           div.dataset.rawText = line.text;
-          renderAssistantMarkdown(div);
+          if (s.status === 'done') renderAssistantMarkdown(div);
         }
       }
     }
@@ -4750,18 +4753,32 @@
       return;
     }
     list.innerHTML = entries.map((e, i) => {
-      const verdictColor = e.review?.verdict === 'PASS' ? '#4ade80' : e.review?.verdict === 'FAIL' ? '#f87171' : '#fbbf24';
-      const verdictBg    = e.review?.verdict === 'PASS' ? 'rgba(34,197,94,0.18)' : e.review?.verdict === 'FAIL' ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)';
-      const decisionTag  = e.userDecision === 'approve' ? '<span style="color:#4ade80;">approved</span>' : e.userDecision === 'reject' ? '<span style="color:#f87171;">rejected</span>' : '<span style="color:#64748b;">pending</span>';
-      const ts = e.ts ? new Date(e.ts).toLocaleString() : '';
+      const verdict      = e.review?.verdict || '—';
+      const verdictColor = verdict === 'PASS' ? '#4ade80' : verdict === 'FAIL' ? '#f87171' : '#fbbf24';
+      const verdictBg    = verdict === 'PASS' ? 'rgba(34,197,94,0.18)' : verdict === 'FAIL' ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)';
+      const decisionTag  = e.userDecision === 'approve' || e.userDecision === 'keep'
+        ? `<span style="color:#4ade80;">${e.userDecision}</span>`
+        : e.userDecision === 'reject' || e.userDecision === 'restore'
+        ? `<span style="color:#f87171;">${e.userDecision}</span>`
+        : '<span style="color:#64748b;">pending</span>';
+      const ts    = e.ts ? new Date(e.ts).toLocaleString() : '';
       const fname = (e.filePath || '').split(/[\\/]/).pop();
-      return `<div class="cc-history-row" data-idx="${i}" onclick="openCrossCheckDetail(${i})" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #1f2937;cursor:pointer;">
-        <span style="padding:1px 7px;border-radius:999px;background:${verdictBg};color:${verdictColor};font-size:9px;font-weight:800;letter-spacing:0.05em;">${e.review?.verdict || '—'}</span>
-        <span style="color:#94a3b8;font-size:10px;width:64px;flex-shrink:0;">${e.operation || ''}</span>
-        <span style="color:#93c5fd;font-family:'Consolas',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fname}</span>
-        <span style="font-size:10px;color:#64748b;font-family:'Consolas',monospace;">${e.originalLines || 0}→${e.newLines || 0} L</span>
-        <span style="font-size:10px;width:80px;text-align:right;">${decisionTag}</span>
-        <span style="font-size:10px;color:#64748b;width:140px;text-align:right;font-family:'Consolas',monospace;">${ts}</span>
+      const summary = escHtml(e.review?.summary || '');
+      const issues  = Array.isArray(e.review?.issues) ? e.review.issues : [];
+      const issuesHtml = issues.length
+        ? `<ul style="margin:4px 0 0 0;padding-left:16px;color:#94a3b8;font-size:10px;line-height:1.5;">${issues.map(iss => `<li>${escHtml(iss)}</li>`).join('')}</ul>`
+        : '';
+      return `<div class="cc-history-row" data-idx="${i}" onclick="openCrossCheckDetail(${i})"
+          style="padding:8px 10px;border-bottom:1px solid #1f2937;cursor:pointer;border-left:3px solid ${verdictColor}20;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:${summary ? '4px' : '0'};">
+          <span style="padding:1px 7px;border-radius:999px;background:${verdictBg};color:${verdictColor};font-size:9px;font-weight:800;letter-spacing:0.05em;flex-shrink:0;">${verdict}</span>
+          <span style="color:#94a3b8;font-size:10px;flex-shrink:0;width:72px;">${escHtml(e.operation || '')}</span>
+          <span style="color:#93c5fd;font-family:'Consolas',monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${escHtml(fname)}</span>
+          <span style="font-size:10px;flex-shrink:0;">${decisionTag}</span>
+          <span style="font-size:10px;color:#475569;flex-shrink:0;font-family:'Consolas',monospace;">${ts}</span>
+        </div>
+        ${summary ? `<div style="color:#94a3b8;font-size:10px;padding-left:2px;line-height:1.5;">${summary}</div>` : ''}
+        ${issuesHtml}
       </div>`;
     }).join('');
     Array.from(list.querySelectorAll('.cc-history-row')).forEach(r => {
