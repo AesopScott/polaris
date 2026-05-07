@@ -4610,15 +4610,17 @@ function handleMessage(ws, raw) {
     //
     // Spawns powershell.exe detached so the script survives Polaris's death
     // (build-install.ps1 kills Polaris.exe early to free dist file locks).
-    // detached + stdio:'ignore' + child.unref() gives the PowerShell process
-    // its own process group so it runs to completion independently.
+    // Routed through "cmd /c start" because Electron is a GUI app with no
+    // console — spawning powershell.exe directly produces no visible window
+    // even with windowsHide:false. "start" explicitly creates a new console.
     const fullScript = path.join(sourcePath, 'scripts', 'build-install.ps1');
     if (!fs.existsSync(fullScript)) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
       return;
     }
     try {
-      const child = spawn('powershell.exe', [
+      const child = spawn('cmd.exe', [
+        '/c', 'start', 'powershell.exe',
         '-NoProfile', '-NoExit',
         '-ExecutionPolicy', 'Bypass',
         '-File', fullScript,
