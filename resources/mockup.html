@@ -6474,6 +6474,18 @@
     wsSend({ type: 'open-url', url });
   }
 
+  // Intercept all anchor clicks so http/https links open in the default browser
+  // instead of navigating the Electron window.
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+      e.preventDefault();
+      openExternal(href);
+    }
+  }, true);
+
   // ── Settings ──────────────────────────────────────────────────────────────────
   function openSettings() {
     document.getElementById('settings-panel').classList.remove('hidden');
