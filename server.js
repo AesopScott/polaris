@@ -1357,7 +1357,7 @@ function buildDirectSystemPrompt(config, workDir) {
 
 // Builds a compact Polaris runtime context block injected at the top of every
 // Claude Code (Max-plan) stdin prompt so the model always knows its host environment.
-function buildPolarisContextBlock(config) {
+function buildPolarisContextBlock(config, session) {
   const projects = (config.projects || [])
     .map(p => `  - ${p.name}${p.workDir ? ` (${p.workDir})` : ''}`)
     .join('\n');
@@ -1372,6 +1372,20 @@ function buildPolarisContextBlock(config) {
     '=== POLARIS CONTEXT (injected by server) ===',
     'You are running inside Polaris, a Claude Code SDK-based AI assistant host built by Scott.',
   ];
+
+  // Make the project-picker behavior contractual instead of relying on the
+  // model to infer it from a list of options. If a project is set on the
+  // session, name it explicitly. If not, instruct the model to ask the user
+  // to pick one before doing anything else.
+  if (session && session.projectName) {
+    lines.push('', `Current session project: ${session.projectName}${session.workDir ? ` (${session.workDir})` : ''}`);
+  } else {
+    lines.push(
+      '',
+      'Current session project: (none selected)',
+      'BEFORE doing anything else, ask the user which project this session should work in. Use the Available projects list below as the choices, plus a "no project (scratch)" option for one-off tasks. Do not begin the user\'s actual request until they have picked.',
+    );
+  }
 
   if (projects) lines.push('', 'Available projects:', projects);
   if (routinesList) lines.push('', 'Configured routines:', routinesList);
@@ -3125,7 +3139,7 @@ function spawnMaxChat(sessionId, prompt, config) {
       .filter(l => l.role === 'user' || l.role === 'assistant')
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
-    const polarisContext = buildPolarisContextBlock(config);
+    const polarisContext = buildPolarisContextBlock(config, session);
     fullPrompt = polarisContext + '\n\n' + (history || prompt);
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
