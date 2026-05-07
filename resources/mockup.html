@@ -2655,6 +2655,7 @@
       chipLabel = 'Max';
       chipColor = '#a78bfa';
     }
+    card.dataset.projectColor = chipColor || '';
     if (chipColor) {
       const hex = chipColor.replace('#', '');
       const r = parseInt(hex.substring(0,2), 16);
@@ -2668,6 +2669,8 @@
       ['--card-stripe-color','--card-header-tint','--card-header-border','--card-title-color']
         .forEach(p => card.style.removeProperty(p));
     }
+    if (s.status === 'waiting') card.style.setProperty('--card-stripe-color', '#fbbf24');
+    else if (s.status === 'test') card.style.setProperty('--card-stripe-color', '#ef4444');
     const existingChip = card.querySelector('.card-project-chip');
     if (chipLabel) {
       const chipEl = document.createElement('span');
@@ -4752,6 +4755,11 @@
     else if (status === 'waiting') card.classList.add('status-waiting-card');
     else if (status === 'test') card.classList.add('status-test-card');
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
+    const stripeColor = status === 'waiting' ? '#fbbf24'
+      : status === 'test' ? '#ef4444'
+      : (card.dataset.projectColor || null);
+    if (stripeColor) card.style.setProperty('--card-stripe-color', stripeColor);
+    else card.style.removeProperty('--card-stripe-color');
     if (status === 'done' || status === 'waiting' || status === 'test') {
       const term = card.querySelector('[data-term]');
       if (term) {
