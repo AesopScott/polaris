@@ -621,7 +621,7 @@
     font-size: 12px;
   }
   .changelog-commit:last-child { border-bottom: none; }
-  .changelog-num { font-size: 10px; opacity: 0.3; text-align: right; }
+  .changelog-num { font-size: 10px; opacity: 0.65; text-align: right; }
   .changelog-hash { font-family: 'Consolas', monospace; font-size: 10px; color: #60a5fa; }
   .changelog-date { font-size: 10px; opacity: 0.4; }
   .changelog-subject { line-height: 1.45; }
@@ -9109,7 +9109,7 @@
       row.appendChild(progressEl);
     }
     camCurrentPushSid = sid;
-    camOnObsidianDone = () => { camOnObsidianDone = null; camCurrentPushSid = null; camMarkDone(sid, null, '#4ade80'); };
+    camOnObsidianDone = () => { camOnObsidianDone = null; camCurrentPushSid = null; camMarkDone(sid, '✓ Pushed', '#4ade80'); };
     wsSend({ type: 'obsidian-up', sessionName: s.name, projectName: s.projectName || null, content: (s.lines || []).map(l => l.text).join('\n') });
   }
 
