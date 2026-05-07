@@ -22,6 +22,10 @@ const VERSIONS_LOG_PATH = path.join(POLARIS_DIR, 'file-versions-log.jsonl');
 const VERSIONS_LOG_CAP = 1000;
 
 const CROSS_CHECKS_DIR = path.join(POLARIS_DIR, 'cross-checks');
+const SOURCE_BACKUPS_DIR = path.join(POLARIS_DIR, 'source-backups');
+const SOURCE_BACKUP_MAX_PER_FILE = 50;
+const SOURCE_BACKUP_TOTAL_CAP_BYTES = 100 * 1024 * 1024; // 100 MB total
+const SOURCE_BACKUP_MAX_SIZE_BYTES = 5 * 1024 * 1024;    // skip files >5 MB
 const MAX_WRITE_BYTES = 1024 * 1024;  // 1 MB hard cap per file write
 const MAX_WRITE_LINES = 30000;        // 30K lines hard cap per file write
 
@@ -77,6 +81,7 @@ const BASE_SYSTEM_PROMPT = [
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
   "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away — generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
+  "Source files inside the project workDir are auto-backed-up to %APPDATA%\\.claude\\polaris\\source-backups\\<projectName>\\ before every Edit, Write, or shell-tool write (Set-Content, Out-File, > redirection, etc.). To restore a corrupted file, find the most recent backup at that path (filename: <sanitizedRelPath>.<ISO>.<ext>) and copy it back to the source. Do not assume backups are absent without checking.",
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -1445,6 +1450,112 @@ function assertSafeWriteSize(content, file_path) {
   }
 }
 
+// ─── Source-file backup (Phase 0 of write-gate) ─────────────────────────────
+// Snapshots a file to %APPDATA%\.claude\polaris\source-backups\ before any
+// agent-driven write. Covers Edit, Write, and shell-tool writes (PowerShell
+// Set-Content/Add-Content/Out-File, Bash > and >> redirection). Restore is a
+// plain file copy from the backup directory — no git archeology needed.
+//
+// Naming: source-backups/<workDir basename>/<sanitizedRelPath>.<ISO>.<ext>
+// Retention: keep last SOURCE_BACKUP_MAX_PER_FILE per file path; prune oldest
+// across the whole tree once SOURCE_BACKUP_TOTAL_CAP_BYTES is exceeded.
+function backupBeforeWrite(filePath, workDir) {
+  if (!filePath || !workDir) return null;
+  const resolved = path.resolve(filePath);
+  const wd = path.resolve(workDir);
+  const f = resolved.toLowerCase();
+  const d = wd.toLowerCase();
+  const inWorkDir = (f === d || f.startsWith(d + path.sep));
+  if (!inWorkDir) return null;
+  if (!fs.existsSync(resolved)) return null;
+  let stat; try { stat = fs.statSync(resolved); } catch { return null; }
+  if (!stat.isFile()) return null;
+  if (stat.size > SOURCE_BACKUP_MAX_SIZE_BYTES) return null;
+
+  const projectDir = path.basename(wd);
+  const relPath = path.relative(wd, resolved);
+  const sanitized = relPath.replace(/[\\\/]/g, '--');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const ext = path.extname(resolved) || '.bak';
+  const base = sanitized.replace(new RegExp(ext.replace('.', '\\.') + '$'), '');
+  const targetDir = path.join(SOURCE_BACKUPS_DIR, projectDir);
+  const targetPath = path.join(targetDir, `${base}.${ts}${ext}`);
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.copyFileSync(resolved, targetPath);
+  } catch (e) {
+    console.error('[backup] failed', resolved, e.message);
+    return null;
+  }
+  pruneSourceBackupsForFile(targetDir, base, ext);
+  pruneSourceBackupsByTotalSize();
+  return targetPath;
+}
+
+function pruneSourceBackupsForFile(targetDir, basePrefix, ext) {
+  let entries;
+  try { entries = fs.readdirSync(targetDir); } catch { return; }
+  const mine = entries
+    .filter(n => n.startsWith(basePrefix + '.') && n.endsWith(ext))
+    .map(n => {
+      const full = path.join(targetDir, n);
+      let st; try { st = fs.statSync(full); } catch { return null; }
+      return st ? { full, mtime: st.mtimeMs } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.mtime - a.mtime);
+  for (let i = SOURCE_BACKUP_MAX_PER_FILE; i < mine.length; i++) {
+    try { fs.unlinkSync(mine[i].full); } catch {}
+  }
+}
+
+function pruneSourceBackupsByTotalSize() {
+  const all = [];
+  function walk(dir) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      let st; try { st = fs.statSync(full); } catch { continue; }
+      all.push({ full, mtime: st.mtimeMs, size: st.size });
+    }
+  }
+  walk(SOURCE_BACKUPS_DIR);
+  let total = all.reduce((s, b) => s + b.size, 0);
+  if (total <= SOURCE_BACKUP_TOTAL_CAP_BYTES) return;
+  all.sort((a, b) => a.mtime - b.mtime);
+  for (const b of all) {
+    if (total <= SOURCE_BACKUP_TOTAL_CAP_BYTES) break;
+    try { fs.unlinkSync(b.full); total -= b.size; } catch {}
+  }
+}
+
+// detectShellWriteTargets — best-effort extraction of file paths a Bash or
+// PowerShell command will write to. Catches common dangerous patterns:
+// Set-Content / Add-Content / Out-File / Tee-Object / Copy-Item / Move-Item
+// and shell redirection > and >>. Returns absolute paths.
+function detectShellWriteTargets(command, workDir) {
+  if (!command || typeof command !== 'string') return [];
+  const targets = new Set();
+  const patterns = [
+    /(?:Set-Content|Add-Content|Out-File|Tee-Object)\s+(?:-Path\s+|-FilePath\s+|-LiteralPath\s+)?["']?([^"'\s|;]+)["']?/gi,
+    /(?:Copy-Item|Move-Item|cp|mv)\s+["']?[^"'\s]+["']?\s+["']?([^"'\s|;]+)["']?/gi,
+    />>?\s*["']?([^"'\s|;<&]+)["']?/g,
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(command)) !== null) {
+      const raw = m[1];
+      if (!raw) continue;
+      if (raw.startsWith('-') || raw.startsWith('$')) continue; // flags, vars
+      const resolved = path.isAbsolute(raw) ? raw : path.resolve(workDir || process.cwd(), raw);
+      targets.add(resolved);
+    }
+  }
+  return Array.from(targets);
+}
+
 // askForCrossCheckApproval — broadcasts cross-check result to UI and waits for
 // the user to approve or reject. Mirror of toolAskUserQuestion's pattern.
 // pendingCrossChecks holds { resolve, timer } so the WS handler can clear the
@@ -1528,6 +1639,7 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
 async function toolWrite({ file_path, content }, workDir, sessionId) {
   assertWritable(file_path, workDir);
   assertSafeWriteSize(content, file_path);
+  backupBeforeWrite(file_path, workDir);
   const originalContent = fs.existsSync(file_path) ? fs.readFileSync(file_path, 'utf8') : '';
   const approved = await runCrossCheckAndApproval({
     sessionId, filePath: file_path, operation: 'Write', originalContent, newContent: content,
@@ -1542,6 +1654,7 @@ async function toolWrite({ file_path, content }, workDir, sessionId) {
 
 async function toolEdit({ file_path, old_string, new_string, replace_all }, workDir, sessionId) {
   assertWritable(file_path, workDir);
+  backupBeforeWrite(file_path, workDir);
   const content = fs.readFileSync(file_path, 'utf8');
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
   const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
@@ -1933,6 +2046,9 @@ function assertSafeCommand(command, workDir) {
 
 function toolBash({ command, timeout: tms }, workDir) {
   assertSafeCommand(command, workDir);
+  for (const target of detectShellWriteTargets(command, workDir)) {
+    backupBeforeWrite(target, workDir);
+  }
   try {
     return execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
@@ -1944,6 +2060,9 @@ function toolBash({ command, timeout: tms }, workDir) {
 
 function toolPowerShell({ command, timeout: tms }, workDir) {
   assertSafeCommand(command, workDir);
+  for (const target of detectShellWriteTargets(command, workDir)) {
+    backupBeforeWrite(target, workDir);
+  }
   try {
     return execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
@@ -4918,6 +5037,7 @@ function handleMessage(ws, raw) {
 
 // â"€â"€â"€ Boot â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
