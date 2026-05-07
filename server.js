@@ -1012,40 +1012,6 @@ function autoObsidianForSession(sessionId) {
   }
 }
 
-// Initialize local git repo, create public GitHub repo from project.repo, push initial commit
-async function scaffoldGitRepo(project) {
-  const { workDir, repo, name } = project;
-  if (!workDir || !repo) return;
-  const run = (cmd) => new Promise((resolve, reject) =>
-    exec(cmd, { cwd: workDir }, (err, stdout, stderr) =>
-      err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout.trim())
-    )
-  );
-  try {
-    fs.mkdirSync(workDir, { recursive: true });
-    const isRepo = fs.existsSync(path.join(workDir, '.git'));
-    if (!isRepo) {
-      await run('git init');
-      await run('git checkout -b main');
-    }
-    const readmePath = path.join(workDir, 'README.md');
-    if (!fs.existsSync(readmePath)) {
-      fs.writeFileSync(readmePath, `# ${name}\n`, 'utf8');
-      await run('git add README.md');
-      await run('git commit -m "init: initial project setup"');
-    }
-    const remotes = await run('git remote').catch(() => '');
-    if (!remotes.includes('origin')) {
-      await run(`gh repo create ${repo} --public --source=. --remote=origin --push`);
-    }
-    broadcast({ type: 'scaffold-git-done', project: name, repo });
-    console.log(`[scaffold-git] ${repo} created and pushed`);
-  } catch (e) {
-    console.error('[scaffold-git] failed:', e.message);
-    broadcast({ type: 'scaffold-git-error', project: name, error: e.message });
-  }
-}
-
 // Scaffold Obsidian Build + Sessions folders when a new project is created
 function scaffoldObsidianProject(project, vaultPath) {
   const name = project.name || 'Project';
