@@ -1053,6 +1053,46 @@ function scaffoldObsidianProject(project, vaultPath) {
   } catch (e) {
     console.error('[obsidian-scaffold] failed:', e.message);
   }
+  // Fire git scaffold async — don't block config-saved response
+  scaffoldGitRepo(project).catch(e => console.error('[scaffold-git] unhandled:', e.message));
+}
+
+async function scaffoldGitRepo(project) {
+  const { name, workDir, repo } = project;
+  if (!workDir) return;
+  const run = (cmd) => new Promise((resolve, reject) =>
+    exec(cmd, { cwd: workDir }, (err, stdout, stderr) =>
+      err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout.trim())
+    )
+  );
+  try {
+    fs.mkdirSync(workDir, { recursive: true });
+    const isRepo = fs.existsSync(path.join(workDir, '.git'));
+    if (!isRepo) {
+      await run('git init');
+      await run('git checkout -b main').catch(() => run('git branch -m main'));
+    }
+    const readmePath = path.join(workDir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      fs.writeFileSync(readmePath, `# ${name}\n`, 'utf8');
+    }
+    const status = await run('git status --porcelain');
+    if (status) {
+      await run('git add README.md');
+      await run('git commit -m "init: initial project setup"');
+    }
+    // Derive repo name from config field or project name
+    const repoName = repo && repo.includes('/')
+      ? repo
+      : `AesopScott/${(name || 'project').toLowerCase().replace(/\s+/g, '-')}`;
+    // Create public GitHub repo, add remote, and push
+    await run(`gh repo create ${repoName} --public --source=. --remote=origin --push`);
+    broadcast({ type: 'scaffold-git-done', project: name, repo: repoName });
+    console.log(`[scaffold-git] ${repoName} created and pushed`);
+  } catch (e) {
+    console.error(`[scaffold-git] ${name}:`, e.message);
+    broadcast({ type: 'scaffold-git-error', project: name, error: e.message });
+  }
 }
 
 // Extract signal-rich session content and distill into numbered Obsidian knowledge files
