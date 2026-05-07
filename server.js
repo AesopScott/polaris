@@ -1729,6 +1729,67 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
   });
 }
 
+// ─── Post-hoc cross-check (Phase 2 extension) ────────────────────────────────
+// For writes that have already happened (shell commands, Max CLI sessions),
+// the gate runs after the fact. The reviewer sees the same diff, but the UI
+// shows "Keep change" / "Restore original" instead of "Approve" / "Reject".
+// Restoring writes originalContent back to disk directly.
+const pendingPostHocChecks = new Map(); // checkId → { resolve, timer }
+
+async function runPostHocCrossCheck({ sessionId, filePath, operation, originalContent, newContent, workDir }) {
+  const cfg = readConfig();
+  if (cfg.crossCheckEnabled === false) return;
+  const session = sessions.get(sessionId);
+  if (session?.evalRunner) return;
+
+  const origBytes = Buffer.byteLength(originalContent, 'utf8');
+  const newBytes  = Buffer.byteLength(newContent, 'utf8');
+  if (Math.abs(newBytes - origBytes) < 200) return;
+
+  const sessionPrompt  = session?.lastPrompt || '';
+  const reviewerModel  = cfg.crossCheckModel || CROSS_CHECK_DEFAULT_MODEL;
+  const apiKey         = cfg.openRouterApiKey;
+
+  let review;
+  if (!apiKey) {
+    review = { verdict: 'ERROR', summary: 'No openRouterApiKey — review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
+  } else {
+    review = await crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model: reviewerModel, apiKey });
+  }
+
+  const origLines = originalContent.split('\n').length;
+  const newLines  = newContent.split('\n').length;
+
+  const decision = await new Promise(resolve => {
+    const checkId = `ph_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const timer = setTimeout(() => {
+      if (pendingPostHocChecks.has(checkId)) {
+        pendingPostHocChecks.delete(checkId);
+        resolve('keep'); // timeout = keep the already-written change
+      }
+    }, 600000);
+    pendingPostHocChecks.set(checkId, { resolve, timer });
+    broadcast({
+      type: 'cross-check-post-hoc-pending',
+      checkId, sessionId, filePath, operation,
+      verdict: review.verdict, summary: review.summary, issues: review.issues,
+      model: review.model, ms: review.ms,
+      originalLines, newLines, originalBytes: origBytes, newBytes,
+    });
+  });
+
+  recordCrossCheck(sessionId, {
+    ts: new Date().toISOString(),
+    sessionId, filePath, operation: `${operation} (post-hoc)`,
+    originalLines, newLines, originalBytes: origBytes, newBytes,
+    review, userDecision: decision, sessionPrompt,
+  });
+
+  if (decision === 'restore') {
+    try { fs.writeFileSync(filePath, originalContent, 'utf8'); } catch {}
+  }
+}
+
 // runCrossCheckAndApproval — orchestrates engine + UI prompt + storage.
 // Returns true if user approved (write should proceed), false if rejected.
 // Bypasses cross-check entirely if the change delta is under 200 bytes
@@ -1953,6 +2014,30 @@ function recordCrossCheck(sessionId, entry) {
   fs.mkdirSync(CROSS_CHECKS_DIR, { recursive: true });
   const file = path.join(CROSS_CHECKS_DIR, `${sessionId}.jsonl`);
   fs.appendFileSync(file, JSON.stringify(entry) + '\n', 'utf8');
+  pruneOldCrossChecks();
+}
+
+// Keep at most 500 entries total across all session JSONL files.
+// Deletes the oldest files (by mtime) until under the limit.
+function pruneOldCrossChecks() {
+  try {
+    if (!fs.existsSync(CROSS_CHECKS_DIR)) return;
+    const files = fs.readdirSync(CROSS_CHECKS_DIR).filter(f => f.endsWith('.jsonl'));
+    let total = 0;
+    const stats = files.map(f => {
+      const p = path.join(CROSS_CHECKS_DIR, f);
+      const lines = fs.readFileSync(p, 'utf8').split('\n').filter(l => l.trim()).length;
+      total += lines;
+      return { path: p, lines, mtime: fs.statSync(p).mtimeMs };
+    });
+    if (total <= 500) return;
+    stats.sort((a, b) => a.mtime - b.mtime);
+    for (const f of stats) {
+      if (total <= 500) break;
+      fs.unlinkSync(f.path);
+      total -= f.lines;
+    }
+  } catch {}
 }
 
 function loadCrossChecksForSession(sessionId) {
@@ -2194,11 +2279,18 @@ function assertSafeCommand(command, workDir) {
   }
 }
 
-function toolBash({ command, timeout: tms }, workDir) {
+async function toolBash({ command, timeout: tms }, workDir, sessionId) {
   assertSafeCommand(command, workDir);
   const writeTargets = detectShellWriteTargets(command, workDir);
   for (const target of writeTargets) backupBeforeWrite(target, workDir);
   const snapshots = snapshotForShellEncodingCheck(writeTargets);
+  // Capture pre-exec content for post-hoc cross-check comparison.
+  const priorContents = new Map();
+  for (const target of writeTargets) {
+    if (fs.existsSync(target)) {
+      try { priorContents.set(target, fs.readFileSync(target, 'utf8')); } catch {}
+    }
+  }
   let output;
   try {
     output = execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
@@ -2208,14 +2300,31 @@ function toolBash({ command, timeout: tms }, workDir) {
     output = (out + (err ? '\n' + err : '') || e.message).trim();
   }
   const warnings = verifyShellEncoding(snapshots);
+  // Post-hoc cross-check: review any files that changed.
+  for (const target of writeTargets) {
+    if (!fs.existsSync(target)) continue;
+    try {
+      const newContent = fs.readFileSync(target, 'utf8');
+      const oldContent = priorContents.get(target) || '';
+      if (newContent !== oldContent) {
+        await runPostHocCrossCheck({ sessionId, filePath: target, operation: 'Bash', originalContent: oldContent, newContent, workDir });
+      }
+    } catch {}
+  }
   return warnings.length ? output + '\n\n' + warnings.join('\n') : output;
 }
 
-function toolPowerShell({ command, timeout: tms }, workDir) {
+async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
   assertSafeCommand(command, workDir);
   const writeTargets = detectShellWriteTargets(command, workDir);
   for (const target of writeTargets) backupBeforeWrite(target, workDir);
   const snapshots = snapshotForShellEncodingCheck(writeTargets);
+  const priorContents = new Map();
+  for (const target of writeTargets) {
+    if (fs.existsSync(target)) {
+      try { priorContents.set(target, fs.readFileSync(target, 'utf8')); } catch {}
+    }
+  }
   let output;
   try {
     output = execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
@@ -2225,6 +2334,16 @@ function toolPowerShell({ command, timeout: tms }, workDir) {
     output = (out + (err ? '\n' + err : '') || e.message).trim();
   }
   const warnings = verifyShellEncoding(snapshots);
+  for (const target of writeTargets) {
+    if (!fs.existsSync(target)) continue;
+    try {
+      const newContent = fs.readFileSync(target, 'utf8');
+      const oldContent = priorContents.get(target) || '';
+      if (newContent !== oldContent) {
+        await runPostHocCrossCheck({ sessionId, filePath: target, operation: 'PowerShell', originalContent: oldContent, newContent, workDir });
+      }
+    } catch {}
+  }
   return warnings.length ? output + '\n\n' + warnings.join('\n') : output;
 }
 
@@ -2524,8 +2643,8 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'Edit':       return await toolEdit(input, workDir, sessionId);
     case 'Glob':       return toolGlob(input, workDir);
     case 'Grep':       return toolGrep(input, workDir);
-    case 'Bash':       return toolBash(input, workDir);
-    case 'PowerShell': return toolPowerShell(input, workDir);
+    case 'Bash':       return await toolBash(input, workDir, sessionId);
+    case 'PowerShell': return await toolPowerShell(input, workDir, sessionId);
     case 'WebFetch':   return await toolWebFetch(input);
     case 'WebSearch':  return await toolWebSearch(input);
     case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
@@ -3135,6 +3254,15 @@ function spawnMaxChat(sessionId, prompt, config) {
     } catch (e) { dlog('WATCHER_ERR', e.message); }
   }
 
+  // Snapshot which files are already modified (vs git HEAD) before this turn
+  // so we can detect net-new changes the CLI makes during the turn.
+  let preTurnDiff = '';
+  if (session.workDir) {
+    try {
+      preTurnDiff = execSync('git diff HEAD --name-only', { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+    } catch {}
+  }
+
   // On turn 2+, the CLI already has the conversation history stored on disk
   // under session.claudeSessionId — just send the new user message.
   // On turn 1, send full Polaris context + history as before.
@@ -3253,7 +3381,7 @@ function spawnMaxChat(sessionId, prompt, config) {
     }
   });
 
-  proc.on('close', code => {
+  proc.on('close', async code => {
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
     if (finalUsage) {
       const modelTag = finalModel || 'claude-cli (Max plan)';
@@ -3263,6 +3391,30 @@ function spawnMaxChat(sessionId, prompt, config) {
     session.status = code === 0 ? 'done' : 'error';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
+
+    // Post-hoc cross-check: compare git state after turn to pre-turn snapshot.
+    // Files that changed during this Max turn are reviewed via runPostHocCrossCheck.
+    if (session.workDir && code === 0) {
+      try {
+        const postTurnDiff = execSync('git diff HEAD --name-only', { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+        const preDiffs = new Set((preTurnDiff || '').split('\n').filter(Boolean));
+        const newlyChanged = (postTurnDiff || '').split('\n').filter(f => f && !preDiffs.has(f));
+        for (const relPath of newlyChanged) {
+          const fullPath = path.join(session.workDir, relPath);
+          if (!fs.existsSync(fullPath)) continue;
+          try {
+            const newContent = fs.readFileSync(fullPath, 'utf8');
+            let originalContent = '';
+            try {
+              originalContent = execSync(`git show HEAD:${relPath.replace(/\\/g, '/')}`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
+            } catch {} // new untracked file — originalContent stays ''
+            if (newContent !== originalContent) {
+              await runPostHocCrossCheck({ sessionId, filePath: fullPath, operation: 'Max', originalContent, newContent, workDir: session.workDir });
+            }
+          } catch {}
+        }
+      } catch {}
+    }
   });
 
   proc.on('error', err => {
@@ -3976,6 +4128,16 @@ function handleMessage(ws, raw) {
       pendingCrossChecks.delete(msg.checkId);
       clearTimeout(pending.timer);
       pending.resolve(msg.decision === 'approve' ? 'approve' : 'reject');
+    }
+    return;
+  }
+
+  if (type === 'cross-check-post-hoc-decision') {
+    const pending = pendingPostHocChecks.get(msg.checkId);
+    if (pending) {
+      pendingPostHocChecks.delete(msg.checkId);
+      clearTimeout(pending.timer);
+      pending.resolve(msg.decision === 'restore' ? 'restore' : 'keep');
     }
     return;
   }
