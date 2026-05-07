@@ -1014,10 +1014,15 @@ function autoObsidianForSession(sessionId) {
 // Scaffold Obsidian Build + Sessions folders when a new project is created
 function scaffoldObsidianProject(project, vaultPath) {
   const name = project.name || 'Project';
-  const buildDir = project.obsidianDir || `${name}_Build`;
-  const sessionsDir = project.obsidianSessionsDir || `${name}_Sessions`;
-  const buildPath = path.join(vaultPath, buildDir);
-  const sessionsPath = path.join(vaultPath, sessionsDir);
+  // obsidianDir is often an absolute path — use it directly when so
+  const buildPath = project.obsidianDir && path.isAbsolute(path.normalize(project.obsidianDir))
+    ? path.normalize(project.obsidianDir)
+    : path.join(vaultPath, project.obsidianDir || `${name}_Build`);
+  // Derive vault root from buildPath so sessions land next to the build folder
+  const vaultRoot = path.dirname(buildPath);
+  const sessionsPath = project.obsidianSessionsDir && path.isAbsolute(path.normalize(project.obsidianSessionsDir))
+    ? path.normalize(project.obsidianSessionsDir)
+    : path.join(vaultRoot, project.obsidianSessionsDir || `${name}_Sessions`);
   try {
     if (!fs.existsSync(buildPath)) {
       fs.mkdirSync(buildPath, { recursive: true });
@@ -1027,7 +1032,7 @@ function scaffoldObsidianProject(project, vaultPath) {
         '3-Build-Plan.md': `# 3-Build-Plan.md — ${name}\n\n## Current Phase\n[Describe current focus]\n\n## Roadmap\n| Priority | Item | Status | Notes |\n|----------|------|--------|-------|\n| | | | |\n`,
         '4-Changelog.md': `# 4-Changelog.md — ${name}\n\n| Version | Date | Summary |\n|---------|------|---------|\n| | | |\n`,
         '5-Permissions.md': `# 5-Permissions.md — ${name}\n\n## File Access\n[Describe file access rules]\n\n## Tool Restrictions\n[Describe tool restrictions]\n`,
-        '6-Obsidian.md': `# 6-Obsidian.md — ${name}\n\n## Vault Config\n- **Build folder:** ${buildDir}\n- **Sessions folder:** ${sessionsDir}\n`,
+        '6-Obsidian.md': `# 6-Obsidian.md — ${name}\n\n## Vault Config\n- **Build folder:** ${buildPath}\n- **Sessions folder:** ${sessionsPath}\n`,
         '7-Integrations.md': `# 7-Integrations.md — ${name}\n\n## External APIs\n[List external integrations]\n`,
         '8-Logs.md': `# 8-Logs.md — ${name}\n\n[Logs and diagnostics will be appended here]\n`,
         'FileMap.md': `# FileMap — ${name}\n# Working directory: ${project.workDir || ''}\n\n## Source Files\n| File | Purpose |\n|------|---------|\n| | |\n`,
@@ -1035,13 +1040,13 @@ function scaffoldObsidianProject(project, vaultPath) {
       for (const [filename, content] of Object.entries(files)) {
         fs.writeFileSync(path.join(buildPath, filename), content, 'utf8');
       }
-      console.log(`[obsidian-scaffold] Created ${buildDir} with ${Object.keys(files).length} files`);
+      console.log(`[obsidian-scaffold] Created ${buildPath} with ${Object.keys(files).length} files`);
     }
     if (!fs.existsSync(sessionsPath)) {
       fs.mkdirSync(sessionsPath, { recursive: true });
-      console.log(`[obsidian-scaffold] Created ${sessionsDir}`);
+      console.log(`[obsidian-scaffold] Created ${sessionsPath}`);
     }
-    broadcast({ type: 'obsidian-scaffold-done', project: name, buildDir, sessionsDir });
+    broadcast({ type: 'obsidian-scaffold-done', project: name, buildPath, sessionsPath });
   } catch (e) {
     console.error('[obsidian-scaffold] failed:', e.message);
   }
