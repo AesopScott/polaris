@@ -1543,7 +1543,10 @@ function buildPolarisContextBlock(config, session) {
     ? config.routines.map(r => `  - ${r.name || r.id || '(unnamed)'}${r.schedule ? ` [${r.schedule}]` : ''}`).join('\n')
     : '';
 
-  const mcpServers = getConnectedMcpServers(session?.workDir);
+  const isPolarisSession = !session?.workDir || session.workDir === CHAT_DIR;
+  const mcpServers = isPolarisSession
+    ? getConnectedMcpServers(session?.workDir)
+    : getEnabledMcpServers();
 
   const lines = [
     '=== POLARIS CONTEXT (injected by server) ===',
