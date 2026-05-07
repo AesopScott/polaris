@@ -1348,6 +1348,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
   { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Call with no arguments at session start to load all project context. Pass filename to retrieve a specific file.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Omit to get all project memory.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
+  { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir) {
@@ -1488,6 +1489,16 @@ function toolSetProject({ projectName } = {}, sessionId) {
   session.workDir = matched ? (matched.workDir || session.workDir) : session.workDir;
   broadcast({ type: 'session-project-changed', sessionId, projectName: session.projectName, workDir: session.workDir });
   return matched ? `Project set to "${matched.name}".` : 'Project cleared (no project / scratch).';
+}
+
+function toolSetStatus({ status } = {}, sessionId) {
+  const ALLOWED = ['test', 'waiting', 'done'];
+  if (!ALLOWED.includes(status)) return `Invalid status "${status}". Allowed: ${ALLOWED.join(', ')}.`;
+  const session = sessions.get(sessionId);
+  if (!session) return 'Session not found.';
+  session.status = status;
+  broadcast({ type: 'session-status', sessionId, status });
+  return `Status set to "${status}".`;
 }
 
 // assertWritable — enforces two rules before any write:
@@ -2769,6 +2780,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'TodoWrite':  return toolTodoWrite(input, sessionId);
     case 'QueryMemory': return toolQueryMemory(input, sessionId);
     case 'SetProject':  return toolSetProject(input, sessionId);
+    case 'SetStatus':   return toolSetStatus(input, sessionId);
     default:           return `Unknown tool: ${name}`;
   }
 }
