@@ -1045,6 +1045,8 @@ function scaffoldObsidianProject(project, vaultPath) {
     }
     if (!fs.existsSync(sessionsPath)) {
       fs.mkdirSync(sessionsPath, { recursive: true });
+      const initNote = path.join(sessionsPath, `_created ${new Date().toISOString().slice(0, 10)}.md`);
+      fs.writeFileSync(initNote, `# ${name} Sessions\n\nSession notes will appear here automatically after each agent session.\n`, 'utf8');
       console.log(`[obsidian-scaffold] Created ${sessionsPath}`);
     }
     broadcast({ type: 'obsidian-scaffold-done', project: name, buildPath, sessionsPath });
