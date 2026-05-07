@@ -6999,22 +6999,45 @@
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
 
-  const STATUS_CYCLE = ['done', 'test', 'waiting', 'running', 'error'];
   const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' };
   const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' };
   function cycleSessionStatus(sessionId) {
+    document.querySelectorAll('.status-picker').forEach(p => p.remove());
     const grid = getActiveGrid();
     if (!grid) return;
     const card = grid.querySelector(`[data-sid="${sessionId}"]`);
     if (!card) return;
     const badge = card.querySelector('.status-badge');
     if (!badge) return;
-    const current = badge.textContent.trim().toLowerCase();
-    const idx = STATUS_CYCLE.indexOf(current);
-    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-    badge.className = 'status-badge ' + (STATUS_CLASS[next] || 'status-done');
-    badge.textContent = STATUS_LABEL[next] || next;
-    wsSend({ type: 'set-session-status', sessionId, status: next });
+    const rect = badge.getBoundingClientRect();
+    const picker = document.createElement('div');
+    picker.className = 'status-picker';
+    picker.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.bottom+4}px;z-index:10001;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 0;box-shadow:0 4px 16px rgba(0,0,0,0.7);min-width:90px;`;
+    [
+      ['done',    'Done',    '#4ade80'],
+      ['test',    'Test',    '#f87171'],
+      ['waiting', 'Waiting', '#fbbf24'],
+      ['error',   'Error',   '#f87171'],
+      ['running', 'Running', '#60a5fa'],
+    ].forEach(([s, label, color]) => {
+      const opt = document.createElement('div');
+      opt.style.cssText = `padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;color:${color};white-space:nowrap;`;
+      opt.textContent = label;
+      opt.onmouseover = () => opt.style.background = 'rgba(255,255,255,0.08)';
+      opt.onmouseout  = () => opt.style.background = '';
+      opt.onclick = ev => {
+        ev.stopPropagation();
+        picker.remove();
+        updateCardStatus(sessionId, s);
+        wsSend({ type: 'set-session-status', sessionId, status: s });
+      };
+      picker.appendChild(opt);
+    });
+    document.body.appendChild(picker);
+    setTimeout(() => document.addEventListener('click', function dismiss() {
+      picker.remove();
+      document.removeEventListener('click', dismiss);
+    }, { once: true }), 0);
   }
   window.cycleSessionStatus = cycleSessionStatus;
 
