@@ -1971,19 +1971,38 @@ const CROSS_CHECK_DEFAULT_MODEL = 'anthropic/claude-haiku-4-5';
 const CROSS_CHECK_DIFF_BUDGET = 100 * 1024;  // 100 KB max combined before/after sent to reviewer
 
 function buildDiffContext(originalContent, newContent) {
-  // If both fit under the budget, send full content.
   const totalBytes = Buffer.byteLength(originalContent, 'utf8') + Buffer.byteLength(newContent, 'utf8');
   if (totalBytes <= CROSS_CHECK_DIFF_BUDGET) {
     return { mode: 'full', original: originalContent, after: newContent };
   }
-  // Otherwise send head+tail of each (200 lines each end).
-  const head = (s, n) => s.split('\n').slice(0, n).join('\n');
-  const tail = (s, n) => s.split('\n').slice(-n).join('\n');
-  return {
-    mode: 'truncated',
-    original: head(originalContent, 200) + '\n\n[... truncated ...]\n\n' + tail(originalContent, 200),
-    after:    head(newContent, 200)      + '\n\n[... truncated ...]\n\n' + tail(newContent, 200),
-  };
+  // Large file — emit a unified diff of just the changed region + context.
+  // Finds the longest common prefix and suffix, leaving only the changed block.
+  const origLines = originalContent.split('\n');
+  const nextLines = newContent.split('\n');
+  const minLen = Math.min(origLines.length, nextLines.length);
+  let prefix = 0;
+  while (prefix < minLen && origLines[prefix] === nextLines[prefix]) prefix++;
+  let suffix = 0;
+  while (
+    suffix < minLen - prefix &&
+    origLines[origLines.length - 1 - suffix] === nextLines[nextLines.length - 1 - suffix]
+  ) suffix++;
+  const CTX = 5;
+  const oStart = Math.max(0, prefix - CTX);
+  const oEnd   = Math.min(origLines.length, origLines.length - suffix + CTX);
+  const nEnd   = Math.min(nextLines.length, nextLines.length - suffix + CTX);
+  const hunkLines = [
+    `@@ -${oStart + 1},${oEnd - oStart} +${oStart + 1},${nEnd - oStart} @@`,
+    ...origLines.slice(oStart, prefix).map(l => ` ${l}`),
+    ...origLines.slice(prefix, origLines.length - suffix).map(l => `-${l}`),
+    ...nextLines.slice(prefix, nextLines.length - suffix).map(l => `+${l}`),
+    ...origLines.slice(origLines.length - suffix, oEnd).map(l => ` ${l}`),
+  ];
+  let diff = hunkLines.join('\n');
+  if (Buffer.byteLength(diff, 'utf8') > CROSS_CHECK_DIFF_BUDGET) {
+    diff = diff.slice(0, CROSS_CHECK_DIFF_BUDGET) + '\n[... diff truncated ...]';
+  }
+  return { mode: 'unified-diff', diff };
 }
 
 function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
@@ -2022,41 +2041,46 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
   });
 }
 
-async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey }) {
+async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey, unifiedDiff }) {
   const startMs = Date.now();
   const useModel = model || CROSS_CHECK_DEFAULT_MODEL;
   const origLines = originalContent ? originalContent.split('\n').length : 0;
   const origBytes = originalContent ? Buffer.byteLength(originalContent, 'utf8') : 0;
-  const newLines  = newContent.split('\n').length;
-  const newBytes  = Buffer.byteLength(newContent, 'utf8');
+  const newLines  = newContent ? newContent.split('\n').length : 0;
+  const newBytes  = newContent ? Buffer.byteLength(newContent, 'utf8') : 0;
 
-  const diff = buildDiffContext(originalContent || '', newContent);
-  const reviewPrompt = `You are reviewing a single file change proposed by another AI agent for the Polaris project.
+  // Prefer a pre-computed unified diff (e.g. from git diff) over building one in-process.
+  let diffSection;
+  if (unifiedDiff) {
+    let d = unifiedDiff;
+    if (Buffer.byteLength(d, 'utf8') > CROSS_CHECK_DIFF_BUDGET) {
+      d = d.slice(0, CROSS_CHECK_DIFF_BUDGET) + '\n[... diff truncated ...]';
+    }
+    diffSection = `UNIFIED DIFF (git):\n\`\`\`diff\n${d}\n\`\`\``;
+  } else {
+    const diff = buildDiffContext(originalContent || '', newContent || '');
+    if (diff.mode === 'full') {
+      diffSection = `ORIGINAL CONTENT:\n\`\`\`\n${diff.original}\n\`\`\`\n\nPROPOSED NEW CONTENT:\n\`\`\`\n${diff.after}\n\`\`\``;
+    } else {
+      diffSection = `UNIFIED DIFF (changed region only):\n\`\`\`diff\n${diff.diff}\n\`\`\``;
+    }
+  }
 
-ORIGINAL TASK GIVEN TO THE AGENT:
-${sessionPrompt || '(not captured)'}
+  const reviewPrompt = `You are reviewing a file change for the Polaris project.
 
+TASK: ${sessionPrompt || '(not captured)'}
 FILE: ${filePath}
-SIZE: ${origLines} lines / ${origBytes} bytes  →  ${newLines} lines / ${newBytes} bytes
-DIFF MODE: ${diff.mode}
+SIZE: ${origLines} → ${newLines} lines  /  ${origBytes} → ${newBytes} bytes
 
-ORIGINAL CONTENT:
-\`\`\`
-${diff.original}
-\`\`\`
-
-PROPOSED NEW CONTENT:
-\`\`\`
-${diff.after}
-\`\`\`
+${diffSection}
 
 Review for:
-1. Corruption — abnormal line/byte deltas, gibberish, structural damage, repeated identical rules
-2. Correctness — does the change actually solve the task?
+1. Corruption — gibberish, structural damage, encoding mojibake, repeated identical content
+2. Correctness — does the change actually implement the stated task?
 3. Quality — broken syntax, dead code, security issues, malformed HTML/JS/CSS
 
-Respond ONLY with JSON in this exact shape (no prose around it):
-{"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1","issue 2"]}`;
+If the diff is non-empty and the changes look intentional and consistent with the task, verdict is PASS.
+Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
   const result = await callOpenRouterOnce(useModel, apiKey, [{ role: 'user', content: reviewPrompt }], 800);
   const ms = Date.now() - startMs;
@@ -2268,13 +2292,25 @@ async function runPreBuildCheck(ws, sourcePath) {
   for (let i = 0; i < files.length; i++) {
     const rel = files[i];
     const abs = path.join(sourcePath, rel);
+
+    // Use git diff for the review — correct multi-hunk output regardless of file size.
+    let unifiedDiff = null;
+    if (baseCommit) {
+      try {
+        unifiedDiff = execSync(`git diff "${baseCommit}"..HEAD -- "${rel}"`, {
+          cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 4 * 1024 * 1024,
+        }).toString();
+      } catch {}
+    }
+    // Fallback for uncommitted files: build diff from disk content vs HEAD.
     let newContent = '';
-    try { newContent = fs.readFileSync(abs, 'utf8'); } catch {}
     let originalContent = '';
-    try {
-      const base = baseCommit || 'HEAD';
-      originalContent = execSync(`git show ${base}:"${rel}"`, { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    } catch { /* new file or not in base commit */ }
+    if (!unifiedDiff) {
+      try { newContent = fs.readFileSync(abs, 'utf8'); } catch {}
+      try {
+        originalContent = execSync(`git show HEAD:"${rel}"`, { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+      } catch {}
+    }
 
     sendTo(ws, { type: 'pre-build-check-progress', phase: 'reviewing', completed: i, total: files.length, file: rel });
 
@@ -2286,6 +2322,7 @@ async function runPreBuildCheck(ws, sourcePath) {
       newContent,
       model,
       apiKey,
+      unifiedDiff,
     });
     results.push({
       file: rel,
