@@ -406,18 +406,21 @@ async function submitSupportTicket(ws, msg) {
     ...redactDebugLog(msg.debugLog || [], maxPrivacy),
   ].filter(l => l !== null);
 
-  const textContent = lines.join('\n');
-  const htmlContent = `<pre style="font-family:Consolas,monospace;font-size:12px;line-height:1.5;">${textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
-  const subject     = `[Polaris ${msg.ticketType || 'Other'}${msg.severity ? ' / ' + msg.severity : ''}] ${msg.subject || '(no subject)'}`;
+  const textContent  = lines.join('\n');
+  const htmlContent  = `<pre style="font-family:Consolas,monospace;font-size:12px;line-height:1.5;">${textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+  const subject      = `[Polaris ${msg.ticketType || 'Other'}${msg.severity ? ' / ' + msg.severity : ''}] ${msg.subject || '(no subject)'}`;
+  const attachments  = (msg.attachments || []).filter(a => a && a.name && a.base64).slice(0, 5).map(a => ({ name: a.name, content: a.base64 }));
 
   try {
     await callMcpTool('brevo', 'send_email', {
-      to:      [{ email: 'scott@aesopacademy.org' }],
-      from:    { email: 'ravenshroud@gmail.com', name: 'Polaris Support' },
-      replyTo: userInfo.email !== 'not provided' ? { email: userInfo.email, name: userInfo.name } : undefined,
+      to:         [{ email: 'scott@aesopacademy.org' }],
+      from:       { email: 'ravenshroud@gmail.com', name: 'Polaris Support' },
+      cc:         [{ email: 'ravenshroud@gmail.com' }],
+      replyTo:    userInfo.email !== 'not provided' ? { email: userInfo.email, name: userInfo.name } : undefined,
       subject,
       htmlContent,
       textContent,
+      attachment: attachments.length ? attachments : undefined,
     });
   } catch (e) {
     sendTo(ws, { type: 'support-ticket-result', ok: false, error: e.message || 'Email send failed' });
@@ -425,7 +428,7 @@ async function submitSupportTicket(ws, msg) {
   }
 
   const tickets = readJSON(TICKETS_PATH, []);
-  tickets.unshift({ id: ticketId, type: msg.ticketType, severity: msg.severity || null, subject: msg.subject || '(no subject)', submittedAt, status: 'open', resolvedAt: null });
+  tickets.unshift({ id: ticketId, type: msg.ticketType, severity: msg.severity || null, subject: msg.subject || '(no subject)', submittedAt, status: 'open', resolvedAt: null, attachmentCount: attachments.length });
   writeJSON(TICKETS_PATH, tickets);
 
   sendTo(ws, { type: 'support-ticket-result', ok: true, ticketId, installId });
