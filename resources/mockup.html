@@ -613,7 +613,7 @@
   #changelog-popup.hidden { display: none; }
   .changelog-commit {
     display: grid;
-    grid-template-columns: 52px 80px 1fr;
+    grid-template-columns: 24px 52px 80px 1fr;
     gap: 10px;
     padding: 7px 0;
     border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -621,6 +621,7 @@
     font-size: 12px;
   }
   .changelog-commit:last-child { border-bottom: none; }
+  .changelog-num { font-size: 10px; opacity: 0.3; text-align: right; }
   .changelog-hash { font-family: 'Consolas', monospace; font-size: 10px; color: #60a5fa; }
   .changelog-date { font-size: 10px; opacity: 0.4; }
   .changelog-subject { line-height: 1.45; }
@@ -3711,6 +3712,22 @@
       case 'diag-content': {
         const el = document.getElementById('diag-content');
         if (el) el.textContent = msg.content || '(empty)';
+        break;
+      }
+
+      case 'obsidian-progress': {
+        if (camCurrentPushSid) {
+          const progressEl = document.getElementById('cam-progress-' + camCurrentPushSid);
+          if (progressEl) {
+            const pushingSpan = document.getElementById('cam-pushing-' + camCurrentPushSid);
+            if (pushingSpan) pushingSpan.remove();
+            const labels = { 'file-written': '✓ Obsidian', 'vault-git': '✓ Vault Git', 'code-git': '✓ Code Git' };
+            const span = document.createElement('span');
+            span.style.cssText = 'color:#4ade80;font-weight:700;';
+            span.textContent = labels[msg.step] || msg.step;
+            progressEl.appendChild(span);
+          }
+        }
         break;
       }
 
@@ -6880,8 +6897,9 @@
     if (!el) return;
     const list = document.getElementById('changelog-commits-list');
     if (list) {
-      list.innerHTML = (commits || []).map(c =>
+      list.innerHTML = (commits || []).map((c, i) =>
         `<div class="changelog-commit">
+          <span class="changelog-num">${i + 1}</span>
           <span class="changelog-hash">${escHtml(c.hash || '')}</span>
           <span class="changelog-date">${escHtml(c.date || '')}</span>
           <span class="changelog-subject">${escHtml(c.subject || '')}</span>
@@ -9113,10 +9131,12 @@
     const row = document.getElementById('cam-row-' + sid);
     if (row) {
       row.querySelectorAll('button').forEach(b => b.remove());
-      const done = document.createElement('span');
-      done.style.cssText = `font-size:11px;font-weight:700;color:${color};flex-shrink:0;`;
-      done.textContent = label;
-      row.appendChild(done);
+      if (label) {
+        const done = document.createElement('span');
+        done.style.cssText = `font-size:11px;font-weight:700;color:${color};flex-shrink:0;`;
+        done.textContent = label;
+        row.appendChild(done);
+      }
       row.style.opacity = '0.45';
     }
     if (camPending.size === 0) {
@@ -9128,7 +9148,7 @@
   }
 
   function camCancel() {
-    camPending = new Set(); camToClose = []; camOnObsidianDone = null;
+    camPending = new Set(); camToClose = []; camOnObsidianDone = null; camCurrentPushSid = null;
     document.getElementById('close-all-modal').style.display = 'none';
   }
 
