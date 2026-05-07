@@ -4127,6 +4127,11 @@
         pushDebugLog(`[cross-check post-hoc] ${msg.verdict} ${msg.filePath}`);
         break;
 
+      case 'installer-permission-pending':
+        appendInstallerPermissionPrompt(msg);
+        pushDebugLog(`[installer-permission] ${msg.exePath}`);
+        break;
+
       case 'error':
         alert(`Server error: ${msg.text}`);
         pushDebugLog(`[server error] ${msg.text}`, true);
@@ -4333,6 +4338,79 @@
     const wasAtBottom = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
     term.appendChild(wrap);
     if (wasAtBottom) term.scrollTop = term.scrollHeight;
+  }
+
+  // ── Installer permission prompt ────────────────────────────────────────────
+  function appendInstallerPermissionPrompt(msg) {
+    const grid = getActiveGrid();
+    const card = grid && grid.querySelector(`[data-sid="${msg.sessionId}"]`);
+    const term = card && card.querySelector('[data-term]');
+    if (!term) return;
+
+    if (!document.getElementById('installer-perm-styles')) {
+      const s = document.createElement('style');
+      s.id = 'installer-perm-styles';
+      s.textContent = `
+        .ins-prompt { border: 1px solid #dc2626; border-left: 4px solid #dc2626; border-radius: 6px; padding: 10px 12px; margin: 8px 0; background: rgba(220,38,38,0.06); }
+        .ins-header { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; color: #f87171; margin-bottom: 8px; }
+        .ins-path { font-family: 'Consolas', monospace; font-size: 11px; color: #93c5fd; margin-bottom: 6px; word-break: break-all; }
+        .ins-cmd { font-family: 'Consolas', monospace; font-size: 10px; color: #64748b; background: #0a0e1a; padding: 6px 8px; border-radius: 4px; margin-bottom: 8px; word-break: break-all; white-space: pre-wrap; }
+        .ins-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+        .ins-btn { padding: 4px 14px; border-radius: 4px; border: none; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .ins-btn-allow { background: #16a34a; color: #fff; }
+        .ins-btn-allow:hover { background: #15803d; }
+        .ins-btn-block { background: #dc2626; color: #fff; }
+        .ins-btn-block:hover { background: #b91c1c; }
+      `;
+      document.head.appendChild(s);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ins-prompt';
+
+    const header = document.createElement('div');
+    header.className = 'ins-header';
+    header.textContent = '⚠ Installer Detected — Permission Required';
+    wrap.appendChild(header);
+
+    const pathEl = document.createElement('div');
+    pathEl.className = 'ins-path';
+    pathEl.textContent = msg.exePath;
+    wrap.appendChild(pathEl);
+
+    const cmdEl = document.createElement('div');
+    cmdEl.className = 'ins-cmd';
+    cmdEl.textContent = msg.command;
+    wrap.appendChild(cmdEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'ins-actions';
+    const allow = document.createElement('button');
+    allow.className = 'ins-btn ins-btn-allow';
+    allow.textContent = 'Allow';
+    const block = document.createElement('button');
+    block.className = 'ins-btn ins-btn-block';
+    block.textContent = 'Block';
+
+    const decide = decision => {
+      wrap.querySelectorAll('button').forEach(b => b.disabled = true);
+      allow.style.opacity = decision === 'allow'  ? '1' : '0.4';
+      block.style.opacity = decision === 'reject' ? '1' : '0.4';
+      const tag = document.createElement('span');
+      tag.style.cssText = 'margin-left:auto;color:#64748b;font-size:11px;font-style:italic;';
+      tag.textContent = decision === 'allow' ? 'allowed' : 'blocked';
+      actions.appendChild(tag);
+      wsSend({ type: 'installer-permission-decision', checkId: msg.checkId, decision });
+    };
+    allow.onclick = () => decide('allow');
+    block.onclick = () => decide('reject');
+    actions.appendChild(allow);
+    actions.appendChild(block);
+    wrap.appendChild(actions);
+
+    const wasAtBottom2 = (term.scrollHeight - term.scrollTop - term.clientHeight) < 40;
+    term.appendChild(wrap);
+    if (wasAtBottom2) term.scrollTop = term.scrollHeight;
   }
 
   // ── Post-hoc cross-check prompt (write already happened — keep or restore) ────

@@ -233,7 +233,8 @@ function onGitPushComplete() {
     try { process.send({ type: 'ready-to-quit' }); } catch {}
   }
 }
-const pendingCrossChecks  = new Map(); // checkId → { resolve, timer }
+const pendingCrossChecks     = new Map(); // checkId → { resolve, timer }
+const pendingInstallerChecks = new Map(); // checkId → { resolve, timer }
 
 if (typeof process.on === 'function') {
   process.on('message', (msg) => {
@@ -1962,6 +1963,26 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
   });
 }
 
+// askForInstallerPermission — blocks shell execution until the user explicitly
+// allows the installer in the UI. Defaults to reject after 5 min timeout.
+function askForInstallerPermission({ sessionId, exePath, command }) {
+  return new Promise(resolve => {
+    const checkId = `ins_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const timer = setTimeout(() => {
+      if (pendingInstallerChecks.has(checkId)) {
+        pendingInstallerChecks.delete(checkId);
+        resolve('reject');
+      }
+    }, 300000); // 5 min timeout — defaults to reject
+    pendingInstallerChecks.set(checkId, { resolve, timer });
+    broadcast({
+      type: 'installer-permission-pending',
+      checkId, sessionId, exePath,
+      command: command.slice(0, 300),
+    });
+  });
+}
+
 // ─── Post-hoc cross-check (Phase 2 extension) ────────────────────────────────
 // For writes that have already happened (shell commands, Max CLI sessions),
 // the gate runs after the fact. The reviewer sees the same diff, but the UI
@@ -2617,8 +2638,27 @@ function assertSafeCommand(command, workDir) {
   }
 }
 
+// detectInstallerExe — returns the first installer-like .exe absolute path found
+// in the command string, or null. Catches dist/*.exe and *setup*/*install*.exe.
+function detectInstallerExe(command) {
+  const flat = command.replace(/\r?\n/g, ' ');
+  const exeRe = /[a-zA-Z]:[\\\/][^\s"'<>|&;,)]+\.exe/gi;
+  for (const match of (flat.match(exeRe) || [])) {
+    const norm = match.toLowerCase().replace(/\\/g, '/');
+    if (/\/(setup|install|installer)[^/]*\.exe/.test(norm)) return match;
+    if (/\/dist\/[^/]+\.exe/.test(norm)) return match;
+    if (/setup\.exe$/.test(norm)) return match;
+  }
+  return null;
+}
+
 async function toolBash({ command, timeout: tms }, workDir, sessionId) {
   assertSafeCommand(command, workDir);
+  const installerPath = detectInstallerExe(command);
+  if (installerPath) {
+    const decision = await askForInstallerPermission({ sessionId, exePath: installerPath, command });
+    if (decision !== 'allow') throw new Error(`Installer blocked: permission not granted for ${installerPath}`);
+  }
   const writeTargets = detectShellWriteTargets(command, workDir);
   for (const target of writeTargets) backupBeforeWrite(target, workDir);
   const snapshots = snapshotForShellEncodingCheck(writeTargets);
@@ -2655,6 +2695,11 @@ async function toolBash({ command, timeout: tms }, workDir, sessionId) {
 
 async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
   assertSafeCommand(command, workDir);
+  const installerPath = detectInstallerExe(command);
+  if (installerPath) {
+    const decision = await askForInstallerPermission({ sessionId, exePath: installerPath, command });
+    if (decision !== 'allow') throw new Error(`Installer blocked: permission not granted for ${installerPath}`);
+  }
   const writeTargets = detectShellWriteTargets(command, workDir);
   for (const target of writeTargets) backupBeforeWrite(target, workDir);
   const snapshots = snapshotForShellEncodingCheck(writeTargets);
@@ -4808,6 +4853,16 @@ function handleMessage(ws, raw) {
       pendingPostHocChecks.delete(msg.checkId);
       clearTimeout(pending.timer);
       pending.resolve(msg.decision === 'restore' ? 'restore' : 'keep');
+    }
+    return;
+  }
+
+  if (type === 'installer-permission-decision') {
+    const pending = pendingInstallerChecks.get(msg.checkId);
+    if (pending) {
+      pendingInstallerChecks.delete(msg.checkId);
+      clearTimeout(pending.timer);
+      pending.resolve(msg.decision === 'allow' ? 'allow' : 'reject');
     }
     return;
   }
