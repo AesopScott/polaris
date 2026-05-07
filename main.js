@@ -18,6 +18,7 @@ const MAX_RESTARTS_IN_WINDOW = 3;
 let mainWindow = null;
 let serverProcess = null;
 let isQuitting = false;
+let quitReadyResolve = null; // set while waiting for server to signal ready-to-quit
 const restartTimes = [];
 
 function appendServerLog(text) {
@@ -103,6 +104,10 @@ function startServer() {
   // IPC bridge from server.js — folder picker, open path, etc.
   serverProcess.on('message', async (msg) => {
     if (!msg || !msg.type) return;
+    if (msg.type === 'ready-to-quit') {
+      if (quitReadyResolve) { quitReadyResolve(); quitReadyResolve = null; }
+      return;
+    }
     if (msg.type === 'pick-directory') {
       try {
         const result = await dialog.showOpenDialog(mainWindow, {
@@ -189,8 +194,23 @@ app.on('before-quit', () => { isQuitting = true; });
 
 app.on('window-all-closed', () => {
   isQuitting = true;
-  if (serverProcess) serverProcess.kill();
-  if (process.platform !== 'darwin') app.quit();
+  if (serverProcess) {
+    // Ask server to flush pending git pushes before dying.
+    // Force-kill after 10 s in case the server hangs.
+    const forceKillTimer = setTimeout(() => {
+      quitReadyResolve = null;
+      serverProcess.kill();
+      if (process.platform !== 'darwin') app.quit();
+    }, 10000);
+    quitReadyResolve = () => {
+      clearTimeout(forceKillTimer);
+      serverProcess.kill();
+      if (process.platform !== 'darwin') app.quit();
+    };
+    serverProcess.send({ type: 'shutdown' });
+  } else {
+    if (process.platform !== 'darwin') app.quit();
+  }
 });
 
 app.on('activate', () => {

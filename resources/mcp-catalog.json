@@ -4,6 +4,7 @@
     "name": "GitHub",
     "emoji": "🐙",
     "description": "Read repos, search code, manage issues and PRs, monitor Actions runs",
+    "productUrl": "https://github.com/signup",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-github"],
@@ -16,7 +17,8 @@
         "label": "Personal Access Token",
         "type": "secret",
         "required": true,
-        "hint": "github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)"
+        "hint": "github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)",
+        "setupGuideUrl": "https://github.com/settings/tokens/new"
       }
     ],
     "prerequisiteWarning": null
@@ -43,6 +45,7 @@
     "name": "Brevo",
     "emoji": "📧",
     "description": "Transactional email, SMS, contacts, campaigns, templates, analytics",
+    "productUrl": "https://www.brevo.com",
     "transport": "remote",
     "url": "https://mcp.brevo.com",
     "headerKey": "api-key",
@@ -52,7 +55,8 @@
         "label": "Brevo API Key",
         "type": "secret",
         "required": true,
-        "hint": "Brevo dashboard → Settings → API Keys → Generate a new API key"
+        "hint": "Brevo dashboard → Settings → API Keys → Generate a new API key",
+        "setupGuideUrl": "https://app.brevo.com/settings/keys"
       }
     ],
     "prerequisiteWarning": null
@@ -62,6 +66,7 @@
     "name": "Obsidian",
     "emoji": "🟣",
     "description": "Read, write, search, and edit notes, tags, and frontmatter in your vault",
+    "productUrl": "https://obsidian.md",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "mcp-obsidian"],
@@ -126,7 +131,8 @@
         "label": "API Key (optional — free tier works without one)",
         "type": "secret",
         "required": false,
-        "hint": "you.com/platform → Get an API key for higher rate limits. Free tier: 100 searches/day, no key needed."
+        "hint": "you.com/platform → Get an API key for higher rate limits. Free tier: 100 searches/day, no key needed.",
+        "setupGuideUrl": "https://you.com/platform"
       }
     ],
     "prerequisiteWarning": null

@@ -5,3 +5,4 @@ release/
 .DS_Store
 .claude/
 secrets.js
+.mcp.json
