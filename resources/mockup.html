@@ -2466,8 +2466,9 @@
     const inputs = bar.querySelectorAll('input.dir-field');
     if (inputs[0]) inputs[0].value = proj ? proj.workDir : '';
     if (inputs[1]) inputs[1].value = proj ? proj.repo    : '';
-    // Auto-switch to Code mode when a real project is selected
-    if (proj) activateMode(bar, 'code');
+    // Mode is intentionally NOT changed here — Max sessions are now full
+    // project sessions, so picking a project should leave whichever mode
+    // (Max or Code) the user already chose intact.
   }
 
   function buildCodeHint() {
@@ -4973,7 +4974,7 @@
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier });
     } else {
       wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier });
     }

@@ -3123,10 +3123,15 @@ function spawnMaxChat(sessionId, prompt, config) {
   dlog('PROMPT_BUILD', `historyTurns=${(session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
+  // Translate session tier → Claude Code --model flag.
+  // Max plan supports Sonnet (default) and Opus; Floor falls back to Sonnet
+  // since Max has no Haiku tier.
+  const tierForCli = (session.tier || 'balanced').toLowerCase();
+  const cliModel = tierForCli === 'power' ? 'opus' : 'sonnet';
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
-  const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel];
   dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
   let proc;
   try {
@@ -3809,7 +3814,7 @@ function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, workDir, projectName } = msg;
+    const { prompt, workDir, projectName, tier } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     const effectiveWorkDir = (workDir && workDir.trim()) ? workDir.trim() : null;
@@ -3821,16 +3826,20 @@ function handleMessage(ws, raw) {
     const id   = `chat_${Date.now()}`;
     const name = generateSessionName(prompt);
     const config = readConfig();
-    // Default model label reflects the active backend: Max routing uses
-    // Sonnet 4.6 (whatever the user's Max plan currently includes); the
-    // OpenRouter fallback uses config.chatModel.
+    // Default model label reflects the active backend + chosen tier. Max plan
+    // exposes Sonnet 4.6 (default) and Opus 4.7; Floor falls back to Sonnet
+    // since Max has no Haiku. OpenRouter fallback uses config.chatModel.
     const backend = (config.chatBackend || 'max').toLowerCase();
+    const chatTier = (tier || 'balanced').toLowerCase();
+    const maxModelLabel = chatTier === 'power'
+      ? 'anthropic/claude-opus-4-7 (Max plan)'
+      : 'anthropic/claude-sonnet-4-6 (Max plan)';
     const chatModel = backend === 'max'
-      ? 'anthropic/claude-sonnet-4-6 (Max plan)'
+      ? maxModelLabel
       : (config.chatModel || 'deepseek/deepseek-chat');
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
-      isChat: true, model: chatModel,
+      isChat: true, model: chatModel, tier: chatTier,
       status: 'running', startAt: Date.now(),
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
