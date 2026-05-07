@@ -1011,6 +1011,42 @@ function autoObsidianForSession(sessionId) {
   }
 }
 
+// Scaffold Obsidian Build + Sessions folders when a new project is created
+function scaffoldObsidianProject(project, vaultPath) {
+  const name = project.name || 'Project';
+  const buildDir = project.obsidianDir || `${name}_Build`;
+  const sessionsDir = project.obsidianSessionsDir || `${name}_Sessions`;
+  const buildPath = path.join(vaultPath, buildDir);
+  const sessionsPath = path.join(vaultPath, sessionsDir);
+  try {
+    if (!fs.existsSync(buildPath)) {
+      fs.mkdirSync(buildPath, { recursive: true });
+      const files = {
+        '1-Soul.md': `# 1-Soul.md — ${name}\n\n**What this project is:** [Describe the project]\n\n**Why it exists:** [Describe the motivation]\n\n**Non-goals:** [What this is not]\n\n**Connection to the larger mission:** [How it fits]\n`,
+        '2-Architecture.md': `# 2-Architecture.md — ${name}\n\n## Tech Stack\n- [List technologies]\n\n## System Overview\n[Describe the system]\n\n## Key Components\n| File | Purpose |\n|------|---------|\n| | |\n`,
+        '3-Build-Plan.md': `# 3-Build-Plan.md — ${name}\n\n## Current Phase\n[Describe current focus]\n\n## Roadmap\n| Priority | Item | Status | Notes |\n|----------|------|--------|-------|\n| | | | |\n`,
+        '4-Changelog.md': `# 4-Changelog.md — ${name}\n\n| Version | Date | Summary |\n|---------|------|---------|\n| | | |\n`,
+        '5-Permissions.md': `# 5-Permissions.md — ${name}\n\n## File Access\n[Describe file access rules]\n\n## Tool Restrictions\n[Describe tool restrictions]\n`,
+        '6-Obsidian.md': `# 6-Obsidian.md — ${name}\n\n## Vault Config\n- **Build folder:** ${buildDir}\n- **Sessions folder:** ${sessionsDir}\n`,
+        '7-Integrations.md': `# 7-Integrations.md — ${name}\n\n## External APIs\n[List external integrations]\n`,
+        '8-Logs.md': `# 8-Logs.md — ${name}\n\n[Logs and diagnostics will be appended here]\n`,
+        'FileMap.md': `# FileMap — ${name}\n# Working directory: ${project.workDir || ''}\n\n## Source Files\n| File | Purpose |\n|------|---------|\n| | |\n`,
+      };
+      for (const [filename, content] of Object.entries(files)) {
+        fs.writeFileSync(path.join(buildPath, filename), content, 'utf8');
+      }
+      console.log(`[obsidian-scaffold] Created ${buildDir} with ${Object.keys(files).length} files`);
+    }
+    if (!fs.existsSync(sessionsPath)) {
+      fs.mkdirSync(sessionsPath, { recursive: true });
+      console.log(`[obsidian-scaffold] Created ${sessionsDir}`);
+    }
+    broadcast({ type: 'obsidian-scaffold-done', project: name, buildDir, sessionsDir });
+  } catch (e) {
+    console.error('[obsidian-scaffold] failed:', e.message);
+  }
+}
+
 // Extract signal-rich session content and distill into numbered Obsidian knowledge files
 async function extractSessionToKnowledge(sessionId) {
   const s = sessions.get(sessionId);
@@ -4972,6 +5008,7 @@ function handleMessage(ws, raw) {
 
   if (type === 'save-config') {
     const current = readJSON(CONFIG_PATH, {});
+    const currentProjectNames = new Set((current.projects || []).map(p => p.name));
     const updates = { ...msg.config };
     for (const key of SENSITIVE_KEYS) {
       if (!updates[key] || updates[key] === SECRET_MASK) {
@@ -4980,7 +5017,16 @@ function handleMessage(ws, raw) {
         updates[key] = encryptSecret(updates[key]);
       }
     }
-    writeJSON(CONFIG_PATH, mergeConfigDefensively(current, updates));
+    const merged = mergeConfigDefensively(current, updates);
+    writeJSON(CONFIG_PATH, merged);
+    const vaultPath = merged.obsidianVaultPath;
+    if (vaultPath) {
+      for (const proj of (merged.projects || [])) {
+        if (!currentProjectNames.has(proj.name)) {
+          scaffoldObsidianProject(proj, vaultPath);
+        }
+      }
+    }
     sendTo(ws, { type: 'config-saved' });
     return;
   }
@@ -5574,7 +5620,7 @@ function handleMessage(ws, raw) {
     forkMap.delete(sessionId);
     sessions.delete(sessionId);
     saveSessions();
-    broadcast({ type: 'archive-complete', sessionId });
+    broadcast({ type: 'archive-complete', sessionId, entry });
     return;
   }
 
@@ -5766,6 +5812,35 @@ wss.on('connection', (ws) => {
       }, 500);
     }
   } catch (e) { console.error('[app-update] check failed:', e.message); }
+
+  // Check for new git commits since last launch
+  (async () => {
+    try {
+      const currentCommit = await runGit(['rev-parse', 'HEAD'], __dirname);
+      if (!currentCommit) return;
+      const cfg = readJSON(CONFIG_PATH, {});
+      const lastCommit = cfg.lastSeenCommit;
+      if (lastCommit && lastCommit !== currentCommit) {
+        const logOutput = await runGit(
+          ['log', `${lastCommit}..HEAD`, '--format=%h|||%s|||%an|||%as'],
+          __dirname
+        );
+        const commits = logOutput.split('\n').filter(Boolean).map(line => {
+          const [hash, subject, author, date] = line.split('|||');
+          return { hash: hash || '', subject: subject || '', author: author || '', date: date || '' };
+        }).filter(c => c.hash);
+        if (commits.length > 0) {
+          setTimeout(() => {
+            sendTo(ws, { type: 'event-git-changes', commits, fromCommit: lastCommit.slice(0, 7), toCommit: currentCommit.slice(0, 7) });
+          }, 700);
+        }
+      }
+      if (currentCommit !== lastCommit) {
+        cfg.lastSeenCommit = currentCommit;
+        writeJSON(CONFIG_PATH, cfg);
+      }
+    } catch (e) { console.error('[git-changes] check failed:', e.message); }
+  })();
 
   ws.on('message', raw => handleMessage(ws, raw));
   ws.on('close', () => console.log('[polaris] WebSocket client disconnected'));

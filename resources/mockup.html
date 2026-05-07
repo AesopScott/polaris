@@ -602,6 +602,29 @@
   }
   #tooltip.tip-visible { opacity: 1; }
 
+  /* Startup Changelog Popup */
+  #changelog-popup {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 10000; display: flex; flex-direction: column;
+    width: 580px; max-height: 480px;
+    border-radius: 10px; border: 1px solid var(--border);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+  }
+  #changelog-popup.hidden { display: none; }
+  .changelog-commit {
+    display: grid;
+    grid-template-columns: 52px 80px 1fr;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    align-items: baseline;
+    font-size: 12px;
+  }
+  .changelog-commit:last-child { border-bottom: none; }
+  .changelog-hash { font-family: 'Consolas', monospace; font-size: 10px; color: #60a5fa; }
+  .changelog-date { font-size: 10px; opacity: 0.4; }
+  .changelog-subject { line-height: 1.45; }
+
   /* Close All dialog */
   #close-all-modal {
     display: none;
@@ -1949,6 +1972,18 @@
 
   <!-- Close All dialog -->
   <div id="close-all-modal" class="palette"></div>
+
+  <!-- Startup Changelog Popup -->
+  <div id="changelog-popup" class="hidden palette">
+    <div class="preview-toolbar">
+      <span style="flex:1;font-size:13px;font-weight:800;">What's New</span>
+      <span id="changelog-version" style="font-size:11px;opacity:0.45;margin-right:8px;font-family:'Consolas',monospace;"></span>
+      <button class="preview-close-btn" onclick="closeChangelogPopup()">✕</button>
+    </div>
+    <div style="padding:14px 18px;overflow-y:auto;flex:1;">
+      <div id="changelog-commits-list"></div>
+    </div>
+  </div>
 
   <!-- Code Health Panel -->
   <div class="preview-panel hidden palette" id="code-health-panel" style="width:860px;height:560px;top:80px;left:40px;">
@@ -3669,6 +3704,12 @@
         sessionOrder = sessionOrder.filter(id => id !== msg.sessionId);
         updateStats(); updateMiniCards();
         pushDebugLog(`[archive] Archived: ${msg.sessionId}`);
+        const archPanel = document.getElementById('archive-panel');
+        if (archPanel && archPanel.classList.contains('hidden')) {
+          toggleArchivePanel();
+        } else {
+          wsSend({ type: 'get-archives' });
+        }
         break;
       }
       case 'archives-list':
@@ -3848,6 +3889,17 @@
         pushDebugLog(`[app-update] ${msg.from || '(first install)'} → ${msg.to}`);
         (routinesList || []).forEach(r => {
           if (r.triggerType === 'event' && r.triggerValue === 'app-update') fireRoutine(r);
+        });
+        break;
+      }
+
+      case 'event-git-changes': {
+        window.gitChanges = msg.commits || [];
+        window.gitChangesFrom = msg.fromCommit;
+        window.gitChangesTo = msg.toCommit;
+        pushDebugLog(`[git-changes] ${msg.commits?.length || 0} new commit(s) since ${msg.fromCommit || '?'}`);
+        (routinesList || []).forEach(r => {
+          if (r.triggerType === 'event' && r.triggerValue === 'git-changes') fireRoutine(r);
         });
         break;
       }
@@ -6504,7 +6556,7 @@
     return (inp * rates.in) + (out * rates.out);
   }
 
-  const TRIGGER_EVENT_LABELS = { startup: 'On Startup', 'session-done': 'Session Done', 'session-error': 'Session Error', 'app-update': 'App Updated' };
+  const TRIGGER_EVENT_LABELS = { startup: 'On Startup', 'session-done': 'Session Done', 'session-error': 'Session Error', 'app-update': 'App Updated', 'git-changes': 'Git Changes' };
   const MODEL_LABELS = { floor: 'Floor', balanced: 'Balanced', power: 'Power' };
 
   function fireRoutine(r, opts) {
@@ -6518,6 +6570,14 @@
         if (evt === 'app-update') {
           window.appUpdateFrom = '(manual test)';
           window.appUpdateTo   = (window.currentConfig && window.currentConfig.lastSeenVersion) || 'current';
+        } else if (evt === 'git-changes') {
+          const today = new Date().toISOString().slice(0, 10);
+          window.gitChanges     = [
+            { hash: 'abc1234', subject: 'feat: sample commit (manual test)', author: 'Scott', date: today },
+            { hash: 'def5678', subject: 'fix: another change for testing',   author: 'Scott', date: today },
+          ];
+          window.gitChangesFrom = 'abc1234';
+          window.gitChangesTo   = 'def5678';
         } else if (evt === 'session-done') {
           window.manualTestSession = { id: 'test-session', name: 'Test Session', status: 'done', endAt: Date.now(), durationMs: 1234 };
         } else if (evt === 'session-error') {
@@ -6777,6 +6837,32 @@
   window.deleteRoutineRow = deleteRoutineRow;
   window.saveRoutines     = saveRoutines;
   window.launchRoutine    = launchRoutine;
+
+  function showChangelogPopup(commits) {
+    const el = document.getElementById('changelog-popup');
+    if (!el) return;
+    const list = document.getElementById('changelog-commits-list');
+    if (list) {
+      list.innerHTML = (commits || []).map(c =>
+        `<div class="changelog-commit">
+          <span class="changelog-hash">${escHtml(c.hash || '')}</span>
+          <span class="changelog-date">${escHtml(c.date || '')}</span>
+          <span class="changelog-subject">${escHtml(c.subject || '')}</span>
+        </div>`
+      ).join('');
+    }
+    const vEl = document.getElementById('changelog-version');
+    if (vEl) vEl.textContent = (window.gitChangesFrom && window.gitChangesTo)
+      ? `${window.gitChangesFrom} → ${window.gitChangesTo}`
+      : '';
+    el.classList.remove('hidden');
+  }
+  function closeChangelogPopup() {
+    const el = document.getElementById('changelog-popup');
+    if (el) el.classList.add('hidden');
+  }
+  window.showChangelogPopup  = showChangelogPopup;
+  window.closeChangelogPopup = closeChangelogPopup;
 
   // ── API Balance ───────────────────────────────────────────────────────────────
   function openApiBalance() {
@@ -8968,15 +9054,17 @@
     const row = document.getElementById('cam-row-' + sid);
     if (row) row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
     wsSend({ type: 'archive-session', sessionId: sid });
-    camMarkDone(sid, '📦 Archived', '#fbbf24');
+    camMarkDone(sid, '📦 Archived', '#fbbf24', true);
   }
 
   function camRowSkip(sid) {
     camMarkDone(sid, 'Skipped', '#6b7280');
   }
 
-  function camMarkDone(sid, label, color) {
+  function camMarkDone(sid, label, color, alreadyClosed = false) {
     camPending.delete(sid);
+    camToClose = camToClose.filter(id => id !== sid);
+    if (!alreadyClosed) wsSend({ type: 'close-session', sessionId: sid });
     const row = document.getElementById('cam-row-' + sid);
     if (row) {
       row.querySelectorAll('button').forEach(b => b.remove());
