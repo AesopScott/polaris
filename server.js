@@ -5825,7 +5825,7 @@ wss.on('connection', (ws) => {
         : (!lastCommit ? ['fallback'] : null); // first run — show recent history
       if (logRange) {
         const logArgs = logRange[0] === 'fallback'
-          ? ['log', '--since=90 days ago', '--format=%h|||%s|||%an|||%as']
+          ? ['log', '-5', '--format=%h|||%s|||%an|||%as']
           : ['log', `${logRange[0]}..HEAD`, '--format=%h|||%s|||%an|||%as'];
         const logOutput = await runGit(logArgs, __dirname);
         const commits = logOutput.split('\n').filter(Boolean).map(line => {
