@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.144",
+  "version": "1.0.145",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
@@ -31,7 +31,9 @@
       {
         "from": "resources/",
         "to": "resources/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "files": [
@@ -43,6 +45,7 @@
     ]
   },
   "dependencies": {
+    "monaco-editor": "^0.55.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

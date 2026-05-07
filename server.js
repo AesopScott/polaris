@@ -1355,6 +1355,32 @@ function buildDirectSystemPrompt(config, workDir) {
 
 // â"€â"€ Tool implementations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
+// Builds a compact Polaris runtime context block injected at the top of every
+// Claude Code (Max-plan) stdin prompt so the model always knows its host environment.
+function buildPolarisContextBlock(config) {
+  const projects = (config.projects || [])
+    .map(p => `  - ${p.name}${p.workDir ? ` (${p.workDir})` : ''}`)
+    .join('\n');
+
+  const routinesList = Array.isArray(config.routines)
+    ? config.routines.map(r => `  - ${r.name || r.id || '(unnamed)'}${r.schedule ? ` [${r.schedule}]` : ''}`).join('\n')
+    : '';
+
+  const mcpServers = Object.keys(readClaudeJson().mcpServers || {});
+
+  const lines = [
+    '=== POLARIS CONTEXT (injected by server) ===',
+    'You are running inside Polaris, a Claude Code SDK-based AI assistant host built by Scott.',
+  ];
+
+  if (projects) lines.push('', 'Available projects:', projects);
+  if (routinesList) lines.push('', 'Configured routines:', routinesList);
+  if (mcpServers.length > 0) lines.push('', `Connected MCP servers: ${mcpServers.join(', ')}`);
+
+  lines.push('=== END POLARIS CONTEXT ===');
+  return lines.join('\n');
+}
+
 function toolRead({ file_path, offset, limit }) {
   const lines = fs.readFileSync(file_path, 'utf8').split('\n');
   const start = offset ? Math.max(0, offset - 1) : 0;
@@ -3057,16 +3083,34 @@ function spawnMaxChat(sessionId, prompt, config) {
     const t = ((Date.now() - startMs) / 1000).toFixed(3);
     try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': ' + String(text).slice(0, 500) : ''}\n`, 'utf8'); } catch {}
   };
+
+  // Resolve working directory: prefer the session's chosen workDir, fall back
+  // to the per-chat scratch dir under POLARIS_DIR if no project was picked.
+  const cwd = (session.workDir && fs.existsSync(session.workDir))
+    ? session.workDir
+    : (() => { if (!fs.existsSync(CHAT_DIR)) fs.mkdirSync(CHAT_DIR, { recursive: true }); return CHAT_DIR; })();
+
   try {
     fs.appendFileSync(diagPath,
       `=== DIAG ${new Date().toISOString()} ===\n` +
       `SESSION: ${sessionId}\n` +
       `MODEL: claude-cli (Max plan)\n` +
       `MODE: max-cli\n` +
-      `WORKDIR: ${os.tmpdir()}\n` +
+      `WORKDIR: ${cwd}\n` +
+      `PROJECT: ${session.projectName || '(none)'}\n` +
       `--- USER PROMPT ---\n${prompt}\n` +
       `--- LOOP ---\n`, 'utf8');
   } catch {}
+
+  // Start workdir file watcher so the Preview drawer populates as the CLI
+  // edits files (same plumbing runDirectAgent uses).
+  if (session.workDir && !session.watcher) {
+    try {
+      const watcher = watchSessionFiles(sessionId, session.workDir);
+      if (watcher) session.watcher = watcher;
+      dlog('WATCHER_STARTED', session.workDir);
+    } catch (e) { dlog('WATCHER_ERR', e.message); }
+  }
 
   // Rebuild conversation prompt from history. The latest user line is already
   // pushed by the launch-chat handler before this fires, so it's included.
@@ -3074,15 +3118,20 @@ function spawnMaxChat(sessionId, prompt, config) {
     .filter(l => l.role === 'user' || l.role === 'assistant')
     .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
     .join('\n\n');
-  const fullPrompt = history || prompt;
+  const polarisContext = buildPolarisContextBlock(config);
+  const fullPrompt = polarisContext + '\n\n' + (history || prompt);
   dlog('PROMPT_BUILD', `historyTurns=${(session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
-  dlog('SPAWN', `bin=${claudeBin} args=-p shell=true cwd=${os.tmpdir()}`);
+  // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
+  // tool_result, and a final result event with usage tokens. Lets us populate
+  // the context bar / token log accurately and surface tool activity.
+  const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+  dlog('SPAWN', `bin=${claudeBin} args=${args.join(' ')} shell=true cwd=${cwd}`);
   let proc;
   try {
-    proc = spawn(claudeBin, ['-p'], {
-      cwd: os.tmpdir(),
+    proc = spawn(claudeBin, args, {
+      cwd,
       env: process.env,
       shell: true,  // required on Windows so `claude.cmd` is resolvable
     });
@@ -3097,27 +3146,82 @@ function spawnMaxChat(sessionId, prompt, config) {
   session.proc = proc;
   dlog('PID', proc.pid);
 
+  // Stream-json parser: each line is a JSON event. Tolerate non-JSON lines
+  // (older CLI builds may emit a banner before events).
+  let lineBuf = '';
   let totalOutBytes = 0;
-  let chunkCount = 0;
+  let eventCount = 0;
+  let finalUsage = null;
+  let finalModel = null;
+
   proc.stdout.on('data', chunk => {
-    const text = chunk.toString();
     totalOutBytes += chunk.length;
-    chunkCount++;
-    dlog('STDOUT_CHUNK', `bytes=${chunk.length} text=${text.replace(/\n/g, '\\n').slice(0, 200)}`);
-    if (text.trim()) broadcast({ type: 'line', sessionId, text, role: 'assistant' });
+    lineBuf += chunk.toString('utf8');
+    const lines = lineBuf.split(/\r?\n/);
+    lineBuf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let evt;
+      try { evt = JSON.parse(line); }
+      catch {
+        // Not JSON — surface as plain assistant text
+        broadcast({ type: 'line', sessionId, text: line, role: 'assistant' });
+        dlog('STDOUT_RAW', line.slice(0, 200));
+        continue;
+      }
+      eventCount++;
+      const t = evt.type;
+      if (t === 'system') {
+        if (evt.session_id) session.claudeSessionId = evt.session_id;
+        if (evt.model)      finalModel = evt.model;
+        dlog('SYSTEM', `session_id=${evt.session_id || ''} model=${evt.model || ''}`);
+      } else if (t === 'assistant' && evt.message?.content) {
+        for (const part of evt.message.content) {
+          if (part.type === 'text' && part.text) {
+            broadcast({ type: 'line', sessionId, text: part.text, role: 'assistant' });
+          } else if (part.type === 'tool_use') {
+            const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
+            broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'system' });
+            dlog('TOOL_USE', summary);
+          }
+        }
+      } else if (t === 'user' && evt.message?.content) {
+        for (const part of evt.message.content) {
+          if (part.type === 'tool_result') {
+            const txt = (typeof part.content === 'string' ? part.content : JSON.stringify(part.content || '')).slice(0, 200);
+            dlog('TOOL_RESULT', txt);
+          }
+        }
+      } else if (t === 'result') {
+        const usage = evt.usage || {};
+        finalUsage = {
+          input_tokens: usage.input_tokens || 0,
+          output_tokens: usage.output_tokens || 0,
+          cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
+          cache_read_input_tokens: usage.cache_read_input_tokens || 0,
+        };
+        dlog('RESULT_USAGE', `in=${finalUsage.input_tokens} out=${finalUsage.output_tokens} cache_create=${finalUsage.cache_creation_input_tokens} cache_read=${finalUsage.cache_read_input_tokens}`);
+      } else {
+        dlog('EVENT', `type=${t}`);
+      }
+    }
   });
 
   proc.stderr.on('data', chunk => {
     const text = chunk.toString();
     dlog('STDERR', text.slice(0, 400));
-    // Surface anything that looks like an error or auth/rate prompt
     if (/error|fail|invalid|unauthor|rate.?limit|login|claude login/i.test(text)) {
       broadcast({ type: 'line', sessionId, text: `[claude] ${text.slice(0, 800)}`, role: 'error' });
     }
   });
 
   proc.on('close', code => {
-    dlog('CLOSE', `code=${code} chunks=${chunkCount} bytes=${totalOutBytes}`);
+    dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
+    if (finalUsage) {
+      const modelTag = finalModel || 'claude-cli (Max plan)';
+      try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
+      broadcast({ type: 'context-usage', sessionId, usage: finalUsage, claudeSessionId: session.claudeSessionId || null, routineTag: null });
+    }
     session.status = code === 0 ? 'done' : 'error';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
@@ -3258,6 +3362,36 @@ const httpServer = http.createServer((req, res) => {
         return;
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/js/')) {
+    const jsFile = path.basename(req.url.split('?')[0]);
+    const jsPath = path.join(RESOURCES_PATH, 'js', jsFile);
+    fs.readFile(jsPath, (err, data) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      const ext = path.extname(jsFile).toLowerCase();
+      const mime = ext === '.css' ? 'text/css' : 'application/javascript';
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000' });
+      res.end(data);
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/monaco-vs/')) {
+    const rel = decodeURIComponent(req.url.slice('/monaco-vs/'.length).split('?')[0]);
+    const MONACO_BASE = path.join(__dirname, 'node_modules', 'monaco-editor', 'min', 'vs');
+    const fullPath = path.normalize(path.join(MONACO_BASE, rel));
+    if (!fullPath.startsWith(MONACO_BASE + path.sep) && fullPath !== MONACO_BASE) {
+      res.writeHead(403); res.end('Forbidden'); return;
+    }
+    const ext = path.extname(fullPath).toLowerCase();
+    const mime = MIME[ext] || 'application/octet-stream';
+    fs.readFile(fullPath, (err, data) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000' });
       res.end(data);
     });
     return;
@@ -3675,22 +3809,33 @@ function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt } = msg;
+    const { prompt, workDir, projectName } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+
+    const effectiveWorkDir = (workDir && workDir.trim()) ? workDir.trim() : null;
+    if (effectiveWorkDir && !fs.existsSync(effectiveWorkDir)) {
+      return sendTo(ws, { type: 'error', text: `Working directory does not exist: ${effectiveWorkDir}` });
+    }
 
     addToHistory(prompt);
     const id   = `chat_${Date.now()}`;
     const name = generateSessionName(prompt);
     const config = readConfig();
-    const chatModel = config.chatModel || 'deepseek/deepseek-chat';
+    // Default model label reflects the active backend: Max routing uses
+    // Sonnet 4.6 (whatever the user's Max plan currently includes); the
+    // OpenRouter fallback uses config.chatModel.
+    const backend = (config.chatBackend || 'max').toLowerCase();
+    const chatModel = backend === 'max'
+      ? 'anthropic/claude-sonnet-4-6 (Max plan)'
+      : (config.chatModel || 'deepseek/deepseek-chat');
     sessions.set(id, {
-      id, name, workDir: null, projectName: null,
+      id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       isChat: true, model: chatModel,
       status: 'running', startAt: Date.now(),
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
     });
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: null, model: chatModel, isChat: true });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
     broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
     saveSessions();
     spawnChatRouter(id, prompt, config);

@@ -4,14 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Polaris</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/editor/editor.main.min.css">
-<script>
-  var require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs' } };
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/loader.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<link rel="stylesheet" href="/js/vs2015.min.css">
+<script src="/js/highlight.min.js" defer></script>
+<script src="/js/marked.min.js" defer></script>
 <style>
   @font-face {
     font-family: 'CascadiaCode';
@@ -2484,12 +2479,14 @@
 
   function activateMode(bar, mode) {
     bar.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    // Max sessions run in a project workdir like Code sessions; keep the
+    // context row interactive in both modes.
     const ctxRow = bar.querySelector('.launch-context-row');
-    if (ctxRow) { ctxRow.style.opacity = mode === 'chat' ? '0.35' : ''; ctxRow.style.pointerEvents = mode === 'chat' ? 'none' : ''; }
+    if (ctxRow) { ctxRow.style.opacity = ''; ctxRow.style.pointerEvents = ''; }
     const hint = bar.querySelector('.mode-hint');
-    if (hint) hint.textContent = mode === 'chat' ? 'Claude Max via local CLI · billed against your Max plan · no agent tools, no working directory' : buildCodeHint();
+    if (hint) hint.textContent = mode === 'chat' ? 'Claude Max via local CLI · runs in your selected project workdir · billed against your Max plan' : buildCodeHint();
     const promptEl = bar.closest('.palette')?.querySelector('.prompt-area');
-    if (promptEl) promptEl.placeholder = mode === 'chat' ? 'Describe what you want to discuss...' : 'Describe what you want this agent to do...';
+    if (promptEl) promptEl.placeholder = mode === 'chat' ? 'Describe what you want this Max session to do...' : 'Describe what you want this agent to do...';
     const launchBtn = bar.querySelector('.launch-action-btn');
     if (launchBtn && !resumeTarget) launchBtn.innerHTML = mode === 'chat'
       ? '<span class="icon">💬</span><span class="lbl">Max</span>'
@@ -3998,12 +3995,16 @@
 
     let chipLabel = '';
     let chipColor = null;
-    if (s.isChat) {
-      chipLabel = 'Chat';
-      chipColor = '#a78bfa'; // purple — distinct from any project color
-    } else if (s.projectName) {
+    // Project chip wins over Max chip — Max sessions are project sessions
+    // routed to the CLI backend, so once a project is picked the card should
+    // look like a Code session in that project. Fall back to "Max" only when
+    // no project is set on a chat-routed session.
+    if (s.projectName) {
       chipLabel = s.projectName;
       chipColor = window.getProjectColorByName ? window.getProjectColorByName(s.projectName) : null;
+    } else if (s.isChat) {
+      chipLabel = 'Max';
+      chipColor = '#a78bfa';
     }
     // Apply project color to the top stripe and header tint via CSS custom properties
     if (chipColor) {
@@ -4063,13 +4064,13 @@
           <div class="preview-drawer-empty">No files edited yet. The dropdown will populate as the agent modifies files in this session's workdir.</div>
         </div>
       </div>
-      ${s.isChat ? '' : `<div class="context-bar-wrap">
+      <div class="context-bar-wrap">
         <div class="context-label-bar">
           <span>Context Window${s.model ? ` <span style="opacity:0.55;font-weight:400;">(${s.model.split('/').pop()})</span>` : ''}</span>
           <span><span data-ctx-tokens>0</span> tokens · <span data-ctx-pct>0%</span><span data-ctx-cost style="color:#f59e0b;"></span></span>
         </div>
         <div class="context-bar"><div class="context-fill" data-ctx-fill style="width:0%"></div></div>
-      </div>`}
+      </div>
       <div class="card-footer">
         <div class="footer-timer" data-timer>0s</div>
         <div class="speed-wrap" data-speed-wrap>
@@ -4812,12 +4813,14 @@
   }
 
   // ── Debug log ─────────────────────────────────────────────────────────────────
+  let _cachedDebugBars = null;
   function pushDebugLog(text, isError = false) {
     const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
     const entry = `[${ts}] ${text}`;
     debugLogs.unshift(entry);
     if (debugLogs.length > 100) debugLogs.pop();
-    document.querySelectorAll('.debug-bar').forEach(bar => {
+    if (!_cachedDebugBars) _cachedDebugBars = Array.from(document.querySelectorAll('.debug-bar'));
+    _cachedDebugBars.forEach(bar => {
       const count = bar.querySelector('.debug-count');
       const last  = bar.querySelector('.text-muted');
       if (count) count.textContent = debugLogs.length;
@@ -4970,7 +4973,7 @@
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
-      wsSend({ type: 'launch-chat', prompt: fullPrompt });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName });
     } else {
       wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier });
     }
@@ -7718,9 +7721,26 @@
     );
   }
 
+  let _monacoReady = false;
+  let _monacoCallbacks = [];
+  function _loadMonaco(cb) {
+    if (_monacoReady) { cb(); return; }
+    _monacoCallbacks.push(cb);
+    if (_monacoCallbacks.length > 1) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/monaco-vs/editor/editor.main.css';
+    document.head.appendChild(link);
+    window.require = { paths: { vs: '/monaco-vs' } };
+    const s = document.createElement('script');
+    s.src = '/monaco-vs/loader.js';
+    s.onload = () => { _monacoReady = true; _monacoCallbacks.splice(0).forEach(fn => fn()); };
+    document.head.appendChild(s);
+  }
+
   function _ensureMonaco(callback) {
     if (monacoEditor) return callback(monacoEditor);
-    require(['vs/editor/editor.main'], function() {
+    _loadMonaco(() => { require(['vs/editor/editor.main'], function() {
       const container = document.getElementById('monaco-editor-container');
       if (!container) return;
       monacoEditor = monaco.editor.create(container, {
@@ -7744,7 +7764,7 @@
       // Ctrl+S inside the editor
       monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveCurrentFile());
       callback(monacoEditor);
-    });
+    }); });
   }
 
   function openFileEditor(filePath) {
@@ -7909,7 +7929,7 @@
 
   function _initMpEditor() {
     if (mpEditor) return;
-    require(['vs/editor/editor.main'], function() {
+    _loadMonaco(() => { require(['vs/editor/editor.main'], function() {
       const container = document.getElementById('mp-container');
       if (!container) return;
       mpEditor = monaco.editor.create(container, {
@@ -7931,7 +7951,7 @@
         if (mpFileBuffers[mpCurrentFile]) mpFileBuffers[mpCurrentFile].content = mpEditor.getValue();
       });
       mpEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => mpSaveFile());
-    });
+    }); });
   }
 
   function mpPopulateProjectSelect() {
