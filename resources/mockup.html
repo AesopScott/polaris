@@ -1657,6 +1657,7 @@
     <div class="preview-toolbar" style="cursor:default;">
       <span style="flex:1;font-size:13px;font-weight:800;">Cross-Check</span>
       <button onclick="runPreBuildCheck()" style="padding:4px 10px;border-radius:5px;border:none;font-size:11px;background:#3b82f6;color:#fff;font-weight:700;cursor:pointer;">▶ Run Pre-Build Check</button>
+      <button id="cc-build-btn" onclick="ccBuild()" style="display:none;padding:4px 12px;border-radius:5px;border:none;font-size:11px;background:#16a34a;color:#fff;font-weight:700;cursor:pointer;">🔨 Build</button>
       <button onclick="wsSend({ type:'get-cross-check-history', limit: 200 })" style="padding:4px 10px;border-radius:5px;border:1px solid #444;font-size:11px;background:#1e293b;color:#cbd5e1;cursor:pointer;">⟳ History</button>
       <button class="preview-close-btn" onclick="toggleCrossCheckPanel()">✕</button>
     </div>
@@ -3167,6 +3168,8 @@
         const verdictIcon = msg.verdict === 'PASS' ? '✓' : (msg.verdict === 'FAIL' ? '✗' : '⚠');
         statusEl.style.color = verdictColor;
         statusEl.innerHTML = `<strong>${verdictIcon} ${msg.verdict}</strong> — ${escHtml(msg.summary)}`;
+        const ccBuildBtn = document.getElementById('cc-build-btn');
+        if (ccBuildBtn) ccBuildBtn.style.display = msg.verdict === 'PASS' ? 'inline-block' : 'none';
         resultsEl.style.display = 'block';
         const allFiles = msg.files || [];
         const groups = msg.groups && msg.groups.length ? msg.groups : null;
@@ -9893,6 +9896,12 @@
   window.onbPrevStep        = onbPrevStep;
   window.onbDismiss         = onbDismiss;
   window.onbClose           = onbClose;
+
+  function ccBuild() {
+    if (!confirm('Check passed — build and install now?\n\nPolaris will close shortly. The new version installs automatically.')) return;
+    wsSend({ type: 'run-build' });
+  }
+  window.ccBuild = ccBuild;
 
   function executeBuild(skipCheck) {
     if (!skipCheck) {
