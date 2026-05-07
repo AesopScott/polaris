@@ -488,6 +488,7 @@
 
   /* Apply palette vars */
   .palette .notif-banner { background: #1d4ed8; color: #fff; }
+  .palette .notif-banner.warn { background: #78350f; color: #fde68a; }
   .palette .header { background: var(--header-bg); border-bottom: 1px solid var(--border); }
   .palette .launch-bar { background: var(--launch-bg); border-bottom: 1px solid var(--border); }
   .palette .prompt-area { background: var(--input-bg); color: var(--text); }
@@ -638,6 +639,14 @@
     white-space: normal;
   }
   #tooltip.tip-visible { opacity: 1; }
+
+  /* MCP Alert Banner */
+  #mcp-alert-banner {
+    display: flex; align-items: center; gap: 12px; padding: 7px 16px;
+    background: rgba(180,83,9,0.18); border-bottom: 1px solid rgba(217,119,6,0.35);
+    color: #fcd34d; font-size: 12px;
+  }
+  #mcp-alert-banner.hidden { display: none; }
 
   /* Startup Changelog Popup */
   #changelog-popup {
@@ -1133,6 +1142,8 @@
     <label class="ticker-off-btn" title="Toggle ticker tape"><input type="checkbox" id="ticker-off-check" onchange="tickerToggle(this)"> OFF</label>
   </div>
 
+  <div id="mcp-warning-container"></div>
+
   <div class="header">
 
     <!-- Left: Polaris identity centered in first column -->
@@ -1306,6 +1317,14 @@
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
     </div>
 
+  </div>
+
+  <!-- MCP Alert Banner -->
+  <div id="mcp-alert-banner" class="hidden">
+    <span style="font-size:15px;line-height:1;">⚠</span>
+    <span style="flex:1;">No MCP servers connected — tools like Google Drive and Obsidian may be unavailable. Check <strong>Connections</strong> to reconnect.</span>
+    <button onclick="openConnections()" style="padding:3px 10px;font-size:11px;background:#78350f;color:#fcd34d;border:1px solid rgba(217,119,6,0.5);border-radius:4px;cursor:pointer;">Open Connections</button>
+    <button onclick="dismissMcpAlert()" title="Dismiss" style="background:none;border:none;color:#fcd34d;font-size:16px;cursor:pointer;padding:0 2px;line-height:1;opacity:0.7;">✕</button>
   </div>
 
   <!-- Session Grid -->
@@ -4880,10 +4899,10 @@
     if (!card) return;
     const badge = card.querySelector('.status-badge');
     if (badge) {
-      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' }[status] || 'status-running');
-      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' }[status] || status;
+      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' }[status] || 'status-running');
+      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', broken: 'Broken' }[status] || status;
     }
-    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card');
+    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card', 'status-broken-card');
     if (status === 'running') card.classList.add('status-running-card');
     else if (status === 'waiting') card.classList.add('status-waiting-card');
     else if (status === 'test') card.classList.add('status-test-card');
@@ -5535,19 +5554,22 @@
   }
 
   function showMcpDisconnectedBanner() {
-    if (document.getElementById('mcp-disconnected-banner')) return;
+    const container = document.getElementById('mcp-warning-container');
+    if (!container || container.children.length > 0) return;
+    const key = 'mcp-warn-dismissed-' + new Date().toDateString();
+    if (sessionStorage.getItem(key)) return;
     const banner = document.createElement('div');
     banner.id = 'mcp-disconnected-banner';
-    banner.className = 'notif-banner warn';
-    banner.innerHTML = '⚠ No MCP servers connected — tools like Obsidian and Google Drive won\'t be available. Check <strong>~/.mcp.json</strong> or configure servers in the Connections tab. <button class="dismiss">Dismiss</button>';
-    banner.querySelector('.dismiss').addEventListener('click', () => banner.remove());
-    const app = document.getElementById('app-p1');
-    const ticker = app?.querySelector('.ticker-wrap');
-    if (ticker && ticker.nextSibling) {
-      app.insertBefore(banner, ticker.nextSibling);
-    } else if (app) {
-      app.prepend(banner);
-    }
+    banner.className = 'notif-banner';
+    banner.style.cssText = 'background:#78350f;color:#fef3c7;justify-content:space-between;';
+    banner.innerHTML = `
+      <span>⚠ No external MCP servers detected — Obsidian and other integrations may be unavailable. Open Connections to configure.</span>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="fbtn" style="padding:2px 10px;font-size:11px;background:#92400e;color:#fef3c7;border:1px solid #b45309;" onclick="openConnections()">Open Connections</button>
+        <button style="padding:2px 10px;font-size:11px;border:1px solid #b45309;border-radius:4px;background:transparent;color:#fef3c7;cursor:pointer;" onclick="sessionStorage.setItem('${key}','1');this.closest('.notif-banner').remove()">✕ Dismiss</button>
+      </div>
+    `;
+    container.appendChild(banner);
   }
 
   // ── Debug log ─────────────────────────────────────────────────────────────────
@@ -7218,6 +7240,8 @@
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
 
+  window.showMcpDisconnectedBanner = showMcpDisconnectedBanner;
+
   let _routineNotifId = null;
   let _allRoutineNotifs = [];
 
@@ -7273,8 +7297,8 @@
   window.closeRoutineNotifPopup = closeRoutineNotifPopup;
   window.viewLastRoutineRun     = viewLastRoutineRun;
 
-  const STATUS_CYCLE = ['done', 'test', 'waiting', 'error'];
-  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test' };
+  const STATUS_CYCLE = ['done', 'test', 'waiting', 'broken', 'error'];
+  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' };
   const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' };
   function cycleSessionStatus(sessionId) {
     const grid = getActiveGrid();
