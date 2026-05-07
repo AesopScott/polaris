@@ -5491,7 +5491,7 @@
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg';
+    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.mp4,.wav,.m4a,.ogg,.webm,.aac';
     fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f); };
     fileInput.click();
   }
@@ -5606,14 +5606,18 @@
       pendingFiles.length = 0;
     }
     const imagePayload = pendingImages.map(i => ({ name: i.name, dataUrl: i.dataUrl }));
+    const docPayload   = pendingDocs.map(d => ({ name: d.name, dataUrl: d.dataUrl }));
+    const audioPayload = pendingAudio.map(a => ({ name: a.name, dataUrl: a.dataUrl }));
     pendingImages.length = 0;
+    pendingDocs.length   = 0;
+    pendingAudio.length  = 0;
     document.querySelectorAll('.file-chips').forEach(c => c.innerHTML = '');
     const mode = getLaunchMode();
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload });
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
@@ -5621,10 +5625,10 @@
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
     } else {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload });
+      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }
@@ -6682,13 +6686,15 @@
           window.appUpdateFrom = '(manual test)';
           window.appUpdateTo   = (window.currentConfig && window.currentConfig.lastSeenVersion) || 'current';
         } else if (evt === 'git-changes') {
-          const today = new Date().toISOString().slice(0, 10);
-          window.gitChanges     = [
-            { hash: 'abc1234', subject: 'feat: sample commit (manual test)', author: 'Scott', date: today },
-            { hash: 'def5678', subject: 'fix: another change for testing',   author: 'Scott', date: today },
-          ];
-          window.gitChangesFrom = 'abc1234';
-          window.gitChangesTo   = 'def5678';
+          if (!window.gitChanges || !window.gitChanges.length) {
+            const today = new Date().toISOString().slice(0, 10);
+            window.gitChanges     = [
+              { hash: 'abc1234', subject: 'feat: sample commit (manual test)', author: 'Scott', date: today },
+              { hash: 'def5678', subject: 'fix: another change for testing',   author: 'Scott', date: today },
+            ];
+            window.gitChangesFrom = 'abc1234';
+            window.gitChangesTo   = 'def5678';
+          }
         } else if (evt === 'session-done') {
           window.manualTestSession = { id: 'test-session', name: 'Test Session', status: 'done', endAt: Date.now(), durationMs: 1234 };
         } else if (evt === 'session-error') {
@@ -6940,6 +6946,9 @@
   function launchRoutine(idx) {
     const r = routinesList[idx];
     if (!r || !r.prompt) return;
+    if (r.triggerType === 'event' && r.triggerValue === 'git-changes' && window.gitChanges && window.gitChanges.length) {
+      showChangelogPopup(window.gitChanges);
+    }
     fireRoutine(r, { manualTest: true });
   }
   window.openRoutines     = openRoutines;
