@@ -3986,6 +3986,20 @@
         renderSpaceModal(msg);
         break;
 
+      case 'space-analysis': {
+        const out = document.getElementById('space-analysis-out');
+        if (!out) break;
+        out.style.display = 'block';
+        if (msg.error) {
+          out.innerHTML = `<span style="color:#ef4444;font-size:11px;">⚠ ${escHtml(msg.error)}</span>`;
+        } else {
+          out.innerHTML = typeof marked !== 'undefined'
+            ? marked.parse(msg.content || '')
+            : `<pre style="white-space:pre-wrap;font-size:11px;">${escHtml(msg.content || '')}</pre>`;
+        }
+        break;
+      }
+
       case 'locks':
         applyLocks(msg.locks);
         if (typeof mpRefreshLockState === 'function') mpRefreshLockState();
@@ -8855,6 +8869,10 @@
       <div style="margin-top:14px;padding:10px 12px;background:var(--bg-secondary,#1e1e1e);border:1px solid var(--border);border-radius:6px;font-size:11px;line-height:1.6;opacity:0.75;">
         ${escHtml(generateSpaceBlurb(scores))}
       </div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+        <button class="fbtn" style="font-size:11px;padding:4px 10px;height:26px;" onclick="requestSpaceAnalysis(${JSON.stringify(escHtml(projectName))})">🔍 Deep Analysis</button>
+      </div>
+      <div id="space-analysis-out" style="display:none;margin-top:10px;padding:12px;background:var(--bg-secondary,#1e1e1e);border:1px solid var(--border);border-radius:6px;font-size:11px;line-height:1.65;"></div>
       <p style="margin-top:10px;font-size:10px;opacity:0.35;">Scores from last 7 days of session events · ${escHtml(projectName)}</p>`;
   }
 
@@ -8893,8 +8911,17 @@
     return blurb;
   }
 
-  window.openSpace  = openSpace;
-  window.closeSpace = closeSpace;
+  function requestSpaceAnalysis(projectName) {
+    const out = document.getElementById('space-analysis-out');
+    if (!out) return;
+    out.style.display = 'block';
+    out.innerHTML = '<span style="opacity:0.4;font-size:11px;">Analyzing…</span>';
+    wsSend({ type: 'get-space-analysis', projectName });
+  }
+
+  window.openSpace           = openSpace;
+  window.closeSpace          = closeSpace;
+  window.requestSpaceAnalysis = requestSpaceAnalysis;
 
   // ── Connections — Git ─────────────────────────────────────────────────────────
   function openConnections() {

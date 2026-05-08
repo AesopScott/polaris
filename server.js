@@ -5685,6 +5685,81 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'get-space-analysis') {
+    const { projectName } = msg;
+    const scores = spaceComputeScores(projectName);
+    if (!scores) {
+      sendTo(ws, { type: 'space-analysis', projectName, error: 'No session data available for this project yet.' });
+      return;
+    }
+    const cfg = readConfig();
+    const apiKey = cfg.apiKey;
+    if (!apiKey) {
+      sendTo(ws, { type: 'space-analysis', projectName, error: 'No OpenRouter API key configured.' });
+      return;
+    }
+    const dimLines = [
+      `S (Satisfaction — session success rate): score=${scores.S.score}/100, trend=${scores.S.trend}, daily=[${scores.S.last7.join(',')}]`,
+      `P (Performance — output throughput):     score=${scores.P.score}/100, trend=${scores.P.trend}, daily=[${scores.P.last7.join(',')}]`,
+      `A (Activity — sessions launched per day): score=${scores.A.score}/100, trend=${scores.A.trend}, daily=[${scores.A.last7.join(',')}]`,
+      `C (Collaboration — parallel work):        score=${scores.C.score}/100, trend=${scores.C.trend}, daily=[${scores.C.last7.join(',')}]`,
+      `E (Efficiency — time to first output):    score=${scores.E.score}/100, trend=${scores.E.trend}, daily=[${scores.E.last7.join(',')}]`,
+    ].join('\n');
+    const prompt = `You are analyzing 7-day SPACE productivity data for the project "${projectName}".
+
+Day indices: 0 = 6 days ago, 6 = today. Null/0 values mean no sessions that day.
+
+${dimLines}
+
+Write a deep analysis (250–350 words) covering:
+1. **Overall health** — summarize the aggregate picture in one sentence.
+2. **Key pattern or anomaly** — identify the most notable day-by-day pattern across dimensions (e.g. a mid-week dip, a single outlier day, correlated drops).
+3. **Dimension breakdown** — what the strongest and weakest scores reveal about how this project is being worked on.
+4. **Actionable recommendation** — one specific change that would most improve the weakest area.
+
+Be direct. Reference actual numbers. Use markdown headings for each section.`;
+    callOpenRouterOnce('anthropic/claude-haiku-4-5', apiKey, [{ role: 'user', content: prompt }], 600)
+      .then(result => {
+        if (result.error) {
+          sendTo(ws, { type: 'space-analysis', projectName, error: result.error });
+        } else {
+          sendTo(ws, { type: 'space-analysis', projectName, content: result.content });
+        }
+      })
+      .catch(e => sendTo(ws, { type: 'space-analysis', projectName, error: e.message }));
+    return;
+  }
+
+  if (type === 'get-space-analysis') {
+    const { projectName } = msg;
+    const scores = spaceComputeScores(projectName);
+    if (!scores) {
+      sendTo(ws, { type: 'space-analysis', projectName, error: 'No session data recorded yet for this project.' });
+      return;
+    }
+    const cfg = readConfig();
+    const apiKey = cfg.openRouterApiKey;
+    if (!apiKey) {
+      sendTo(ws, { type: 'space-analysis', projectName, error: 'OpenRouter API key not configured.' });
+      return;
+    }
+    const dimLines = [
+      `S (Satisfaction — session success rate): score=${scores.S.score}, trend=${scores.S.trend}, daily=[${scores.S.last7.join(',')}]`,
+      `P (Performance — output throughput):     score=${scores.P.score}, trend=${scores.P.trend}, daily=[${scores.P.last7.join(',')}]`,
+      `A (Activity — sessions launched per day): score=${scores.A.score}, trend=${scores.A.trend}, daily=[${scores.A.last7.join(',')}]`,
+      `C (Collaboration — parallel work):        score=${scores.C.score}, trend=${scores.C.trend}, daily=[${scores.C.last7.join(',')}]`,
+      `E (Efficiency — time to first output):    score=${scores.E.score}, trend=${scores.E.trend}, daily=[${scores.E.last7.join(',')}]`,
+    ].join('\n');
+    const prompt = `You are analyzing SPACE productivity data for the project "${projectName}". Day index 0 = 6 days ago, index 6 = today. All scores are 0–100.\n\n${dimLines}\n\nWrite a focused deep analysis (200–300 words) covering:\n1. Overall health and what the combined score pattern reveals\n2. The most significant anomaly or pattern in the day-by-day data (look at variance across the 7 days, not just the score)\n3. What the strongest and weakest dimensions suggest about how this project is being worked\n4. One specific, actionable recommendation backed by the numbers\n\nBe direct. Reference actual values. Use markdown headings for each section.`;
+    callOpenRouterOnce('anthropic/claude-haiku-4-5', apiKey, [{ role: 'user', content: prompt }], 600)
+      .then(result => {
+        if (result.error) sendTo(ws, { type: 'space-analysis', projectName, error: result.error });
+        else sendTo(ws, { type: 'space-analysis', projectName, content: result.content });
+      })
+      .catch(e => sendTo(ws, { type: 'space-analysis', projectName, error: e.message }));
+    return;
+  }
+
   if (type === 'get-diag') {
     const diagPath = path.join(LOGS_DIR, `diag-${msg.sessionId}.txt`);
     try {
