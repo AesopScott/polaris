@@ -4993,7 +4993,9 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
+    const hiddenAllState = document.getElementById('hidden-all-state');
     grid.innerHTML = '';
+    if (hiddenAllState) grid.appendChild(hiddenAllState);
     const cols = [0, 1, 2].map((idx) => {
       const col = document.createElement('div');
       col.className = 'session-col';
@@ -5015,6 +5017,7 @@
     });
     updateStats();
     updateMiniCards();
+    updateHiddenCount();
   }
   window._polarisRenderGrid = renderGrid;
 
