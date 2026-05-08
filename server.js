@@ -6575,6 +6575,34 @@ function handleMessage(ws, raw) {
         allCourses = Array.isArray(parsed) ? parsed : (parsed.courses || []);
       } catch (_) { /* unreadable — continue with empty */ }
 
+      const modulesDir = path.join(aesop.workDir, 'ai-academy', 'modules');
+      const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+      // Pre-scan: collect all dirs that have a {dirname}-m1.html file.
+      let developedSlugs = new Set();
+      try {
+        for (const e of fs.readdirSync(modulesDir, { withFileTypes: true })) {
+          if (e.isDirectory() && fs.existsSync(path.join(modulesDir, e.name, `${e.name}-m1.html`))) {
+            developedSlugs.add(e.name);
+          }
+        }
+      } catch (_) {}
+
+      // Match course → developed dir via: exact name slug, exact id slug,
+      // or a developed dir ending with "-{idSlug}" (handles ai-governance → governance, ai-ethics → ethics).
+      const hasModules = c => {
+        const nameSlug = slugify(c.name || c.title || '');
+        const idSlug   = slugify(c.id   || c.course_id || '');
+        if (nameSlug && developedSlugs.has(nameSlug)) return true;
+        if (idSlug   && developedSlugs.has(idSlug))   return true;
+        if (idSlug) {
+          for (const dir of developedSlugs) {
+            if (dir.endsWith('-' + idSlug)) return true;
+          }
+        }
+        return false;
+      };
+
       const normCourse = c => ({
         course_id: c.id || c.course_id,
         title: c.name || c.title || c.id || c.course_id,
@@ -6583,13 +6611,9 @@ function handleMessage(ws, raw) {
         module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
       });
 
-      const pending = allCourses
-        .filter(c => c.live === false && !c.generation_complete)
-        .map(normCourse);
-
-      const readyToActivate = allCourses
-        .filter(c => c.live === false && c.generation_complete === true)
-        .map(normCourse);
+      const liveFalse = allCourses.filter(c => c.live === false);
+      const pending         = liveFalse.filter(c => !hasModules(c)).map(normCourse);
+      const readyToActivate = liveFalse.filter(c =>  hasModules(c)).map(normCourse);
 
       const draftsDir = path.join(aesop.workDir, 'aip', 'drafts');
       let approvedDrafts = [];
