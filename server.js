@@ -4903,7 +4903,13 @@ function handleMessage(ws, raw) {
       session.aborted = true;
       // Kill legacy CLI proc if present
       if (session.proc && !session.proc.killed) {
-        session.proc.kill();
+        if (process.platform === 'win32' && session.proc.pid) {
+          // shell:true spawns through cmd.exe; proc.kill() only kills the shell,
+          // leaving claude.exe running. taskkill /T kills the whole tree.
+          exec(`taskkill /T /F /PID ${session.proc.pid}`, () => {});
+        } else {
+          session.proc.kill('SIGKILL');
+        }
         if (session.timeout) clearTimeout(session.timeout);
         if (session.watcher) session.watcher.close();
       }
