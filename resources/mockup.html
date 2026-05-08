@@ -124,6 +124,9 @@
   }
   .launch-minimize-btn:hover { opacity: 1; }
   .palette .launch-minimize-btn { background: var(--card-btn-bg); color: var(--text); }
+  .new-session-link { display: none; font-size: 12px; color: #94a3b8; text-decoration: none; white-space: nowrap; }
+  .new-session-link:hover { color: #e2e8f0; text-decoration: underline; }
+  .launch-bar.minimized + .minimized-row .new-session-link { display: inline-flex; align-items: center; }
 
   /* Top row: dir + repo side by side */
   .launch-context-row { display: flex; gap: 6px; align-items: flex-start; width: calc(83.333% + 2px); }
@@ -1363,8 +1366,9 @@
   <!-- Minimized / Stats Row -->
   <div class="minimized-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:6px 16px;">
 
-    <!-- Left third: up to 4 minimized session chips -->
+    <!-- Left third: New Session link (when minimized) + up to 4 minimized session chips -->
     <div style="display:flex;gap:6px;align-items:center;">
+      <a class="new-session-link" href="#" onclick="expandLaunchBar(this);return false;">New Session</a>
       <div class="mini-card">Fix Auth Bug</div>
       <div class="mini-card">DB Migration</div>
       <div class="mini-card" style="opacity:0.4;">+ 2 more</div>
@@ -2447,6 +2451,15 @@
     const minimized = bar.classList.toggle('minimized');
     btn.textContent = minimized ? '▢' : '_';
     btn.title = minimized ? 'Maximize' : 'Minimize';
+  }
+
+  function expandLaunchBar(el) {
+    const row = el.closest('.minimized-row');
+    const bar = row?.previousElementSibling;
+    if (bar?.classList.contains('launch-bar') && bar.classList.contains('minimized')) {
+      const btn = bar.querySelector('.launch-minimize-btn');
+      toggleLaunchBar(btn);
+    }
   }
 
   // ── Preview Panel (renders any file from a project's workDir) ─────────────
@@ -4937,6 +4950,12 @@
       el.style.setProperty('--card-header-border', `rgba(${r},${g},${b},0.25)`);
       el.style.setProperty('--card-title-color', chipColor);
     }
+    // Status color overrides the project color for the top stripe
+    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
+    if (STATUS_STRIPE[s.status]) el.style.setProperty('--card-stripe-color', STATUS_STRIPE[s.status]);
+    // Status overrides chip color for the stripe (e.g. test → red, waiting → amber)
+    const INIT_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
+    if (INIT_STRIPE[s.status]) el.style.setProperty('--card-stripe-color', INIT_STRIPE[s.status]);
     const headerChip = chipLabel
       ? `<span class="card-project-chip" style="background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;">${escHtml(chipLabel)}</span>`
       : '';
@@ -5868,6 +5887,12 @@
       const chips = row.querySelector('div:first-child');
       if (!chips) return;
       chips.innerHTML = '';
+      const newLink = document.createElement('a');
+      newLink.className = 'new-session-link';
+      newLink.href = '#';
+      newLink.textContent = 'New Session';
+      newLink.onclick = (e) => { e.preventDefault(); expandLaunchBar(newLink); };
+      chips.appendChild(newLink);
       minimized.slice(0, 4).forEach(s => {
         const chip = document.createElement('div');
         chip.className = 'mini-card';
