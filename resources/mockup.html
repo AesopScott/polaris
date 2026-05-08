@@ -1872,11 +1872,18 @@
         <span style="font-size:10px;color:#94a3b8;font-weight:400;">All features — builds &amp; installs locally</span>
       </span>
     </button>
-    <button onclick="confirmBuild('public')" class="hbtn btn-gold" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;width:100%;margin-bottom:12px;">
+    <button onclick="confirmBuild('public')" class="hbtn btn-gold" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;width:100%;margin-bottom:8px;">
       <span>🌐</span>
       <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0;white-space:normal;">
         <span style="font-size:11px;font-weight:600;">Public</span>
         <span style="font-size:10px;color:#b45309;font-weight:400;">Public features only — produces installer in dist\</span>
+      </span>
+    </button>
+    <button onclick="confirmBuild('mac')" class="hbtn" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;width:100%;margin-bottom:12px;background:#4c1d95;border:1px solid #7c3aed;">
+      <span>🍎</span>
+      <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0;white-space:normal;">
+        <span style="font-size:11px;font-weight:600;color:#e2e8f0;">Mac</span>
+        <span style="font-size:10px;color:#a78bfa;font-weight:400;">Triggers GitHub Actions — DMG artifact in ~5 min</span>
       </span>
     </button>
     <button onclick="closeBuildTypeModal()" style="background:none;border:none;color:#64748b;font-size:10px;cursor:pointer;padding:4px;display:block;margin:0 auto;">Cancel</button>
@@ -11728,6 +11735,10 @@
 
   function confirmBuild(buildType) {
     closeBuildTypeModal();
+    if (buildType === 'mac') {
+      wsSend({ type: 'run-build', buildType: 'mac' });
+      return;
+    }
     const skipCheck = window._buildSkipCheck;
     window._pendingBuildType = buildType;
     if (!skipCheck) {

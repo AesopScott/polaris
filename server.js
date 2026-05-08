@@ -5467,7 +5467,7 @@ function handleMessage(ws, raw) {
   if (type === 'run-build') {
     const sourcePath  = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
     const projectName = msg.projectName || 'Polaris';
-    const buildType   = msg.buildType === 'public' ? 'public' : 'private';
+    const buildType   = msg.buildType === 'public' ? 'public' : msg.buildType === 'mac' ? 'mac' : 'private';
     const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
     const isPolaris   = sourcePath === POLARIS_WORK_DIR;
 
@@ -5483,6 +5483,15 @@ function handleMessage(ws, raw) {
         });
         return;
       }
+    }
+    if (buildType === 'mac') {
+      try {
+        execSync('gh workflow run build-mac.yml', { cwd: sourcePath, encoding: 'utf8', timeout: 15000 });
+        sendTo(ws, { type: 'build-result', ok: true, message: 'Mac build triggered on GitHub Actions. The DMG artifact will be ready in ~5-10 min — check the Actions tab on the repo.' });
+      } catch (e) {
+        sendTo(ws, { type: 'build-result', ok: false, message: `Failed to trigger Mac build: ${e.message || String(e)}. Make sure gh CLI is installed and authenticated (run: gh auth login).` });
+      }
+      return;
     }
     if (process.platform !== 'win32') {
       sendTo(ws, { type: 'build-result', ok: false, message: 'macOS builds are done via GitHub Actions — push to main and the build-mac workflow will produce a DMG artifact.' });
