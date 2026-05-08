@@ -1093,7 +1093,8 @@ function autoObsidianForSession(sessionId) {
   const matchedProj = (config.projects || []).find(
     p => p.workDir && s.workDir && p.workDir.toLowerCase() === s.workDir.toLowerCase()
   );
-  const sessionsFolder = matchedProj?.obsidianSessionsDir || 'Polaris_Sessions';
+  if (!matchedProj?.obsidianSessionsDir) return; // skip if no sessions folder configured for this project
+  const sessionsFolder = matchedProj.obsidianSessionsDir;
   try {
     const dir = path.join(vaultPath, sessionsFolder);
     fs.mkdirSync(dir, { recursive: true });
