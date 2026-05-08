@@ -7027,21 +7027,29 @@ async function runDomainScout() {
   const allTitles = [...hnTitles, ...arxivTitles].slice(0, 50);
   if (!allTitles.length) return { error: 'Could not fetch any headlines' };
 
-  // Extract brandable terms with reasoning via Claude Haiku
-  const termPrompt = `You are a domain name strategist. Extract 12 novel, brandable single words from these tech headlines that could make great domain name prefixes (like Forge, Apex, Oasis, Nexus, Prism).
+  // Extract brandable terms with full analysis via Claude Haiku
+  const termPrompt = `You are a domain name strategist. Analyze these tech headlines and extract 10 novel, brandable single words that could make great domain name prefixes.
 
-Rules: single words only, 4-9 characters, easy to spell, emerging tech concepts or strong nouns. No generic words (app, tech, data, cloud, new, next). No trademarks.
+For each term return a JSON object with these fields:
+- term: the word (lowercase, 4-9 chars, easy to spell, no trademarks)
+- represents: what product or idea this domain would represent (1 sentence)
+- value: why this term is valuable as a brand right now (1 sentence)
+- audience: who would use a product with this name
+- scale: estimated monthly active users or developers in this space (e.g. "~50K devs", "~2M users")
+
+Rules: single words only, emerging tech concepts or strong nouns. No generic words (app, tech, data, cloud, new, next).
 
 Headlines:
 ${allTitles.join('\n')}
 
-Return ONLY a JSON array of objects with "term" and "reason" fields. The reason should be one short phrase explaining why this word will be popular and make a good domain (e.g. which trend it taps into). Example: [{"term":"nexus","reason":"graph neural networks are surging in AI research"},{"term":"forge","reason":"maker/toolchain metaphor dominating dev tooling headlines"}]`;
+Return ONLY a JSON array. Example:
+[{"term":"nexus","represents":"central hub connecting AI tools and workflows","value":"signals authority and interconnection — premium tech positioning","audience":"AI platform builders and enterprise integrators","scale":"~40–60K developers globally"}]`;
 
   const result = await callOpenRouterOnce(
     'anthropic/claude-haiku-4-5',
     apiKey,
     [{ role: 'user', content: termPrompt }],
-    400
+    1200
   );
 
   if (result.error) return { error: `AI extraction failed: ${result.error}` };
@@ -7056,7 +7064,7 @@ Return ONLY a JSON array of objects with "term" and "reason" fields. The reason 
 
   if (!terms.length) return { error: 'No terms extracted' };
 
-  // Check domain availability for each term across four patterns
+  // Check domain availability — stop at first available pattern per term
   const mkPatterns = t => [
     `${t}aistudio.com`,
     `${t}ai.com`,
@@ -7065,24 +7073,30 @@ Return ONLY a JSON array of objects with "term" and "reason" fields. The reason 
   ];
 
   const available = [];
-  for (const entry of terms.slice(0, 12)) {
-    const rawTerm = typeof entry === 'string' ? entry : entry.term;
-    const reason  = typeof entry === 'string' ? '' : (entry.reason || '');
+  for (const entry of terms.slice(0, 10)) {
+    const rawTerm = typeof entry === 'string' ? entry : (entry.term || '');
     const term = rawTerm.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!term) continue;
     for (const domain of mkPatterns(term)) {
       const isAvail = await checkDomainAvailable(domain);
-      if (isAvail) available.push({ term, domain, reason });
+      if (isAvail) {
+        available.push({ domain, term, ...(typeof entry === 'object' ? entry : {}) });
+        break;
+      }
     }
   }
 
-  // Build notification items
+  // Build notification items — 5 lines per available domain
   const items = available.length
     ? [
         `Found ${available.length} available domain${available.length === 1 ? '' : 's'} from today's tech headlines:`,
-        ...available.map(({ domain, term, reason }) =>
-          reason ? `${domain}  ← "${term}" — ${reason}` : `${domain}  ← "${term}"`
-        ),
+        ...available.flatMap(({ domain, represents, value, audience, scale }) => [
+          `${domain}`,
+          `   What: ${represents || '—'}`,
+          `   Value: ${value || '—'}`,
+          `   Audience: ${audience || '—'}`,
+          `   Scale: ${scale || '—'}`,
+        ]),
       ]
     : ['No available .com/.ai domains found this scan — try again tomorrow'];
 
