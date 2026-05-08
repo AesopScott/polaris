@@ -6571,33 +6571,30 @@ function handleMessage(ws, raw) {
       const coursesPath = path.join(aesop.workDir, 'ai-academy', 'modules', 'courses-data.json');
       let allCourses = [];
       try {
-        allCourses = JSON.parse(fs.readFileSync(coursesPath, 'utf8'));
+        const parsed = JSON.parse(fs.readFileSync(coursesPath, 'utf8'));
+        allCourses = Array.isArray(parsed) ? parsed : (parsed.courses || []);
       } catch (_) { /* unreadable — continue with empty */ }
+
+      const normCourse = c => ({
+        course_id: c.id || c.course_id,
+        title: c.name || c.title || c.id || c.course_id,
+        category: c.ageGroup || c.category || '',
+        language: c.language || 'en',
+        module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
+      });
 
       const pending = allCourses
         .filter(c => c.live === false && !c.generation_complete)
-        .map(c => ({
-          course_id: c.course_id,
-          title: c.title || c.course_id,
-          category: c.category || '',
-          language: c.language || 'en',
-          module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
-        }));
+        .map(normCourse);
 
       const readyToActivate = allCourses
         .filter(c => c.live === false && c.generation_complete === true)
-        .map(c => ({
-          course_id: c.course_id,
-          title: c.title || c.course_id,
-          category: c.category || '',
-          language: c.language || 'en',
-          module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
-        }));
+        .map(normCourse);
 
       const draftsDir = path.join(aesop.workDir, 'aip', 'drafts');
       let approvedDrafts = [];
       try {
-        const existingIds = new Set(allCourses.map(c => c.course_id));
+        const existingIds = new Set(allCourses.map(c => c.id || c.course_id));
         const draftsEntries = fs.readdirSync(draftsDir, { withFileTypes: true });
         for (const entry of draftsEntries) {
           if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
