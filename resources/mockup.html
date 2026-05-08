@@ -1225,7 +1225,7 @@
     <div class="header-buttons">
       <div class="btn-grid">
         <!-- Row 1 -->
-        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-course-creator" class="hbtn btn-gold" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
         <button class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
         <button class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
@@ -1826,6 +1826,28 @@
     </div>
   </div>
 
+  <!-- Build-type picker modal -->
+  <div id="build-type-overlay" class="overlay-bg hidden" style="z-index:1600;" onclick="if(event.target===this)closeBuildTypeModal()">
+    <div class="palette" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:300px;padding:20px 20px 14px;display:flex;flex-direction:column;gap:8px;">
+      <div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:6px;">Choose Build Type</div>
+      <button onclick="confirmBuild('private')" class="hbtn btn-tracking" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;">
+        <span>🔒</span>
+        <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
+          <span style="font-size:11px;font-weight:600;">Private</span>
+          <span style="font-size:10px;color:#94a3b8;font-weight:400;">All features — builds &amp; installs locally</span>
+        </span>
+      </button>
+      <button onclick="confirmBuild('public')" class="hbtn btn-gold" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;">
+        <span>🌐</span>
+        <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
+          <span style="font-size:11px;font-weight:600;">Public</span>
+          <span style="font-size:10px;color:#b45309;font-weight:400;">Public features only — produces installer in dist\</span>
+        </span>
+      </button>
+      <button onclick="closeBuildTypeModal()" style="background:none;border:none;color:#64748b;font-size:10px;cursor:pointer;padding:6px;align-self:center;">Cancel</button>
+    </div>
+  </div>
+
   <!-- Cross-Check detail modal -->
   <div id="cross-check-detail-overlay" class="overlay-bg hidden" style="z-index:1500;" onclick="if(event.target===this)closeCrossCheckDetail()">
     <div id="cross-check-detail" style="position:absolute;top:5%;left:50%;transform:translateX(-50%);width:90%;max-width:1100px;max-height:90vh;background:#0d1117;border:1px solid #334155;border-radius:8px;display:flex;flex-direction:column;">
@@ -2170,6 +2192,26 @@
     </div>
     <div style="padding:14px 18px;overflow-y:auto;flex:1;">
       <div id="routine-notif-list"></div>
+    </div>
+  </div>
+
+  <!-- Course Creator Panel -->
+  <div id="course-creator-backdrop" class="hidden" onclick="closeCourseCreator()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;"></div>
+  <div id="course-creator-panel" class="hidden palette" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:640px;max-height:80vh;display:flex;flex-direction:column;z-index:9999;border-radius:12px;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="font-size:14px;font-weight:700;color:var(--text);">Course Creator</div>
+      <button onclick="closeCourseCreator()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="course-creator-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">
+        ModGen course development pipeline. Select a pending course to generate module HTML and activate it on the live site.
+      </div>
+      <div id="course-creator-list" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Loading pending courses…</div>
+      </div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0;">
+      <button onclick="closeCourseCreator()" style="font-size:12px;padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);cursor:pointer;">Close</button>
     </div>
   </div>
 
@@ -3424,16 +3466,19 @@
       case 'build-result': {
         pushDebugLog(`[build] ${msg.ok ? 'started' : 'rejected'}: ${msg.message}`);
         if (msg.ok) {
-          document.body.style.transition = 'opacity 0.3s';
-          document.body.style.opacity = '0.55';
-          document.body.style.pointerEvents = 'none';
+          if (msg.closesApp !== false) {
+            document.body.style.transition = 'opacity 0.3s';
+            document.body.style.opacity = '0.55';
+            document.body.style.pointerEvents = 'none';
+          }
           alert(msg.message);
         } else if (msg.requiresCheck) {
           // Pre-build check gate: stale or missing. Offer to run check first.
           if (confirm(msg.message + '\n\nRun pre-build cross-check now?')) {
             runPreBuildCheck();
           } else if (confirm('Build anyway WITHOUT running the cross-check?\n\nThis is unusual — only do it if you know the changes are safe.')) {
-            executeBuild(true); // skipCheck=true
+            const bt = window._pendingBuildType || 'private';
+            wsSend({ type: 'run-build', skipCheck: true, buildType: bt });
           }
         } else {
           alert('Build failed to start:\n' + msg.message);
@@ -3470,16 +3515,23 @@
         if (allFiles.length === 0) {
           resultsEl.innerHTML = `<div style="padding:8px;color:#64748b;font-size:10px;">No changed files since ${escHtml(msg.baseLabel || 'last build')}.</div>`;
         } else {
+          window._preBuildCheckFiles = [];
           const renderFile = f => {
+            const fileIdx = window._preBuildCheckFiles.length;
+            window._preBuildCheckFiles.push(f);
             const c = f.verdict === 'PASS' ? '#22c55e' : (f.verdict === 'FAIL' ? '#ef4444' : '#f59e0b');
             const issuesHtml = (f.issues || []).length
               ? `<ul style="margin:4px 0 0 16px;padding:0;color:#94a3b8;font-size:10px;">${f.issues.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>`
+              : '';
+            const checkBtn = (f.verdict === 'FAIL' || f.verdict === 'ERROR')
+              ? `<button onclick="event.stopPropagation(); launchPreBuildFileCheck(${fileIdx})" style="padding:1px 8px;border-radius:3px;border:none;background:#2563eb;color:#fff;font-size:9px;font-weight:700;cursor:pointer;flex-shrink:0;font-family:inherit;">Check</button>`
               : '';
             return `<div style="border-left:3px solid ${c};padding:6px 10px;margin:4px 0;background:rgba(15,23,42,0.5);border-radius:3px;">
               <div style="display:flex;align-items:center;gap:8px;font-family:'Consolas',monospace;font-size:11px;">
                 <span style="color:${c};font-weight:700;">${f.verdict}</span>
                 <span style="color:#cbd5e1;">${escHtml(f.file)}</span>
                 <span style="color:#64748b;font-size:9px;margin-left:auto;">${f.ms||0}ms</span>
+                ${checkBtn}
               </div>
               ${f.summary ? `<div style="color:#94a3b8;font-size:10px;margin-top:3px;">${escHtml(f.summary)}</div>` : ''}
               ${issuesHtml}
@@ -3555,10 +3607,21 @@
         if (msg.appVersion) {
           window.appVersion = msg.appVersion;
           const verEl = document.getElementById('header-version');
-          if (verEl) verEl.textContent = `v${msg.appVersion}`;
+          if (verEl) {
+            const buildLabel = msg.publicBuild ? 'public' : 'private';
+            const labelColor = msg.publicBuild ? '#f59e0b' : '#475569';
+            verEl.innerHTML = `v${msg.appVersion} <span style="color:${labelColor};font-weight:500;letter-spacing:0.05em;">· ${buildLabel}</span>`;
+          }
         }
         supportEnabled = !!msg.supportEnabled;
         if (msg.uiToken) window._uiToken = msg.uiToken;
+        window.isPublicBuild = !!msg.publicBuild;
+        if (window.isPublicBuild) {
+          const ccBtn = document.getElementById('btn-course-creator');
+          if (ccBtn) ccBtn.style.display = 'none';
+          const mBtn = document.getElementById('btn-manifest');
+          if (mBtn) mBtn.style.display = 'none';
+        }
         renderGrid();
         (msg.sessions || []).forEach(s => { if (s.lastUsage) updateContextBar(s.id, s.lastUsage); });
         if (!msg.config?.skipOnboarding) setTimeout(initOnboardingPrompt, 900);
@@ -5593,6 +5656,13 @@
   }
   window.launchCheckSession = launchCheckSession;
 
+  function launchPreBuildFileCheck(idx) {
+    const f = window._preBuildCheckFiles?.[idx];
+    if (!f) return;
+    launchCrossCheckValidation({ filePath: f.file, verdict: f.verdict, summary: f.summary || '', issues: f.issues || [] });
+  }
+  window.launchPreBuildFileCheck = launchPreBuildFileCheck;
+
   function closeCrossCheckDetail() {
     document.getElementById('cross-check-detail-overlay').classList.add('hidden');
   }
@@ -7592,6 +7662,23 @@
   window.openFactoryComingSoon  = openFactoryComingSoon;
   window.closeFactoryComingSoon = closeFactoryComingSoon;
 
+  function openCourseCreator() {
+    document.getElementById('course-creator-panel')?.classList.remove('hidden');
+    document.getElementById('course-creator-backdrop')?.classList.remove('hidden');
+    loadPendingCourses();
+  }
+  function closeCourseCreator() {
+    document.getElementById('course-creator-panel')?.classList.add('hidden');
+    document.getElementById('course-creator-backdrop')?.classList.add('hidden');
+  }
+  function loadPendingCourses() {
+    const list = document.getElementById('course-creator-list');
+    if (!list) return;
+    list.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Pending courses will appear here.<br>Full pipeline wiring coming soon.</div>';
+  }
+  window.openCourseCreator  = openCourseCreator;
+  window.closeCourseCreator = closeCourseCreator;
+
   window.showMcpDisconnectedBanner = showMcpDisconnectedBanner;
 
   let _routineNotifId = null;
@@ -8393,14 +8480,19 @@
           <span style="font-size:11px;font-weight:700;color:${isPublic ? '#86efac' : '#f87171'};" data-badge="${escHtml(item.id)}">${isPublic ? 'PUBLIC' : 'PRIVATE'}</span>
         </label>`;
       const cb = row.querySelector('input[type=checkbox]');
-      cb.addEventListener('change', () => {
-        const badge = row.querySelector(`[data-badge="${item.id}"]`);
-        const arr = type === 'features' ? _manifest.features : _manifest.secrets;
-        const entry = arr.find(x => x.id === item.id);
-        if (entry) entry.public = cb.checked;
-        badge.textContent = cb.checked ? 'PUBLIC' : 'PRIVATE';
-        badge.style.color  = cb.checked ? '#86efac' : '#f87171';
-      });
+      if (window.isPublicBuild) {
+        cb.disabled = true;
+        cb.style.cursor = 'not-allowed';
+      } else {
+        cb.addEventListener('change', () => {
+          const badge = row.querySelector(`[data-badge="${item.id}"]`);
+          const arr = type === 'features' ? _manifest.features : _manifest.secrets;
+          const entry = arr.find(x => x.id === item.id);
+          if (entry) entry.public = cb.checked;
+          badge.textContent = cb.checked ? 'PUBLIC' : 'PRIVATE';
+          badge.style.color  = cb.checked ? '#86efac' : '#f87171';
+        });
+      }
       return row;
     };
 
@@ -8413,7 +8505,7 @@
   }
 
   function saveManifest() {
-    if (!_manifest) return;
+    if (!_manifest || window.isPublicBuild) return;
     wsSend({ type: 'save-manifest', manifest: _manifest });
   }
 
@@ -10917,23 +11009,39 @@
   window.onbClose           = onbClose;
 
   function ccBuild() {
-    if (!confirm('Check passed — build and install now?\n\nPolaris will close shortly. The new version installs automatically.')) return;
-    wsSend({ type: 'run-build' });
+    showBuildTypeModal(false);
   }
   window.ccBuild = ccBuild;
 
   function executeBuild(skipCheck) {
-    if (!skipCheck) {
-      // First click: server checks pre-build cross-check freshness. If stale,
-      // server replies build-result {ok:false, requiresCheck:true} and the
-      // handler will prompt the user to run cross-check first.
-      wsSend({ type: 'run-build' });
-      return;
-    }
-    if (!confirm("Build without running cross-check?\n\nPolaris will close shortly. The build runs in a separate PowerShell window and the new version will install automatically.")) return;
-    wsSend({ type: 'run-build', skipCheck: true });
+    showBuildTypeModal(!!skipCheck);
   }
   window.executeBuild = executeBuild;
+
+  function showBuildTypeModal(skipCheck) {
+    window._buildSkipCheck = !!skipCheck;
+    document.getElementById('build-type-overlay').classList.remove('hidden');
+  }
+  window.showBuildTypeModal = showBuildTypeModal;
+
+  function closeBuildTypeModal() {
+    document.getElementById('build-type-overlay').classList.add('hidden');
+  }
+  window.closeBuildTypeModal = closeBuildTypeModal;
+
+  function confirmBuild(buildType) {
+    closeBuildTypeModal();
+    const skipCheck = window._buildSkipCheck;
+    window._pendingBuildType = buildType;
+    if (!skipCheck) {
+      wsSend({ type: 'run-build', buildType });
+      return;
+    }
+    const label = buildType === 'public' ? 'public' : 'private';
+    if (!confirm(`Build ${label} without running cross-check?\n\nThe build runs in a separate PowerShell window.`)) return;
+    wsSend({ type: 'run-build', skipCheck: true, buildType });
+  }
+  window.confirmBuild = confirmBuild;
 
   function runPreBuildCheck() {
     const statusEl = document.getElementById('pre-build-check-status');
