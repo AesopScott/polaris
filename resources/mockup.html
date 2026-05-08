@@ -1856,6 +1856,7 @@
       <span style="flex:1;font-size:13px;font-weight:800;">Cross-Check</span>
       <button onclick="runPreBuildCheck()" style="padding:4px 10px;border-radius:5px;border:none;font-size:11px;background:#3b82f6;color:#fff;font-weight:700;cursor:pointer;">▶ Run Pre-Build Check</button>
       <button id="cc-build-btn" onclick="ccBuild()" style="display:none;padding:4px 12px;border-radius:5px;border:none;font-size:11px;background:#16a34a;color:#fff;font-weight:700;cursor:pointer;">🔨 Build</button>
+      <button id="cc-override-btn" onclick="ccOverrideBuild()" style="display:none;padding:4px 12px;border-radius:5px;border:1px solid #b45309;font-size:11px;background:#78350f;color:#fcd34d;font-weight:700;cursor:pointer;" title="Build despite failing check — use only if you know the issues are safe to ignore">⚠ Build Anyway</button>
       <button onclick="wsSend({ type:'get-cross-check-history', limit: 200 })" style="padding:4px 10px;border-radius:5px;border:1px solid #444;font-size:11px;background:#1e293b;color:#cbd5e1;cursor:pointer;">⟳ History</button>
       <button class="preview-close-btn" onclick="toggleCrossCheckPanel()">✕</button>
     </div>
@@ -3620,6 +3621,8 @@
         statusEl.innerHTML = `<strong>${verdictIcon} ${msg.verdict}</strong> — ${escHtml(msg.summary)}`;
         const ccBuildBtn = document.getElementById('cc-build-btn');
         if (ccBuildBtn) ccBuildBtn.style.display = msg.verdict === 'PASS' ? 'inline-block' : 'none';
+        const ccOverrideBtn = document.getElementById('cc-override-btn');
+        if (ccOverrideBtn) ccOverrideBtn.style.display = (msg.verdict === 'FAIL' || msg.verdict === 'ERROR') ? 'inline-block' : 'none';
         resultsEl.style.display = 'block';
         const allFiles = msg.files || [];
         const groups = msg.groups && msg.groups.length ? msg.groups : null;
@@ -3673,8 +3676,10 @@
             const statusEl = document.getElementById('pre-build-check-status');
             if (statusEl) {
               statusEl.style.color = '#ef4444';
-              statusEl.innerHTML = '<strong>✗ Build blocked</strong> — fix the issues above before building.';
+              statusEl.innerHTML = '<strong>✗ Build blocked</strong> — check failed. Use <strong>⚠ Build Anyway</strong> above to override.';
             }
+            const panel = document.getElementById('cross-check-panel');
+            if (panel?.classList.contains('hidden')) panel.classList.remove('hidden');
           }
         }
         break;
@@ -11793,6 +11798,12 @@
     showBuildTypeModal(false);
   }
   window.ccBuild = ccBuild;
+
+  function ccOverrideBuild() {
+    if (!confirm('The cross-check failed. Build anyway?\n\nOnly proceed if you know the flagged issues are safe to ignore.')) return;
+    showBuildTypeModal(false);
+  }
+  window.ccOverrideBuild = ccOverrideBuild;
 
   function executeBuild() {
     const btn = document.getElementById('btn-build');
