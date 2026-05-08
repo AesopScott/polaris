@@ -46,6 +46,7 @@ const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
+const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
@@ -5109,6 +5110,16 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'domain-scout-clear') {
+    try {
+      if (fs.existsSync(DOMAIN_SCOUT_RESULTS_PATH)) fs.unlinkSync(DOMAIN_SCOUT_RESULTS_PATH);
+      const notifs = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+      writeJSON(ROUTINE_NOTIFICATIONS_PATH, notifs.filter(n => n.routineName !== 'Domain Scout'));
+      broadcast({ type: 'event-routine-notifications', notifications: readJSON(ROUTINE_NOTIFICATIONS_PATH, []) });
+    } catch (e) { console.warn('[domain-scout] clear failed:', e.message); }
+    return;
+  }
+
   if (type === 'domain-scout') {
     sendTo(ws, { type: 'domain-scout-status', status: 'running' });
     runDomainScout().then(result => {
@@ -7086,11 +7097,42 @@ Return ONLY a JSON array. Example:
     }
   }
 
-  // Build notification items — 5 lines per available domain
-  const items = available.length
+  // Accumulate results — merge new domains into persistent store
+  const scannedAt = new Date().toISOString();
+  const newEntries = available.map(e => ({ ...e, scannedAt }));
+  const allResults = readJSON(DOMAIN_SCOUT_RESULTS_PATH, []);
+  const existingDomains = new Set(allResults.map(r => r.domain));
+  const trulyNew = newEntries.filter(e => !existingDomains.has(e.domain));
+  const merged = [...allResults, ...trulyNew];
+  writeJSON(DOMAIN_SCOUT_RESULTS_PATH, merged);
+
+  // Write to Obsidian if vault is configured and there are new domains
+  if (trulyNew.length > 0) {
+    try {
+      const vaultPath = readConfig().obsidianVaultPath;
+      if (vaultPath) {
+        const scoutDir = path.join(vaultPath, 'Domain_Scout');
+        if (!fs.existsSync(scoutDir)) fs.mkdirSync(scoutDir, { recursive: true });
+        const logPath = path.join(scoutDir, 'Domain-Scout-Log.md');
+        const dateStr = new Date(scannedAt).toLocaleString();
+        let section = `\n## ${dateStr} — ${trulyNew.length} new domain${trulyNew.length === 1 ? '' : 's'}\n\n`;
+        for (const { domain, represents, value, audience, scale } of trulyNew) {
+          section += `### ${domain}\n- **What:** ${represents || '—'}\n- **Value:** ${value || '—'}\n- **Audience:** ${audience || '—'}\n- **Scale:** ${scale || '—'}\n\n`;
+        }
+        if (fs.existsSync(logPath)) fs.appendFileSync(logPath, section, 'utf8');
+        else fs.writeFileSync(logPath, `# Domain Scout Log\n${section}`, 'utf8');
+      }
+    } catch (e) {
+      console.warn('[domain-scout] Obsidian write failed:', e.message);
+    }
+  }
+
+  // Build notification from ALL accumulated results (most recent first)
+  const sorted = [...merged].sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt));
+  const items = sorted.length
     ? [
-        `Found ${available.length} available domain${available.length === 1 ? '' : 's'} from today's tech headlines:`,
-        ...available.flatMap(({ domain, represents, value, audience, scale }) => [
+        `${sorted.length} domain${sorted.length === 1 ? '' : 's'} found (${trulyNew.length} new this scan):`,
+        ...sorted.flatMap(({ domain, represents, value, audience, scale }) => [
           `${domain}`,
           `   What: ${represents || '—'}`,
           `   Value: ${value || '—'}`,
@@ -7104,7 +7146,7 @@ Return ONLY a JSON array. Example:
     id: Date.now().toString(),
     routineName: 'Domain Scout',
     title: 'Domain Scout',
-    timestamp: new Date().toISOString(),
+    timestamp: scannedAt,
     items,
     dismissed: false,
   };
@@ -7112,7 +7154,7 @@ Return ONLY a JSON array. Example:
   const existing = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
   writeJSON(ROUTINE_NOTIFICATIONS_PATH, [...existing.filter(n => n.routineName !== 'Domain Scout'), notif]);
 
-  return { success: true, count: available.length };
+  return { success: true, count: trulyNew.length, total: merged.length };
 }
 
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });

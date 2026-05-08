@@ -703,6 +703,14 @@
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   .routine-notif-item:last-child { border-bottom: none; }
+  .routine-notif-item.domain-header {
+    border-bottom: none; margin-top: 10px; padding-bottom: 2px;
+  }
+  .routine-notif-item.domain-header span { font-weight: 700; color: #60a5fa; font-size: 13px; }
+  .routine-notif-item.sub-item {
+    padding: 1px 0 1px 16px; border-bottom: none; font-size: 11px; opacity: 0.8;
+  }
+  .routine-notif-item.sub-item .routine-notif-bullet { color: #6b7280; font-size: 8px; }
 
   /* Build-type picker popup */
   #build-type-popup {
@@ -1787,6 +1795,7 @@
       <button class="fbtn" style="background:#22c55e;color:#000;font-weight:700;" onclick="addRoutineRow()">+ Add Routine</button>
       <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveRoutines()">💾 Save Routines</button>
       <button class="fbtn" id="domain-scout-btn" style="background:#7c3aed;color:#fff;font-weight:700;margin-left:auto;" onclick="fireDomainScout()">🔍 Domain Scout</button>
+      <button class="fbtn" style="background:#374151;color:#9ca3af;" onclick="clearDomainScout()" title="Clear all accumulated Domain Scout results">✕ Clear Scout</button>
     </div>
   </div>
 
@@ -8415,9 +8424,15 @@
     if (list) {
       const ts = notif.timestamp ? new Date(notif.timestamp).toLocaleString() : '';
       list.innerHTML = (ts ? `<div class="routine-notif-ts">${escHtml(ts)}</div>` : '') +
-        (notif.items || []).map(item =>
-          `<div class="routine-notif-item"><span class="routine-notif-bullet">●</span><span>${escHtml(item)}</span></div>`
-        ).join('');
+        (notif.items || []).map(item => {
+          if (/^\S+\.(com|ai|io|studio)$/.test(item.trim())) {
+            return `<div class="routine-notif-item domain-header"><span>${escHtml(item.trim())}</span></div>`;
+          }
+          if (item.startsWith('   ')) {
+            return `<div class="routine-notif-item sub-item"><span class="routine-notif-bullet">·</span><span>${escHtml(item.trim())}</span></div>`;
+          }
+          return `<div class="routine-notif-item"><span class="routine-notif-bullet">●</span><span>${escHtml(item)}</span></div>`;
+        }).join('');
     }
     _routineNotifId = notif.dismissed ? null : notif.id;
     document.getElementById('routine-notif-popup')?.classList.remove('hidden');
@@ -8462,10 +8477,16 @@
     wsSend({ type: 'domain-scout' });
   }
 
+  function clearDomainScout() {
+    if (!confirm('Clear all accumulated Domain Scout results?')) return;
+    wsSend({ type: 'domain-scout-clear' });
+  }
+
   window.showRoutineNotifPopup  = showRoutineNotifPopup;
   window.closeRoutineNotifPopup = closeRoutineNotifPopup;
   window.viewLastRoutineRun     = viewLastRoutineRun;
   window.fireDomainScout        = fireDomainScout;
+  window.clearDomainScout       = clearDomainScout;
 
   const STATUS_CYCLE = ['done', 'test', 'waiting', 'broken', 'error'];
   const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' };
