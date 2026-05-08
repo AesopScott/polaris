@@ -124,9 +124,9 @@
   }
   .launch-minimize-btn:hover { opacity: 1; }
   .palette .launch-minimize-btn { background: var(--card-btn-bg); color: var(--text); }
-  .new-session-link { display: none; font-size: 12px; color: #94a3b8; text-decoration: none; white-space: nowrap; }
-  .new-session-link:hover { color: #e2e8f0; text-decoration: underline; }
-  .launch-bar.minimized + .minimized-row .new-session-link { display: inline-flex; align-items: center; }
+  .new-session-link { display: none; font-size: 12px; color: #22c55e; text-decoration: underline; white-space: nowrap; cursor: pointer; }
+  .new-session-link:hover { color: #4ade80; text-decoration: underline; }
+  .launch-bar.minimized + .minimized-row .new-session-link { display: flex; align-items: center; justify-content: center; width: 100%; }
 
   /* Top row: dir + repo side by side */
   .launch-context-row { display: flex; gap: 6px; align-items: flex-start; width: calc(83.333% + 2px); }
@@ -162,7 +162,7 @@
     font-family: 'Segoe UI', sans-serif;
   }
   #float-prompt-area {
-    height: auto; min-height: 54px; max-height: 200px; overflow-y: auto;
+    height: auto; min-height: 54px; overflow-y: hidden; padding-bottom: 32px;
   }
   .token-count { position: absolute; bottom: 6px; right: 8px; font-size: 10px; opacity: 0.5; }
 
@@ -1367,7 +1367,7 @@
   <div class="minimized-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:6px 16px;">
 
     <!-- Left third: New Session link (when minimized) + up to 4 minimized session chips -->
-    <div style="display:flex;gap:6px;align-items:center;">
+    <div style="display:flex;gap:6px;align-items:center;width:100%;">
       <a class="new-session-link" href="#" onclick="expandLaunchBar(this);return false;">New Session</a>
       <div class="mini-card">Fix Auth Bug</div>
       <div class="mini-card">DB Migration</div>
@@ -2223,6 +2223,7 @@
       <span class="preview-drag-handle">⠿⠿</span>
       <span style="font-size:13px;font-weight:800;">Course Creator</span>
       <span style="flex:1;"></span>
+      <button onclick="loadPendingCourses()" style="background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--text-muted,#64748b);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:6px;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='var(--text-muted,#64748b)'">↺ Reload</button>
       <button class="preview-close-btn" onclick="closeCourseCreator()">✕</button>
     </div>
     <div id="course-creator-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;">
@@ -3685,6 +3686,7 @@
           isChat: msg.isChat || false,
           isForked: msg.isForked || false,
           primarySessionId: msg.primarySessionId || null,
+          routineTag: msg.routineTag || null,
           status: 'running', startAt: Date.now(),
           lines: [], lastPrompt: null, resumeId: null, usage: null, height: null, column: null, pinned: false,
         };
@@ -3696,6 +3698,7 @@
         renderGrid();
         if (msg.projectName) applyNavProjectTheme(msg.projectName);
         if (!msg.isForked) enterResumeMode(msg.sessionId, null);
+        if (msg.routineTag) onCourseSessionCreated(msg.routineTag, msg.sessionId);
         break;
 
       case 'line': {
@@ -3761,6 +3764,7 @@
         updateMiniCards();
         const isErr = msg.status === 'error';
         pushDebugLog(`[session] ${msg.sessionId} → ${msg.status}`, isErr);
+        if (s && s.routineTag) onCourseSessionStatus(s.routineTag, msg.status);
         // Fire event-triggered routines
         if (msg.status === 'done' || msg.status === 'error') {
           const evtKey = msg.status === 'done' ? 'session-done' : 'session-error';
@@ -7727,11 +7731,147 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeCourseCreator();
   }, true);
+  // Tracks courseIds with an agent currently in flight
+  const _courseInFlight = new Set();
+  const _courseStartTimes = {};
+  let _courseElapsedTick = null;
+
+  function _startElapsedTick() {
+    if (_courseElapsedTick) return;
+    _courseElapsedTick = setInterval(() => {
+      _courseInFlight.forEach(courseId => {
+        const safeId = courseId.replace(/[^a-z0-9_-]/gi, '_');
+        const btn = document.getElementById(`course-btn-${safeId}`);
+        if (!btn || !btn.disabled) return;
+        const start = _courseStartTimes[courseId];
+        if (!start) return;
+        const elapsed = Math.floor((Date.now() - start) / 1000);
+        const m = Math.floor(elapsed / 60), s = elapsed % 60;
+        btn.textContent = m > 0 ? `${m}m ${s}s` : `${s}s…`;
+      });
+      if (_courseInFlight.size === 0) {
+        clearInterval(_courseElapsedTick);
+        _courseElapsedTick = null;
+      }
+    }, 5000);
+  }
+
   function loadPendingCourses() {
     const list = document.getElementById('course-creator-list');
     if (!list) return;
     list.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Loading…</div>';
     wsSend({ type: 'get-course-creator-data' });
+  }
+
+  function _courseRow(c, actionLabel, actionColor, actionCall, extraBadge) {
+    const safeId = c.course_id.replace(/[^a-z0-9_-]/gi, '_');
+    const inFlight = _courseInFlight.has(c.course_id);
+    function badge(label, color) {
+      return `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 6px;border-radius:3px;background:${color}22;color:${color};border:1px solid ${color}55;">${escHtml(label)}</span>`;
+    }
+    const catBadge  = c.category ? badge(c.category, '#94a3b8') : '';
+    const langBadge = c.language && c.language !== 'en' ? badge(c.language, '#60a5fa') : '';
+    const mods      = c.module_count ? `${c.module_count} mod` : '';
+    const extra     = extraBadge ? extraBadge(c) : '';
+    const btnStyle  = `flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid ${actionColor};background:${actionColor}22;color:${actionColor};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;`;
+    const btnDisabledStyle = `flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid #64748b;background:#64748b22;color:#64748b;font-size:10px;font-weight:700;font-family:inherit;opacity:.6;cursor:default;`;
+    let inFlightLabel = 'Running…';
+    if (inFlight && _courseStartTimes[c.course_id]) {
+      const elapsed = Math.floor((Date.now() - _courseStartTimes[c.course_id]) / 1000);
+      const m = Math.floor(elapsed / 60), s = elapsed % 60;
+      inFlightLabel = m > 0 ? `${m}m ${s}s` : `${s}s…`;
+    }
+    const btnHTML = inFlight
+      ? `<button id="course-btn-${safeId}" disabled style="${btnDisabledStyle}">${inFlightLabel}</button>`
+      : `<button id="course-btn-${safeId}" onclick="${actionCall}" style="${btnStyle}" onmouseover="this.style.background='${actionColor}44'" onmouseout="this.style.background='${actionColor}22'">${escHtml(actionLabel)}</button>`;
+    return `<div id="course-row-${safeId}" style="display:flex;flex-direction:column;gap:4px;padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;color:var(--text,#e2e8f0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.title)}</div>
+          <div style="display:flex;gap:5px;align-items:center;margin-top:3px;flex-wrap:wrap;">
+            ${catBadge}${langBadge}${extra}
+            ${mods ? `<span style="font-size:10px;color:var(--text-muted,#64748b);">${escHtml(mods)}</span>` : ''}
+          </div>
+        </div>
+        ${btnHTML}
+      </div>
+      <div id="course-status-${safeId}" style="font-size:10px;color:var(--text-muted,#64748b);display:none;padding-left:2px;"></div>
+    </div>`;
+  }
+
+  function updateCourseRowStatus(courseId, state, message) {
+    const safeId = courseId.replace(/[^a-z0-9_-]/gi, '_');
+    const statusEl = document.getElementById(`course-status-${safeId}`);
+    const btn      = document.getElementById(`course-btn-${safeId}`);
+    if (statusEl) {
+      statusEl.style.display = message ? 'block' : 'none';
+      statusEl.textContent   = message || '';
+      const colors = { launching: '#a78bfa', running: '#60a5fa', done: '#4ade80', error: '#f87171' };
+      statusEl.style.color = colors[state] || 'var(--text-muted,#64748b)';
+    }
+    if (btn) {
+      if (state === 'launching' || state === 'running') {
+        btn.disabled = true;
+        btn.textContent = state === 'launching' ? 'Launching…' : 'Running…';
+        btn.style.cssText = `flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid #64748b;background:#64748b22;color:#64748b;font-size:10px;font-weight:700;font-family:inherit;opacity:.6;cursor:default;`;
+      } else if (state === 'done' || state === 'error') {
+        btn.disabled = false;
+        btn.textContent = state === 'done' ? '✓ Done' : '✗ Error';
+      }
+    }
+  }
+
+  function onCourseSessionCreated(routineTag, sessionId) {
+    const courseId = _courseTagToId(routineTag);
+    if (!courseId) return;
+    updateCourseRowStatus(courseId, 'running', '⚡ Agent running — session started');
+  }
+
+  function onCourseSessionStatus(routineTag, status) {
+    const courseId = _courseTagToId(routineTag);
+    if (!courseId) return;
+    if (status === 'done') {
+      _courseInFlight.delete(courseId);
+      delete _courseStartTimes[courseId];
+      updateCourseRowStatus(courseId, 'done', '✓ Complete — refreshing list…');
+      setTimeout(() => loadPendingCourses(), 2500);
+    } else if (status === 'error') {
+      _courseInFlight.delete(courseId);
+      delete _courseStartTimes[courseId];
+      updateCourseRowStatus(courseId, 'error', '✗ Error — check the session card for details');
+    }
+  }
+
+  function _courseTagToId(tag) {
+    if (!tag) return null;
+    if (tag.startsWith('ModGenDev-'))      return tag.slice('ModGenDev-'.length);
+    if (tag.startsWith('ModGenActivate-')) return tag.slice('ModGenActivate-'.length);
+    if (tag.startsWith('ModGenScaffold-')) return tag.slice('ModGenScaffold-'.length);
+    return null;
+  }
+
+  function _fireCourseAgent(courseId, routineName, routineTagPrefix) {
+    if (_courseInFlight.has(courseId)) {
+      updateCourseRowStatus(courseId, 'running', '⚡ Already running — check sessions panel');
+      return;
+    }
+    const r = (routinesList || []).find(x => x.name === routineName);
+    if (!r) {
+      pushDebugLog(`[course] Routine not found: ${routineName}`, true);
+      updateCourseRowStatus(courseId, 'error', `✗ Routine "${routineName}" not configured`);
+      return;
+    }
+    _courseInFlight.add(courseId);
+    _courseStartTimes[courseId] = Date.now();
+    _startElapsedTick();
+    updateCourseRowStatus(courseId, 'launching', '⏳ Launching agent…');
+    const routineTag = `${routineTagPrefix}${courseId}`;
+    const prompt     = `COURSE_ID: ${courseId}\n\n${r.prompt}`;
+    const aesop      = (projectsList || []).find(p => p.name === 'Aesop');
+    const wDir       = (r.workDir) || (aesop ? aesop.workDir : '') || '';
+    wsSend({ type: 'launch', prompt, workDir: wDir, projectName: r.projectName || 'Aesop',
+             model: resolveModel(r.model || 'balanced'), routineTag });
+    pushDebugLog(`[course] Fired ${routineName} for ${courseId} (tag: ${routineTag})`);
   }
 
   function renderCourseCreatorData(data) {
@@ -7741,50 +7881,32 @@
       list.innerHTML = `<div style="font-size:11px;color:var(--danger,#f87171);text-align:center;padding:24px 0;">${escHtml(data.error)}</div>`;
       return;
     }
-    const pending         = data.pending         || [];
+    const pending         = data.pending          || [];
     const readyToActivate = data.ready_to_activate || [];
-    const drafts          = data.approved_drafts  || [];
+    const drafts          = data.approved_drafts   || [];
 
     function badge(label, color) {
       return `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 6px;border-radius:3px;background:${color}22;color:${color};border:1px solid ${color}55;">${escHtml(label)}</span>`;
     }
-    function modLabel(n) {
-      return n ? `${n} mod` : '';
-    }
 
-    function makeSectionHTML(title, courses, actionLabel, actionColor, actionFn, extraBadge) {
+    function makeSection(title, courses, actionLabel, actionColor, actionCallFn, extraBadge) {
       if (!courses.length) return '';
-      const rows = courses.map(c => {
-        const catBadge = c.category ? badge(c.category, '#94a3b8') : '';
-        const langBadge = c.language && c.language !== 'en' ? badge(c.language, '#60a5fa') : '';
-        const mods = modLabel(c.module_count);
-        const extra = extraBadge ? extraBadge(c) : '';
-        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;font-weight:600;color:var(--text,#e2e8f0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.title)}</div>
-            <div style="display:flex;gap:5px;align-items:center;margin-top:3px;flex-wrap:wrap;">
-              ${catBadge}${langBadge}${extra}
-              ${mods ? `<span style="font-size:10px;color:var(--text-muted,#64748b);">${escHtml(mods)}</span>` : ''}
-            </div>
-          </div>
-          <button onclick="${actionFn(c)}" style="flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid ${actionColor};background:${actionColor}22;color:${actionColor};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='${actionColor}44'" onmouseout="this.style.background='${actionColor}22'">${escHtml(actionLabel)}</button>
-        </div>`;
-      }).join('');
+      const rows = courses.map(c => _courseRow(c, actionLabel, actionColor, actionCallFn(c), extraBadge)).join('');
       return `<div style="margin-bottom:14px;">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted,#64748b);margin-bottom:6px;">${escHtml(title)} <span style="font-weight:400;">(${courses.length})</span></div>
         <div style="display:flex;flex-direction:column;gap:5px;">${rows}</div>
       </div>`;
     }
 
-    const pendingHTML = makeSectionHTML(
+    const pendingHTML = makeSection(
       'Needs Development', pending, 'Develop', '#a78bfa',
       c => `devCourse(${JSON.stringify(c.course_id)},${JSON.stringify(c.title)})`
     );
-    const activateHTML = makeSectionHTML(
+    const activateHTML = makeSection(
       'Ready to Activate', readyToActivate, 'Activate', '#4ade80',
       c => `activateCourse(${JSON.stringify(c.course_id)},${JSON.stringify(c.title)})`
     );
-    const draftsHTML = makeSectionHTML(
+    const draftsHTML = makeSection(
       'Approved Drafts — Unscaffolded', drafts, 'Scaffold', '#fb923c',
       c => `scaffoldCourse(${JSON.stringify(c.course_id)},${JSON.stringify(c.draft_file || '')})`,
       c => badge('draft', '#fb923c')
@@ -7796,36 +7918,35 @@
       : pendingHTML + activateHTML + draftsHTML;
   }
 
-  function devCourse(courseId, courseName) {
-    const r = (routinesList || []).find(x => x.name === 'ModGen Course Development');
-    if (!r) { pushDebugLog('[course] ModGen Course Development routine not found', true); return; }
-    const modified = Object.assign({}, r, { prompt: `COURSE_ID: ${courseId}\n\n${r.prompt}` });
-    fireRoutine(modified, {});
-    closeCourseCreator();
-    pushDebugLog(`[course] Develop fired: ${courseName} (${courseId})`);
+  function devCourse(courseId) {
+    _fireCourseAgent(courseId, 'ModGen Course Development', 'ModGenDev-');
   }
 
-  function activateCourse(courseId, courseName) {
-    const r = (routinesList || []).find(x => x.name === 'ModGen Course Activation');
-    if (!r) { pushDebugLog('[course] ModGen Course Activation routine not found', true); return; }
-    const modified = Object.assign({}, r, { prompt: `COURSE_ID: ${courseId}\n\n${r.prompt}` });
-    fireRoutine(modified, {});
-    closeCourseCreator();
-    pushDebugLog(`[course] Activate fired: ${courseName} (${courseId})`);
+  function activateCourse(courseId) {
+    _fireCourseAgent(courseId, 'ModGen Course Activation', 'ModGenActivate-');
   }
 
   function scaffoldCourse(courseId, draftFile) {
-    const aesop = (projectsList || []).find(p => p.name === 'Aesop');
-    const workDir = aesop ? (aesop.workDir || '') : '';
-    const prompt = `/new-course\nCOURSE_ID: ${courseId}\nDRAFT_FILE: ${draftFile}`;
-    wsSend({ type: 'launch', prompt, workDir, projectName: 'Aesop', model: resolveModel('balanced'), routineTag: 'Course Scaffold' });
-    closeCourseCreator();
+    if (_courseInFlight.has(courseId)) {
+      updateCourseRowStatus(courseId, 'running', '⚡ Already running — check sessions panel');
+      return;
+    }
+    const aesop    = (projectsList || []).find(p => p.name === 'Aesop');
+    const wDir     = aesop ? (aesop.workDir || '') : '';
+    const prompt   = `/new-course\nCOURSE_ID: ${courseId}\nDRAFT_FILE: ${draftFile}`;
+    const routineTag = `ModGenScaffold-${courseId}`;
+    _courseInFlight.add(courseId);
+    updateCourseRowStatus(courseId, 'launching', '⏳ Launching scaffold agent…');
+    wsSend({ type: 'launch', prompt, workDir: wDir, projectName: 'Aesop',
+             model: resolveModel('balanced'), routineTag });
     pushDebugLog(`[course] Scaffold fired: ${courseId}`);
   }
 
   window.openCourseCreator  = openCourseCreator;
   window.closeCourseCreator = closeCourseCreator;
   window.renderCourseCreatorData = renderCourseCreatorData;
+  window.onCourseSessionCreated  = onCourseSessionCreated;
+  window.onCourseSessionStatus   = onCourseSessionStatus;
   window.devCourse      = devCourse;
   window.activateCourse = activateCourse;
   window.scaffoldCourse = scaffoldCourse;
@@ -10305,11 +10426,11 @@
     const rows = all.map(s => {
       const project = s.projectName;
       const isChat  = s.isChat;
-      const color   = !isChat && project && window.getProjectColorByName ? window.getProjectColorByName(project) : null;
-      const pill    = isChat
-        ? `<span style="font-size:10px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);border-radius:4px;padding:1px 6px;flex-shrink:0;">Max</span>`
-        : color
-          ? `<span style="font-size:10px;font-weight:700;color:${color};background:${color}22;border:1px solid ${color}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${escHtml(project)}</span>`
+      const color   = project && window.getProjectColorByName ? window.getProjectColorByName(project) : null;
+      const pill    = project
+        ? `<span style="font-size:10px;font-weight:700;color:${color || '#94a3b8'};background:${color ? color + '22' : 'rgba(148,163,184,0.12)'};border:1px solid ${color ? color + '44' : 'rgba(148,163,184,0.25)'};border-radius:4px;padding:1px 6px;flex-shrink:0;">${escHtml(project)}</span>`
+        : isChat
+          ? `<span style="font-size:10px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);border-radius:4px;padding:1px 6px;flex-shrink:0;">Max</span>`
           : '';
       return `<div id="cam-row-${s.id}" class="cam-session-row">
         ${pill}
