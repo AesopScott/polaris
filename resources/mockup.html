@@ -265,7 +265,7 @@
   /* Session Card */
   .card {
     border-radius: 10px; display: flex; flex-direction: column; overflow: hidden;
-    position: relative; height: 520px; min-height: 160px;
+    position: relative; height: 520px; min-height: 160px; flex-shrink: 0;
     border: 1px solid rgba(255,255,255,0.05);
     border-top: 3px solid var(--card-stripe-color, #60a5fa); /* project color */
     transform: translateY(-3px);
@@ -3667,7 +3667,15 @@
         pushDebugLog(`[pre-build-check] ${msg.verdict}: ${msg.summary}`);
         if (window._buildAfterCheck) {
           window._buildAfterCheck = false;
-          showBuildTypeModal(false);
+          if (msg.verdict === 'PASS') {
+            showBuildTypeModal(false);
+          } else {
+            const statusEl = document.getElementById('pre-build-check-status');
+            if (statusEl) {
+              statusEl.style.color = '#ef4444';
+              statusEl.innerHTML = '<strong>✗ Build blocked</strong> — fix the issues above before building.';
+            }
+          }
         }
         break;
       }
@@ -4995,9 +5003,7 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
-    const hiddenAllState = document.getElementById('hidden-all-state');
     grid.innerHTML = '';
-    if (hiddenAllState) grid.appendChild(hiddenAllState);
     const cols = [0, 1, 2].map((idx) => {
       const col = document.createElement('div');
       col.className = 'session-col';
