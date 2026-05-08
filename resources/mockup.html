@@ -1393,10 +1393,11 @@
       <span style="font-size:12px;font-weight:600;color:#22c55e;">Connected</span>
     </div>
 
-    <!-- Right third: Waiting + Running Sessions on one row -->
+    <!-- Right third: Waiting + Running Sessions + Hidden count on one row -->
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
+      <span id="stat-hidden-wrap" class="stat" style="display:none;"><span id="stat-hidden-count" style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span onclick="unhideAll()" style="cursor:pointer;color:#94a3b8;" title="Show all hidden sessions">Hidden · Show</span></span>
     </div>
 
   </div>
@@ -3127,7 +3128,7 @@
         <td>
           <div style="display:flex;gap:6px;align-items:center;">
             <input type="color" value="${color}" data-field="color" data-idx="${i}" title="Project color" style="width:24px;height:24px;border:1px solid var(--border);border-radius:4px;padding:0;background:transparent;cursor:pointer;flex-shrink:0;" />
-            <input value="${escHtmlAttr(p.name)}" data-field="name" data-idx="${i}" style="flex:1;" />
+            <input value="${escHtmlAttr(p.name)}" data-field="name" data-idx="${i}" style="flex:1;" oninput="autoFillProjectPaths(this)" />
           </div>
         </td>
         <td>
@@ -3342,6 +3343,22 @@
       renderProjectsPanel();
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     });
+  }
+
+  function autoFillProjectPaths(nameInput) {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const idx = nameInput.dataset.idx;
+    const sessDir  = document.querySelector(`[data-field="obsidianSessionsDir"][data-idx="${idx}"]`);
+    const buildDir = document.querySelector(`[data-field="obsidianDir"][data-idx="${idx}"]`);
+    if (sessDir && !sessDir.value.trim()) {
+      sessDir.value = name + '_Sessions';
+    }
+    if (buildDir && !buildDir.value.trim()) {
+      const vault = (window.currentConfig && window.currentConfig.obsidianVaultPath) || '';
+      const sep = vault && !vault.endsWith('/') && !vault.endsWith('\\') ? '/' : '';
+      buildDir.value = vault ? vault + sep + name + '_Build' : name + '_Build';
+    }
   }
 
   function saveProjects() {
@@ -5059,6 +5076,7 @@
             <button class="card-btn ${s.isForked ? 'fork-linked' : (s.forkActive ? 'fork-active' : '')}" title="${s.isForked ? 'Forked — click to promote to independent session' : (s.forkActive ? 'Fork active — click to stop mirroring' : 'Fork — mirror all prompts to a second model')}" data-action="fork" data-fork-btn>⑂</button>
             <button class="card-btn" title="Verbose — show tool calls and responses" data-action="toggle-verbose" data-verb-btn>≡</button>
             <button class="card-btn" title="Stop" data-action="stop">■</button>
+            <button class="card-btn" title="Hide — remove from view; use 'Hidden · Show' in stats bar to restore" data-action="hide-card">⊗</button>
           </div>
         </div>
         <div class="card-corner-btns">
