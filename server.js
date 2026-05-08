@@ -6799,6 +6799,73 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  // ─── get-eval-model-list ─────────────────────────────────────────────────
+  if (type === 'get-eval-model-list') {
+    try {
+      const cfg       = readConfig();
+      const vaultPath = cfg.obsidianVaultPath;
+      if (!vaultPath) { sendTo(ws, { type: 'eval-model-list', error: 'Obsidian vault path not configured' }); return; }
+
+      const polaris  = (cfg.projects || []).find(p => p.name === 'Polaris');
+      const buildDir = polaris?.obsidianDir || 'Polaris_Build';
+      const buildPath = buildDir && path.isAbsolute(path.normalize(buildDir))
+        ? path.normalize(buildDir) : path.join(vaultPath, buildDir);
+
+      function parseFencedBlock(content, label) {
+        const re = new RegExp('```' + label + '([\\s\\S]*?)```');
+        const m  = re.exec(content);
+        if (!m) return [];
+        return m[1].split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+      }
+      function extractPassRates(content) {
+        const rates = {};
+        const re = /`([a-zA-Z0-9_/.:-]+)`[^`\n]*?(\d+)\/(\d+)[^`\n]*?(\d+)%/g;
+        let m;
+        while ((m = re.exec(content)) !== null) {
+          const [, id, p, t] = m;
+          const passed = +p, total = +t;
+          if (!rates[id] || rates[id].total < total)
+            rates[id] = { passed, total, pct: Math.round(100 * passed / total) };
+        }
+        return rates;
+      }
+
+      let agentQueue = [], perfQueue = [], passRates = {};
+      const agentPath = path.join(buildPath, '5-Agentic-Benchmark.md');
+      const perfPath  = path.join(buildPath, '5-Performance-Benchmark.md');
+
+      if (fs.existsSync(agentPath)) {
+        const c = fs.readFileSync(agentPath, 'utf8');
+        agentQueue = parseFencedBlock(c, 'agent-eval-models');
+        passRates  = extractPassRates(c);
+      }
+      if (fs.existsSync(perfPath)) {
+        const c = fs.readFileSync(perfPath, 'utf8');
+        perfQueue = parseFencedBlock(c, 'benchmark-models');
+      }
+
+      const agentSet = new Set(agentQueue);
+      const perfSet  = new Set(perfQueue);
+      const allIds   = new Set([...agentQueue, ...perfQueue]);
+
+      const models = [...allIds].map(id => ({
+        id,
+        inAgentQueue: agentSet.has(id),
+        inPerfQueue:  perfSet.has(id),
+        agentPct:     passRates[id]?.pct,
+        agentPassed:  passRates[id]?.passed,
+        agentTotal:   passRates[id]?.total,
+      })).sort((a, b) => {
+        const ap = a.agentPct ?? (a.inAgentQueue ? -1 : -2);
+        const bp = b.agentPct ?? (b.inAgentQueue ? -1 : -2);
+        return bp - ap;
+      });
+
+      sendTo(ws, { type: 'eval-model-list', models, agentCount: agentQueue.length, perfCount: perfQueue.length });
+    } catch (e) { sendTo(ws, { type: 'eval-model-list', error: e.message }); }
+    return;
+  }
+
   // ─── cleanup-eval-benchmark ───────────────────────────────────────────────
   if (type === 'cleanup-eval-benchmark') {
     try {

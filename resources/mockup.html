@@ -4528,6 +4528,11 @@
         renderCourseCreatorData(msg);
         break;
 
+      case 'eval-model-list':
+        if (msg.error) { _setEvalStatus('✗ ' + msg.error); }
+        else           { _evalOnModelListLoaded(msg); }
+        break;
+
       case 'eval-benchmark-ready':
         if (msg.error) { _evalAbort('Cleanup error: ' + msg.error); }
         else           { _evalOnReady(); }
@@ -8086,11 +8091,9 @@
   window.scaffoldCourse = scaffoldCourse;
 
   // ── Course Eval ──────────────────────────────────────────────────────────
-  const EVAL_MODELS = [
-    { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5',  note: 'Speed & cost floor — 100% agent benchmark pass rate', checked: true },
-    { id: 'claude-sonnet-4-6',         label: 'Sonnet 4.6', note: 'Production baseline',                                  checked: true },
-    { id: 'claude-opus-4-7',           label: 'Opus 4.7',   note: 'Quality ceiling',                                     checked: true },
-  ];
+  let _evalModelList   = [];    // loaded from Obsidian benchmark notes
+  let _evalFilter      = '';
+  let _evalModelLoaded = false;
 
   let _evalRunning    = false;
   let _evalQueue      = [];
@@ -8113,30 +8116,101 @@
     if (reloadBtn) { reloadBtn.style.display = isPipeline ? '' : 'none'; }
     if (btnP) { btnP.style.background = isPipeline ? 'rgba(255,255,255,0.1)' : 'transparent'; btnP.style.color = isPipeline ? '#e2e8f0' : 'var(--text-muted,#64748b)'; }
     if (btnE) { btnE.style.background = isPipeline ? 'transparent' : 'rgba(255,255,255,0.1)'; btnE.style.color = isPipeline ? 'var(--text-muted,#64748b)' : '#e2e8f0'; }
-    if (!isPipeline) renderEvalRoster();
+    if (!isPipeline) { if (!_evalModelLoaded) loadEvalModels(); else renderEvalRoster(); }
+  }
+
+  function loadEvalModels() {
+    const el = document.getElementById('eval-model-roster');
+    if (el) el.innerHTML = '<div style="font-size:11px;color:var(--text-muted,#64748b);padding:8px 0;">⟳ Loading from Obsidian…</div>';
+    wsSend({ type: 'get-eval-model-list' });
+  }
+
+  function _evalOnModelListLoaded(msg) {
+    const prevChecked = new Set(_evalModelList.filter(m => m.checked).map(m => m.id));
+    _evalModelList = (msg.models || []).map(m => ({
+      ...m,
+      checked: prevChecked.size > 0 ? prevChecked.has(m.id)
+                                    : (m.agentPct !== undefined && m.agentPct >= 80),
+    }));
+    _evalModelLoaded = true;
+    _setEvalStatus(`${_evalModelList.length} models loaded (agent: ${msg.agentCount || 0}, perf: ${msg.perfCount || 0})`);
+    renderEvalRoster();
+    pushDebugLog(`[eval] Model list loaded: ${_evalModelList.length} models`);
+  }
+
+  function _evalSelectRecommended() {
+    _evalModelList.forEach(m => { m.checked = m.agentPct !== undefined && m.agentPct >= 80; });
+    renderEvalRoster();
+  }
+
+  function _evalSelectNone() {
+    _evalModelList.forEach(m => { m.checked = false; });
+    renderEvalRoster();
   }
 
   function renderEvalRoster() {
     const el = document.getElementById('eval-model-roster');
     if (!el) return;
-    const rows = EVAL_MODELS.map((m, i) =>
-      `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-        <input type="checkbox" id="eval-m-${i}" ${m.checked ? 'checked' : ''} ${_evalRunning ? 'disabled' : ''} style="accent-color:#a78bfa;cursor:pointer;" onchange="EVAL_MODELS[${i}].checked=this.checked">
-        <label for="eval-m-${i}" style="flex:1;cursor:pointer;">
-          <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${escHtml(m.label)}</span>
-          <span style="font-size:10px;color:var(--text-muted,#64748b);margin-left:6px;">${escHtml(m.note)}</span>
+
+    if (!_evalModelList.length) {
+      el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:11px;color:var(--text-muted,#64748b);">Pull model queue from Obsidian benchmark notes.</div>
+        <button onclick="loadEvalModels()" style="padding:4px 12px;border-radius:4px;border:1px solid #60a5fa;background:#60a5fa22;color:#60a5fa;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;align-self:flex-start;">Load from Obsidian</button>
+      </div>`;
+      return;
+    }
+
+    const lc = _evalFilter.toLowerCase();
+    const filtered = _evalFilter ? _evalModelList.filter(m => m.id.toLowerCase().includes(lc)) : _evalModelList;
+    const selectedCount = _evalModelList.filter(m => m.checked).length;
+
+    const rows = filtered.map(m => {
+      const gi = _evalModelList.indexOf(m);
+      const pctCol = m.agentPct !== undefined
+        ? (m.agentPct >= 80 ? '#4ade80' : m.agentPct >= 50 ? '#fbbf24' : '#f87171')
+        : '#475569';
+      const pctTag = m.agentPct !== undefined
+        ? `<span style="font-size:9px;font-weight:700;color:${pctCol};flex-shrink:0;">${m.agentPct}%</span>` : '';
+      const aTag = m.inAgentQueue ? '<span style="font-size:8px;background:#a78bfa22;color:#a78bfa;border:1px solid #a78bfa44;border-radius:2px;padding:1px 3px;flex-shrink:0;">A</span>' : '';
+      const pTag = m.inPerfQueue  ? '<span style="font-size:8px;background:#60a5fa22;color:#60a5fa;border:1px solid #60a5fa44;border-radius:2px;padding:1px 3px;flex-shrink:0;">P</span>' : '';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+        <input type="checkbox" id="eval-m-${gi}" ${m.checked ? 'checked' : ''} ${_evalRunning ? 'disabled' : ''}
+          style="accent-color:#a78bfa;cursor:pointer;flex-shrink:0;"
+          onchange="_evalModelList[${gi}].checked=this.checked">
+        <label for="eval-m-${gi}" style="flex:1;cursor:pointer;min-width:0;display:flex;align-items:center;gap:4px;">
+          <span style="font-size:10px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${escHtml(m.id)}</span>
+          ${aTag}${pTag}${pctTag}
         </label>
-      </div>`
-    ).join('');
-    el.innerHTML = `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted,#64748b);margin-bottom:4px;">Models</div>${rows}`;
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+        <input id="eval-search" type="text" placeholder="Filter…" value="${escHtml(_evalFilter)}"
+          oninput="_evalFilter=this.value;renderEvalRoster()"
+          style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:#e2e8f0;font-size:10px;padding:3px 7px;font-family:inherit;outline:none;">
+        <button onclick="loadEvalModels()" title="Reload from Obsidian"
+          style="background:transparent;border:1px solid rgba(255,255,255,0.14);border-radius:4px;color:var(--text-muted,#64748b);font-size:10px;padding:2px 7px;cursor:pointer;font-family:inherit;"
+          onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='var(--text-muted,#64748b)'">↺</button>
+      </div>
+      <div style="display:flex;gap:5px;margin-bottom:5px;align-items:center;">
+        <button onclick="_evalSelectRecommended()"
+          style="background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text-muted,#64748b);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit;"
+          onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='var(--text-muted,#64748b)'">★ Recommended</button>
+        <button onclick="_evalSelectNone()"
+          style="background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:var(--text-muted,#64748b);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit;"
+          onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='var(--text-muted,#64748b)'">None</button>
+        <span style="font-size:9px;color:#475569;margin-left:auto;">${selectedCount} / ${_evalModelList.length}</span>
+      </div>
+      <div style="max-height:150px;overflow-y:auto;">${rows}</div>`;
   }
 
   function runCourseEval() {
     if (_evalRunning) return;
-    const selected = EVAL_MODELS.filter(m => m.checked);
-    if (!selected.length) { pushDebugLog('[eval] No models selected', true); return; }
+    const selected = _evalModelList.filter(m => m.checked);
+    if (!selected.length) { pushDebugLog('[eval] No models selected', true); _setEvalStatus('Select at least one model.'); return; }
     _evalRunning    = true;
-    _evalQueue      = [...selected];
+    _evalQueue      = selected.map(m => ({ id: m.id, label: m.id.split('/').pop() }));
     _evalResults    = [];
     _evalCurrentIdx = -1;
     _evalRunStart   = Date.now();
@@ -8290,10 +8364,13 @@
     _setEvalStatus('⟳ Writing to Obsidian…');
   }
 
-  window.switchCourseTab   = switchCourseTab;
-  window.renderEvalRoster  = renderEvalRoster;
-  window.runCourseEval     = runCourseEval;
-  window.saveEvalToObsidian = saveEvalToObsidian;
+  window.switchCourseTab      = switchCourseTab;
+  window.renderEvalRoster     = renderEvalRoster;
+  window.loadEvalModels       = loadEvalModels;
+  window.runCourseEval        = runCourseEval;
+  window.saveEvalToObsidian   = saveEvalToObsidian;
+  window._evalSelectRecommended = _evalSelectRecommended;
+  window._evalSelectNone      = _evalSelectNone;
 
   window.showMcpDisconnectedBanner = showMcpDisconnectedBanner;
 
