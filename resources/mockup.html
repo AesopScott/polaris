@@ -1411,7 +1411,12 @@
   </div>
 
   <!-- Session Grid -->
-  <div class="session-grid"></div>
+  <div class="session-grid" style="position:relative;">
+    <div id="hidden-all-state" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;">
+      <div id="hidden-all-msg" style="font-size:15px;font-weight:600;color:var(--text-muted);"></div>
+      <button onclick="unhideAll()" style="pointer-events:auto;padding:6px 18px;border-radius:6px;border:1px solid var(--border);background:var(--card-btn-bg);color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;">Show All</button>
+    </div>
+  </div>
 
   <!-- Preview Panel (renders any file from a project's workDir) -->
   <div class="preview-panel hidden palette" id="preview-panel-p1" style="width:880px;height:680px;top:60px;right:60px;">
@@ -5955,6 +5960,7 @@
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
     applySessionFilter();
+    updateHiddenCount();
   }
 
   let sessionFilter = null;
@@ -5983,6 +5989,13 @@
     const count = document.getElementById('stat-hidden-count');
     if (wrap) wrap.style.display = n > 0 ? '' : 'none';
     if (count) count.textContent = n;
+
+    const totalSessions = sessionOrder.filter(id => sessionStore[id]).length;
+    const allHidden = n > 0 && totalSessions > 0 && n >= totalSessions;
+    const state = document.getElementById('hidden-all-state');
+    const msg   = document.getElementById('hidden-all-msg');
+    if (state) state.style.display = allHidden ? 'flex' : 'none';
+    if (msg)   msg.textContent = n === 1 ? '1 session hidden' : `${n} sessions hidden`;
   }
 
   window.toggleSessionFilter = function(type) {
