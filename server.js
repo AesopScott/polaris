@@ -6577,7 +6577,8 @@ function handleMessage(ws, raw) {
       const coursesPath = path.join(aesop.workDir, 'ai-academy', 'modules', 'courses-data.json');
       let allCourses = [];
       try {
-        const parsed = JSON.parse(fs.readFileSync(coursesPath, 'utf8'));
+        const raw = fs.readFileSync(coursesPath, 'utf8').replace(/^﻿/, '');
+        const parsed = JSON.parse(raw);
         allCourses = Array.isArray(parsed) ? parsed : (parsed.courses || []);
       } catch (_) { /* unreadable — continue with empty */ }
 
@@ -6617,7 +6618,7 @@ function handleMessage(ws, raw) {
         module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
       });
 
-      const liveFalse = allCourses.filter(c => c.live === false);
+      const liveFalse = allCourses.filter(c => c.live === false && !c._benchmark);
       const pending         = liveFalse.filter(c => !hasModules(c)).map(normCourse);
       const readyToActivate = liveFalse.filter(c =>  hasModules(c)).map(normCourse);
 
@@ -6648,6 +6649,105 @@ function handleMessage(ws, raw) {
     } catch (e) {
       sendTo(ws, { type: 'course-creator-data', error: e.message });
     }
+    return;
+  }
+
+  // ─── cleanup-eval-benchmark ───────────────────────────────────────────────
+  if (type === 'cleanup-eval-benchmark') {
+    try {
+      const cfg = readConfig();
+      const aesop = (cfg.projects || []).find(p => p.name === 'Aesop');
+      if (!aesop || !aesop.workDir) { sendTo(ws, { type: 'eval-benchmark-ready', error: 'Aesop project not configured' }); return; }
+      const benchDir = path.join(aesop.workDir, 'ai-academy', 'modules', 'eval-benchmark');
+      if (fs.existsSync(benchDir)) fs.rmSync(benchDir, { recursive: true, force: true });
+      sendTo(ws, { type: 'eval-benchmark-ready' });
+    } catch (e) { sendTo(ws, { type: 'eval-benchmark-ready', error: e.message }); }
+    return;
+  }
+
+  // ─── score-eval-benchmark ─────────────────────────────────────────────────
+  if (type === 'score-eval-benchmark') {
+    try {
+      const cfg = readConfig();
+      const aesop = (cfg.projects || []).find(p => p.name === 'Aesop');
+      if (!aesop || !aesop.workDir) { sendTo(ws, { type: 'eval-benchmark-scored', error: 'Aesop project not configured' }); return; }
+      const benchDir   = path.join(aesop.workDir, 'ai-academy', 'modules', 'eval-benchmark');
+      const m1Path     = path.join(benchDir, 'eval-benchmark-m1.html');
+      const fileExists = fs.existsSync(m1Path);
+      let fileSize = 0, content = '';
+      if (fileExists) {
+        fileSize = fs.statSync(m1Path).size;
+        content  = fs.readFileSync(m1Path, 'utf8');
+      }
+      const criteria = {
+        file_created: fileExists,
+        min_size:     fileSize > 10240,
+        has_quiz:     /quiz[-_]box|quiz[-_]wrap|quiz-container/i.test(content),
+        has_lab:      /lab[-_]block|chatSend|lab-wrap/i.test(content),
+        has_vocab:    /key[-_]terms|vocab|glossary/i.test(content),
+        has_callout:  /callout|callout[-_]block|side-note/i.test(content),
+      };
+      const score      = Object.values(criteria).filter(Boolean).length;
+      const totalFiles = fs.existsSync(benchDir) ? fs.readdirSync(benchDir).length : 0;
+      sendTo(ws, { type: 'eval-benchmark-scored', criteria, score, maxScore: 6, fileSize, totalFiles });
+    } catch (e) { sendTo(ws, { type: 'eval-benchmark-scored', error: e.message }); }
+    return;
+  }
+
+  // ─── write-eval-to-obsidian ───────────────────────────────────────────────
+  if (type === 'write-eval-to-obsidian') {
+    try {
+      const cfg       = readConfig();
+      const vaultPath = cfg.obsidianVaultPath;
+      if (!vaultPath) { sendTo(ws, { type: 'eval-obsidian-written', error: 'Obsidian vault path not configured' }); return; }
+      const aesop   = (cfg.projects || []).find(p => p.name === 'Aesop');
+      const sessDir = aesop?.obsidianSessionsDir || 'Aesop_Sessions';
+      const results = data.results || [];
+      const runDate = data.runDate  || new Date().toISOString().slice(0, 10);
+      const runTime = data.runTime  || '';
+
+      const fmtDur = ms => { const s = Math.floor(ms/1000), m = Math.floor(s/60); return m > 0 ? `${m}m ${s%60}s` : `${s}s`; };
+
+      const tableRows = results.map(r =>
+        `| ${r.label} | ${r.error ? 'Error' : fmtDur(r.duration)} | ${r.error ? '—' : `${r.score}/${r.maxScore}`} | ${r.error ? '—' : Math.round(r.fileSize/1024)+'KB'} | ${r.error ? '✗' : '✓'} |`
+      ).join('\n');
+
+      const fastest  = results.filter(r => !r.error).sort((a,b) => a.duration - b.duration)[0];
+      const topScore = results.filter(r => !r.error).sort((a,b) => (b.score - a.score) || (a.duration - b.duration))[0];
+
+      const md = [
+        `# Course Eval — ${runDate}`,
+        ``,
+        `**Benchmark:** What Is Artificial Intelligence? (\`eval-benchmark\`, 1 module)  `,
+        `**Models tested:** ${results.length}${runTime ? `  \n**Total time:** ${runTime}` : ''}  `,
+        ``,
+        `## Results`,
+        ``,
+        `| Model | Duration | Score | File Size | Status |`,
+        `|-------|----------|-------|-----------|--------|`,
+        tableRows,
+        ``,
+        fastest  ? `**Fastest:** ${fastest.label} (${fmtDur(fastest.duration)})  ` : null,
+        topScore ? `**Best score:** ${topScore.label} (${topScore.score}/${topScore.maxScore})  ` : null,
+        ``,
+        `## Rubric Criteria`,
+        ``,
+        `- \`file_created\` — Module HTML file exists`,
+        `- \`min_size\` — File > 10 KB (real content)`,
+        `- \`has_quiz\` — Contains quiz block`,
+        `- \`has_lab\` — Contains lab / chat block`,
+        `- \`has_vocab\` — Contains key-terms / vocabulary section`,
+        `- \`has_callout\` — Contains callout or side-note`,
+      ].filter(l => l !== null).join('\n');
+
+      const noteDir  = path.join(vaultPath, sessDir);
+      if (!fs.existsSync(noteDir)) fs.mkdirSync(noteDir, { recursive: true });
+      const filePath = path.join(noteDir, `Course-Eval-${runDate}.md`);
+      if (fs.existsSync(filePath)) fs.appendFileSync(filePath, '\n\n---\n\n' + md, 'utf8');
+      else                          fs.writeFileSync(filePath, md, 'utf8');
+
+      sendTo(ws, { type: 'eval-obsidian-written', path: filePath });
+    } catch (e) { sendTo(ws, { type: 'eval-obsidian-written', error: e.message }); }
     return;
   }
 }

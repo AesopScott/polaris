@@ -2215,7 +2215,7 @@
   </div>
 
   <!-- Course Creator Panel -->
-  <div class="preview-panel hidden palette" id="course-creator-panel" style="width:640px;height:520px;top:80px;left:160px;">
+  <div class="preview-panel hidden palette" id="course-creator-panel" style="width:680px;height:540px;top:80px;left:160px;">
     <div class="resize-handle resize-tl"></div>
     <div class="resize-handle resize-bl"></div>
     <div class="resize-handle resize-br"></div>
@@ -2223,16 +2223,31 @@
       <span class="preview-drag-handle">⠿⠿</span>
       <span style="font-size:13px;font-weight:800;">Course Creator</span>
       <span style="flex:1;"></span>
-      <button onclick="loadPendingCourses()" style="background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--text-muted,#64748b);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:6px;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='var(--text-muted,#64748b)'">↺ Reload</button>
+      <button id="cc-tab-btn-pipeline" onclick="switchCourseTab('pipeline')" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#e2e8f0;font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:3px;">Pipeline</button>
+      <button id="cc-tab-btn-eval" onclick="switchCourseTab('eval')" style="background:transparent;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--text-muted,#64748b);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:6px;">Eval</button>
+      <button id="course-reload-btn" onclick="loadPendingCourses()" style="background:transparent;border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--text-muted,#64748b);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:6px;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='var(--text-muted,#64748b)'">↺ Reload</button>
       <button class="preview-close-btn" onclick="closeCourseCreator()">✕</button>
     </div>
-    <div id="course-creator-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;">
+    <!-- Pipeline tab -->
+    <div id="cc-tab-pipeline" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;">
       <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">
         ModGen course development pipeline. Select a pending course to generate module HTML and activate it on the live site.
       </div>
       <div id="course-creator-list" style="display:flex;flex-direction:column;gap:8px;">
         <div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Loading pending courses…</div>
       </div>
+    </div>
+    <!-- Eval tab -->
+    <div id="cc-tab-eval" style="flex:1;overflow-y:auto;padding:20px;display:none;flex-direction:column;gap:14px;">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">
+        Sequential model evaluation using the <strong style="color:var(--text,#e2e8f0);">What Is AI?</strong> benchmark course (1 module). Each model builds from scratch; scored on 6 rubric criteria.
+      </div>
+      <div id="eval-model-roster"></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button id="eval-run-btn" onclick="runCourseEval()" style="padding:5px 16px;border-radius:5px;border:1px solid #a78bfa;background:#a78bfa22;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='#a78bfa44'" onmouseout="this.style.background='#a78bfa22'">Run Eval</button>
+        <div id="eval-status" style="font-size:11px;color:var(--text-muted,#64748b);"></div>
+      </div>
+      <div id="eval-results" style="display:flex;flex-direction:column;gap:6px;"></div>
     </div>
   </div>
 
@@ -4443,6 +4458,21 @@
 
       case 'course-creator-data':
         renderCourseCreatorData(msg);
+        break;
+
+      case 'eval-benchmark-ready':
+        if (msg.error) { _evalAbort('Cleanup error: ' + msg.error); }
+        else           { _evalOnReady(); }
+        break;
+
+      case 'eval-benchmark-scored':
+        if (msg.error) { _evalAbort('Score error: ' + msg.error); }
+        else           { _evalOnScored(msg); }
+        break;
+
+      case 'eval-obsidian-written':
+        if (msg.error) { _setEvalStatus('✗ Obsidian write failed: ' + msg.error); }
+        else           { _setEvalStatus('✓ Saved to Obsidian'); }
         break;
     }
   }
@@ -7822,12 +7852,17 @@
   }
 
   function onCourseSessionCreated(routineTag, sessionId) {
+    if (routineTag && routineTag.startsWith('eval-')) return; // handled by eval state machine
     const courseId = _courseTagToId(routineTag);
     if (!courseId) return;
     updateCourseRowStatus(courseId, 'running', '⚡ Agent running — session started');
   }
 
   function onCourseSessionStatus(routineTag, status) {
+    if (routineTag && routineTag.startsWith('eval-')) {
+      if (status === 'done' || status === 'error') _evalOnSessionDone(status === 'error');
+      return;
+    }
     const courseId = _courseTagToId(routineTag);
     if (!courseId) return;
     if (status === 'done') {
@@ -7950,6 +7985,216 @@
   window.devCourse      = devCourse;
   window.activateCourse = activateCourse;
   window.scaffoldCourse = scaffoldCourse;
+
+  // ── Course Eval ──────────────────────────────────────────────────────────
+  const EVAL_MODELS = [
+    { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5',  note: 'Speed & cost floor — 100% agent benchmark pass rate', checked: true },
+    { id: 'claude-sonnet-4-6',         label: 'Sonnet 4.6', note: 'Production baseline',                                  checked: true },
+    { id: 'claude-opus-4-7',           label: 'Opus 4.7',   note: 'Quality ceiling',                                     checked: true },
+  ];
+
+  let _evalRunning    = false;
+  let _evalQueue      = [];
+  let _evalResults    = [];
+  let _evalCurrentIdx = -1;
+  let _evalStartTime  = null;
+  let _evalRunStart   = null;
+  let _evalTickId     = null;
+  let _pendingEvalScore = null;
+
+  function switchCourseTab(tab) {
+    const pipeline  = document.getElementById('cc-tab-pipeline');
+    const evalTab   = document.getElementById('cc-tab-eval');
+    const reloadBtn = document.getElementById('course-reload-btn');
+    const btnP = document.getElementById('cc-tab-btn-pipeline');
+    const btnE = document.getElementById('cc-tab-btn-eval');
+    const isPipeline = tab === 'pipeline';
+    if (pipeline)  { pipeline.style.display  = isPipeline ? 'flex' : 'none'; }
+    if (evalTab)   { evalTab.style.display   = isPipeline ? 'none' : 'flex'; }
+    if (reloadBtn) { reloadBtn.style.display = isPipeline ? '' : 'none'; }
+    if (btnP) { btnP.style.background = isPipeline ? 'rgba(255,255,255,0.1)' : 'transparent'; btnP.style.color = isPipeline ? '#e2e8f0' : 'var(--text-muted,#64748b)'; }
+    if (btnE) { btnE.style.background = isPipeline ? 'transparent' : 'rgba(255,255,255,0.1)'; btnE.style.color = isPipeline ? 'var(--text-muted,#64748b)' : '#e2e8f0'; }
+    if (!isPipeline) renderEvalRoster();
+  }
+
+  function renderEvalRoster() {
+    const el = document.getElementById('eval-model-roster');
+    if (!el) return;
+    const rows = EVAL_MODELS.map((m, i) =>
+      `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+        <input type="checkbox" id="eval-m-${i}" ${m.checked ? 'checked' : ''} ${_evalRunning ? 'disabled' : ''} style="accent-color:#a78bfa;cursor:pointer;" onchange="EVAL_MODELS[${i}].checked=this.checked">
+        <label for="eval-m-${i}" style="flex:1;cursor:pointer;">
+          <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${escHtml(m.label)}</span>
+          <span style="font-size:10px;color:var(--text-muted,#64748b);margin-left:6px;">${escHtml(m.note)}</span>
+        </label>
+      </div>`
+    ).join('');
+    el.innerHTML = `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted,#64748b);margin-bottom:4px;">Models</div>${rows}`;
+  }
+
+  function runCourseEval() {
+    if (_evalRunning) return;
+    const selected = EVAL_MODELS.filter(m => m.checked);
+    if (!selected.length) { pushDebugLog('[eval] No models selected', true); return; }
+    _evalRunning    = true;
+    _evalQueue      = [...selected];
+    _evalResults    = [];
+    _evalCurrentIdx = -1;
+    _evalRunStart   = Date.now();
+    const btn = document.getElementById('eval-run-btn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'not-allowed'; }
+    _renderEvalResults();
+    renderEvalRoster();
+    _evalNextModel();
+  }
+
+  function _evalNextModel() {
+    _evalCurrentIdx++;
+    if (_evalCurrentIdx >= _evalQueue.length) { _evalComplete(); return; }
+    _setEvalStatus(`⟳ Cleaning output for ${_evalQueue[_evalCurrentIdx].label}…`);
+    wsSend({ type: 'cleanup-eval-benchmark' });
+  }
+
+  function _evalOnReady() {
+    const model = _evalQueue[_evalCurrentIdx];
+    _evalStartTime = Date.now();
+    _setEvalStatus(`⟳ Running ${model.label} (${_evalCurrentIdx + 1}/${_evalQueue.length})…`);
+    const r = (routinesList || []).find(x => x.name === 'ModGen Course Development');
+    if (!r) { _evalAbort('ModGen Course Development routine not found'); return; }
+    const aesop = (projectsList || []).find(p => p.name === 'Aesop');
+    const wDir  = r.workDir || (aesop ? aesop.workDir : '') || '';
+    wsSend({ type: 'launch', workDir: wDir, projectName: 'Aesop',
+             prompt: `COURSE_ID: eval-benchmark\n\n${r.prompt}`,
+             model: model.id, routineTag: `eval-${model.id}` });
+    if (_evalTickId) clearInterval(_evalTickId);
+    _evalTickId = setInterval(() => _renderEvalResults(), 5000);
+    pushDebugLog(`[eval] Fired ${model.label}`);
+  }
+
+  function _evalOnSessionDone(error) {
+    if (_evalTickId) { clearInterval(_evalTickId); _evalTickId = null; }
+    const model    = _evalQueue[_evalCurrentIdx];
+    const duration = Date.now() - _evalStartTime;
+    if (error) {
+      _evalResults.push({ model: model.id, label: model.label, duration, error: true, score: 0, maxScore: 6, criteria: {}, fileSize: 0 });
+      _renderEvalResults();
+      _evalNextModel();
+      return;
+    }
+    _setEvalStatus(`⟳ Scoring ${model.label} output…`);
+    _pendingEvalScore = { model, duration };
+    wsSend({ type: 'score-eval-benchmark' });
+  }
+
+  function _evalOnScored(msg) {
+    const { model, duration } = _pendingEvalScore || {};
+    _pendingEvalScore = null;
+    _evalResults.push({
+      model: model ? model.id : '?', label: model ? model.label : '?',
+      duration, score: msg.score || 0, maxScore: msg.maxScore || 6,
+      criteria: msg.criteria || {}, fileSize: msg.fileSize || 0,
+      totalFiles: msg.totalFiles || 0, error: false,
+    });
+    _renderEvalResults();
+    _evalNextModel();
+  }
+
+  function _evalAbort(reason) {
+    _evalRunning = false;
+    if (_evalTickId) { clearInterval(_evalTickId); _evalTickId = null; }
+    _setEvalStatus(`✗ Aborted — ${reason}`);
+    const btn = document.getElementById('eval-run-btn');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+    renderEvalRoster();
+    pushDebugLog(`[eval] Aborted: ${reason}`, true);
+  }
+
+  function _evalComplete() {
+    _evalRunning = false;
+    if (_evalTickId) { clearInterval(_evalTickId); _evalTickId = null; }
+    const totalMs = Date.now() - _evalRunStart;
+    const mm = Math.floor(totalMs / 60000), ss = Math.floor((totalMs % 60000) / 1000);
+    _setEvalStatus(`✓ Complete — ${_evalResults.length} models in ${mm > 0 ? mm + 'm ' : ''}${ss}s`);
+    const btn = document.getElementById('eval-run-btn');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+    renderEvalRoster();
+    _renderEvalResults(true);
+    pushDebugLog(`[eval] Complete: ${_evalResults.length} models evaluated`);
+  }
+
+  function _renderEvalResults(showSave) {
+    const el = document.getElementById('eval-results');
+    if (!el) return;
+    const fmtDur = ms => { const s = Math.floor(ms/1000), m = Math.floor(s/60); return m > 0 ? `${m}m ${s%60}s` : `${s}s`; };
+    const scoreColor = (score, max) => score/max >= 0.83 ? '#4ade80' : score/max >= 0.5 ? '#fbbf24' : '#f87171';
+
+    let html = '<div style="display:flex;flex-direction:column;gap:5px;">';
+
+    for (const r of _evalResults) {
+      const col  = r.error ? '#f87171' : scoreColor(r.score, r.maxScore);
+      const meta = r.error ? 'Error' : `${fmtDur(r.duration)} · ${Math.round(r.fileSize/1024)}KB`;
+      const score = r.error ? '<span style="color:#f87171;">✗</span>'
+                             : `<span style="font-weight:700;color:${col};">${r.score}/${r.maxScore}</span>`;
+      const tips = r.error ? '' : Object.entries(r.criteria || {})
+        .map(([k,v]) => `<span style="color:${v?'#4ade80':'#f87171'};font-size:9px;">${v?'✓':'✗'} ${k}</span>`)
+        .join(' ');
+      html += `<div style="padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${escHtml(r.label)}</span>
+            <span style="font-size:10px;color:var(--text-muted,#64748b);margin-left:8px;">${meta}</span>
+          </div>
+          ${score}
+        </div>
+        ${tips ? `<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${tips}</div>` : ''}
+      </div>`;
+    }
+
+    if (_evalRunning && _evalCurrentIdx < _evalQueue.length) {
+      const m = _evalQueue[_evalCurrentIdx];
+      const elapsed = _evalStartTime ? Math.floor((Date.now() - _evalStartTime) / 1000) : 0;
+      const mm = Math.floor(elapsed/60), ss = elapsed%60;
+      html += `<div style="padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.04);border:1px solid #fbbf2444;">
+        <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${escHtml(m.label)}</span>
+        <span style="font-size:10px;color:#fbbf24;margin-left:8px;">⟳ ${mm > 0 ? mm + 'm ' : ''}${ss}s</span>
+      </div>`;
+    }
+
+    const completedIds = new Set(_evalResults.map(r => r.model));
+    _evalQueue.slice(_evalCurrentIdx + 1).filter(m => !completedIds.has(m.id)).forEach(m => {
+      html += `<div style="padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);">
+        <span style="font-size:12px;color:var(--text-muted,#64748b);">${escHtml(m.label)}</span>
+        <span style="font-size:10px;color:#64748b;margin-left:8px;">Pending</span>
+      </div>`;
+    });
+
+    html += '</div>';
+
+    if (showSave && _evalResults.length > 0) {
+      html += `<button onclick="saveEvalToObsidian()" style="margin-top:6px;width:100%;padding:6px;border-radius:5px;border:1px solid #60a5fa;background:#60a5fa22;color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='#60a5fa44'" onmouseout="this.style.background='#60a5fa22'">Save Results to Obsidian</button>`;
+    }
+
+    el.innerHTML = html;
+  }
+
+  function _setEvalStatus(msg) {
+    const el = document.getElementById('eval-status');
+    if (el) el.textContent = msg;
+  }
+
+  function saveEvalToObsidian() {
+    const runDate = new Date().toISOString().slice(0, 10);
+    const totalMs = _evalRunStart ? Date.now() - _evalRunStart : 0;
+    const mm = Math.floor(totalMs/60000), ss = Math.floor((totalMs%60000)/1000);
+    wsSend({ type: 'write-eval-to-obsidian', results: _evalResults, runDate,
+             runTime: totalMs > 0 ? (mm > 0 ? `${mm}m ${ss}s` : `${ss}s`) : '' });
+    _setEvalStatus('⟳ Writing to Obsidian…');
+  }
+
+  window.switchCourseTab   = switchCourseTab;
+  window.renderEvalRoster  = renderEvalRoster;
+  window.runCourseEval     = runCourseEval;
+  window.saveEvalToObsidian = saveEvalToObsidian;
 
   window.showMcpDisconnectedBanner = showMcpDisconnectedBanner;
 
