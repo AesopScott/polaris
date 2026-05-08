@@ -698,6 +698,19 @@
   }
   .routine-notif-item:last-child { border-bottom: none; }
 
+  /* Build-type picker popup */
+  #build-type-popup {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 10000; display: flex; flex-direction: column;
+    width: 280px; padding: 20px 20px 16px;
+    background: var(--card-bg); color: var(--text);
+    border-radius: 14px; border: 1px solid rgba(96,165,250,0.3);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(96,165,250,0.1);
+  }
+  #build-type-popup.hidden { display: none; }
+  #build-type-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.55); cursor: pointer; }
+  #build-type-backdrop.hidden { display: none; }
+
   /* Factory Coming Soon Popup */
   #factory-coming-soon-popup {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -1826,26 +1839,25 @@
     </div>
   </div>
 
-  <!-- Build-type picker modal -->
-  <div id="build-type-overlay" class="overlay-bg hidden" style="z-index:1600;" onclick="if(event.target===this)closeBuildTypeModal()">
-    <div class="palette" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:300px;padding:20px 20px 14px;display:flex;flex-direction:column;gap:8px;">
-      <div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:6px;">Choose Build Type</div>
-      <button onclick="confirmBuild('private')" class="hbtn btn-tracking" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;">
-        <span>🔒</span>
-        <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
-          <span style="font-size:11px;font-weight:600;">Private</span>
-          <span style="font-size:10px;color:#94a3b8;font-weight:400;">All features — builds &amp; installs locally</span>
-        </span>
-      </button>
-      <button onclick="confirmBuild('public')" class="hbtn btn-gold" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;">
-        <span>🌐</span>
-        <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
-          <span style="font-size:11px;font-weight:600;">Public</span>
-          <span style="font-size:10px;color:#b45309;font-weight:400;">Public features only — produces installer in dist\</span>
-        </span>
-      </button>
-      <button onclick="closeBuildTypeModal()" style="background:none;border:none;color:#64748b;font-size:10px;cursor:pointer;padding:6px;align-self:center;">Cancel</button>
-    </div>
+  <!-- Build-type picker -->
+  <div id="build-type-backdrop" class="hidden" onclick="closeBuildTypeModal()"></div>
+  <div id="build-type-popup" class="hidden">
+    <div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:12px;text-align:center;">Choose Build Type</div>
+    <button onclick="confirmBuild('private')" class="hbtn btn-tracking" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;width:100%;margin-bottom:8px;">
+      <span>🔒</span>
+      <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
+        <span style="font-size:11px;font-weight:600;">Private</span>
+        <span style="font-size:10px;color:#94a3b8;font-weight:400;">All features — builds &amp; installs locally</span>
+      </span>
+    </button>
+    <button onclick="confirmBuild('public')" class="hbtn btn-gold" style="justify-content:flex-start;gap:10px;height:auto;padding:10px 12px;width:100%;margin-bottom:12px;">
+      <span>🌐</span>
+      <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
+        <span style="font-size:11px;font-weight:600;">Public</span>
+        <span style="font-size:10px;color:#b45309;font-weight:400;">Public features only — produces installer in dist\</span>
+      </span>
+    </button>
+    <button onclick="closeBuildTypeModal()" style="background:none;border:none;color:#64748b;font-size:10px;cursor:pointer;padding:4px;display:block;margin:0 auto;">Cancel</button>
   </div>
 
   <!-- Cross-Check detail modal -->
@@ -7978,6 +7990,13 @@
               <button onclick="openExternal('https://console.anthropic.com/settings/billing')" style="padding:3px 10px;font-size:11px;border-radius:4px;border:1px solid #444;background:var(--card-btn-bg);color:var(--text);cursor:pointer;">Dashboard ↗</button>
             </td>
           </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:14px 10px;font-size:12px;font-weight:700;white-space:nowrap;">Claude Max</td>
+            <td style="padding:14px 10px;font-size:12px;opacity:0.4;">Max plan usage</td>
+            <td style="padding:14px 10px;text-align:right;white-space:nowrap;">
+              <button onclick="openExternal('https://claude.ai/settings')" style="padding:3px 10px;font-size:11px;border-radius:4px;border:1px solid #444;background:var(--card-btn-bg);color:var(--text);cursor:pointer;">Settings ↗</button>
+            </td>
+          </tr>
           <tr>
             <td style="padding:14px 10px;font-size:12px;font-weight:700;white-space:nowrap;">OpenAI</td>
             <td style="padding:14px 10px;font-size:12px;opacity:0.4;">Billing via console</td>
@@ -11127,12 +11146,14 @@
 
   function showBuildTypeModal(skipCheck) {
     window._buildSkipCheck = !!skipCheck;
-    document.getElementById('build-type-overlay').classList.remove('hidden');
+    document.getElementById('build-type-backdrop').classList.remove('hidden');
+    document.getElementById('build-type-popup').classList.remove('hidden');
   }
   window.showBuildTypeModal = showBuildTypeModal;
 
   function closeBuildTypeModal() {
-    document.getElementById('build-type-overlay').classList.add('hidden');
+    document.getElementById('build-type-backdrop').classList.add('hidden');
+    document.getElementById('build-type-popup').classList.add('hidden');
   }
   window.closeBuildTypeModal = closeBuildTypeModal;
 
