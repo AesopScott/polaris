@@ -3570,6 +3570,10 @@
           }
         }
         pushDebugLog(`[pre-build-check] ${msg.verdict}: ${msg.summary}`);
+        if (window._buildAfterCheck) {
+          window._buildAfterCheck = false;
+          showBuildTypeModal(false);
+        }
         break;
       }
       case 'pre-build-check-error': {
@@ -11153,8 +11157,13 @@
   }
   window.ccBuild = ccBuild;
 
-  function executeBuild(skipCheck) {
-    showBuildTypeModal(!!skipCheck);
+  function executeBuild() {
+    if (confirm('Run pre-build cross-check before building?')) {
+      window._buildAfterCheck = true;
+      runPreBuildCheck();
+    } else {
+      showBuildTypeModal(true);
+    }
   }
   window.executeBuild = executeBuild;
 
