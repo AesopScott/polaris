@@ -2196,11 +2196,15 @@
   </div>
 
   <!-- Course Creator Panel -->
-  <div id="course-creator-backdrop" class="hidden" onclick="closeCourseCreator()" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;"></div>
-  <div id="course-creator-panel" class="hidden palette" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:640px;max-height:80vh;display:flex;flex-direction:column;z-index:9999;border-radius:12px;overflow:hidden;">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <div style="font-size:14px;font-weight:700;color:var(--text);">Course Creator</div>
-      <button onclick="closeCourseCreator()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;line-height:1;">×</button>
+  <div class="preview-panel hidden palette" id="course-creator-panel" style="width:640px;height:520px;top:80px;left:160px;">
+    <div class="resize-handle resize-tl"></div>
+    <div class="resize-handle resize-bl"></div>
+    <div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar" id="course-creator-drag">
+      <span class="preview-drag-handle">⠿⠿</span>
+      <span style="font-size:13px;font-weight:800;">Course Creator</span>
+      <span style="flex:1;"></span>
+      <button class="preview-close-btn" onclick="closeCourseCreator()">✕</button>
     </div>
     <div id="course-creator-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;">
       <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">
@@ -2209,9 +2213,6 @@
       <div id="course-creator-list" style="display:flex;flex-direction:column;gap:8px;">
         <div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Loading pending courses…</div>
       </div>
-    </div>
-    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0;">
-      <button onclick="closeCourseCreator()" style="font-size:12px;padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);cursor:pointer;">Close</button>
     </div>
   </div>
 
@@ -4402,6 +4403,10 @@
       case 'error':
         alert(`Server error: ${msg.text}`);
         pushDebugLog(`[server error] ${msg.text}`, true);
+        break;
+
+      case 'course-creator-data':
+        renderCourseCreatorData(msg);
         break;
     }
   }
@@ -7664,20 +7669,122 @@
 
   function openCourseCreator() {
     document.getElementById('course-creator-panel')?.classList.remove('hidden');
-    document.getElementById('course-creator-backdrop')?.classList.remove('hidden');
     loadPendingCourses();
   }
   function closeCourseCreator() {
-    document.getElementById('course-creator-panel')?.classList.add('hidden');
-    document.getElementById('course-creator-backdrop')?.classList.add('hidden');
+    const panel = document.getElementById('course-creator-panel');
+    if (!panel) return;
+    panel.classList.add('hidden');
+    panel.style.top  = '80px';
+    panel.style.left = '160px';
+    panel.style.width  = '640px';
+    panel.style.height = '520px';
   }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeCourseCreator();
+  }, true);
   function loadPendingCourses() {
     const list = document.getElementById('course-creator-list');
     if (!list) return;
-    list.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Pending courses will appear here.<br>Full pipeline wiring coming soon.</div>';
+    list.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">Loading…</div>';
+    wsSend({ type: 'get-course-creator-data' });
   }
+
+  function renderCourseCreatorData(data) {
+    const list = document.getElementById('course-creator-list');
+    if (!list) return;
+    if (data.error) {
+      list.innerHTML = `<div style="font-size:11px;color:var(--danger,#f87171);text-align:center;padding:24px 0;">${escHtml(data.error)}</div>`;
+      return;
+    }
+    const pending         = data.pending         || [];
+    const readyToActivate = data.ready_to_activate || [];
+    const drafts          = data.approved_drafts  || [];
+
+    function badge(label, color) {
+      return `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 6px;border-radius:3px;background:${color}22;color:${color};border:1px solid ${color}55;">${escHtml(label)}</span>`;
+    }
+    function modLabel(n) {
+      return n ? `${n} mod` : '';
+    }
+
+    function makeSectionHTML(title, courses, actionLabel, actionColor, actionFn, extraBadge) {
+      if (!courses.length) return '';
+      const rows = courses.map(c => {
+        const catBadge = c.category ? badge(c.category, '#94a3b8') : '';
+        const langBadge = c.language && c.language !== 'en' ? badge(c.language, '#60a5fa') : '';
+        const mods = modLabel(c.module_count);
+        const extra = extraBadge ? extraBadge(c) : '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;color:var(--text,#e2e8f0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.title)}</div>
+            <div style="display:flex;gap:5px;align-items:center;margin-top:3px;flex-wrap:wrap;">
+              ${catBadge}${langBadge}${extra}
+              ${mods ? `<span style="font-size:10px;color:var(--text-muted,#64748b);">${escHtml(mods)}</span>` : ''}
+            </div>
+          </div>
+          <button onclick="${actionFn(c)}" style="flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid ${actionColor};background:${actionColor}22;color:${actionColor};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='${actionColor}44'" onmouseout="this.style.background='${actionColor}22'">${escHtml(actionLabel)}</button>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:14px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted,#64748b);margin-bottom:6px;">${escHtml(title)} <span style="font-weight:400;">(${courses.length})</span></div>
+        <div style="display:flex;flex-direction:column;gap:5px;">${rows}</div>
+      </div>`;
+    }
+
+    const pendingHTML = makeSectionHTML(
+      'Needs Development', pending, 'Develop', '#a78bfa',
+      c => `devCourse(${JSON.stringify(c.course_id)},${JSON.stringify(c.title)})`
+    );
+    const activateHTML = makeSectionHTML(
+      'Ready to Activate', readyToActivate, 'Activate', '#4ade80',
+      c => `activateCourse(${JSON.stringify(c.course_id)},${JSON.stringify(c.title)})`
+    );
+    const draftsHTML = makeSectionHTML(
+      'Approved Drafts — Unscaffolded', drafts, 'Scaffold', '#fb923c',
+      c => `scaffoldCourse(${JSON.stringify(c.course_id)},${JSON.stringify(c.draft_file || '')})`,
+      c => badge('draft', '#fb923c')
+    );
+
+    const empty = !pending.length && !readyToActivate.length && !drafts.length;
+    list.innerHTML = empty
+      ? '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:24px 0;">No pending courses found.</div>'
+      : pendingHTML + activateHTML + draftsHTML;
+  }
+
+  function devCourse(courseId, courseName) {
+    const r = (routinesList || []).find(x => x.name === 'ModGen Course Development');
+    if (!r) { pushDebugLog('[course] ModGen Course Development routine not found', true); return; }
+    const modified = Object.assign({}, r, { prompt: `COURSE_ID: ${courseId}\n\n${r.prompt}` });
+    fireRoutine(modified, {});
+    closeCourseCreator();
+    pushDebugLog(`[course] Develop fired: ${courseName} (${courseId})`);
+  }
+
+  function activateCourse(courseId, courseName) {
+    const r = (routinesList || []).find(x => x.name === 'ModGen Course Activation');
+    if (!r) { pushDebugLog('[course] ModGen Course Activation routine not found', true); return; }
+    const modified = Object.assign({}, r, { prompt: `COURSE_ID: ${courseId}\n\n${r.prompt}` });
+    fireRoutine(modified, {});
+    closeCourseCreator();
+    pushDebugLog(`[course] Activate fired: ${courseName} (${courseId})`);
+  }
+
+  function scaffoldCourse(courseId, draftFile) {
+    const aesop = (projectsList || []).find(p => p.name === 'Aesop');
+    const workDir = aesop ? (aesop.workDir || '') : '';
+    const prompt = `/new-course\nCOURSE_ID: ${courseId}\nDRAFT_FILE: ${draftFile}`;
+    wsSend({ type: 'launch', prompt, workDir, projectName: 'Aesop', model: resolveModel('balanced'), routineTag: 'Course Scaffold' });
+    closeCourseCreator();
+    pushDebugLog(`[course] Scaffold fired: ${courseId}`);
+  }
+
   window.openCourseCreator  = openCourseCreator;
   window.closeCourseCreator = closeCourseCreator;
+  window.renderCourseCreatorData = renderCourseCreatorData;
+  window.devCourse      = devCourse;
+  window.activateCourse = activateCourse;
+  window.scaffoldCourse = scaffoldCourse;
 
   window.showMcpDisconnectedBanner = showMcpDisconnectedBanner;
 
@@ -8506,7 +8613,7 @@
 
   function saveManifest() {
     if (!_manifest || window.isPublicBuild) return;
-    wsSend({ type: 'save-manifest', manifest: _manifest });
+    wsSend({ type: 'save-manifest', manifest: _manifest, uiToken: window._uiToken });
   }
 
   window.openManifest   = openManifest;

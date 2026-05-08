@@ -61,7 +61,16 @@ let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
 catch (e) { console.log('[polaris] mcp-catalog.json not found:', e.message); }
 
-const MANIFEST_PATH = path.join(RESOURCES_PATH, 'feature-manifest.json');
+const MANIFEST_PATH   = path.join(RESOURCES_PATH, 'feature-manifest.json');
+const BUILD_FLAGS_PATH = path.join(RESOURCES_PATH, 'build-flags.json');
+
+let BUILD_FLAGS = { publicBuild: false };
+try { BUILD_FLAGS = JSON.parse(fs.readFileSync(BUILD_FLAGS_PATH, 'utf8')); }
+catch (e) { console.log('[polaris] build-flags.json not found, defaulting to private build'); }
+
+const IS_PUBLIC_BUILD = BUILD_FLAGS.publicBuild === true;
+console.log(`[polaris] build mode: ${IS_PUBLIC_BUILD ? 'PUBLIC' : 'PRIVATE'}`);
+
 function readManifest() {
   try { return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')); }
   catch (e) { return { features: [], secrets: [] }; }
@@ -517,7 +526,13 @@ function syncGlobalToProjects() {
           if (fs.existsSync(dest)) {
             const existing = fs.readFileSync(dest, 'utf8');
             const idx = existing.indexOf(PROJECT_SPECIFIC_MARKER);
-            if (idx !== -1) projectSection = existing.slice(idx + PROJECT_SPECIFIC_MARKER.length);
+            if (idx !== -1) {
+              // Strip any accumulated marker repetitions from previous corrupt syncs,
+              // then collapse the excess blank lines they leave behind.
+              projectSection = existing.slice(idx + PROJECT_SPECIFIC_MARKER.length)
+                .split(PROJECT_SPECIFIC_MARKER).join('')
+                .replace(/\n{3,}/g, '\n\n');
+            }
           }
           const newContent = `${globalContent}\n\n${PROJECT_SPECIFIC_MARKER}${projectSection}`;
           // Skip write if content is unchanged — prevents infinite watch→sync→write→watch loop.
@@ -544,9 +559,13 @@ function watchGlobalFiles() {
 
   for (const filePath of filesToWatch) {
     if (!fs.existsSync(filePath)) continue;
+    let debounceTimer = null;
     fs.watch(filePath, () => {
-      const results = syncGlobalToProjects();
-      broadcast({ type: 'sync-complete', results });
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const results = syncGlobalToProjects();
+        broadcast({ type: 'sync-complete', results });
+      }, 500);
     });
   }
 
@@ -4981,11 +5000,24 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'get-manifest') {
-    sendTo(ws, { type: 'manifest', manifest: readManifest() });
+    const manifest = readManifest();
+    if (IS_PUBLIC_BUILD) {
+      manifest.features = manifest.features.filter(f => f.public !== false);
+      manifest.secrets  = manifest.secrets.filter(s => s.public !== false);
+    }
+    sendTo(ws, { type: 'manifest', manifest });
     return;
   }
 
   if (type === 'save-manifest') {
+    if (IS_PUBLIC_BUILD) {
+      sendTo(ws, { type: 'manifest-saved', ok: false, error: 'Cannot modify manifest in a public build' });
+      return;
+    }
+    if (msg.uiToken !== UI_TOKEN) {
+      sendTo(ws, { type: 'manifest-saved', ok: false, error: 'Manifest can only be modified manually via the UI' });
+      return;
+    }
     const { manifest } = msg;
     if (!manifest || !Array.isArray(manifest.features) || !Array.isArray(manifest.secrets)) {
       sendTo(ws, { type: 'manifest-saved', ok: false, error: 'Invalid manifest structure' });
@@ -5310,6 +5342,7 @@ function handleMessage(ws, raw) {
 
   if (type === 'run-build') {
     const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
+    const buildType  = msg.buildType === 'public' ? 'public' : 'private';
     // Pre-build cross-check gate: build only proceeds if a cross-check has been
     // run against the current repo state. If not, return early with a flag the
     // UI uses to prompt the user to run a check first. msg.skipCheck = true
@@ -5326,10 +5359,9 @@ function handleMessage(ws, raw) {
         return;
       }
     }
-    // Direct execution of the build-install script. NOT through an agent
-    // session — that path was confused: agent's confirmation rules made it
-    // ask before running, paid LLM tokens for a script invocation, and got
-    // orphaned mid-execution when the script killed Polaris.
+    // Direct execution of the build script. NOT through an agent session —
+    // that path paid LLM tokens for a script invocation and got orphaned
+    // mid-execution when the script killed Polaris.
     //
     // Spawns powershell.exe detached so the script survives Polaris's death
     // (build-install.ps1 kills Polaris.exe early to free dist file locks).
@@ -5343,7 +5375,8 @@ function handleMessage(ws, raw) {
       fs.writeFileSync(LAST_BUILD_HEAD_PATH, JSON.stringify({ head, version: pkg.version, builtAt: new Date().toISOString() }), 'utf8');
     } catch {}
 
-    const fullScript = path.join(sourcePath, 'scripts', 'build-install.ps1');
+    const scriptName = buildType === 'public' ? 'build-public.ps1' : 'build-install.ps1';
+    const fullScript = path.join(sourcePath, 'scripts', scriptName);
     if (!fs.existsSync(fullScript)) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
       return;
@@ -5361,8 +5394,12 @@ function handleMessage(ws, raw) {
         cwd: sourcePath,
       });
       child.unref();
-      sendTo(ws, { type: 'build-result', ok: true, message: `Build started (pid ${child.pid}). Polaris will close shortly; the new version will install automatically.` });
-      console.log(`[run-build] spawned detached powershell pid=${child.pid} script=${fullScript}`);
+      const isPublic = buildType === 'public';
+      const okMsg = isPublic
+        ? `Public build started (pid ${child.pid}). The installer will appear in dist\\ when complete — Polaris stays running.`
+        : `Build started (pid ${child.pid}). Polaris will close shortly; the new version will install automatically.`;
+      sendTo(ws, { type: 'build-result', ok: true, closesApp: !isPublic, message: okMsg });
+      console.log(`[run-build] spawned detached powershell pid=${child.pid} type=${buildType} script=${fullScript}`);
     } catch (e) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Spawn failed: ${e.message}` });
       console.error('[run-build] spawn error:', e);
@@ -6521,6 +6558,71 @@ function handleMessage(ws, raw) {
     broadcast({ type: 'fork-promoted', primarySessionId: primaryId, forkSessionId });
     return;
   }
+
+  if (type === 'get-course-creator-data') {
+    try {
+      const cfg = readConfig();
+      const aesop = (cfg.projects || []).find(p => p.name === 'Aesop');
+      if (!aesop || !aesop.workDir) {
+        sendTo(ws, { type: 'course-creator-data', error: 'Aesop project not configured' });
+        return;
+      }
+
+      const coursesPath = path.join(aesop.workDir, 'ai-academy', 'modules', 'courses-data.json');
+      let allCourses = [];
+      try {
+        allCourses = JSON.parse(fs.readFileSync(coursesPath, 'utf8'));
+      } catch (_) { /* unreadable — continue with empty */ }
+
+      const pending = allCourses
+        .filter(c => c.live === false && !c.generation_complete)
+        .map(c => ({
+          course_id: c.course_id,
+          title: c.title || c.course_id,
+          category: c.category || '',
+          language: c.language || 'en',
+          module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
+        }));
+
+      const readyToActivate = allCourses
+        .filter(c => c.live === false && c.generation_complete === true)
+        .map(c => ({
+          course_id: c.course_id,
+          title: c.title || c.course_id,
+          category: c.category || '',
+          language: c.language || 'en',
+          module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
+        }));
+
+      const draftsDir = path.join(aesop.workDir, 'aip', 'drafts');
+      let approvedDrafts = [];
+      try {
+        const existingIds = new Set(allCourses.map(c => c.course_id));
+        const draftsEntries = fs.readdirSync(draftsDir, { withFileTypes: true });
+        for (const entry of draftsEntries) {
+          if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+          try {
+            const draft = JSON.parse(fs.readFileSync(path.join(draftsDir, entry.name), 'utf8'));
+            if (draft.status === 'approved' && draft.course_id && !existingIds.has(draft.course_id)) {
+              approvedDrafts.push({
+                course_id: draft.course_id,
+                title: draft.title || draft.course_id,
+                category: draft.category || '',
+                language: draft.language || 'en',
+                module_count: Array.isArray(draft.modules) ? draft.modules.length : 0,
+                draft_file: entry.name
+              });
+            }
+          } catch (_) { /* skip malformed draft */ }
+        }
+      } catch (_) { /* drafts dir unreadable — continue with empty */ }
+
+      sendTo(ws, { type: 'course-creator-data', pending, ready_to_activate: readyToActivate, approved_drafts: approvedDrafts });
+    } catch (e) {
+      sendTo(ws, { type: 'course-creator-data', error: e.message });
+    }
+    return;
+  }
 }
 
 // â"€â"€â"€ Boot â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -6613,6 +6715,7 @@ wss.on('connection', (ws) => {
       recentCommits,
       connectedMcpServers: [...new Set([...getEnabledMcpServers(), ...getConnectedMcpServers()])].filter(s => s !== 'polaris'),
       uiToken: UI_TOKEN,
+      publicBuild: IS_PUBLIC_BUILD,
     });
 
     // Send the OpenRouter model-costs dict so estimateCost can do exact matches.
