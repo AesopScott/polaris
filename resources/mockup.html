@@ -717,6 +717,19 @@
   #build-type-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.55); cursor: pointer; }
   #build-type-backdrop.hidden { display: none; }
 
+  /* Pending-builds multi-project picker */
+  #pending-builds-popup {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 10000; display: flex; flex-direction: column;
+    width: 300px; padding: 20px 20px 16px;
+    background: #0f172a;
+    border-radius: 14px; border: 1px solid rgba(96,165,250,0.3);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(96,165,250,0.1);
+  }
+  #pending-builds-popup.hidden { display: none; }
+  #pending-builds-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.55); cursor: pointer; }
+  #pending-builds-backdrop.hidden { display: none; }
+
   /* Factory Coming Soon Popup */
   #factory-coming-soon-popup {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -1866,6 +1879,15 @@
       </span>
     </button>
     <button onclick="closeBuildTypeModal()" style="background:none;border:none;color:#64748b;font-size:10px;cursor:pointer;padding:4px;display:block;margin:0 auto;">Cancel</button>
+  </div>
+
+  <!-- Multi-project pending builds picker -->
+  <div id="pending-builds-backdrop" class="hidden" onclick="closePendingBuildsModal()"></div>
+  <div id="pending-builds-popup" class="hidden">
+    <div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:10px;text-align:center;">Pending Builds</div>
+    <div id="pending-builds-list" style="margin-bottom:10px;"></div>
+    <button onclick="buildSelected()" class="hbtn btn-tracking" style="width:100%;margin-bottom:6px;justify-content:center;">Build Selected</button>
+    <button onclick="closePendingBuildsModal()" style="background:none;border:none;color:#64748b;font-size:10px;cursor:pointer;padding:4px;display:block;margin:0 auto;">Cancel</button>
   </div>
 
   <!-- Cross-Check detail modal -->
@@ -3507,6 +3529,20 @@
           setTimeout(() => { el.style.display = 'none'; }, 4000);
         }
         pushDebugLog(`[catalog] refresh: ${msg.ok ? 'ok' : 'failed'} (${msg.count} models)`);
+        break;
+      }
+      case 'pending-builds': {
+        const btn = document.getElementById('btn-build');
+        if (btn) { btn.disabled = false; btn.querySelector('.lbl').textContent = 'Build'; }
+        if (!msg.projects || msg.projects.length === 0) {
+          alert('All projects are up to date — no builds pending.');
+          break;
+        }
+        if (msg.projects.length === 1 && msg.projects[0].isPolaris) {
+          showPolarisPreBuildPrompt();
+        } else {
+          showPendingBuildsModal(msg.projects);
+        }
         break;
       }
       case 'build-result': {
@@ -11567,6 +11603,13 @@
   window.ccBuild = ccBuild;
 
   function executeBuild() {
+    const btn = document.getElementById('btn-build');
+    if (btn) { btn.disabled = true; btn.querySelector('.lbl').textContent = 'Checking…'; }
+    wsSend({ type: 'get-pending-builds' });
+  }
+  window.executeBuild = executeBuild;
+
+  function showPolarisPreBuildPrompt() {
     if (confirm('Run pre-build cross-check before building?')) {
       window._buildAfterCheck = true;
       runPreBuildCheck();
@@ -11574,7 +11617,54 @@
       showBuildTypeModal(true);
     }
   }
-  window.executeBuild = executeBuild;
+  window.showPolarisPreBuildPrompt = showPolarisPreBuildPrompt;
+
+  function showPendingBuildsModal(projects) {
+    window._pendingBuildProjects = projects;
+    const list = document.getElementById('pending-builds-list');
+    list.innerHTML = projects.map((p, i) => {
+      const since = p.lastBuiltAt
+        ? `last built ${new Date(p.lastBuiltAt).toLocaleDateString()}`
+        : 'never built';
+      const commits = p.commitCount > 0 ? `${p.commitCount} commit${p.commitCount !== 1 ? 's' : ''}` : '';
+      const uncommitted = p.hasUncommitted ? 'uncommitted changes' : '';
+      const detail = [commits, uncommitted].filter(Boolean).join(' + ') || since;
+      return `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:#1e293b;margin-bottom:6px;cursor:pointer;">
+        <input type="checkbox" data-idx="${i}" checked style="width:13px;height:13px;cursor:pointer;accent-color:#3b82f6;">
+        <span style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+          <span style="font-size:11px;font-weight:600;color:#e2e8f0;">${p.name}</span>
+          <span style="font-size:10px;color:#64748b;">${detail}</span>
+        </span>
+      </label>`;
+    }).join('');
+    document.getElementById('pending-builds-backdrop').classList.remove('hidden');
+    document.getElementById('pending-builds-popup').classList.remove('hidden');
+  }
+  window.showPendingBuildsModal = showPendingBuildsModal;
+
+  function closePendingBuildsModal() {
+    document.getElementById('pending-builds-backdrop').classList.add('hidden');
+    document.getElementById('pending-builds-popup').classList.add('hidden');
+  }
+  window.closePendingBuildsModal = closePendingBuildsModal;
+
+  function buildSelected() {
+    const checkboxes = document.querySelectorAll('#pending-builds-list input[type=checkbox]');
+    const selected = [];
+    checkboxes.forEach(cb => {
+      if (cb.checked) selected.push(window._pendingBuildProjects[parseInt(cb.dataset.idx)]);
+    });
+    closePendingBuildsModal();
+    if (selected.length === 0) return;
+    selected.forEach(p => {
+      if (p.isPolaris) {
+        showPolarisPreBuildPrompt();
+      } else {
+        wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name });
+      }
+    });
+  }
+  window.buildSelected = buildSelected;
 
   function showBuildTypeModal(skipCheck) {
     window._buildSkipCheck = !!skipCheck;

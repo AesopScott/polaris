@@ -2393,8 +2393,79 @@ function loadAllCrossChecks(limit = 200) {
 // Aggregate cross-check pass over every file changed since the last check.
 // Build button gates on this — if the repo state hasn't been reviewed, build
 // is rejected and the UI prompts the user to run the check first.
-const PRE_BUILD_CHECK_PATH = path.join(POLARIS_DIR, 'pre-build-check.json');
-const LAST_BUILD_HEAD_PATH = path.join(POLARIS_DIR, 'last-build-head.json');
+const PRE_BUILD_CHECK_PATH  = path.join(POLARIS_DIR, 'pre-build-check.json');
+const LAST_BUILD_HEAD_PATH  = path.join(POLARIS_DIR, 'last-build-head.json');
+const LAST_BUILD_HEADS_DIR  = path.join(POLARIS_DIR, 'last-build-heads');
+
+// Returns the per-project last-build-head path (Polaris uses its legacy singleton).
+function lastBuildHeadPath(projectName, workDir) {
+  const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+  if (workDir === POLARIS_WORK_DIR || workDir === POLARIS_WORK_DIR.replace(/\\/g, '/')) {
+    return LAST_BUILD_HEAD_PATH;
+  }
+  fs.mkdirSync(LAST_BUILD_HEADS_DIR, { recursive: true });
+  return path.join(LAST_BUILD_HEADS_DIR, `${projectName}.json`);
+}
+
+// Scans all configured projects for a scripts/build-install.ps1 and compares
+// the current git HEAD to the last-build-head snapshot to find pending builds.
+async function getPendingBuilds() {
+  const config = readConfig();
+  const projects = config.projects || [];
+  const results = [];
+  const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+
+  for (const project of projects) {
+    const workDir = project.workDir;
+    if (!workDir || !fs.existsSync(workDir)) continue;
+
+    const buildScript = path.join(workDir, 'scripts', 'build-install.ps1');
+    if (!fs.existsSync(buildScript)) continue;
+
+    let currentHead = null;
+    let hasUncommitted = false;
+    try {
+      currentHead = execSync('git rev-parse HEAD', { cwd: workDir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    } catch (e) { continue; }
+    try {
+      const st = execSync('git status --porcelain', { cwd: workDir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      hasUncommitted = st.length > 0;
+    } catch (e) {}
+
+    const headFile = lastBuildHeadPath(project.name, workDir);
+    let lastBuildHead = null;
+    let lastBuiltAt   = null;
+    if (fs.existsSync(headFile)) {
+      try {
+        const d = JSON.parse(fs.readFileSync(headFile, 'utf8'));
+        lastBuildHead = d.head;
+        lastBuiltAt   = d.builtAt;
+      } catch (e) {}
+    }
+
+    const hasPending = !lastBuildHead || currentHead !== lastBuildHead || hasUncommitted;
+    if (!hasPending) continue;
+
+    let commitCount = 0;
+    if (lastBuildHead && currentHead !== lastBuildHead) {
+      try {
+        const log = execSync(`git log ${lastBuildHead}..HEAD --oneline`, { cwd: workDir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        commitCount = log ? log.split('\n').length : 0;
+      } catch (e) {}
+    }
+
+    results.push({
+      name: project.name,
+      workDir,
+      commitCount,
+      hasUncommitted,
+      lastBuiltAt,
+      isPolaris: workDir === POLARIS_WORK_DIR,
+    });
+  }
+
+  return results;
+}
 
 function getRepoSnapshot(sourcePath) {
   try {
@@ -5368,6 +5439,15 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'get-pending-builds') {
+    getPendingBuilds().then(projects => {
+      sendTo(ws, { type: 'pending-builds', projects });
+    }).catch(e => {
+      sendTo(ws, { type: 'pending-builds', projects: [], error: e.message });
+    });
+    return;
+  }
+
   if (type === 'run-pre-build-check') {
     const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
     runPreBuildCheck(ws, sourcePath).catch(e => {
@@ -5384,13 +5464,14 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'run-build') {
-    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
-    const buildType  = msg.buildType === 'public' ? 'public' : 'private';
-    // Pre-build cross-check gate: build only proceeds if a cross-check has been
-    // run against the current repo state. If not, return early with a flag the
-    // UI uses to prompt the user to run a check first. msg.skipCheck = true
-    // bypasses the gate (e.g. the user explicitly chose "build anyway").
-    if (!msg.skipCheck) {
+    const sourcePath  = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
+    const projectName = msg.projectName || 'Polaris';
+    const buildType   = msg.buildType === 'public' ? 'public' : 'private';
+    const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+    const isPolaris   = sourcePath === POLARIS_WORK_DIR;
+
+    // Pre-build cross-check gate applies only to Polaris. Other projects run directly.
+    if (isPolaris && !msg.skipCheck) {
       const status = getPreBuildCheckStatus(sourcePath);
       if (!status.fresh) {
         sendTo(ws, { type: 'build-result', ok: false, requiresCheck: true,
@@ -5407,23 +5488,19 @@ function handleMessage(ws, raw) {
       return;
     }
 
-    // Direct execution of the build script. NOT through an agent session —
-    // that path paid LLM tokens for a script invocation and got orphaned
-    // mid-execution when the script killed Polaris.
-    //
-    // Spawns powershell.exe detached so the script survives Polaris's death
-    // (build-install.ps1 kills Polaris.exe early to free dist file locks).
-    // Routed through "cmd /c start" because Electron is a GUI app with no
-    // console — spawning powershell.exe directly produces no visible window
-    // even with windowsHide:false. "start" explicitly creates a new console.
-    // Save the current git HEAD so the next pre-build check diffs from here
+    // Save current git HEAD to per-project last-build-head file before spawning.
     try {
       const head = execSync('git rev-parse HEAD', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-      const pkg = JSON.parse(fs.readFileSync(path.join(sourcePath, 'package.json'), 'utf8'));
-      fs.writeFileSync(LAST_BUILD_HEAD_PATH, JSON.stringify({ head, version: pkg.version, builtAt: new Date().toISOString() }), 'utf8');
+      const entry = { head, builtAt: new Date().toISOString() };
+      if (isPolaris) {
+        const pkg = JSON.parse(fs.readFileSync(path.join(sourcePath, 'package.json'), 'utf8'));
+        entry.version = pkg.version;
+      }
+      fs.writeFileSync(lastBuildHeadPath(projectName, sourcePath), JSON.stringify(entry), 'utf8');
     } catch {}
 
-    const scriptName = buildType === 'public' ? 'build-public.ps1' : 'build-install.ps1';
+    // Non-Polaris projects always use build-install.ps1; Polaris supports public variant too.
+    const scriptName = (isPolaris && buildType === 'public') ? 'build-public.ps1' : 'build-install.ps1';
     const fullScript = path.join(sourcePath, 'scripts', scriptName);
     if (!fs.existsSync(fullScript)) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
@@ -5442,12 +5519,15 @@ function handleMessage(ws, raw) {
         cwd: sourcePath,
       });
       child.unref();
-      const isPublic = buildType === 'public';
+      const isPublic  = isPolaris && buildType === 'public';
+      const closesApp = isPolaris && !isPublic;
       const okMsg = isPublic
         ? `Public build started (pid ${child.pid}). The installer will appear in dist\\ when complete — Polaris stays running.`
-        : `Build started (pid ${child.pid}). Polaris will close shortly; the new version will install automatically.`;
-      sendTo(ws, { type: 'build-result', ok: true, closesApp: !isPublic, message: okMsg });
-      console.log(`[run-build] spawned detached powershell pid=${child.pid} type=${buildType} script=${fullScript}`);
+        : closesApp
+          ? `Build started (pid ${child.pid}). Polaris will close shortly; the new version will install automatically.`
+          : `${projectName} build started (pid ${child.pid}). Watch the PowerShell window for progress.`;
+      sendTo(ws, { type: 'build-result', ok: true, closesApp, message: okMsg });
+      console.log(`[run-build] spawned detached powershell pid=${child.pid} project=${projectName} type=${buildType} script=${fullScript}`);
     } catch (e) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Spawn failed: ${e.message}` });
       console.error('[run-build] spawn error:', e);
