@@ -5446,6 +5446,7 @@
     const s = sessionStore[sessionId];
     switch (action) {
       case 'stop':       wsSend({ type: 'stop', sessionId }); break;
+      case 'hide-card':  hideCard(sessionId); break;
       case 'close':      wsSend({ type: 'close-session', sessionId }); break;
       case 'toggle-locks': {
         const drawer = cardEl.querySelector('[data-locks-drawer]');
@@ -5947,6 +5948,32 @@
   }
 
   let sessionFilter = null;
+  const hiddenCards = new Set();
+
+  function hideCard(sid) {
+    hiddenCards.add(sid);
+    const card = document.querySelector(`.card[data-sid="${sid}"]`);
+    if (card) card.style.display = 'none';
+    updateHiddenCount();
+  }
+
+  window.unhideAll = function() {
+    hiddenCards.forEach(sid => {
+      const card = document.querySelector(`.card[data-sid="${sid}"]`);
+      if (card) card.style.display = '';
+    });
+    hiddenCards.clear();
+    updateHiddenCount();
+    applySessionFilter();
+  };
+
+  function updateHiddenCount() {
+    const n = hiddenCards.size;
+    const wrap = document.getElementById('stat-hidden-wrap');
+    const count = document.getElementById('stat-hidden-count');
+    if (wrap) wrap.style.display = n > 0 ? '' : 'none';
+    if (count) count.textContent = n;
+  }
 
   window.toggleSessionFilter = function(type) {
     sessionFilter = (sessionFilter === type) ? null : type;
@@ -5972,7 +5999,9 @@
     const grid = getActiveGrid();
     if (!grid) return;
     grid.querySelectorAll('.card').forEach(card => {
-      const s = sessionStore[card.dataset.sid];
+      const sid = card.dataset.sid;
+      if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
+      const s = sessionStore[sid];
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
       const isWaiting = s.status === 'waiting';
