@@ -7,6 +7,7 @@ const os = require('os');
 const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
+const dns = require('dns').promises;
 const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
@@ -5000,6 +5001,20 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'domain-scout') {
+    sendTo(ws, { type: 'domain-scout-status', status: 'running' });
+    runDomainScout().then(result => {
+      sendTo(ws, { type: 'domain-scout-status', status: result.error ? 'error' : 'done', ...result });
+      if (!result.error) {
+        const notifications = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+        broadcast({ type: 'event-routine-notifications', notifications });
+      }
+    }).catch(e => {
+      sendTo(ws, { type: 'domain-scout-status', status: 'error', error: e.message });
+    });
+    return;
+  }
+
   if (type === 'get-config') {
     sendTo(ws, { type: 'config', config: maskedConfig(readConfig()) });
     return;
@@ -6753,6 +6768,136 @@ function handleMessage(ws, raw) {
 }
 
 // â"€â"€â"€ Boot â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Domain Scout ──────────────────────────────────────────────────────────────
+
+function httpsGetSimple(hostname, urlPath) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname,
+      path: urlPath,
+      method: 'GET',
+      headers: { 'User-Agent': 'Polaris/1.0', 'Accept': '*/*' },
+      agent: new https.Agent({ keepAlive: false }),
+    }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function checkDomainAvailable(domain) {
+  try {
+    await dns.lookup(domain);
+    return false;
+  } catch (e) {
+    return e.code === 'ENOTFOUND';
+  }
+}
+
+async function runDomainScout() {
+  const cfg = readConfig();
+  const apiKey = cfg.openRouterApiKey ? decryptSecret(cfg.openRouterApiKey) : null;
+  if (!apiKey) return { error: 'No OpenRouter API key configured' };
+
+  // Fetch HN top stories via Algolia
+  let hnTitles = [];
+  try {
+    const res = await httpsGetSimple('hn.algolia.com', '/api/v1/search?tags=front_page&hitsPerPage=30');
+    const data = JSON.parse(res.body);
+    hnTitles = (data.hits || []).map(h => h.title).filter(Boolean);
+  } catch (e) {
+    console.warn('[domain-scout] HN fetch failed:', e.message);
+  }
+
+  // Fetch arXiv CS.AI titles
+  let arxivTitles = [];
+  try {
+    const res = await httpsGetSimple('rss.arxiv.org', '/rss/cs.AI');
+    const matches = res.body.match(/<title>([^<]+)<\/title>/g) || [];
+    arxivTitles = matches
+      .map(m => m.replace(/<\/?title>/g, '').trim())
+      .filter(t => t.length > 8 && !t.toLowerCase().includes('arxiv'))
+      .slice(0, 20);
+  } catch (e) {
+    console.warn('[domain-scout] arXiv fetch failed:', e.message);
+  }
+
+  const allTitles = [...hnTitles, ...arxivTitles].slice(0, 50);
+  if (!allTitles.length) return { error: 'Could not fetch any headlines' };
+
+  // Extract brandable terms via Claude Haiku
+  const termPrompt = `You are a domain name strategist. Extract 12 novel, brandable single words from these tech headlines that could make great domain name prefixes (like Forge, Apex, Oasis, Nexus, Prism).
+
+Rules: single words only, 4-9 characters, easy to spell, emerging tech concepts or strong nouns. No generic words (app, tech, data, cloud, new, next). No trademarks.
+
+Headlines:
+${allTitles.join('\n')}
+
+Return ONLY a JSON array of lowercase strings. Example: ["nexus","forge","oasis","prism"]`;
+
+  const result = await callOpenRouterOnce(
+    'anthropic/claude-haiku-4-5',
+    apiKey,
+    [{ role: 'user', content: termPrompt }],
+    200
+  );
+
+  if (result.error) return { error: `AI extraction failed: ${result.error}` };
+
+  let terms = [];
+  try {
+    const match = result.content.match(/\[[\s\S]*?\]/);
+    if (match) terms = JSON.parse(match[0]);
+  } catch (e) {
+    return { error: 'Could not parse terms from AI response' };
+  }
+
+  if (!terms.length) return { error: 'No terms extracted' };
+
+  // Check domain availability for each term across four patterns
+  const mkPatterns = t => [
+    `${t}aistudio.com`,
+    `${t}ai.com`,
+    `${t}.ai`,
+    `ai${t}.com`,
+  ];
+
+  const available = [];
+  for (const rawTerm of terms.slice(0, 12)) {
+    const term = rawTerm.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!term) continue;
+    for (const domain of mkPatterns(term)) {
+      const isAvail = await checkDomainAvailable(domain);
+      if (isAvail) available.push({ term, domain });
+    }
+  }
+
+  // Build notification items
+  const items = available.length
+    ? [
+        `Found ${available.length} available domain${available.length === 1 ? '' : 's'} from today's tech headlines:`,
+        ...available.map(({ domain, term }) => `${domain}  ← "${term}"`),
+      ]
+    : ['No available .com/.ai domains found this scan — try again tomorrow'];
+
+  const notif = {
+    id: Date.now().toString(),
+    routineName: 'Domain Scout',
+    title: 'Domain Scout',
+    timestamp: new Date().toISOString(),
+    items,
+    dismissed: false,
+  };
+
+  const existing = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+  writeJSON(ROUTINE_NOTIFICATIONS_PATH, [...existing.filter(n => n.routineName !== 'Domain Scout'), notif]);
+
+  return { success: true, count: available.length };
+}
+
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 

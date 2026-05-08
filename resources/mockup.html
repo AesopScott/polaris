@@ -1765,6 +1765,7 @@
     <div class="projects-footer">
       <button class="fbtn" style="background:#22c55e;color:#000;font-weight:700;" onclick="addRoutineRow()">+ Add Routine</button>
       <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveRoutines()">💾 Save Routines</button>
+      <button class="fbtn" id="domain-scout-btn" style="background:#7c3aed;color:#fff;font-weight:700;margin-left:auto;" onclick="fireDomainScout()">🔍 Domain Scout</button>
     </div>
   </div>
 
@@ -4411,6 +4412,15 @@
         if (msg.notifications && msg.notifications.length > 0) {
           _allRoutineNotifs = msg.notifications;
           setTimeout(() => showRoutineNotifPopup(msg.notifications), 800);
+        }
+        break;
+      }
+
+      case 'domain-scout-status': {
+        const btn = document.getElementById('domain-scout-btn');
+        if (msg.status === 'done' || msg.status === 'error') {
+          if (btn) { btn.textContent = '🔍 Domain Scout'; btn.disabled = false; }
+          if (msg.status === 'error' && msg.error) alert('Domain Scout: ' + msg.error);
         }
         break;
       }
@@ -8249,9 +8259,16 @@
     }, 600);
   }
 
+  function fireDomainScout() {
+    const btn = document.getElementById('domain-scout-btn');
+    if (btn) { btn.textContent = '⏳ Scanning...'; btn.disabled = true; }
+    wsSend({ type: 'domain-scout' });
+  }
+
   window.showRoutineNotifPopup  = showRoutineNotifPopup;
   window.closeRoutineNotifPopup = closeRoutineNotifPopup;
   window.viewLastRoutineRun     = viewLastRoutineRun;
+  window.fireDomainScout        = fireDomainScout;
 
   const STATUS_CYCLE = ['done', 'test', 'waiting', 'broken', 'error'];
   const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' };
