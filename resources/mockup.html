@@ -8787,7 +8787,45 @@
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:12px;font-size:10px;opacity:0.35;">Scores from last 7 days of session events · ${escHtml(projectName)}</p>`;
+      <div style="margin-top:14px;padding:10px 12px;background:var(--bg-secondary,#1e1e1e);border:1px solid var(--border);border-radius:6px;font-size:11px;line-height:1.6;opacity:0.75;">
+        ${escHtml(generateSpaceBlurb(scores))}
+      </div>
+      <p style="margin-top:10px;font-size:10px;opacity:0.35;">Scores from last 7 days of session events · ${escHtml(projectName)}</p>`;
+  }
+
+  function generateSpaceBlurb(scores) {
+    const dims = [
+      { key: 'S', label: 'Satisfaction' },
+      { key: 'P', label: 'Performance' },
+      { key: 'A', label: 'Activity' },
+      { key: 'C', label: 'Collaboration' },
+      { key: 'E', label: 'Efficiency' },
+    ];
+    const entries = dims.map(d => {
+      const s = scores[d.key] || { score: 0, trend: 'stable' };
+      return { label: d.label, score: s.score, trend: s.trend };
+    });
+    const avg = Math.round(entries.reduce((sum, e) => sum + e.score, 0) / entries.length);
+    const best  = entries.reduce((a, b) => a.score > b.score ? a : b);
+    const worst = entries.reduce((a, b) => a.score < b.score ? a : b);
+    const rising  = entries.filter(e => e.trend === 'up').map(e => e.label);
+    const falling = entries.filter(e => e.trend === 'down').map(e => e.label);
+
+    const health = avg >= 75 ? 'strong' : avg >= 50 ? 'moderate' : 'struggling';
+    let blurb = `Overall project health is ${health} (avg ${avg}/100). `;
+    blurb += `${best.label} leads at ${best.score}`;
+    if (worst.score < 50 && worst.key !== best.key) blurb += `, while ${worst.label} (${worst.score}) is the weak spot`;
+    blurb += '. ';
+    if (rising.length && falling.length) {
+      blurb += `${rising.join(' and ')} ${rising.length > 1 ? 'are' : 'is'} trending up while ${falling.join(' and ')} ${falling.length > 1 ? 'are' : 'is'} declining — worth watching.`;
+    } else if (rising.length) {
+      blurb += `${rising.join(' and ')} ${rising.length > 1 ? 'are' : 'is'} trending up — good momentum.`;
+    } else if (falling.length) {
+      blurb += `${falling.join(' and ')} ${falling.length > 1 ? 'are' : 'is'} declining — worth investigating.`;
+    } else {
+      blurb += 'All dimensions are holding steady.';
+    }
+    return blurb;
   }
 
   window.openSpace  = openSpace;
@@ -9415,12 +9453,11 @@
   }
 
   function obsidianUp() {
-    const all = Object.values(sessionStore);
-    if (!all.length) { alert('No sessions to export.'); return; }
-    all.forEach(s => {
-      wsSend({ type: 'obsidian-up', sessionId: s.id, sessionName: s.name, content: sessionToMarkdown(s) });
-    });
-    pushDebugLog(`[obsidian] Exporting ${all.length} session(s)`);
+    const sid = document.querySelector('.card.selected')?.dataset.sid;
+    const s = sid ? sessionStore[sid] : null;
+    if (!s) { alert('Select a session card first, then click Obsidian.'); return; }
+    wsSend({ type: 'obsidian-up', sessionId: s.id, sessionName: s.name, content: sessionToMarkdown(s) });
+    pushDebugLog(`[obsidian] Exporting session: ${s.name}`);
   }
   window.obsidianUp = obsidianUp;
 
