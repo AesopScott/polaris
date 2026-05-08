@@ -31,7 +31,7 @@ jobs:
 
       - name: Generate icon.icns from icon.ico
         run: |
-          pip3 install --quiet Pillow
+          pip3 install --quiet --break-system-packages Pillow
           python3 - <<'PYEOF'
           from PIL import Image
           import os
