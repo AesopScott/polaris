@@ -3163,7 +3163,7 @@
       instrRow.innerHTML = `<td colspan="4" style="padding:0 6px 8px 6px;display:flex;flex-direction:column;gap:4px;">
         <div style="display:flex;gap:4px;align-items:center;">
           <span style="font-size:10px;color:#64748b;white-space:nowrap;width:110px;flex-shrink:0;">📓 Knowledge folder</span>
-          <input value="${escHtmlAttr(p.obsidianDir || '')}" data-field="obsidianDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Build" style="flex:1;min-width:200px;font-size:11px;" />
+          <input value="${escHtmlAttr(p.obsidianDir || '')}" data-field="obsidianDir" data-idx="${i}" placeholder="${escHtmlAttr(p.name || 'Project')}_Build" style="flex:1;min-width:200px;font-size:11px;" />
           <button class="card-btn" style="height:28px;width:28px;flex-shrink:0;" onclick="pickObsidianDir(${i},'obsidianDir')" title="Browse">📁</button>
         </div>
         <div style="display:flex;gap:4px;align-items:center;">
@@ -3362,9 +3362,7 @@
       sessDir.value = name + '_Sessions';
     }
     if (buildDir && !buildDir.value.trim()) {
-      const vault = (window.currentConfig && window.currentConfig.obsidianVaultPath) || '';
-      const sep = vault && !vault.endsWith('/') && !vault.endsWith('\\') ? '/' : '';
-      buildDir.value = vault ? vault + sep + name + '_Build' : name + '_Build';
+      buildDir.value = name + '_Build';
     }
   }
 
