@@ -59,7 +59,11 @@ if (-not $installer) {
     exit 1
 }
 
-Write-Host "==> Running installer: $($installer.Name)" -ForegroundColor Cyan
-Start-Process $installer.FullName -Wait
+$privateName = $installer.FullName -replace 'Polaris Setup', 'Polaris Private Setup'
+Rename-Item $installer.FullName $privateName -Force
+Write-Host "    renamed → $(Split-Path $privateName -Leaf)" -ForegroundColor DarkGray
+
+Write-Host "==> Running installer: $(Split-Path $privateName -Leaf)" -ForegroundColor Cyan
+Start-Process $privateName -Wait
 
 Write-Host "==> Done." -ForegroundColor Green
