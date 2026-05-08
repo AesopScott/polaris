@@ -3168,7 +3168,7 @@
         </div>
         <div style="display:flex;gap:4px;align-items:center;">
           <span style="font-size:10px;color:#64748b;white-space:nowrap;width:110px;flex-shrink:0;">📓 Sessions folder</span>
-          <input value="${escHtmlAttr(p.obsidianSessionsDir || '')}" data-field="obsidianSessionsDir" data-idx="${i}" placeholder="G:\\Obsidian\\${escHtmlAttr(p.name || 'Project')}_Sessions" style="flex:1;min-width:200px;font-size:11px;" />
+          <input value="${escHtmlAttr(p.obsidianSessionsDir || '')}" data-field="obsidianSessionsDir" data-idx="${i}" placeholder="${escHtmlAttr(p.name || 'Project')}_Sessions" style="flex:1;min-width:200px;font-size:11px;" />
           <button class="card-btn" style="height:28px;width:28px;flex-shrink:0;" onclick="pickObsidianDir(${i},'obsidianSessionsDir')" title="Browse">📁</button>
         </div>
         <textarea data-field="instructions" data-idx="${i}"

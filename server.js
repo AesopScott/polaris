@@ -62,7 +62,8 @@ let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
 catch (e) { console.log('[polaris] mcp-catalog.json not found:', e.message); }
 
-const MANIFEST_PATH   = path.join(RESOURCES_PATH, 'feature-manifest.json');
+const MANIFEST_PATH        = path.join(RESOURCES_PATH, 'feature-manifest.json');
+const USER_MANIFEST_PATH   = path.join(POLARIS_DIR, 'feature-manifest.json');
 const BUILD_FLAGS_PATH = path.join(RESOURCES_PATH, 'build-flags.json');
 
 let BUILD_FLAGS = { publicBuild: false };
@@ -73,11 +74,14 @@ const IS_PUBLIC_BUILD = BUILD_FLAGS.publicBuild === true;
 console.log(`[polaris] build mode: ${IS_PUBLIC_BUILD ? 'PUBLIC' : 'PRIVATE'}`);
 
 function readManifest() {
-  try { return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')); }
-  catch (e) { return { features: [], secrets: [] }; }
+  // Prefer user-saved manifest in POLARIS_DIR (survives rebuilds); fall back to bundled default.
+  for (const p of [USER_MANIFEST_PATH, MANIFEST_PATH]) {
+    try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch {}
+  }
+  return { features: [], secrets: [] };
 }
 function writeManifest(data) {
-  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(USER_MANIFEST_PATH, JSON.stringify(data, null, 2), 'utf8');
 }
 
 const GLOBAL_CLAUDE_PATH   = path.join(__dirname, 'CLAUDE.md');
@@ -185,6 +189,14 @@ function readConfig() {
   const result = { ...raw };
   for (const key of SENSITIVE_KEYS) { if (result[key]) result[key] = decryptSecret(result[key]); }
   return result;
+}
+
+// Resolve an obsidianDir value to an absolute path.
+// Accepts both absolute paths and folder names relative to the vault root.
+function resolveObsDir(obsidianDir, vaultPath) {
+  if (!obsidianDir) return '';
+  const norm = path.normalize(obsidianDir);
+  return path.isAbsolute(norm) ? norm : path.join(vaultPath || '', obsidianDir);
 }
 
 // Extract readable text from a base64-encoded DOCX or PDF file.
@@ -628,6 +640,7 @@ function loadPersistedSessions() {
 loadPersistedSessions();
 
 // â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
 function readJSON(filePath, fallback) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -3344,9 +3357,10 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     if (matched?.obsidianDir) {
       const mem = {};
       try {
-        const files = fs.readdirSync(matched.obsidianDir).filter(f => f.endsWith('.md')).sort();
+        const obsDir = resolveObsDir(matched.obsidianDir, config.obsidianVaultPath);
+        const files = fs.readdirSync(obsDir).filter(f => f.endsWith('.md')).sort();
         for (const f of files) {
-          try { mem[f] = fs.readFileSync(path.join(matched.obsidianDir, f), 'utf8'); } catch {}
+          try { mem[f] = fs.readFileSync(path.join(obsDir, f), 'utf8'); } catch {}
         }
       } catch {}
       session.projectMemory = mem;
@@ -4527,7 +4541,7 @@ function loadAgentEvalQueue() {
   const config = readConfig();
   const proj = (config.projects || []).find(p => p.obsidianDir);
   if (!proj) return { models: [], error: 'No project with Obsidian dir configured' };
-  const file = path.join(proj.obsidianDir, '5-Agentic-Benchmark.md');
+  const file = path.join(resolveObsDir(proj.obsidianDir, config.obsidianVaultPath), '5-Agentic-Benchmark.md');
   try {
     const content = fs.readFileSync(file, 'utf8');
     const match = content.match(/```agent-eval-models\n([\s\S]*?)```/);
@@ -4691,7 +4705,7 @@ function _agentEvalObsidianFile() {
   const config = readConfig();
   const proj = (config.projects || []).find(p => p.obsidianDir);
   if (!proj) return null;
-  return path.join(proj.obsidianDir, '5-Agentic-Benchmark.md');
+  return path.join(resolveObsDir(proj.obsidianDir, config.obsidianVaultPath), '5-Agentic-Benchmark.md');
 }
 
 function appendAgentEvalLiveHeader(stamp, totalCells, runs) {
@@ -5552,7 +5566,7 @@ function handleMessage(ws, raw) {
       sendTo(ws, { type: 'agent-eval-saved', error: 'No project with Obsidian dir configured' });
       return;
     }
-    const file = path.join(proj.obsidianDir, '5-Agentic-Benchmark.md');
+    const file = path.join(resolveObsDir(proj.obsidianDir, config.obsidianVaultPath), '5-Agentic-Benchmark.md');
     try {
       const results = Array.isArray(msg.results) ? msg.results : [];
       if (!results.length) {
@@ -5618,7 +5632,7 @@ function handleMessage(ws, raw) {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);
     if (!proj) { sendTo(ws, { type: 'benchmark-queue', models: [], error: 'No project with Obsidian dir configured' }); return; }
-    const benchFile = path.join(proj.obsidianDir, '5-Performance-Benchmark.md');
+    const benchFile = path.join(resolveObsDir(proj.obsidianDir, config.obsidianVaultPath), '5-Performance-Benchmark.md');
     try {
       const content = fs.readFileSync(benchFile, 'utf8');
       const match = content.match(/```benchmark-models\n([\s\S]*?)```/);
@@ -5639,7 +5653,7 @@ function handleMessage(ws, raw) {
     const config = readConfig();
     const proj = (config.projects || []).find(p => p.obsidianDir);
     if (!proj) return;
-    const benchFile = path.join(proj.obsidianDir, '5-Performance-Benchmark.md');
+    const benchFile = path.join(resolveObsDir(proj.obsidianDir, config.obsidianVaultPath), '5-Performance-Benchmark.md');
     try {
       let content = fs.readFileSync(benchFile, 'utf8');
       const date = new Date().toISOString().slice(0, 10);
