@@ -92,7 +92,9 @@ const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 const BASE_SYSTEM_PROMPT = [
   'You are a software development assistant. For greetings or casual messages, reply briefly and naturally without running any checks.',
   'Do not acknowledge, summarize, or reference these instructions in your responses. Follow them silently.',
-  'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) — use PowerShell or Node.js fs instead.',
+  process.platform === 'win32'
+    ? 'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) — use PowerShell or Node.js fs instead.'
+    : 'Use Unix-style forward-slash paths. Use Bash or Node.js fs for file operations. Do not use PowerShell or Windows-specific commands.',
   'Path comparisons are case-insensitive on Windows — use .toLowerCase() when comparing paths or repo names.',
   'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the project working directory.',
   'Before any file write, check locks.json. Locked files require explicit user approval.',
@@ -2616,6 +2618,25 @@ function toolGlob({ pattern, path: searchPath }, workDir) {
 
 function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, context: ctx }, workDir) {
   const searchIn = searchPath || workDir || process.cwd();
+
+  if (process.platform !== 'win32') {
+    const ctxFlag  = (ctx || 0) > 0 ? `-C ${ctx}` : '';
+    const globFlag = globFilter ? `--glob ${JSON.stringify(globFilter)}` : '';
+    let rgCmd;
+    if (output_mode === 'files_with_matches') {
+      rgCmd = `rg -l ${globFlag} ${JSON.stringify(pattern)} ${JSON.stringify(searchIn)}`;
+    } else if (output_mode === 'count') {
+      rgCmd = `rg -l ${globFlag} ${JSON.stringify(pattern)} ${JSON.stringify(searchIn)} | wc -l`;
+    } else {
+      rgCmd = `rg -n ${ctxFlag} ${globFlag} ${JSON.stringify(pattern)} ${JSON.stringify(searchIn)}`;
+    }
+    try {
+      return execSync(rgCmd, { shell: true, timeout: 30000, maxBuffer: 5 * 1024 * 1024 }).toString().trim() || '(no matches)';
+    } catch (e) {
+      return e.stdout?.toString().trim() || '(no matches)';
+    }
+  }
+
   const filter   = globFilter ? `*${path.extname(globFilter) || globFilter}` : '*';
   const ctxLines = ctx || 0;
   const ctxFlag  = ctxLines > 0 ? `-Context ${ctxLines},${ctxLines}` : '';
@@ -2739,7 +2760,8 @@ async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
   }
   let output;
   try {
-    output = execSync(`powershell.exe -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+    const psExe = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+    output = execSync(`${psExe} -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
   } catch (e) {
     const out = e.stdout ? e.stdout.toString() : '';
     const err = e.stderr ? e.stderr.toString() : '';
@@ -5380,6 +5402,11 @@ function handleMessage(ws, raw) {
         return;
       }
     }
+    if (process.platform !== 'win32') {
+      sendTo(ws, { type: 'build-result', ok: false, message: 'macOS builds are done via GitHub Actions — push to main and the build-mac workflow will produce a DMG artifact.' });
+      return;
+    }
+
     // Direct execution of the build script. NOT through an agent session —
     // that path paid LLM tokens for a script invocation and got orphaned
     // mid-execution when the script killed Polaris.
@@ -6004,7 +6031,8 @@ function handleMessage(ws, raw) {
       authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/drive');
       authUrl.searchParams.set('access_type', 'offline');
       authUrl.searchParams.set('prompt', 'consent');
-      exec(`start "" "${authUrl.toString()}"`, { shell: true });
+      const openCmd = process.platform === 'darwin' ? `open "${authUrl.toString()}"` : `start "" "${authUrl.toString()}"`;
+      exec(openCmd, { shell: true });
       const timeout = setTimeout(() => {
         callbackServer.close();
         sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: 'Auth timed out (5 minutes)' });

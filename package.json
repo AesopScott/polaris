@@ -29,6 +29,13 @@
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico"
     },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "dmg": {
+      "sign": false
+    },
     "extraResources": [
       {
         "from": "resources/",

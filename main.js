@@ -159,13 +159,15 @@ function createWindow() {
     minHeight: 600,
     title: 'Polaris',
     backgroundColor: '#0a0e1a',
-    icon: path.join(__dirname, 'assets', 'icon.ico'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#0a0e1a',
-      symbolColor: '#60a5fa',
-      height: 26,
-    },
+    icon: path.join(__dirname, 'assets', process.platform === 'darwin' ? 'icon.icns' : 'icon.ico'),
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform !== 'darwin' && {
+      titleBarOverlay: {
+        color: '#0a0e1a',
+        symbolColor: '#60a5fa',
+        height: 26,
+      },
+    }),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
