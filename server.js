@@ -7027,7 +7027,7 @@ async function runDomainScout() {
   const allTitles = [...hnTitles, ...arxivTitles].slice(0, 50);
   if (!allTitles.length) return { error: 'Could not fetch any headlines' };
 
-  // Extract brandable terms via Claude Haiku
+  // Extract brandable terms with reasoning via Claude Haiku
   const termPrompt = `You are a domain name strategist. Extract 12 novel, brandable single words from these tech headlines that could make great domain name prefixes (like Forge, Apex, Oasis, Nexus, Prism).
 
 Rules: single words only, 4-9 characters, easy to spell, emerging tech concepts or strong nouns. No generic words (app, tech, data, cloud, new, next). No trademarks.
@@ -7035,13 +7035,13 @@ Rules: single words only, 4-9 characters, easy to spell, emerging tech concepts 
 Headlines:
 ${allTitles.join('\n')}
 
-Return ONLY a JSON array of lowercase strings. Example: ["nexus","forge","oasis","prism"]`;
+Return ONLY a JSON array of objects with "term" and "reason" fields. The reason should be one short phrase explaining why this word will be popular and make a good domain (e.g. which trend it taps into). Example: [{"term":"nexus","reason":"graph neural networks are surging in AI research"},{"term":"forge","reason":"maker/toolchain metaphor dominating dev tooling headlines"}]`;
 
   const result = await callOpenRouterOnce(
     'anthropic/claude-haiku-4-5',
     apiKey,
     [{ role: 'user', content: termPrompt }],
-    200
+    400
   );
 
   if (result.error) return { error: `AI extraction failed: ${result.error}` };
@@ -7065,12 +7065,14 @@ Return ONLY a JSON array of lowercase strings. Example: ["nexus","forge","oasis"
   ];
 
   const available = [];
-  for (const rawTerm of terms.slice(0, 12)) {
+  for (const entry of terms.slice(0, 12)) {
+    const rawTerm = typeof entry === 'string' ? entry : entry.term;
+    const reason  = typeof entry === 'string' ? '' : (entry.reason || '');
     const term = rawTerm.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!term) continue;
     for (const domain of mkPatterns(term)) {
       const isAvail = await checkDomainAvailable(domain);
-      if (isAvail) available.push({ term, domain });
+      if (isAvail) available.push({ term, domain, reason });
     }
   }
 
@@ -7078,7 +7080,9 @@ Return ONLY a JSON array of lowercase strings. Example: ["nexus","forge","oasis"
   const items = available.length
     ? [
         `Found ${available.length} available domain${available.length === 1 ? '' : 's'} from today's tech headlines:`,
-        ...available.map(({ domain, term }) => `${domain}  ← "${term}"`),
+        ...available.map(({ domain, term, reason }) =>
+          reason ? `${domain}  ← "${term}" — ${reason}` : `${domain}  ← "${term}"`
+        ),
       ]
     : ['No available .com/.ai domains found this scan — try again tomorrow'];
 
