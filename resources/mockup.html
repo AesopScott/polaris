@@ -259,7 +259,7 @@
   .launch-btn .icon { font-size: 14px; font-weight: 800; }
 
   /* Session Grid */
-  .session-grid { flex: 1; padding: 12px 16px; display: flex; gap: 12px; align-items: stretch; overflow-y: auto; }
+  .session-grid { position: absolute; inset: 0; padding: 12px 16px; display: flex; gap: 12px; align-items: stretch; overflow-y: auto; }
   .session-col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; justify-content: flex-start; min-height: 120px; }
 
   /* Session Card */
@@ -1411,10 +1411,11 @@
   </div>
 
   <!-- Session Grid -->
-  <div class="session-grid" style="position:relative;">
-    <div id="hidden-all-state" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;">
+  <div style="flex:1;position:relative;overflow:hidden;">
+    <div class="session-grid"></div>
+    <div id="hidden-all-state" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg);z-index:2;">
       <div id="hidden-all-msg" style="font-size:15px;font-weight:600;color:var(--text-muted);"></div>
-      <button onclick="unhideAll()" style="pointer-events:auto;padding:6px 18px;border-radius:6px;border:1px solid var(--border);background:var(--card-btn-bg);color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;">Show All</button>
+      <button onclick="unhideAll()" style="padding:6px 18px;border-radius:6px;border:1px solid var(--border);background:var(--card-btn-bg);color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;">Show All</button>
     </div>
   </div>
 
@@ -5014,7 +5015,7 @@
       }
       const card = buildCard(s);
       cols[idx].appendChild(card);
-      colHeights[idx] += (parseInt(s.height) || 260) + 12;
+      colHeights[idx] += hiddenCards.has(s.id) ? 0 : (parseInt(s.height) || 260) + 12;
     });
     updateStats();
     updateMiniCards();
