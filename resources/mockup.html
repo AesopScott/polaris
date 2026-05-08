@@ -68,8 +68,8 @@
   .stats { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; align-items: flex-start; }
   .stat { display: flex; align-items: center; gap: 5px; }
   .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
-  #filter-completed-label, #filter-running-label { transition: opacity 0.15s; }
-  #filter-completed-label:hover, #filter-running-label:hover { text-decoration: underline; }
+  #filter-waiting-label, #filter-running-label { transition: opacity 0.15s; }
+  #filter-waiting-label:hover, #filter-running-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
   .btn-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
@@ -548,7 +548,7 @@
   .p1 .stat-running, .p2 .stat-running, .p3 .stat-running { color: #60a5fa; }
   .p4 .stat-running { color: #34d399; }
   .p5 .stat-running { color: #fb923c; }
-  .palette .stat-completed { color: #22c55e; }
+  .palette .stat-waiting { color: #fbbf24; }
 
   /* Accent colors per palette */
   /* Per-palette launch-btn solid colors removed — neumorphic body is uniform across palettes,
@@ -1380,9 +1380,9 @@
       <span style="font-size:12px;font-weight:600;color:#22c55e;">Connected</span>
     </div>
 
-    <!-- Right third: Completed + Running Sessions on one row -->
+    <!-- Right third: Waiting + Running Sessions on one row -->
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
-      <span class="stat"><span data-stat-completed style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-completed" id="filter-completed-label" onclick="toggleSessionFilter('completed')" style="cursor:pointer;" title="Filter to completed sessions">Completed Sessions</span></span>
+      <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
     </div>
 
@@ -5886,9 +5886,9 @@
   function updateStats() {
     const vals = Object.values(sessionStore);
     const running  = vals.filter(s => s.status === 'running').length;
-    const completed = vals.filter(s => s.status !== 'running').length;
+    const waiting  = vals.filter(s => s.status === 'waiting').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
-    document.querySelectorAll('[data-stat-completed]').forEach(el => el.textContent = completed);
+    document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
     applySessionFilter();
   }
 
@@ -5897,20 +5897,20 @@
   window.toggleSessionFilter = function(type) {
     sessionFilter = (sessionFilter === type) ? null : type;
     applySessionFilter();
-    const completedLabel = document.getElementById('filter-completed-label');
-    const runningLabel   = document.getElementById('filter-running-label');
-    if (!completedLabel || !runningLabel) return;
+    const waitingLabel = document.getElementById('filter-waiting-label');
+    const runningLabel = document.getElementById('filter-running-label');
+    if (!waitingLabel || !runningLabel) return;
     if (!sessionFilter) {
-      completedLabel.style.textDecoration = '';
-      completedLabel.style.opacity = '';
+      waitingLabel.style.textDecoration = '';
+      waitingLabel.style.opacity = '';
       runningLabel.style.textDecoration = '';
       runningLabel.style.opacity = '';
     } else {
       const filteringRunning = sessionFilter === 'running';
-      completedLabel.style.textDecoration = filteringRunning ? '' : 'underline';
-      completedLabel.style.opacity        = filteringRunning ? '0.4' : '';
-      runningLabel.style.textDecoration   = filteringRunning ? 'underline' : '';
-      runningLabel.style.opacity          = filteringRunning ? '' : '0.4';
+      waitingLabel.style.textDecoration = filteringRunning ? '' : 'underline';
+      waitingLabel.style.opacity        = filteringRunning ? '0.4' : '';
+      runningLabel.style.textDecoration = filteringRunning ? 'underline' : '';
+      runningLabel.style.opacity        = filteringRunning ? '' : '0.4';
     }
   };
 
@@ -5921,7 +5921,8 @@
       const s = sessionStore[card.dataset.sid];
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
-      card.style.display = (sessionFilter === 'running' ? isRunning : !isRunning) ? '' : 'none';
+      const isWaiting = s.status === 'waiting';
+      card.style.display = (sessionFilter === 'running' ? isRunning : isWaiting) ? '' : 'none';
     });
   }
 
@@ -10891,7 +10892,7 @@
           const count = stat.querySelector('span:first-child');
           if (!count) return;
           if (stat.querySelector('.stat-running'))   count.dataset.statRunning   = '1';
-          if (stat.querySelector('.stat-completed')) count.dataset.statCompleted = '1';
+          if (stat.querySelector('.stat-waiting'))   count.dataset.statWaiting   = '1';
         });
       }
     });
