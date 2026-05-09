@@ -172,6 +172,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webviewTag: true,
+      autoplayPolicy: 'no-user-gesture-required',
     },
     autoHideMenuBar: true,
   });

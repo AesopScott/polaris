@@ -11965,8 +11965,15 @@
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
 
+  function _onbWarmAudio() {
+    const a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=');
+    a.volume = 0.001;
+    a.play().catch(() => {});
+  }
+
   function onbBeginTour() {
     if (!_onbLevel) return;
+    _onbWarmAudio();
     _onbSteps = ONB_TOURS[_onbLevel];
     _onbStep  = 0;
     wsSend({ type: 'save-config', config: { onboardingLevel: _onbLevel } });
@@ -12019,11 +12026,13 @@
   }
 
   function onbNextStep() {
+    _onbWarmAudio();
     if (_onbStep < _onbSteps.length - 1) { _onbStep++; onbShowTourStep(); }
     else { onbFinish(); }
   }
 
   function onbPrevStep() {
+    _onbWarmAudio();
     if (_onbStep > 0) { _onbStep--; onbShowTourStep(); }
   }
 
