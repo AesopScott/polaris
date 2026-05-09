@@ -5248,7 +5248,7 @@
       // Don't trigger resume mode if the user just finished selecting text
       const sel = window.getSelection();
       if (sel && sel.toString().length > 0) return;
-      enterResumeMode(s.id, null);
+      enterResumeMode(s.id, null, true);
     });
 
     el.querySelector('.card-title').addEventListener('contextmenu', e => {
@@ -6329,7 +6329,7 @@
     return { prompt, workDir, projectName: project, model, tier, promptEl };
   }
 
-  function enterResumeMode(sessionId, model) {
+  function enterResumeMode(sessionId, model, skipScroll = false) {
     const s = sessionStore[sessionId];
     if (!s) return;
     // Forked+linked sessions promote on click instead of entering resume mode
@@ -6349,7 +6349,7 @@
     const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
     if (card) {
       card.classList.add('selected');
-      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (!skipScroll) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       // Show floating prompt launcher positioned above this card
       const floatEl = document.getElementById('float-launcher');
       if (floatEl) {
