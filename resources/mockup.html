@@ -2491,6 +2491,7 @@
     <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
       <span id="onb-audio-dot"></span>
       <span class="onb-step-title" id="onb-step-title"></span>
+      <span id="onb-tts-label" style="margin-left:auto;font-size:10px;color:#475569;white-space:nowrap;"></span>
     </div>
     <div class="onb-step-text" id="onb-step-text"></div>
     <div class="onb-step-footer">
@@ -3017,6 +3018,7 @@
     if (window._polarisSaveContext) window._polarisSaveContext();
   }
 
+  let serverProjectsList = []; // mirror of projects last confirmed saved to server
   let projectsList = [
     { name: 'Polaris', workDir: '', repo: '' },
     { name: 'Aesop',   workDir: 'C:\\Users\\scott\\Code\\aesop', repo: 'AesopScott/Aesop' },
@@ -3471,7 +3473,18 @@
     }
     refreshProjectDropdowns();
     refreshFieldTags();
-    if (window.wsSend) window.wsSend({ type: 'save-config', config: { projects: projectsList } });
+    if (window.wsSend) {
+      // Atomic: one upsert-project per changed/new entry, one delete-project per removed entry.
+      // Never sends a bulk array — the server cannot wipe the whole projects list this way.
+      const newNames = new Set(projectsList.map(p => p.name));
+      for (const proj of projectsList) {
+        window.wsSend({ type: 'upsert-project', project: proj });
+      }
+      for (const proj of serverProjectsList) {
+        if (!newNames.has(proj.name)) window.wsSend({ type: 'delete-project', name: proj.name });
+      }
+      serverProjectsList = [...projectsList];
+    }
     if (window.pushDebugLog) window.pushDebugLog(`[projects] Saved ${projectsList.length} project(s)`);
     // Re-render so the table reflects the canonical saved state, but keep the panel open
     renderProjectsPanel();
@@ -3768,10 +3781,16 @@
           if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
           _onbAudio = new Audio(msg.dataUrl);
           const dot = document.getElementById('onb-audio-dot');
+          const lbl = document.getElementById('onb-tts-label');
           if (dot) dot.classList.add('active');
+          if (lbl) lbl.textContent = '';
           _onbAudio.onended = () => { _onbAudio = null; if (dot) dot.classList.remove('active'); };
           _onbAudio.play().catch(() => { _onbAudio = null; if (dot) dot.classList.remove('active'); onbSpeakFallback(_onbLastText); });
         } else if (msg.error && _onbSpeakEnabled) {
+          const lbl2 = document.getElementById('onb-tts-label');
+          const info = msg.error === 'no-key' ? 'ElevenLabs key not set' : `ElevenLabs error: ${msg.error}`;
+          console.warn('[tts]', info, msg.detail || '');
+          if (lbl2) lbl2.textContent = info;
           onbSpeakFallback(_onbLastText);
         }
         break;
@@ -6637,6 +6656,7 @@
     if (cfg.projects && cfg.projects.length) {
       window.projectsList = cfg.projects;
       projectsList = cfg.projects;
+      serverProjectsList = [...cfg.projects];
     }
     refreshProjectDropdowns();
     updateModelSelectorState();
@@ -6644,6 +6664,7 @@
     // Load routines and apply triggers (true = startup phase)
     if (cfg.routines) {
       routinesList = cfg.routines;
+      serverRoutinesList = [...cfg.routines];
       applyRoutineTriggers(true);
     }
 
@@ -6794,7 +6815,7 @@
     const project = select?.value || '';
     const savedWorkDirs = Array.from(document.getElementById('polaris-wdir-list')?.options || []).map(o => o.value).filter(Boolean);
     const savedRepos    = Array.from(document.getElementById('polaris-repo-list')?.options || []).map(o => o.value).filter(Boolean);
-    wsSend({ type: 'save-config', config: { lastWorkDir: workDir, lastRepo: repo, lastProject: project, savedWorkDirs, savedRepos, projects: projectsList } });
+    wsSend({ type: 'save-config', config: { lastWorkDir: workDir, lastRepo: repo, lastProject: project, savedWorkDirs, savedRepos } });
     pushDebugLog('[config] Context saved');
   };
 
@@ -7560,6 +7581,7 @@
 
   // ── Routines ──────────────────────────────────────────────────────────────────
   let routinesList = [];
+  let serverRoutinesList = []; // mirror of routines last confirmed saved to server
   const routineTimers = {};
   const routineTokens = {}; // { [routineName]: { input, output } }
 
@@ -7933,7 +7955,16 @@
     // Then drop empty entries (no name AND no prompt) from the canonical list
     routinesList = routinesList.filter(r => (r.name && r.name.trim()) || (r.prompt && r.prompt.trim()));
     applyRoutineTriggers(false);
-    wsSend({ type: 'save-config', config: { routines: routinesList } });
+    // Atomic: one upsert-routine per changed/new entry, one delete-routine per removed entry.
+    // Never sends a bulk array — the server cannot wipe the whole routines list this way.
+    const newNames = new Set(routinesList.map(r => r.name));
+    for (const routine of routinesList) {
+      wsSend({ type: 'upsert-routine', routine });
+    }
+    for (const routine of serverRoutinesList) {
+      if (!newNames.has(routine.name)) wsSend({ type: 'delete-routine', name: routine.name });
+    }
+    serverRoutinesList = [...routinesList];
     pushDebugLog(`[routines] Saved ${routinesList.length} routines`);
     // Re-render so the panel reflects saved state, but keep the panel open until user clicks ✕
     renderRoutinesPanel();
@@ -12030,9 +12061,14 @@
     if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     document.getElementById('onb-audio-dot')?.classList.remove('active');
+    const lbl = document.getElementById('onb-tts-label');
     if (currentConfig?.elevenLabsApiKey) {
+      if (lbl) lbl.textContent = '';
+      console.log('[tts] routing to ElevenLabs');
       wsSend({ type: 'tts-speak', text });
     } else {
+      console.warn('[tts] no ElevenLabs key in currentConfig — using browser TTS');
+      if (lbl) lbl.textContent = 'ElevenLabs key not set';
       onbSpeakFallback(text);
     }
   }

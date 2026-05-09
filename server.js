@@ -650,17 +650,31 @@ function readJSON(filePath, fallback) {
   }
 }
 
-// Like readJSON but falls back to config.backup.json when the main config
-// reads back empty (race condition: file mid-write when another handler reads).
-// Prevents save-panel-state / save-hidden-sessions from wiping all keys.
+// Like readJSON but falls back to config.backup.json → archives when the main
+// config is missing, corrupt, or suspiciously thin (e.g. a partial write left
+// only {hiddenSessions:[...]}). All config write paths use this so a mid-kill
+// file corruption can never cause a silent wipe of projects/routines/keys.
 function readConfigRaw() {
   const main = readJSON(CONFIG_PATH, null);
   if (main && Object.keys(main).length >= 3) return main;
   const backup = readJSON(CONFIG_PATH.replace('.json', '.backup.json'), null);
   if (backup && Object.keys(backup).length >= 3) {
-    console.warn('[config] readConfigRaw: main config thin/missing, using backup');
+    console.warn('[config] readConfigRaw: main config thin/missing — recovered from backup');
     return backup;
   }
+  // Last resort: scan archives newest-first for a config with meaningful data
+  try {
+    const files = fs.readdirSync(CONFIG_ARCHIVE_DIR)
+      .filter(n => /^config\..*\.json$/.test(n)).sort().reverse();
+    for (const file of files.slice(0, 20)) {
+      const candidate = readJSON(path.join(CONFIG_ARCHIVE_DIR, file), null);
+      if (candidate && candidate.projects && candidate.projects.length > 0) {
+        console.warn(`[config] readConfigRaw: recovered from archive ${file}`);
+        return candidate;
+      }
+    }
+  } catch {}
+  console.error('[config] readConfigRaw: all config sources empty or corrupt');
   return main || {};
 }
 
@@ -749,7 +763,16 @@ function writeJSON(filePath, data) {
       pruneConfigArchive();
     } catch {}
   }
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  // Atomic write: temp file + rename so a mid-kill can never leave a corrupt file
+  const serialized = JSON.stringify(data, null, 2);
+  const tmpPath = filePath + '.tmp';
+  fs.writeFileSync(tmpPath, serialized, 'utf8');
+  try {
+    fs.renameSync(tmpPath, filePath);
+  } catch {
+    fs.writeFileSync(filePath, serialized, 'utf8');
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
 }
 
 // ─── OpenRouter catalog (model pricing) ──────────────────────────────────────
@@ -5992,9 +6015,13 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'save-config') {
-    const current = readJSON(CONFIG_PATH, {});
-    const currentProjectNames = new Set((current.projects || []).map(p => p.name));
+    const current = readConfigRaw();
     const updates = { ...msg.config };
+    // Projects and routines are immutable through save-config — they have
+    // dedicated upsert-project / delete-project / upsert-routine / delete-routine
+    // handlers. Stripping them here prevents any bulk-array replacement path.
+    delete updates.projects;
+    delete updates.routines;
     for (const key of SENSITIVE_KEYS) {
       if (!updates[key] || updates[key] === SECRET_MASK) {
         delete updates[key];
@@ -6004,14 +6031,6 @@ function handleMessage(ws, raw) {
     }
     const merged = mergeConfigDefensively(current, updates);
     writeJSON(CONFIG_PATH, merged);
-    const vaultPath = merged.obsidianVaultPath;
-    if (vaultPath) {
-      for (const proj of (merged.projects || [])) {
-        if (!currentProjectNames.has(proj.name)) {
-          scaffoldObsidianProject(proj, vaultPath);
-        }
-      }
-    }
     sendTo(ws, { type: 'config-saved' });
     return;
   }
@@ -6025,6 +6044,65 @@ function handleMessage(ws, raw) {
   if (type === 'save-hidden-sessions') {
     const current = readConfigRaw();
     writeJSON(CONFIG_PATH, { ...current, hiddenSessions: msg.hiddenSessions || [] });
+    return;
+  }
+
+  // ── Atomic project mutations (one item at a time) ────────────────────────────
+  if (type === 'upsert-project') {
+    const proj = msg.project;
+    if (!proj || !proj.name) return;
+    const cfg = readConfigRaw();
+    const projects = Array.isArray(cfg.projects) ? [...cfg.projects] : [];
+    const idx = projects.findIndex(p => p.name === proj.name);
+    if (idx >= 0) {
+      projects[idx] = { ...projects[idx], ...proj };
+    } else {
+      projects.push(proj);
+    }
+    cfg.projects = projects;
+    writeJSON(CONFIG_PATH, cfg);
+    if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
+    sendTo(ws, { type: 'config-saved' });
+    return;
+  }
+
+  if (type === 'delete-project') {
+    const { name } = msg;
+    if (!name) return;
+    const cfg = readConfigRaw();
+    const before = (cfg.projects || []).length;
+    cfg.projects = (cfg.projects || []).filter(p => p.name !== name);
+    if (cfg.projects.length < before) writeJSON(CONFIG_PATH, cfg);
+    sendTo(ws, { type: 'config-saved' });
+    return;
+  }
+
+  // ── Atomic routine mutations (one item at a time) ────────────────────────────
+  if (type === 'upsert-routine') {
+    const routine = msg.routine;
+    if (!routine || !routine.name) return;
+    const cfg = readConfigRaw();
+    const routines = Array.isArray(cfg.routines) ? [...cfg.routines] : [];
+    const idx = routines.findIndex(r => r.name === routine.name);
+    if (idx >= 0) {
+      routines[idx] = { ...routines[idx], ...routine };
+    } else {
+      routines.push(routine);
+    }
+    cfg.routines = routines;
+    writeJSON(CONFIG_PATH, cfg);
+    sendTo(ws, { type: 'config-saved' });
+    return;
+  }
+
+  if (type === 'delete-routine') {
+    const { name } = msg;
+    if (!name) return;
+    const cfg = readConfigRaw();
+    const before = (cfg.routines || []).length;
+    cfg.routines = (cfg.routines || []).filter(r => r.name !== name);
+    if (cfg.routines.length < before) writeJSON(CONFIG_PATH, cfg);
+    sendTo(ws, { type: 'config-saved' });
     return;
   }
 
@@ -6047,11 +6125,19 @@ function handleMessage(ws, raw) {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
-        if (res.statusCode !== 200) { sendTo(ws, { type: 'tts-audio', error: `elevenlabs-${res.statusCode}` }); return; }
+        if (res.statusCode !== 200) {
+          const detail = Buffer.concat(chunks).toString('utf8').slice(0, 400);
+          console.error(`[tts] ElevenLabs ${res.statusCode}:`, detail);
+          sendTo(ws, { type: 'tts-audio', error: `elevenlabs-${res.statusCode}`, detail });
+          return;
+        }
         sendTo(ws, { type: 'tts-audio', dataUrl: `data:audio/mpeg;base64,${Buffer.concat(chunks).toString('base64')}` });
       });
     });
-    req.on('error', e => sendTo(ws, { type: 'tts-audio', error: e.message }));
+    req.on('error', e => {
+      console.error('[tts] ElevenLabs request error:', e.message);
+      sendTo(ws, { type: 'tts-audio', error: e.message });
+    });
     req.write(body);
     req.end();
     return;
@@ -6914,7 +7000,7 @@ function handleMessage(ws, raw) {
         module_count: Array.isArray(c.modules) ? c.modules.length : (c.module_count || 0)
       });
 
-      const liveFalse = allCourses.filter(c => c.live === false && !c._benchmark);
+      const liveFalse = allCourses.filter(c => c.live !== true && !c._benchmark);
       const pending         = liveFalse.filter(c => !hasModules(c)).map(normCourse);
       const readyToActivate = liveFalse.filter(c =>  hasModules(c)).map(normCourse);
 
