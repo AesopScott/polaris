@@ -3826,24 +3826,32 @@
         break;
       }
 
-      case 'tts-audio':
+      case 'tts-audio': {
+        const dot2 = document.getElementById('onb-audio-dot');
+        const lbl2 = document.getElementById('onb-tts-label');
         if (msg.dataUrl && _onbSpeakEnabled) {
           if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
           _onbAudio = new Audio(msg.dataUrl);
-          const dot = document.getElementById('onb-audio-dot');
-          const lbl = document.getElementById('onb-tts-label');
-          if (dot) dot.classList.add('active');
-          if (lbl) lbl.textContent = '';
-          _onbAudio.onended = () => { _onbAudio = null; if (dot) dot.classList.remove('active'); };
-          _onbAudio.play().catch(() => { _onbAudio = null; if (dot) dot.classList.remove('active'); onbSpeakFallback(_onbLastText); });
+          if (dot2) dot2.classList.add('active');
+          if (lbl2) lbl2.textContent = '';
+          _onbAudio.onended = () => { _onbAudio = null; if (dot2) dot2.classList.remove('active'); };
+          _onbAudio.play().then(() => {
+            console.log('[tts] ElevenLabs audio playing ✓');
+          }).catch(err => {
+            console.error('[tts] Audio.play() blocked:', err.message, '— falling back to browser TTS');
+            if (lbl2) lbl2.textContent = 'ElevenLabs blocked (autoplay)';
+            _onbAudio = null;
+            if (dot2) dot2.classList.remove('active');
+            onbSpeakFallback(_onbLastText);
+          });
         } else if (msg.error && _onbSpeakEnabled) {
-          const lbl2 = document.getElementById('onb-tts-label');
           const info = msg.error === 'no-key' ? 'ElevenLabs key not set' : `ElevenLabs error: ${msg.error}`;
           console.warn('[tts]', info, msg.detail || '');
           if (lbl2) lbl2.textContent = info;
           onbSpeakFallback(_onbLastText);
         }
         break;
+      }
 
       case 'init':
         promptHistoryStore = msg.history || [];
@@ -11862,6 +11870,7 @@
   let _onbStep  = 0;
   let _onbSteps = [];
   let _onbAudio = null;
+  let _onbGestureAudio = null;
   let _onbSpeakEnabled = false;
   let _onbPanelClose = null;
   let _onbLastText = '';
@@ -12059,13 +12068,22 @@
   }
 
   function _onbWarmAudio() {
+    // Play a real (silent) Audio element within the user gesture to satisfy
+    // Chrome's user-gesture-required autoplay policy for HTMLMediaElement.
+    // We mark _onbAudioUnlocked so the tts-audio handler knows it can proceed.
+    if (_onbAudioUnlocked) return;
+    try {
+      // Smallest valid silent MP3 (44 bytes)
+      const a = new Audio('data:audio/mpeg;base64,/+MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+      a.volume = 0;
+      a.play().then(() => { _onbAudioUnlocked = true; a.pause(); }).catch(() => {});
+    } catch(e) {}
+    // Also warm AudioContext for belt-and-suspenders
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const buf = ctx.createBuffer(1, 1, 22050);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.connect(ctx.destination);
-      src.start(0);
+      const src2 = ctx.createBufferSource();
+      src2.buffer = buf; src2.connect(ctx.destination); src2.start(0);
       ctx.resume().catch(() => {});
     } catch(e) {}
   }
