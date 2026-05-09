@@ -3978,7 +3978,9 @@
           if (mBtn) mBtn.style.display = 'none';
         }
         if (Array.isArray(msg.config?.hiddenSessions)) {
-          for (const sid of msg.config.hiddenSessions) hiddenCards.add(sid);
+          for (const sid of msg.config.hiddenSessions) {
+            if (sessionStore[sid]) hiddenCards.add(sid);
+          }
         }
         renderGrid();
         restorePanelState(msg.config?.panelState);
@@ -6338,7 +6340,7 @@
   };
 
   function updateHiddenCount() {
-    const n = hiddenCards.size;
+    const n = [...hiddenCards].filter(id => sessionStore[id]).length;
     const wrap = document.getElementById('stat-hidden-wrap');
     const count = document.getElementById('stat-hidden-count');
     if (wrap) wrap.style.display = n > 0 ? '' : 'none';
