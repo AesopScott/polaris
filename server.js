@@ -3015,9 +3015,16 @@ async function toolWebSearch({ query, num_results = 5 }) {
       if (result && !String(result).startsWith('Error')) return result;
     } catch { /* fall through */ }
   }
-  // Priority 2: Brave Search API (if key configured)
+  // Priority 2: Brave Search via MCP (if server configured)
+  if (claudeJson.mcpServers?.['brave-search']) {
+    try {
+      const result = await callMcpTool('brave-search', 'brave_web_search', { query, count: n });
+      if (result && !String(result).startsWith('Error')) return result;
+    } catch { /* fall through */ }
+  }
+  // Priority 3: Brave Search API direct (legacy — key set but MCP server not enabled)
   if (config.braveSearchApiKey) return braveSearch(query, n, config.braveSearchApiKey);
-  // Priority 3: DuckDuckGo instant answers (free, no key, limited)
+  // Priority 4: DuckDuckGo instant answers (free, no key, limited)
   return duckDuckGoSearch(query, n);
 }
 

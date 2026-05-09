@@ -115,6 +115,30 @@
     "prerequisiteWarning": null
   },
   {
+    "id": "brave-search",
+    "name": "Brave Search",
+    "emoji": "🦁",
+    "description": "Full web search via Brave — 2,000 free searches/month with a free API key",
+    "productUrl": "https://brave.com/search/api/",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": {
+      "BRAVE_API_KEY": "{{BRAVE_API_KEY}}"
+    },
+    "credentials": [
+      {
+        "key": "BRAVE_API_KEY",
+        "label": "Brave Search API Key",
+        "type": "secret",
+        "required": true,
+        "hint": "brave.com/search/api → Sign up → Create a Free plan API key (2,000 searches/month)",
+        "setupGuideUrl": "https://api.search.brave.com/app/keys"
+      }
+    ],
+    "prerequisiteWarning": null
+  },
+  {
     "id": "you-com",
     "name": "You.com Search",
     "emoji": "🔍",
