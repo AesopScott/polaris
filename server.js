@@ -4297,6 +4297,194 @@ function spawnChatRouter(sessionId, prompt, config) {
   return spawnMaxChat(sessionId, prompt, config);
 }
 
+// ─── ChatGPT CDP Integration ──────────────────────────────────────────────────
+const GPT_CDP_PORT = 9222;
+const GPT_TIER_MODELS = {
+  floor:    { slug: 'gpt-5-mini', label: 'GPT-5-mini' },
+  balanced: { slug: 'gpt-5-3',    label: 'GPT-5.3'    },
+  power:    { slug: 'gpt-5-5',    label: 'GPT-5.5'    },
+};
+
+function getGptCdpTarget() {
+  return new Promise((resolve, reject) => {
+    http.get(`http://localhost:${GPT_CDP_PORT}/json`, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try {
+          const pages = JSON.parse(body);
+          const page = pages.find(p => p.type === 'page');
+          if (!page) return reject(new Error('No ChatGPT page found at CDP port'));
+          resolve(page.webSocketDebuggerUrl);
+        } catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function ensureGptRunning() {
+  try { await getGptCdpTarget(); return; } catch {}
+  spawn('chatgpt', [`--remote-debugging-port=${GPT_CDP_PORT}`], { detached: true, stdio: 'ignore' }).unref();
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try { await getGptCdpTarget(); return; } catch {}
+  }
+  throw new Error('ChatGPT desktop did not start within 20 seconds. Make sure it is installed and you are logged in.');
+}
+
+function openCdpConnection(wsUrl) {
+  return new Promise((resolve, reject) => {
+    const cdpWs = new WebSocket(wsUrl);
+    const pending = new Map();
+    let nextId = 1;
+    cdpWs.on('open', () => resolve({ ws: cdpWs, send }));
+    cdpWs.on('error', reject);
+    cdpWs.on('message', raw => {
+      const msg = JSON.parse(raw);
+      if (msg.id && pending.has(msg.id)) {
+        const { resolve: res, reject: rej } = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.error) rej(new Error(JSON.stringify(msg.error)));
+        else res(msg.result);
+      }
+    });
+    function send(method, params = {}) {
+      return new Promise((res, rej) => {
+        const id = nextId++;
+        pending.set(id, { resolve: res, reject: rej });
+        cdpWs.send(JSON.stringify({ id, method, params }));
+      });
+    }
+  });
+}
+
+async function cdpEval(send, expression) {
+  const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  return r?.result?.value;
+}
+
+async function spawnGptChat(sessionId, prompt, tier) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  const tierKey = (tier || 'balanced').toLowerCase();
+  const model = GPT_TIER_MODELS[tierKey] || GPT_TIER_MODELS.balanced;
+  session.model = `openai/${model.slug} (GPT)`;
+  session.status = 'running';
+  session.startAt = Date.now();
+  const startMs = Date.now();
+
+  broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.label}`, role: 'system' });
+
+  let cdpConn = null;
+  try {
+    await ensureGptRunning();
+    const wsUrl = await getGptCdpTarget();
+    cdpConn = await openCdpConnection(wsUrl);
+    const { send: cdpSend } = cdpConn;
+
+    // Navigate to a fresh conversation for new sessions
+    if (!session.gptConversationStarted) {
+      await cdpSend('Page.navigate', { url: 'https://chatgpt.com/?window_style=main_view' });
+      await new Promise(r => setTimeout(r, 2500));
+      session.gptConversationStarted = true;
+    }
+
+    // Best-effort model selection via UI
+    const modelLabel = model.label;
+    await cdpEval(cdpSend, `
+      (async function() {
+        const btn = document.querySelector('[data-testid="model-switcher-dropdown-button"]') ||
+                    document.querySelector('button[aria-haspopup="listbox"]') ||
+                    [...document.querySelectorAll('button')].find(b => /gpt-5|model/i.test(b.textContent));
+        if (!btn) return;
+        btn.click();
+        await new Promise(r => setTimeout(r, 600));
+        const opt = [...document.querySelectorAll('[role="option"],[role="menuitem"],[data-testid*="model"]')]
+          .find(el => el.textContent.includes(${JSON.stringify(modelLabel)}));
+        if (opt) opt.click(); else document.body.click();
+      })()
+    `);
+    await new Promise(r => setTimeout(r, 400));
+
+    // Type the message
+    const typed = await cdpEval(cdpSend, `
+      (function() {
+        const ta = document.querySelector('#prompt-textarea') ||
+                   document.querySelector('[contenteditable="true"][data-lexical-editor]') ||
+                   document.querySelector('[contenteditable="true"]');
+        if (!ta) return { ok: false, error: 'No textarea found' };
+        ta.focus();
+        document.execCommand('selectAll');
+        document.execCommand('delete');
+        document.execCommand('insertText', false, ${JSON.stringify(prompt)});
+        return { ok: true };
+      })()
+    `);
+    if (!typed?.ok) throw new Error(typed?.error || 'Could not type into ChatGPT input');
+    await new Promise(r => setTimeout(r, 500));
+
+    // Click send
+    const sent = await cdpEval(cdpSend, `
+      (function() {
+        const btn = document.querySelector('button[data-testid="send-button"]') ||
+                    document.querySelector('button[aria-label="Send message"]') ||
+                    document.querySelector('button[aria-label*="Send" i]');
+        if (!btn || btn.disabled) return { ok: false, error: btn ? 'disabled — input may not have registered' : 'not found' };
+        btn.click();
+        return { ok: true };
+      })()
+    `);
+    if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
+
+    broadcast({ type: 'line', sessionId, text: '[gpt] message sent', role: 'system' });
+
+    // Stream response by polling DOM every 300 ms
+    let prevText = '';
+    let doneCount = 0;
+    const MAX_POLLS = 400; // 400 × 300 ms = 2 minutes max
+
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise(r => setTimeout(r, 300));
+      const state = await cdpEval(cdpSend, `
+        (function() {
+          const msgs = document.querySelectorAll('[data-message-author-role="assistant"]');
+          const last = msgs[msgs.length - 1];
+          if (!last) return { text: '', done: false };
+          const streaming = !!document.querySelector('[data-testid="stop-button"]');
+          const prose = last.querySelector('.markdown') || last.querySelector('[class*="prose"]') || last;
+          return { text: (prose.innerText || prose.textContent || '').trim(), done: !streaming };
+        })()
+      `);
+      if (!state) continue;
+      const { text, done } = state;
+      if (text.length > prevText.length) {
+        broadcast({ type: 'line', sessionId, text: text.slice(prevText.length), role: 'assistant', class: 'ai-text' });
+        prevText = text;
+        doneCount = 0;
+      }
+      if (done && text.length > 0) {
+        doneCount++;
+        if (doneCount >= 3) break;
+      }
+    }
+
+    const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
+    broadcast({ type: 'line', sessionId, text: `[gpt] done | ${elapsed}s | ${prevText.length} chars`, role: 'system' });
+    session.status = 'done';
+    session.endAt = Date.now();
+    broadcast({ type: 'session-status', sessionId, status: 'done' });
+
+  } catch (err) {
+    broadcast({ type: 'line', sessionId, text: `ChatGPT error: ${err.message}`, role: 'error' });
+    broadcast({ type: 'session-status', sessionId, status: 'error' });
+    session.status = 'error';
+    session.endAt = Date.now();
+  } finally {
+    try { cdpConn?.ws?.close(); } catch {}
+  }
+}
+
 function spawnChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -5086,6 +5274,33 @@ function handleMessage(ws, raw) {
     broadcast({ type: 'line', sessionId: id, text: prompt + imgLabel, role: 'user' });
     saveSessions();
     spawnChatRouter(id, prompt, config);
+    return;
+  }
+
+  if (type === 'launch-gpt') {
+    const { prompt, tier } = msg;
+    if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+
+    const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
+    const projectName = msg.projectName || (detectedProject ? detectedProject.name : null);
+
+    addToHistory(prompt);
+    const id = `gpt_${Date.now()}`;
+    const name = generateSessionName(prompt);
+    const tierKey = (tier || 'balanced').toLowerCase();
+    const modelInfo = GPT_TIER_MODELS[tierKey] || GPT_TIER_MODELS.balanced;
+    sessions.set(id, {
+      id, name, workDir: null, projectName: projectName || null,
+      isChat: true, isGpt: true, model: `openai/${modelInfo.slug} (GPT)`, tier: tierKey,
+      status: 'running', startAt: Date.now(),
+      proc: null, watcher: null, timeout: null,
+      lines: [], lastPrompt: prompt,
+      gptConversationStarted: false,
+    });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: projectName || null, model: `openai/${modelInfo.slug} (GPT)`, isChat: true, isGpt: true });
+    broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
+    saveSessions();
+    spawnGptChat(id, prompt, tierKey);
     return;
   }
 

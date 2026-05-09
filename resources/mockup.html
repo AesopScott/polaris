@@ -1359,6 +1359,7 @@
       <div style="display:flex;align-items:center;gap:10px;margin-top:15px;">
         <div class="mode-toggle">
           <button class="mode-btn active" data-mode="chat">Max</button>
+          <button class="mode-btn" data-mode="gpt">GPT</button>
           <button class="mode-btn" data-mode="code">Code</button>
         </div>
         <span class="mode-hint text-muted" style="font-size:10px;">Claude Max via local CLI · billed against your Max plan · no agent tools, no working directory</span>
@@ -3065,18 +3066,26 @@
 
   function activateMode(bar, mode) {
     bar.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-    // Max sessions run in a project workdir like Code sessions; keep the
-    // context row interactive in both modes.
     const ctxRow = bar.querySelector('.launch-context-row');
     if (ctxRow) { ctxRow.style.opacity = ''; ctxRow.style.pointerEvents = ''; }
     const hint = bar.querySelector('.mode-hint');
-    if (hint) hint.textContent = mode === 'chat' ? 'Claude Max via local CLI · runs in your selected project workdir · billed against your Max plan' : buildCodeHint();
+    if (hint) hint.textContent = mode === 'chat'
+      ? 'Claude Max via local CLI · runs in your selected project workdir · billed against your Max plan'
+      : mode === 'gpt'
+        ? 'OpenAI ChatGPT desktop · GPT-5 models · requires ChatGPT app installed and logged in'
+        : buildCodeHint();
     const promptEl = bar.closest('.palette')?.querySelector('.prompt-area');
-    if (promptEl) promptEl.placeholder = mode === 'chat' ? 'Describe what you want this Max session to do...' : 'Describe what you want this agent to do...';
+    if (promptEl) promptEl.placeholder = mode === 'chat'
+      ? 'Describe what you want this Max session to do...'
+      : mode === 'gpt'
+        ? 'Describe what you want to ask ChatGPT...'
+        : 'Describe what you want this agent to do...';
     const launchBtn = bar.querySelector('.launch-action-btn');
     if (launchBtn && !resumeTarget) launchBtn.innerHTML = mode === 'chat'
       ? '<span class="icon">💬</span><span class="lbl">Max</span>'
-      : '<span class="icon">▶</span><span class="lbl">Launch</span>';
+      : mode === 'gpt'
+        ? '<span class="icon">🤖</span><span class="lbl">GPT</span>'
+        : '<span class="icon">▶</span><span class="lbl">Launch</span>';
   }
 
   function toggleProjects()  {
@@ -6653,6 +6662,8 @@
     } else if (mode === 'chat') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
       wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+    } else if (mode === 'gpt') {
+      wsSend({ type: 'launch-gpt', prompt: fullPrompt, projectName: f.projectName, tier: f.tier });
     } else {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
       wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
