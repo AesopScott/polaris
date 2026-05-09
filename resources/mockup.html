@@ -201,6 +201,7 @@
     overflow: hidden;
   }
   @keyframes holoFrame { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  @keyframes evalPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.75); } }
   .prompt-style-10 .prompt-area {
     background: #0d1526; color: #e2e8f0;
     border: none; border-radius: 9px;
@@ -8305,7 +8306,7 @@
              prompt: `COURSE_ID: eval-benchmark\n\n${r.prompt}`,
              model: model.id, routineTag: `eval-${model.id}` });
     if (_evalTickId) clearInterval(_evalTickId);
-    _evalTickId = setInterval(() => _renderEvalResults(), 5000);
+    _evalTickId = setInterval(() => _renderEvalResults(), 1000);
     pushDebugLog(`[eval] Fired ${model.label}`);
   }
 
@@ -8388,14 +8389,21 @@
       </div>`;
     }
 
-    if (_evalRunning && _evalCurrentIdx < _evalQueue.length) {
+    if (_evalRunning && _evalCurrentIdx >= 0 && _evalCurrentIdx < _evalQueue.length) {
       const m = _evalQueue[_evalCurrentIdx];
       const elapsed = _evalStartTime ? Math.floor((Date.now() - _evalStartTime) / 1000) : 0;
       const mm = Math.floor(elapsed/60), ss = elapsed%60;
-      html += `<div style="padding:7px 10px;border-radius:5px;background:rgba(255,255,255,0.04);border:1px solid #fbbf2444;">
-        <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${escHtml(m.label)}</span>
-        <span style="font-size:10px;color:#fbbf24;margin-left:8px;">⟳ ${mm > 0 ? mm + 'm ' : ''}${ss}s</span>
+      const elapsedStr = (mm > 0 ? mm + 'm ' : '') + ss + 's';
+      html += `<div style="padding:8px 10px;border-radius:5px;background:rgba(251,191,36,0.06);border:1px solid #fbbf2466;display:flex;align-items:center;gap:8px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#fbbf24;animation:evalPulse 1s ease-in-out infinite;flex-shrink:0;"></span>
+        <div style="flex:1;min-width:0;">
+          <span style="font-size:12px;font-weight:600;color:#fbbf24;">${escHtml(m.label)}</span>
+          <span style="font-size:10px;color:#fbbf2499;margin-left:8px;">${_evalCurrentIdx + 1}/${_evalQueue.length} · ${elapsedStr}</span>
+        </div>
+        <span style="font-size:10px;color:#fbbf24;">building…</span>
       </div>`;
+    } else if (_evalRunning && _evalCurrentIdx === -1) {
+      html += `<div style="padding:8px 10px;border-radius:5px;background:rgba(251,191,36,0.04);border:1px solid #fbbf2433;color:#fbbf2499;font-size:11px;">Preparing…</div>`;
     }
 
     const completedIds = new Set(_evalResults.map(r => r.model));

@@ -4903,7 +4903,14 @@ function handleMessage(ws, raw) {
     if (routineTag) {
       const cfg = readConfig();
       const routineModel = msg.model || '';
-      if (routineModel === 'chat') {
+      if (routineTag.startsWith('eval-')) {
+        // Eval sessions: full agent loop with explicit OpenRouter model override
+        // session.model is already set to the OpenRouter model ID from msg.model
+        const routeMsg = `[routing] eval session → runDirectAgent (model=${routineModel || 'default'})`;
+        console.log(routeMsg);
+        broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
+        runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[eval-agent] unhandled error:', err.stack || err.message));
+      } else if (routineModel === 'chat') {
         const routeMsg = `[routing] routineTag="${routineTag}" model=chat → chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
