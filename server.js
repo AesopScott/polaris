@@ -4307,9 +4307,9 @@ function spawnChatRouter(sessionId, prompt, config) {
 // ─── ChatGPT CDP Integration ──────────────────────────────────────────────────
 const GPT_CDP_PORT = 9222;
 const GPT_TIER_MODELS = {
-  floor:    { slug: 'gpt-5-mini', label: 'GPT-5-mini' },
-  balanced: { slug: 'gpt-5-3',    label: 'GPT-5.3'    },
-  power:    { slug: 'gpt-5-5',    label: 'GPT-5.5'    },
+  floor:    { slug: 'gpt-5-5',          label: 'Auto',     display: 'GPT-5.5 Auto'     },
+  balanced: { slug: 'gpt-5-5',          label: 'Auto',     display: 'GPT-5.5 Auto'     },
+  power:    { slug: 'gpt-5-5-thinking', label: 'Thinking', display: 'GPT-5.5 Thinking' },
 };
 
 function getGptCdpTarget() {
@@ -4381,7 +4381,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
   session.startAt = Date.now();
   const startMs = Date.now();
 
-  broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.label}`, role: 'system' });
+  broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.display}`, role: 'system' });
 
   let cdpConn = null;
   try {
@@ -4397,19 +4397,27 @@ async function spawnGptChat(sessionId, prompt, tier) {
       session.gptConversationStarted = true;
     }
 
-    // Best-effort model selection via UI
+    // Best-effort model selection via UI (pill button → Radix dropdown)
     const modelLabel = model.label;
     await cdpEval(cdpSend, `
       (async function() {
-        const btn = document.querySelector('[data-testid="model-switcher-dropdown-button"]') ||
-                    document.querySelector('button[aria-haspopup="listbox"]') ||
-                    [...document.querySelectorAll('button')].find(b => /gpt-5|model/i.test(b.textContent));
-        if (!btn) return;
-        btn.click();
-        await new Promise(r => setTimeout(r, 600));
-        const opt = [...document.querySelectorAll('[role="option"],[role="menuitem"],[data-testid*="model"]')]
-          .find(el => el.textContent.includes(${JSON.stringify(modelLabel)}));
-        if (opt) opt.click(); else document.body.click();
+        const pill = document.querySelector('button.__composer-pill');
+        if (!pill) return;
+        const pfk = Object.keys(pill).find(k => k.startsWith('__reactFiber'));
+        if (pfk) {
+          let f = pill[pfk];
+          while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
+        } else { pill.click(); }
+        await new Promise(r => setTimeout(r, 800));
+        const items = [...document.querySelectorAll('[role="menuitemradio"],[role="menuitem"],[role="option"]')];
+        const target = items.find(el => el.innerText && el.innerText.trim() === ${JSON.stringify(modelLabel)});
+        if (target) {
+          const tfk = Object.keys(target).find(k => k.startsWith('__reactFiber'));
+          if (tfk) {
+            let f = target[tfk];
+            while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
+          } else { target.click(); }
+        } else { document.body.click(); }
       })()
     `);
     await new Promise(r => setTimeout(r, 400));
@@ -4417,10 +4425,9 @@ async function spawnGptChat(sessionId, prompt, tier) {
     // Type the message
     const typed = await cdpEval(cdpSend, `
       (function() {
-        const ta = document.querySelector('#prompt-textarea') ||
-                   document.querySelector('[contenteditable="true"][data-lexical-editor]') ||
+        const ta = document.querySelector('.ProseMirror[contenteditable="true"]') ||
                    document.querySelector('[contenteditable="true"]');
-        if (!ta) return { ok: false, error: 'No textarea found' };
+        if (!ta) return { ok: false, error: 'No input found' };
         ta.focus();
         document.execCommand('selectAll');
         document.execCommand('delete');
@@ -4431,14 +4438,17 @@ async function spawnGptChat(sessionId, prompt, tier) {
     if (!typed?.ok) throw new Error(typed?.error || 'Could not type into ChatGPT input');
     await new Promise(r => setTimeout(r, 500));
 
-    // Click send
+    // Click send via React fiber (plain .click() is ignored by Radix/React)
     const sent = await cdpEval(cdpSend, `
       (function() {
-        const btn = document.querySelector('button[data-testid="send-button"]') ||
-                    document.querySelector('button[aria-label="Send message"]') ||
+        const btn = document.querySelector('button[aria-label="Send prompt"]') ||
                     document.querySelector('button[aria-label*="Send" i]');
-        if (!btn || btn.disabled) return { ok: false, error: btn ? 'disabled — input may not have registered' : 'not found' };
-        btn.click();
+        if (!btn || btn.disabled) return { ok: false, error: btn ? 'disabled — text may not have registered' : 'not found' };
+        const fk = Object.keys(btn).find(k => k.startsWith('__reactFiber'));
+        if (fk) {
+          let f = btn[fk];
+          while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
+        } else { btn.click(); }
         return { ok: true };
       })()
     `);
@@ -5297,15 +5307,16 @@ function handleMessage(ws, raw) {
     const name = generateSessionName(prompt);
     const tierKey = (tier || 'balanced').toLowerCase();
     const modelInfo = GPT_TIER_MODELS[tierKey] || GPT_TIER_MODELS.balanced;
+    const modelDisplay = `openai/${modelInfo.display} (GPT)`;
     sessions.set(id, {
       id, name, workDir: null, projectName: projectName || null,
-      isChat: true, isGpt: true, model: `openai/${modelInfo.slug} (GPT)`, tier: tierKey,
+      isChat: true, isGpt: true, model: modelDisplay, tier: tierKey,
       status: 'running', startAt: Date.now(),
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt,
       gptConversationStarted: false,
     });
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: projectName || null, model: `openai/${modelInfo.slug} (GPT)`, isChat: true, isGpt: true });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: projectName || null, model: modelDisplay, isChat: true, isGpt: true });
     broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
     saveSessions();
     spawnGptChat(id, prompt, tierKey);
