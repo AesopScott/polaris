@@ -1662,16 +1662,6 @@ function toolQueryMemory({ filename } = {}, sessionId) {
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
-function detectProjectFromPrompt(prompt, cfg) {
-  if (!prompt) return null;
-  const projects = (cfg.projects || []).filter(p => p.name && p.workDir);
-  for (const p of projects) {
-    const escaped = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\b${escaped}\\b`, 'i').test(prompt)) return p;
-  }
-  return null;
-}
-
 function toolSetProject({ projectName } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
