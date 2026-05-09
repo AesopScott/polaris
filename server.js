@@ -1662,6 +1662,16 @@ function toolQueryMemory({ filename } = {}, sessionId) {
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
+function detectProjectFromPrompt(prompt, cfg) {
+  if (!prompt) return null;
+  const projects = (cfg.projects || []).filter(p => p.name && p.workDir);
+  for (const p of projects) {
+    const escaped = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(prompt)) return p;
+  }
+  return null;
+}
+
 function toolSetProject({ projectName } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
@@ -4804,6 +4814,19 @@ async function runAgentEvalSuite({ runId, models, fixtureIds, runs }) {
   });
 }
 
+// Auto-detect a configured project name mentioned in the prompt text.
+// Only fires when the caller didn't explicitly pick one from the dropdown.
+function detectProjectFromPrompt(prompt) {
+  const cfg = readConfig();
+  const text = prompt || '';
+  for (const p of (cfg.projects || [])) {
+    if (!p.name) continue;
+    const escaped = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(text)) return p;
+  }
+  return null;
+}
+
 // ─── WebSocket message handler ────────────────────────────────────────────────
 function handleMessage(ws, raw) {
   let msg;
@@ -4812,10 +4835,16 @@ function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, workDir, projectName, tier, images, docs, audio } = msg;
+    const { prompt, workDir, tier, images, docs, audio } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
-    const effectiveWorkDir = (workDir && workDir.trim()) ? workDir.trim() : null;
+    // Auto-detect project from prompt text when none was selected from the dropdown.
+    const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
+    const projectName = msg.projectName || (detectedProject ? detectedProject.name : null);
+    const resolvedWorkDir = (workDir && workDir.trim()) ? workDir.trim()
+      : (detectedProject && detectedProject.workDir) ? detectedProject.workDir
+      : null;
+    const effectiveWorkDir = resolvedWorkDir || null;
     if (effectiveWorkDir && !fs.existsSync(effectiveWorkDir)) {
       return sendTo(ws, { type: 'error', text: `Working directory does not exist: ${effectiveWorkDir}` });
     }
@@ -4861,13 +4890,20 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'launch') {
-    const { prompt, workDir, projectName, sessionId } = msg;
+    const { prompt, workDir, sessionId } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
+    // Auto-detect project from prompt text when none was selected from the dropdown.
+    const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
+    const projectName = msg.projectName || (detectedProject ? detectedProject.name : null);
+
     if (!fs.existsSync(CHAT_DIR)) fs.mkdirSync(CHAT_DIR, { recursive: true });
-    const effectiveWorkDir = (workDir && workDir.trim()) ? workDir.trim() : CHAT_DIR;
-    if (workDir && workDir.trim() && !fs.existsSync(effectiveWorkDir)) {
-      return sendTo(ws, { type: 'error', text: `Working directory does not exist: ${effectiveWorkDir}` });
+    const resolvedWorkDir = (workDir && workDir.trim()) ? workDir.trim()
+      : (detectedProject && detectedProject.workDir) ? detectedProject.workDir
+      : null;
+    const effectiveWorkDir = resolvedWorkDir || CHAT_DIR;
+    if (resolvedWorkDir && !fs.existsSync(resolvedWorkDir)) {
+      return sendTo(ws, { type: 'error', text: `Working directory does not exist: ${resolvedWorkDir}` });
     }
 
     const id   = sessionId || `s_${Date.now()}`;
