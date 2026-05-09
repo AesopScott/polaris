@@ -6070,6 +6070,36 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'test-routine-api-model') {
+    const apiKey = msg.apiKey || readConfig().deepSeekApiKey;
+    const model = msg.model || 'deepseek-chat';
+    if (!apiKey) {
+      sendTo(ws, { type: 'routine-api-model-test', ok: false, message: 'No API key — set DeepSeek key first' });
+      return;
+    }
+    const payload = JSON.stringify({ model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false });
+    const opts = {
+      hostname: 'api.deepseek.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    };
+    const req = https.request(opts, res => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        if (res.statusCode === 200) sendTo(ws, { type: 'routine-api-model-test', ok: true, message: `Model "${model}" works` });
+        else if (res.statusCode === 401) sendTo(ws, { type: 'routine-api-model-test', ok: false, message: 'Invalid API key (401)' });
+        else if (res.statusCode === 404) sendTo(ws, { type: 'routine-api-model-test', ok: false, message: `Model not found: ${model}` });
+        else sendTo(ws, { type: 'routine-api-model-test', ok: false, message: `HTTP ${res.statusCode}: ${raw.slice(0, 200)}` });
+      });
+    });
+    req.on('error', err => sendTo(ws, { type: 'routine-api-model-test', ok: false, message: `Connection error: ${err.message}` }));
+    req.write(payload);
+    req.end();
+    return;
+  }
+
   if (type === 'open-url') {
     const { url } = msg;
     if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('file:///'))) {

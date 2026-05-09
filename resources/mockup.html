@@ -1719,7 +1719,11 @@
         </div>
         <div class="panel-section">
           <div class="context-label accent-label">ROUTINE API MODEL</div>
-          <input type="text" id="settings-ds-api-model" class="panel-input" value="deepseek-chat" style="width:100%;" />
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="settings-ds-api-model" class="panel-input" value="deepseek-chat" style="flex:1;" />
+            <button onclick="testRoutineApiModel()" style="padding:5px 12px;border-radius:5px;border:none;background:#3b82f6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Test</button>
+          </div>
+          <span id="routine-model-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
     </div>
@@ -4332,6 +4336,9 @@
         }
         break;
       }
+      case 'routine-api-model-test':
+        _aeShowKeyTest('routine-model-test-result', msg.ok, msg.message);
+        break;
       case 'openrouter-balance':
         _orBalance = msg;
         renderApiBalance();
@@ -7104,9 +7111,18 @@
     if (!inp) return;
     inp.type = inp.type === 'password' ? 'text' : 'password';
   }
+  function testRoutineApiModel() {
+    const apiKey = document.getElementById('settings-ds-api-key')?.value?.trim() || '';
+    const model = document.getElementById('settings-ds-api-model')?.value?.trim() || '';
+    if (!model) { _aeShowKeyTest('routine-model-test-result', false, 'Enter a model string first'); return; }
+    _aeShowKeyTest('routine-model-test-result', false, 'Testing…');
+    document.getElementById('routine-model-test-result').style.color = '#94a3b8';
+    wsSend({ type: 'test-routine-api-model', apiKey, model });
+  }
   window.checkDeepSeekBalance = checkDeepSeekBalance;
   window.testDeepSeekKey = testDeepSeekKey;
   window.toggleDsApiKeyReveal = toggleDsApiKeyReveal;
+  window.testRoutineApiModel = testRoutineApiModel;
 
   function checkOpenRouterBalance() {
     _orBalance = { loading: true };
