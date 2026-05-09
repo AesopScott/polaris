@@ -4063,7 +4063,11 @@ async function spawnMaxChat(sessionId, prompt, config) {
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
   // --resume reuses the CLI session on disk (turn 2+), skipping history rebuild.
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel];
+  // --strict-mcp-config prevents the CLI from loading the global MCP server list
+  // (~/.claude.json Connections panel, ~15 servers). Without it, the CLI tries
+  // to connect to all of them on every spawn, adding ~6s cold-start latency.
+  // The local .mcp.json (Polaris endpoint only) is still loaded via cwd discovery.
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel, '--strict-mcp-config'];
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
   const chatDocs   = session.pendingDocs   || [];
