@@ -1527,7 +1527,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
 ];
 
-function buildDirectSystemPrompt(config, workDir) {
+function buildDirectSystemPrompt(config, workDir, projectMemory = {}) {
   const layers = [BASE_SYSTEM_PROMPT];
 
   // Layer 2: Project CLAUDE.md ({workDir}/CLAUDE.md)
@@ -1580,6 +1580,13 @@ function buildDirectSystemPrompt(config, workDir) {
 
       // Custom instructions from Projects panel
       if (matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
+
+      // Auto-inject file map from project memory — bypasses QueryMemory so any
+      // model (including weaker eval models) gets critical file paths up front.
+      const fileMapKey = Object.keys(projectMemory).find(k => k.toLowerCase().includes('file-map'));
+      if (fileMapKey) {
+        layers.push(`--- Project File Map ---\n${projectMemory[fileMapKey]}`);
+      }
     }
   }
 
@@ -3461,7 +3468,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   if (!session.resolvedModel) session.resolvedModel = model;
   session.aborted = false;
 
-  const systemPrompt = buildDirectSystemPrompt(config, workDir);
+  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory);
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
 
@@ -5987,6 +5994,12 @@ function handleMessage(ws, raw) {
   if (type === 'save-panel-state') {
     const current = readJSON(CONFIG_PATH, {});
     writeJSON(CONFIG_PATH, { ...current, panelState: msg.panelState || {} });
+    return;
+  }
+
+  if (type === 'save-hidden-sessions') {
+    const current = readJSON(CONFIG_PATH, {});
+    writeJSON(CONFIG_PATH, { ...current, hiddenSessions: msg.hiddenSessions || [] });
     return;
   }
 

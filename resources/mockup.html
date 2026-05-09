@@ -2724,7 +2724,7 @@
       if (floatingPanels.has(id)) {
         el.style.zIndex = '1100';
         el.style.pointerEvents = 'auto';
-      } else {
+      } else if (overlayPanels.has(id) || id === 'archive-panel') {
         el.style.zIndex = '1002';
       }
       el.classList.remove('hidden');
@@ -3815,6 +3815,9 @@
           if (ccBtn) ccBtn.style.display = 'none';
           const mBtn = document.getElementById('btn-manifest');
           if (mBtn) mBtn.style.display = 'none';
+        }
+        if (Array.isArray(msg.config?.hiddenSessions)) {
+          for (const sid of msg.config.hiddenSessions) hiddenCards.add(sid);
         }
         renderGrid();
         restorePanelState(msg.config?.panelState);
@@ -6065,11 +6068,16 @@
   let sessionFilter = null;
   const hiddenCards = new Set();
 
+  function saveHiddenCards() {
+    wsSend({ type: 'save-hidden-sessions', hiddenSessions: [...hiddenCards] });
+  }
+
   function hideCard(sid) {
     hiddenCards.add(sid);
     const card = document.querySelector(`.card[data-sid="${sid}"]`);
     if (card) card.style.display = 'none';
     updateHiddenCount();
+    saveHiddenCards();
   }
 
   window.unhideAll = function() {
@@ -6080,6 +6088,7 @@
     hiddenCards.clear();
     updateHiddenCount();
     applySessionFilter();
+    saveHiddenCards();
   };
 
   function updateHiddenCount() {
