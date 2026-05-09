@@ -3357,10 +3357,17 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
         if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - reqStartMs, final: true });
         resolve({ textAccum, toolCalls: Object.values(toolMap).filter(t => t.name), finishReason, usage, rawSample });
       });
+      res.on('error', err => {
+        if (rateInterval) clearInterval(rateInterval);
+        resolve({ error: `Stream error: ${err.message}` });
+      });
     });
     const session = sessions.get(sessionId);
     if (session) session.req = req;
     req.on('error', err => resolve({ error: err.message }));
+    req.setTimeout(120000, () => {
+      req.destroy(new Error('Request timeout after 120s'));
+    });
     req.write(payload);
     req.end();
   });
@@ -6977,19 +6984,12 @@ function handleMessage(ws, raw) {
         }
       } catch (_) {}
 
-      // Match course → developed dir via: exact name slug, exact id slug,
-      // or a developed dir ending with "-{idSlug}" (handles ai-governance → governance, ai-ethics → ethics).
+      // Match course → developed dir by exact course ID slug only.
+      // Name-slug and suffix matching caused false positives (e.g. course id="governance"
+      // matched the "ai-governance" dir that belongs to a different course).
       const hasModules = c => {
-        const nameSlug = slugify(c.name || c.title || '');
-        const idSlug   = slugify(c.id   || c.course_id || '');
-        if (nameSlug && developedSlugs.has(nameSlug)) return true;
-        if (idSlug   && developedSlugs.has(idSlug))   return true;
-        if (idSlug) {
-          for (const dir of developedSlugs) {
-            if (dir.endsWith('-' + idSlug)) return true;
-          }
-        }
-        return false;
+        const idSlug = slugify(c.id || c.course_id || '');
+        return idSlug ? developedSlugs.has(idSlug) : false;
       };
 
       const normCourse = c => ({
