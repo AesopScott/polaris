@@ -966,9 +966,9 @@
   .onb-logo { font-size: 52px; margin-bottom: 10px; line-height: 1; }
   .onb-title { font-size: 22px; font-weight: 800; color: #60a5fa; margin-bottom: 10px; }
   .onb-sub { font-size: 13px; color: #94a3b8; margin-bottom: 28px; line-height: 1.7; }
-  .onb-levels { display: flex; gap: 12px; margin: 0 0 26px; }
+  .onb-levels { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 26px; }
   .onb-level-card {
-    flex: 1; padding: 18px 10px; border-radius: 12px;
+    flex: 1 1 130px; padding: 18px 10px; border-radius: 12px;
     border: 2px solid rgba(96,165,250,0.18); background: rgba(96,165,250,0.03);
     cursor: pointer; transition: all 0.18s; text-align: center;
   }
@@ -1268,29 +1268,29 @@
         <!-- Row 1 -->
         <button id="btn-course-creator" class="hbtn btn-gold" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
-        <button class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
-        <button class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
+        <button id="btn-files" class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
+        <button id="btn-restart" class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
         <button id="btn-factory" class="hbtn btn-gold" onclick="openFactoryComingSoon()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
-        <button class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
-        <button class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
+        <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
+        <button id="btn-reload" class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
-        <button class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
+        <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
         <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Version</span></button>
-        <button class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
+        <button id="btn-reset" class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
         <button id="btn-connect" class="hbtn btn-systems" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
         <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
         <!-- Row 4 -->
-        <button class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
+        <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
         <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
-        <button class="hbtn btn-danger" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note" style="padding-left: 4px; padding-right: 4px;"><span class="lbl">Obsidian</span></button>
-        <button class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
+        <button id="btn-obsidian" class="hbtn btn-danger" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note" style="padding-left: 4px; padding-right: 4px;"><span class="lbl">Obsidian</span></button>
+        <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button id="btn-balance" class="hbtn btn-systems" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
       </div>
@@ -2451,6 +2451,11 @@
           <div class="onb-level-icon">🔬</div>
           <div class="onb-level-name">Expert AI</div>
           <div class="onb-level-desc">Deep AI background,<br>want the full stack view</div>
+        </div>
+        <div class="onb-level-card" id="onb-level-reference" onclick="onbSelectLevel('reference')">
+          <div class="onb-level-icon">📖</div>
+          <div class="onb-level-name">Full Reference</div>
+          <div class="onb-level-desc">Every button,<br>every feature explained</div>
         </div>
       </div>
       <div class="onb-actions">
@@ -11669,6 +11674,35 @@
       { title: 'Settings', text: "All API keys, model strings, Obsidian vault path, and session timeout live here. Start by pasting your OpenRouter key.", target: '#btn-settings' },
       { title: "You're Ready", text: "Try wiring up your first Routine to automate something you do every day. The Walkthrough button brings you back here anytime.", target: null },
     ],
+    reference: [
+      { title: 'Full Button Reference', text: "This tour walks through every button in the Polaris navigation — what it does, how to use it, and what to watch for. It covers all 25 controls in the header grid plus the Manifest button. Use Back and Next to move at your own pace.", target: null },
+      { title: 'Manifest', text: "The Manifest button opens a table of every feature flag and secret key in the build. Each row has a public/private toggle that controls what ships in the public installer vs. what gets redacted. Always review this before running a public build — a leaked API key or private feature can't be un-shipped.", target: '#btn-manifest' },
+      { title: 'Courses', text: "Opens the Aesop Academy course pipeline for ModGen-based course development. From here you can draft a module outline, generate lesson content, and push courses through the activation workflow. All course sessions run as agent sessions against your configured model tier.", target: '#btn-course-creator' },
+      { title: 'Build', text: "Runs the full build and install loop via build-install.ps1. Before building, Polaris runs an automated cross-check of recent file writes — the build is gated unless it passes. When triggered, a popup lets you choose Private (local-only), Public (stripped of secrets), or Mac build types. You can override a failed cross-check, but only do so if you've reviewed the flagged issues yourself.", target: '#btn-build' },
+      { title: 'Files', text: "Opens the File Manager panel for the currently selected project's working directory. You can browse folders, click into files to view their contents, and navigate the full directory tree without leaving Polaris. Useful for quickly checking what the AI wrote or confirming a file exists before running a build.", target: '#btn-files' },
+      { title: 'Restart', text: "Kills the Polaris Node server process and restarts it from scratch, then reloads the UI. Use this when the server gets into a bad state, when a config change requires a full process restart, or when WebSocket connections have gone stale. Unlike Reload, this resets all in-memory server state.", target: '#btn-restart' },
+      { title: 'Routines', text: "Opens the Routines panel where you define and manage automated AI tasks. Each routine has a name, a prompt, and a trigger — either a cron schedule (like 0 9 * * 1 for every Monday at 9am) or a WebSocket event like app-update. Routines run via the DeepSeek direct API in single-turn mode — best for summaries, digests, and status checks, not interactive work.", target: '#btn-routines' },
+      { title: 'Settings', text: "The central configuration panel for everything in Polaris. Paste your OpenRouter or Anthropic API key here to activate AI sessions. You can also set model strings for each tier (Floor, Balanced, Power), your Obsidian vault path, ElevenLabs API key for voice narration, Brave Search key, and session timeout. Changes save immediately to config.json.", target: '#btn-settings' },
+      { title: 'Factory', text: "Launches the AI Factory autonomous build pipeline for the selected project. Feed it a project spec or feature brief and the Factory agent orchestrates the full development cycle: planning, code generation, review, and delivery. This is the highest-autonomy mode in Polaris — suitable for well-scoped, greenfield work.", target: '#btn-factory' },
+      { title: 'Cross ✓', text: "Opens the Cross-Check history panel — a log of every file write that was reviewed by the cross-check agent before being committed. Each entry shows the verdict (pass or flag), a plain-English summary of what changed, and the full diff. If the pre-build gate failed, you'll find the full detail here.", target: '#btn-cross-check' },
+      { title: 'Archive', text: "Opens the Archive panel where all closed sessions are stored. Sessions are never deleted — they come here. You can browse by date or project, search full session content, and reactivate any session to continue from where it stopped. The archive lives locally in your AppData runtime directory and persists across reinstalls.", target: '#btn-archive' },
+      { title: 'Reload', text: "Reloads the UI in the browser window without restarting the underlying Node server. Use this when you've made changes to mockup.html or JS and want them to take effect, or when the UI has drifted into a bad visual state. Server-side session data, WebSocket connections, and config are all preserved — only the renderer resets.", target: '#btn-reload' },
+      { title: 'Projects', text: "Opens the Projects panel where you create and manage named projects. Each project has a display name, a working directory path, and an optional git repo URL. Sessions launched against a project automatically receive that directory as their working context. Projects are color-coded and can be switched mid-session from the launch bar.", target: '#btn-projects' },
+      { title: 'Tour', text: "This button opens the guided walkthrough. Choose a level — Beginner for first-timers, Professional for daily AI users, Expert for architects who want the full stack, or Full Reference (this tour) for a button-by-button breakdown. Voice narration uses ElevenLabs if you've set a key in Settings, or falls back to browser TTS.", target: '#btn-walkthrough' },
+      { title: 'Web', text: "Opens the Live Server panel, which serves the selected project's files locally over HTTP with auto-reload on file change. Point it at an index.html or any entry file and it behaves like a built-in dev server. Changes made to project files — by you or by the AI — appear in the browser instantly without a manual refresh.", target: '#btn-web' },
+      { title: 'Code ✓', text: "Opens the Code Health panel, which analyzes your project's git history to surface churn hotspots, cyclomatic complexity scores, and contributor ownership per file. Files with high churn and low ownership are the most likely source of regressions. Run this before starting a refactor to identify which files need the most attention.", target: '#btn-code-health' },
+      { title: 'Version', text: "Opens the Version History panel. Every file edit Polaris makes is logged to file-versions.json with a session ID, timestamp, and full diff. You can browse the history grouped by session, see exactly what changed in each edit, and restore any file to any previous state — a full undo log for all AI-generated changes.", target: '#btn-versions' },
+      { title: 'Reset', text: "Repacks all session cards into a clean masonry grid, clearing any custom column positions, manual heights, or drag offsets accumulated during a long work session. Use this when the layout has gotten messy or cards are overlapping. It does not close sessions — only resets their visual placement in the grid.", target: '#btn-reset' },
+      { title: 'Connect', text: "Opens the Connections panel with two tabs. Git Status shows a live git status readout for every project — useful for catching uncommitted changes across all repos at a glance. MCP Servers shows the full catalog of available Model Context Protocol servers (GitHub, Obsidian, Google Drive, Brave Search, and more) — toggle any on and it's automatically injected into every new agent session.", target: '#btn-connect' },
+      { title: 'Docs', text: "Opens the Polaris user guide in an overlay panel. The guide covers every feature in plain language with examples and is the canonical reference for anything not covered in this tour. If you're unsure how something works, Docs is the first place to check before submitting a Support ticket.", target: '#btn-docs' },
+      { title: 'Preview', text: "Toggles a floating live preview panel that renders any project file in an embedded iframe. Enter the file path relative to your project root and hit Load. The viewport switcher lets you toggle between mobile (375px), tablet (768px), and full-width views — handy for testing responsive layouts without leaving Polaris.", target: '#btn-preview' },
+      { title: 'Monaco', text: "Opens the Monaco in-app code editor — the same engine that powers VS Code. It includes a project switcher, full file tree, multi-tab editing, syntax highlighting, and find-and-replace. Use it for quick edits and reviewing AI output without switching to an external editor. Changes saved here are written to disk immediately.", target: '#btn-monaco' },
+      { title: 'Obsidian', text: "Pushes the currently selected session's output to your Obsidian vault as a formatted markdown note, saved under a path derived from the session's project and date. Requires the Obsidian Local REST API plugin installed in Obsidian and your vault path set in Settings. This is the primary way Polaris builds long-term memory from your work.", target: '#btn-obsidian' },
+      { title: 'Close', text: "Closes all open session cards. Before closing each session, Polaris prompts you individually — you can push its output to Obsidian before it goes. Sessions move to the Archive, not the trash, and can be reactivated at any time. Use Close at the end of a work block to reset to a clean slate for the next session.", target: '#btn-close' },
+      { title: 'Balance', text: "Opens the API Balance panel, showing your live OpenRouter credit balance, a daily spend graph built from token-log.jsonl, and a per-model breakdown of token usage. Use this to monitor burn rate, spot runaway sessions with unusually high consumption, and reconcile charges against your API billing statement.", target: '#btn-balance' },
+      { title: 'Support', text: "Opens the Support panel for submitting bug reports, feature requests, or general questions to the Polaris team. Tickets are delivered via the configured email service. Include session IDs, error messages, and what you were doing when the issue occurred — the more detail you provide, the faster the resolution.", target: '#btn-support' },
+      { title: "That's Every Button", text: "You've now seen all 25 controls in Polaris. The grid is color-coded by function: gold for build and project pipeline work, blue-teal for tracking and diagnostics, red for session and file management, grey for UI controls, purple for automation and connections, and dark blue for configuration and documentation.", target: null },
+    ],
     expert: [
       { title: 'Welcome to Polaris', text: "Polaris is a multi-agent orchestration layer built on Claude CLI. This tour covers the full architecture — routing, model control, MCP, event triggers, and everything under the hood.", target: null },
       { title: 'Session Grid', text: "Each card is an independent agent session. You can pin cards, adjust column placement, resize them, and run dozens in parallel — all with separate context windows.", target: '.session-grid' },
@@ -11734,7 +11768,7 @@
 
   function onbSelectLevel(level) {
     _onbLevel = level;
-    ['beginner', 'professional', 'expert'].forEach(l => {
+    ['beginner', 'professional', 'expert', 'reference'].forEach(l => {
       document.getElementById(`onb-level-${l}`)?.classList.toggle('selected', l === level);
     });
     const btn = document.getElementById('onb-start-tour-btn');
@@ -11801,6 +11835,7 @@
       beginner:     'Start your first session and ask the AI anything. The Walkthrough button brings you back here anytime.',
       professional: 'Try wiring up a Routine or enabling an MCP server. Hit Walkthrough anytime for a refresher.',
       expert:       'Wire up your first event-triggered Routine, enable your MCP catalog, and go build something.',
+      reference:    'You now know every button in Polaris. Hit Tour anytime to revisit this guide.',
     };
     const sub = document.getElementById('onb-final-sub');
     if (sub) sub.textContent = msgs[_onbLevel] || msgs.beginner;
