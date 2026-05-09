@@ -3831,7 +3831,15 @@
         const lbl2 = document.getElementById('onb-tts-label');
         if (msg.dataUrl && _onbSpeakEnabled) {
           if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
-          _onbAudio = new Audio(msg.dataUrl);
+          // Reuse the gesture-warmed element so Chrome doesn't block the play call.
+          // A fresh new Audio() created here (outside a gesture) gets blocked;
+          // the same element that was .play()'d in the click handler is already unlocked.
+          const audio = _onbGestureAudio || new Audio();
+          _onbGestureAudio = null;
+          _onbAudio = audio;
+          _onbAudio.onended = null;
+          _onbAudio.src = msg.dataUrl;
+          _onbAudio.volume = 1;
           if (dot2) dot2.classList.add('active');
           if (lbl2) lbl2.textContent = '';
           _onbAudio.onended = () => { _onbAudio = null; if (dot2) dot2.classList.remove('active'); };
@@ -12068,17 +12076,17 @@
   }
 
   function _onbWarmAudio() {
-    // Play a real (silent) Audio element within the user gesture to satisfy
-    // Chrome's user-gesture-required autoplay policy for HTMLMediaElement.
-    // We mark _onbAudioUnlocked so the tts-audio handler knows it can proceed.
-    if (_onbAudioUnlocked) return;
+    // Create an Audio element and call .play() within the user gesture.
+    // We hold the reference in _onbGestureAudio and reuse it in the tts-audio
+    // handler — the same element retains its gesture-activation even after
+    // an async delay, whereas a brand-new element created in a WS handler does not.
     try {
-      // Smallest valid silent MP3 (44 bytes)
-      const a = new Audio('data:audio/mpeg;base64,/+MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-      a.volume = 0;
-      a.play().then(() => { _onbAudioUnlocked = true; a.pause(); }).catch(() => {});
+      if (_onbGestureAudio) { _onbGestureAudio.pause(); }
+      _onbGestureAudio = new Audio('data:audio/mpeg;base64,/+MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+      _onbGestureAudio.volume = 0;
+      _onbGestureAudio.play().catch(() => {});
     } catch(e) {}
-    // Also warm AudioContext for belt-and-suspenders
+    // Also warm AudioContext as belt-and-suspenders
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const buf = ctx.createBuffer(1, 1, 22050);
@@ -12170,6 +12178,7 @@
   function onbHideTour() {
     _onbSpeakEnabled = false;
     if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
+    if (_onbGestureAudio) { _onbGestureAudio.pause(); _onbGestureAudio = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     onbSetSpotlight(null, null);
     document.getElementById('onb-narration')?.classList.add('hidden');
