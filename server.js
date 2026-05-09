@@ -1279,12 +1279,21 @@ ${transcript}`;
       })
     });
     const data = await resp.json();
+    if (!resp.ok) {
+      const errMsg = data?.error?.message || data?.message || `HTTP ${resp.status}`;
+      throw new Error(errMsg);
+    }
     const raw = (data.choices?.[0]?.message?.content || '').trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) { console.warn('[extract-knowledge] no JSON in DeepSeek response'); return; }
+    if (!jsonMatch) {
+      console.warn('[extract-knowledge] no JSON in DeepSeek response');
+      broadcast({ type: 'line', sessionId, text: '[Obsidian Rite] DeepSeek returned no usable response — session notes not saved.', role: 'error' });
+      return;
+    }
     extracted = JSON.parse(jsonMatch[0]);
   } catch (e) {
     console.error('[extract-knowledge] DeepSeek call failed:', e.message);
+    broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] DeepSeek call failed: ${e.message}`, role: 'error' });
     return;
   }
 
@@ -1329,6 +1338,7 @@ ${transcript}`;
   }
 
   console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
+  broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] Session notes written to ${projectName} knowledge base.`, role: 'system' });
 }
 
 //─── Lock enforcement ─────────────────────────────────────────────────────────
@@ -3395,7 +3405,8 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   session.pendingImages = [];
   let messageContent = effectiveMessage;
   if (agentImages.length || agentAudio.length) {
-    const blocks = [{ type: 'text', text: effectiveMessage }];
+    const blocks = [];
+    if (effectiveMessage) blocks.push({ type: 'text', text: effectiveMessage });
     for (const img of agentImages) {
       if (img && img.dataUrl) blocks.push({ type: 'image_url', image_url: { url: img.dataUrl } });
     }
@@ -3408,7 +3419,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
         }
       }
     }
-    if (blocks.length > 1) messageContent = blocks;
+    if (blocks.length > 0) messageContent = blocks;
   }
   session.messages.push({ role: 'user', content: messageContent });
   if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
@@ -3916,7 +3927,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   let stdinPayload;
   if (hasMultimodal) {
     args.push('--input-format', 'stream-json');
-    const contentBlocks = [{ type: 'text', text: fullPrompt }];
+    const contentBlocks = fullPrompt ? [{ type: 'text', text: fullPrompt }] : [];
     for (const img of chatImages) {
       if (!img.dataUrl) continue;
       const match = img.dataUrl.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/s);
@@ -4635,8 +4646,12 @@ async function runAgentEvalCell({ model, fixture, runIndex }) {
     if (s) s.aborted = true;
   }, timeoutMs);
 
+  let agentThrew = null;
   try { await runDirectAgent(sessionId, fixture.prompt, seedDir); }
-  catch {} // runDirectAgent shouldn't throw, but defensive
+  catch (e) {
+    console.error(`[eval] runDirectAgent threw for ${fixture.id}/${model}:`, e.message);
+    agentThrew = e.message;
+  }
   finally { clearTimeout(timer); }
 
   const elapsedMs = Date.now() - startMs;
@@ -4656,6 +4671,7 @@ async function runAgentEvalCell({ model, fixture, runIndex }) {
   }
 
   const errors = [];
+  if (agentThrew) errors.push(`agent threw: ${agentThrew.slice(0, 120)}`);
   if (timedOut) errors.push(`hard timeout after ${timeoutMs / 1000}s`);
   if (!trace && !timedOut) errors.push('no diag file produced');
   if (trace) {
@@ -4826,7 +4842,7 @@ function handleMessage(ws, raw) {
 
   if (type === 'launch-chat') {
     const { prompt, workDir, tier, images, docs, audio } = msg;
-    if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+    if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
     const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
@@ -4881,7 +4897,7 @@ function handleMessage(ws, raw) {
 
   if (type === 'launch') {
     const { prompt, workDir, sessionId } = msg;
-    if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+    if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
     const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
@@ -4897,7 +4913,7 @@ function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = generateSessionName(prompt);
+    const name = generateSessionName(prompt || 'Image');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];

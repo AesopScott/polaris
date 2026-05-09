@@ -6462,7 +6462,8 @@
 
   function doLaunch() {
     const f = getLaunchFields();
-    if (!f || !f.prompt) return;
+    const hasAttachments = pendingImages.length || pendingDocs.length || pendingAudio.length || pendingFiles.length;
+    if (!f || (!f.prompt && !hasAttachments)) return;
     let fullPrompt = f.prompt;
     if (pendingFiles.length) {
       const fileBlocks = pendingFiles.map(pf => `--- File: ${pf.name} ---\n${pf.content}\n--- End: ${pf.name} ---`).join('\n\n');
