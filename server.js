@@ -5959,7 +5959,7 @@ function handleMessage(ws, raw) {
     if (!rawKey) { sendTo(ws, { type: 'tts-audio', error: 'no-key' }); return; }
     const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — Clear, Engaging Educator (British)
     const body = JSON.stringify({
-      text: String(msg.text || '').slice(0, 500),
+      text: String(msg.text || '').slice(0, 1500),
       model_id: 'eleven_turbo_v2_5',
       voice_settings: { stability: 0.5, similarity_boost: 0.75 },
     });
