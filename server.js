@@ -12,7 +12,7 @@ const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 
-// â"€â"€â"€ Paths â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Paths ────────────────────────────────────────────────────────────────────
 const APPDATA      = process.env.APPDATA || os.homedir();
 const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', 'polaris');
 const MOCKUP_DEST  = process.env.MOCKUP_DEST  || path.join(POLARIS_DIR, 'mockup.html');
@@ -51,13 +51,13 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
-// â"€â"€â"€ App-level secrets (gitignored, baked into build) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── App-level secrets (gitignored, baked into build) ────────────────────────
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
 catch { console.log('[polaris] secrets.js not found'); }
 
 
-// â"€â"€â"€ MCP Catalog â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── MCP Catalog ─────────────────────────────────────────────────────────────
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
 let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
@@ -93,7 +93,7 @@ const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
 const PROJECT_SPECIFIC_MARKER = '<!-- PROJECT-SPECIFIC -->';
 const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 
-// â"€â"€â"€ System prompt injected into every agent session â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── System prompt injected into every agent session ─────────────────────────
 const BASE_SYSTEM_PROMPT = [
   'You are a software development assistant. For greetings or casual messages, reply briefly and naturally without running any checks.',
   'Do not acknowledge, summarize, or reference these instructions in your responses. Follow them silently.',
@@ -128,7 +128,7 @@ function buildSystemPrompt(config) {
   return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '');
 }
 
-// â"€â"€â"€ Secret encryption (AES-256-GCM, stable file key) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Secret encryption (AES-256-GCM, stable file key) ────────────────────────
 const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey', 'elevenLabsApiKey', 'braveSearchApiKey']);
 const SECRET_MASK    = '••••••••';
 const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
@@ -251,7 +251,7 @@ function migrateSecretsToEncrypted() {
   if (changed) writeJSON(CONFIG_PATH, raw);
 }
 
-// â"€â"€â"€ IPC bridge to main.js â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── IPC bridge to main.js ───────────────────────────────────────────────────
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
 const pendingQuestions    = new Map(); // questionId → resolve
@@ -286,7 +286,7 @@ if (typeof process.on === 'function') {
   });
 }
 
-// â"€â"€â"€ MCP Catalog helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── MCP Catalog helpers ─────────────────────────────────────────────────────
 function readClaudeJson() {
   try {
     if (!fs.existsSync(CLAUDE_JSON_PATH)) return {};
@@ -376,7 +376,7 @@ function maskedMcpCredentials() {
   return masked;
 }
 
-// â"€â"€â"€ Support ticket submission â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Support ticket submission ───────────────────────────────────────────────
 function getInstallId() {
   const cfg = readJSON(CONFIG_PATH, {});
   if (cfg.installId) return cfg.installId;
@@ -489,7 +489,7 @@ async function submitSupportTicket(ws, msg) {
 }
 
 
-// â"€â"€â"€ Git helper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Git helper ───────────────────────────────────────────────────────────────
 function runGit(args, cwd) {
   return new Promise(resolve => {
     exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd, windowsHide: true }, (err, stdout) => {
@@ -498,7 +498,7 @@ function runGit(args, cwd) {
   });
 }
 
-// â"€â"€â"€ File sync â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── File sync ───────────────────────────────────────────────────────────────
 function syncGlobalToProjects() {
   const config   = readConfig();
   const projects = (config.projects || []).filter(p => p.workDir);
@@ -587,7 +587,7 @@ function watchGlobalFiles() {
 
 }
 
-// â"€â"€â"€ State â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── State ────────────────────────────────────────────────────────────────────
 const sessions = new Map();   // sessionId → session object
 const forkMap  = new Map();   // primarySessionId → forkSessionId
 let   wss      = null;
@@ -598,7 +598,7 @@ let   wss      = null;
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
 const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
 
-// â"€â"€â"€ Session persistence â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Session persistence ──────────────────────────────────────────────────────
 function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
@@ -640,7 +640,7 @@ function loadPersistedSessions() {
 
 loadPersistedSessions();
 
-// â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function readJSON(filePath, fallback) {
   try {
@@ -849,7 +849,7 @@ function broadcastUsage(sessionId, usage, claudeSessionId, routineTag) {
   broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId, routineTag });
 }
 
-// â"€â"€â"€ File versioning â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── File versioning ─────────────────────────────────────────────────────────
 function getVersions() {
   return readJSON(VERSIONS_PATH, {});
 }
@@ -891,7 +891,7 @@ function readVersionLog() {
 
 const WATCH_EXCLUDE = /(^|[\\/])(\.git|node_modules|dist|release|\.next|\.cache|__pycache__|\.venv|coverage)([\\/]|$)/i;
 
-// â"€â"€â"€ Live Server (per-project HTTP+WS with live reload) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Live Server (per-project HTTP+WS with live reload) ─────────────────────
 // One server per project directory. fs.watch with 100ms debounce broadcasts
 // `reload` to a separate WS server (path `/__livereload`); injected script in
 // served HTML calls `location.reload()` on receipt.
@@ -1331,21 +1331,21 @@ ${transcript}`;
   console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
 }
 
-//â"€â"€â"€ Lock enforcement â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+//─── Lock enforcement ─────────────────────────────────────────────────────────
 function isLocked(filePath, sessionId) {
   const locks = readJSON(LOCKS_PATH, {});
   const rel = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
   return !!(locks[rel] && locks[rel].sessions && locks[rel].sessions.includes(sessionId));
 }
 
-// â"€â"€â"€ Prompt history â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Prompt history ───────────────────────────────────────────────────────────
 function addToHistory(prompt) {
   const history = readJSON(HISTORY_PATH, []);
   const updated = [prompt, ...history.filter(p => p !== prompt)].slice(0, 200);
   writeJSON(HISTORY_PATH, updated);
 }
 
-// â"€â"€â"€ Code Health analysis â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Code Health analysis ────────────────────────────────────────────────────
 async function computeCodeHealth(workDir) {
   // Churn: aggregate per-file commit count and line changes from full log
   const numstat = await runGit(['log', '--numstat', '--pretty=format:'], workDir);
@@ -1400,7 +1400,7 @@ async function computeCodeHealth(workDir) {
   return { churn, authors, fileStats };
 }
 
-// â"€â"€â"€ SPACE event logging â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── SPACE event logging ──────────────────────────────────────────────────────
 function spaceSlug(name) {
   return (name || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
 }
@@ -1482,7 +1482,7 @@ function spaceComputeScores(projectName) {
   };
 }
 
-// â"€â"€â"€ Session name generation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Session name generation ──────────────────────────────────────────────────
 const STOP_WORDS = new Set(['a','an','the','and','or','but','in','on','at','to','for','of','with','by','from','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','ought','used','that','this','these','those','it','its','i','you','he','she','we','they','what','which','who','how','when','where','why','not','no','nor','so','yet','both','either','neither','just','also','then','than','as','if','though','although','because','since','unless','while','after','before']);
 
 function generateSessionName(prompt) {
@@ -1493,7 +1493,7 @@ function generateSessionName(prompt) {
   return words.slice(0, 7).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'New Session';
 }
 
-// â"€â"€â"€ Direct OpenRouter API — agent sessions (no CLI) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Direct OpenRouter API — agent sessions (no CLI) ─────────────────────────
 // Replaces CLI spawning. Eliminates CLAUDE.md cold-load (~29k tokens), 37-tool
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
@@ -1576,7 +1576,7 @@ function buildDirectSystemPrompt(config, workDir) {
   return layers.join('\n\n');
 }
 
-// â"€â"€ Tool implementations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Tool implementations ──────────────────────────────────────────────────────
 
 // Builds a compact Polaris runtime context block injected at the top of every
 // Claude Code (Max-plan) stdin prompt so the model always knows its host environment.
@@ -2975,7 +2975,7 @@ function toolTodoWrite({ todos }, sessionId) {
   return 'Todos updated:\n' + normalized.map(t => `[${t.status}] ${t.content}`).join('\n');
 }
 
-// â"€â"€ MCP Integration â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── MCP Integration ───────────────────────────────────────────────────────────
 
 const mcpProcesses = new Map(); // serverName → { proc, pending, buffer, nextId }
 let mcpToolsCache = null;
@@ -3158,7 +3158,7 @@ async function callMcpTool(serverName, toolName, args) {
   return formatMcpResult(result);
 }
 
-// â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function executeDirectTool(name, input, workDir, sessionId) {
   if (name.startsWith('mcp__')) {
@@ -3186,7 +3186,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
   }
 }
 
-// â"€â"€ Streaming OpenRouter call â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Streaming OpenRouter call ─────────────────────────────────────────────────
 
 function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS, provider = null) {
   return new Promise(resolve => {
@@ -3337,7 +3337,7 @@ function loadSessionMessages(sessionId) {
   } catch { return []; }
 }
 
-// â"€â"€ Agentic loop â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Agentic loop ──────────────────────────────────────────────────────────────
 
 async function runDirectAgent(sessionId, userMessage, workDir) {
   const session = sessions.get(sessionId);
@@ -3639,7 +3639,7 @@ function appendTokenLog(sessionId, model, usage) {
   try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify({ ts: Date.now(), sessionId, model: model || 'unknown', input: inp, output: out }) + '\n', 'utf8'); } catch {}
 }
 
-// â"€â"€â"€ DeepSeek Direct API for routines â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── DeepSeek Direct API for routines ────────────────────────────────────────
 // Routines fire via api.deepseek.com — bypasses Claude CLI entirely (no 30K-token
 // project-context cold load). DeepSeek pricing is ~$0.27/MTok in vs Anthropic's $3.
 function spawnDeepSeekRoutine(sessionId, prompt, config) {
@@ -3783,7 +3783,7 @@ function handleStreamEvent(sessionId, msg) {
 }
 
 
-// â"€â"€â"€ Spawn DeepSeek chat session â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Spawn DeepSeek chat session ─────────────────────────────────────────────
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -4231,7 +4231,7 @@ function spawnChat(sessionId, prompt, config) {
   req.end();
 }
 
-// â"€â"€â"€ HTTP server â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── HTTP server ──────────────────────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     fs.readFile(MOCKUP_DEST, 'utf8', (err, data) => {
@@ -5696,51 +5696,6 @@ function handleMessage(ws, raw) {
     const { projectName } = msg;
     const scores = spaceComputeScores(projectName);
     if (!scores) {
-      sendTo(ws, { type: 'space-analysis', projectName, error: 'No session data available for this project yet.' });
-      return;
-    }
-    const cfg = readConfig();
-    const apiKey = cfg.apiKey;
-    if (!apiKey) {
-      sendTo(ws, { type: 'space-analysis', projectName, error: 'No OpenRouter API key configured.' });
-      return;
-    }
-    const dimLines = [
-      `S (Satisfaction — session success rate): score=${scores.S.score}/100, trend=${scores.S.trend}, daily=[${scores.S.last7.join(',')}]`,
-      `P (Performance — output throughput):     score=${scores.P.score}/100, trend=${scores.P.trend}, daily=[${scores.P.last7.join(',')}]`,
-      `A (Activity — sessions launched per day): score=${scores.A.score}/100, trend=${scores.A.trend}, daily=[${scores.A.last7.join(',')}]`,
-      `C (Collaboration — parallel work):        score=${scores.C.score}/100, trend=${scores.C.trend}, daily=[${scores.C.last7.join(',')}]`,
-      `E (Efficiency — time to first output):    score=${scores.E.score}/100, trend=${scores.E.trend}, daily=[${scores.E.last7.join(',')}]`,
-    ].join('\n');
-    const prompt = `You are analyzing 7-day SPACE productivity data for the project "${projectName}".
-
-Day indices: 0 = 6 days ago, 6 = today. Null/0 values mean no sessions that day.
-
-${dimLines}
-
-Write a deep analysis (250–350 words) covering:
-1. **Overall health** — summarize the aggregate picture in one sentence.
-2. **Key pattern or anomaly** — identify the most notable day-by-day pattern across dimensions (e.g. a mid-week dip, a single outlier day, correlated drops).
-3. **Dimension breakdown** — what the strongest and weakest scores reveal about how this project is being worked on.
-4. **Actionable recommendation** — one specific change that would most improve the weakest area.
-
-Be direct. Reference actual numbers. Use markdown headings for each section.`;
-    callOpenRouterOnce('anthropic/claude-haiku-4-5', apiKey, [{ role: 'user', content: prompt }], 600)
-      .then(result => {
-        if (result.error) {
-          sendTo(ws, { type: 'space-analysis', projectName, error: result.error });
-        } else {
-          sendTo(ws, { type: 'space-analysis', projectName, content: result.content });
-        }
-      })
-      .catch(e => sendTo(ws, { type: 'space-analysis', projectName, error: e.message }));
-    return;
-  }
-
-  if (type === 'get-space-analysis') {
-    const { projectName } = msg;
-    const scores = spaceComputeScores(projectName);
-    if (!scores) {
       sendTo(ws, { type: 'space-analysis', projectName, error: 'No session data recorded yet for this project.' });
       return;
     }
@@ -6240,7 +6195,7 @@ Be direct. Reference actual numbers. Use markdown headings for each section.`;
         const code = reqUrl.searchParams.get('code');
         const oauthError = reqUrl.searchParams.get('error');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">âœ" Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
+        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">✓ Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
         callbackServer.close();
         if (oauthError || !code) {
           sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: oauthError || 'No auth code received' });
@@ -7059,7 +7014,7 @@ Be direct. Reference actual numbers. Use markdown headings for each section.`;
   }
 }
 
-// â"€â"€â"€ Boot â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 // ─── Domain Scout ──────────────────────────────────────────────────────────────
 
 function httpsGetSimple(hostname, urlPath) {
