@@ -11652,6 +11652,36 @@
   let _onbSteps = [];
   let _onbAudio = null;
   let _onbSpeakEnabled = false;
+  let _onbPanelClose = null;
+
+  function _onbOpen(panelId, toggleFn) {
+    const p = document.getElementById(panelId);
+    if (p?.classList.contains('hidden')) { try { toggleFn(); } catch(e) {} }
+  }
+  function _onbClose(panelId, toggleFn) {
+    const p = document.getElementById(panelId);
+    if (p && !p.classList.contains('hidden')) { try { toggleFn(); } catch(e) {} }
+  }
+
+  const ONB_PANEL_MAP = {
+    'Courses':     { o: () => openCourseCreator(),                                           c: () => closeCourseCreator() },
+    'Files':       { o: () => _onbOpen('file-manager-panel', toggleFileManager),             c: () => closeFileManager() },
+    'Routines':    { o: () => openRoutines(),                                                c: () => closeRoutines() },
+    'Settings':    { o: () => openSettings(),                                                c: () => closeSettings() },
+    'Factory':     { o: () => openFactoryComingSoon(),                                       c: () => closeFactoryComingSoon() },
+    'Cross-Check': { o: () => _onbOpen('cross-check-panel', toggleCrossCheckPanel),          c: () => closeCrossCheckPanel() },
+    'Archive':     { o: () => _onbOpen('archive-panel', toggleArchivePanel),                 c: () => _onbClose('archive-panel', toggleArchivePanel) },
+    'Projects':    { o: () => _onbOpen('projects-panel', toggleProjects),                    c: () => closeProjects() },
+    'Web':         { o: () => _onbOpen('web-panel', toggleWebPanel),                         c: () => closeWebPanel() },
+    'Code Health': { o: () => _onbOpen('code-health-panel', toggleCodeHealth),               c: () => closeCodeHealth() },
+    'Versions':    { o: () => openVersions(),                                                c: () => closeVersions() },
+    'Connect':     { o: () => openConnections(),                                             c: () => closeConnections() },
+    'Docs':        { o: () => openDocs(),                                                    c: () => closeDocs() },
+    'Preview':     { o: () => _onbOpen('preview-panel-p1', togglePreview),                   c: () => closePreview() },
+    'Monaco':      { o: () => _onbOpen('monaco-panel', toggleMonacoPanel),                   c: () => closeMonacoPanel() },
+    'Balance':     { o: () => openApiBalance(),                                              c: () => closeApiBalance() },
+    'Support':     { o: () => _onbOpen('support-panel', toggleSupport),                      c: () => closeSupport() },
+  };
 
   const ONB_TOURS = {
     beginner: [
@@ -11788,6 +11818,11 @@
   }
 
   function onbShowTourStep() {
+    if (_onbPanelClose) {
+      try { _onbPanelClose(); } catch(e) {}
+      _onbPanelClose = null;
+    }
+
     const step = _onbSteps[_onbStep];
     if (!step) { onbFinish(); return; }
 
@@ -11820,6 +11855,14 @@
     }
 
     narration.classList.remove('hidden');
+
+    if (_onbLevel === 'reference') {
+      const panel = ONB_PANEL_MAP[step.title];
+      if (panel) {
+        setTimeout(() => { try { panel.o(); _onbPanelClose = panel.c; } catch(e) {} }, 300);
+      }
+    }
+
     onbSpeak(step.text);
   }
 
@@ -11853,6 +11896,7 @@
     document.getElementById('onb-spotlight')?.classList.add('hidden');
     document.getElementById('onb-narration')?.classList.add('hidden');
     document.getElementById('onb-audio-dot')?.classList.remove('active');
+    if (_onbPanelClose) { try { _onbPanelClose(); } catch(e) {} _onbPanelClose = null; }
   }
 
   function onbDismiss() {
