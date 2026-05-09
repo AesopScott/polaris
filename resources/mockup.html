@@ -1254,7 +1254,7 @@
           <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
-        <div id="active-project-pill" style="display:none;font-size:10px;font-weight:700;letter-spacing:0.1em;padding:2px 12px;border-radius:999px;border:1px solid;margin-top:2px;text-transform:uppercase;"></div>
+        <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
       </div>
     </div>
 
@@ -1302,8 +1302,6 @@
         <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button id="btn-balance" class="hbtn btn-systems" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
-        <!-- Row 5 -->
-        <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project"><span class="lbl">Status</span></button>
       </div>
     </div>
 
