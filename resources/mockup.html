@@ -3918,9 +3918,15 @@
             });
           }
         } else if (msg.error && _onbSpeakEnabled) {
-          const info = msg.error === 'no-key' ? 'ElevenLabs key not set' : `ElevenLabs error: ${msg.error}`;
+          let info = msg.error === 'no-key' ? 'ElevenLabs key not set' : `ElevenLabs error: ${msg.error}`;
+          if (msg.detail) {
+            try {
+              const d = typeof msg.detail === 'string' ? JSON.parse(msg.detail) : msg.detail;
+              if (d?.detail?.message) info = `ElevenLabs: ${d.detail.message}`;
+            } catch(e) {}
+          }
           console.warn('[tts]', info, msg.detail || '');
-          if (lbl2) lbl2.textContent = info;
+          if (lbl2) { lbl2.textContent = info; lbl2.style.color = '#f87171'; lbl2.style.fontWeight = '600'; }
           onbSpeakFallback(_onbLastText);
         }
         break;
