@@ -1002,14 +1002,17 @@
   #onb-spotlight.hidden { display: none; }
   #onb-narration {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-    z-index: 2002; width: 92%; max-width: 640px;
+    z-index: 2002; width: 94%; max-width: 760px;
     background: linear-gradient(145deg,#0f1623,#0d1117);
     border: 1px solid rgba(96,165,250,0.32); border-radius: 14px;
-    padding: 20px 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+    padding: 22px 28px; box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+    max-height: 60vh; overflow-y: auto;
   }
   #onb-narration.hidden { display: none; }
-  .onb-step-title { font-size: 13px; font-weight: 800; color: #60a5fa; margin-bottom: 6px; }
-  .onb-step-text  { font-size: 13px; color: #cbd5e1; line-height: 1.65; margin-bottom: 14px; }
+  .onb-step-title { font-size: 13px; font-weight: 800; color: #60a5fa; margin-bottom: 8px; }
+  .onb-step-text  { font-size: 13.5px; color: #cbd5e1; line-height: 1.72; margin-bottom: 14px; }
+  .onb-step-text p { margin: 0 0 13px; }
+  .onb-step-text p:last-child { margin-bottom: 0; }
   .onb-step-footer { display: flex; align-items: center; justify-content: space-between; }
   .onb-step-counter { font-size: 11px; color: #475569; }
   .onb-step-nav { display: flex; gap: 8px; align-items: center; }
@@ -3767,7 +3770,9 @@
           const dot = document.getElementById('onb-audio-dot');
           if (dot) dot.classList.add('active');
           _onbAudio.onended = () => { _onbAudio = null; if (dot) dot.classList.remove('active'); };
-          _onbAudio.play().catch(() => { _onbAudio = null; if (dot) dot.classList.remove('active'); });
+          _onbAudio.play().catch(() => { _onbAudio = null; if (dot) dot.classList.remove('active'); onbSpeakFallback(_onbLastText); });
+        } else if (msg.error && _onbSpeakEnabled) {
+          onbSpeakFallback(_onbLastText);
         }
         break;
 
@@ -3843,6 +3848,7 @@
         break;
 
       case 'session-created':
+        const isSilentRoutine = msg.routineTag && msg.routineTag.startsWith('ModGenActivate-');
         sessionStore[msg.sessionId] = {
           id: msg.sessionId, name: msg.name,
           workDir: msg.workDir, projectName: msg.projectName,
@@ -3851,6 +3857,7 @@
           isForked: msg.isForked || false,
           primarySessionId: msg.primarySessionId || null,
           routineTag: msg.routineTag || null,
+          silent: isSilentRoutine,
           status: 'running', startAt: Date.now(),
           lines: [], lastPrompt: null, resumeId: null, usage: null, height: null, column: null, pinned: false,
         };
@@ -3861,7 +3868,8 @@
         if (!sessionOrder.includes(msg.sessionId)) sessionOrder.push(msg.sessionId);
         renderGrid();
         if (msg.projectName) applyNavProjectTheme(msg.projectName);
-        if (!msg.isForked) enterResumeMode(msg.sessionId, null);
+        const isCourseRoutine = msg.routineTag && msg.routineTag.match(/^ModGen(Dev|Activate|Scaffold)-/);
+        if (!msg.isForked && !isCourseRoutine) enterResumeMode(msg.sessionId, null);
         if (msg.routineTag) onCourseSessionCreated(msg.routineTag, msg.sessionId);
         break;
 
@@ -5100,7 +5108,7 @@
       return col;
     });
     const colHeights = [0, 0, 0];
-    const ordered = sessionOrder.filter(id => sessionStore[id]).map(id => sessionStore[id]);
+    const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     ordered.forEach(s => {
       let idx = s.column;
       if (idx == null) {
@@ -11722,6 +11730,17 @@
   let _onbAudio = null;
   let _onbSpeakEnabled = false;
   let _onbPanelClose = null;
+  let _onbLastText = '';
+
+  function onbFormatText(text) {
+    const sents = text.split(/\. (?=[A-Z"(])/);
+    const paras = [];
+    for (let i = 0; i < sents.length; i += 2) {
+      const raw = sents[i + 1] ? `${sents[i]}. ${sents[i + 1]}` : sents[i];
+      paras.push(raw.endsWith('.') || raw.endsWith('!') || raw.endsWith('?') ? raw : raw + '.');
+    }
+    return paras.map(p => `<p>${p}</p>`).join('');
+  }
 
   function _onbOpen(panelId, toggleFn) {
     const p = document.getElementById(panelId);
@@ -11924,8 +11943,8 @@
     if (!step) { onbFinish(); return; }
 
     const narration = document.getElementById('onb-narration');
-    document.getElementById('onb-step-title').textContent   = step.title;
-    document.getElementById('onb-step-text').textContent    = step.text;
+    document.getElementById('onb-step-title').textContent = step.title;
+    document.getElementById('onb-step-text').innerHTML    = onbFormatText(step.text);
     document.getElementById('onb-step-counter').textContent = `Step ${_onbStep + 1} of ${_onbSteps.length}`;
 
     const prevBtn = document.getElementById('onb-prev-btn');
@@ -12007,6 +12026,7 @@
 
   function onbSpeak(text) {
     _onbSpeakEnabled = true;
+    _onbLastText = text;
     if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     document.getElementById('onb-audio-dot')?.classList.remove('active');
