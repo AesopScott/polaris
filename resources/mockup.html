@@ -270,7 +270,7 @@
 
   /* Session Grid */
   .session-grid { position: absolute; inset: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-  .session-wide-row { display: flex; gap: 12px; flex-shrink: 0; }
+  .session-wide-row { display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; }
   .session-cols-row { display: flex; gap: 12px; flex-shrink: 0; align-items: stretch; }
   .session-col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; justify-content: flex-start; min-height: 120px; }
 
@@ -8273,7 +8273,7 @@
     const extra     = extraBadge ? extraBadge(c) : '';
     const btnStyle  = `flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid ${actionColor};background:${actionColor}22;color:${actionColor};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;`;
     const btnDisabledStyle = `flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid #64748b;background:#64748b22;color:#64748b;font-size:10px;font-weight:700;font-family:inherit;opacity:.6;cursor:default;`;
-    let inFlightLabel = 'Running…';
+    let inFlightLabel = 'Building…';
     if (inFlight && _courseStartTimes[c.course_id]) {
       const elapsed = Math.floor((Date.now() - _courseStartTimes[c.course_id]) / 1000);
       const m = Math.floor(elapsed / 60), s = elapsed % 60;
@@ -8310,7 +8310,7 @@
     if (btn) {
       if (state === 'launching' || state === 'running') {
         btn.disabled = true;
-        btn.textContent = state === 'launching' ? 'Launching…' : 'Running…';
+        btn.textContent = state === 'launching' ? 'Launching…' : 'Building…';
         btn.style.cssText = `flex-shrink:0;padding:4px 10px;border-radius:4px;border:1px solid #64748b;background:#64748b22;color:#64748b;font-size:10px;font-weight:700;font-family:inherit;opacity:.6;cursor:default;`;
       } else if (state === 'done' || state === 'error') {
         btn.disabled = false;
@@ -8387,6 +8387,14 @@
     const pending         = data.pending          || [];
     const readyToActivate = data.ready_to_activate || [];
     const drafts          = data.approved_drafts   || [];
+    const building        = data.building          || [];
+    building.forEach(courseId => {
+      if (!_courseInFlight.has(courseId)) {
+        _courseInFlight.add(courseId);
+        if (!_courseStartTimes[courseId]) _courseStartTimes[courseId] = Date.now();
+      }
+    });
+    if (_courseInFlight.size > 0) _startElapsedTick();
 
     function badge(label, color) {
       return `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 6px;border-radius:3px;background:${color}22;color:${color};border:1px solid ${color}55;">${escHtml(label)}</span>`;
