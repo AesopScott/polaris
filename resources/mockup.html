@@ -4635,7 +4635,13 @@
       case 'mcp-catalog':
         window._mcpCatalog = msg.catalog;
         window._mcpInstances = msg.instances || {};
-        renderMcpCatalog(msg.catalog, msg.enabled, msg.credentials, msg.instances || {}, msg.native || []);
+        try {
+          renderMcpCatalog(msg.catalog, msg.enabled, msg.credentials, msg.instances || {}, msg.native || []);
+        } catch(e) {
+          const _grid = document.getElementById('mcp-catalog-grid');
+          if (_grid) _grid.innerHTML = `<span style="color:#f87171;font-size:12px;">Catalog render error: ${escHtml(String(e.message || e))}</span>`;
+          console.error('[renderMcpCatalog]', e);
+        }
         break;
 
       case 'mcp-server-enabled': {
@@ -9294,12 +9300,25 @@
     wsSend({ type: 'get-connections' });
     wsSend({ type: 'get-mcp-servers' });
     wsSend({ type: 'get-mcp-catalog' });
+    // Retry if the catalog grid is still at the initial "Loading…" placeholder after 2s —
+    // happens when the WS was mid-reconnect when the messages were sent.
+    let retries = 0;
+    const retryTimer = setInterval(() => {
+      const grid = document.getElementById('mcp-catalog-grid');
+      if (!grid || !grid.textContent.includes('Loading')) { clearInterval(retryTimer); return; }
+      if (++retries > 3) { clearInterval(retryTimer); return; }
+      wsSend({ type: 'get-mcp-catalog' });
+    }, 2000);
   }
 
   // ── MCP Catalog UI ────────────────────────────────────────────────────────────
   function renderMcpCatalog(catalog, enabled, credentials, instances, native) {
     const grid = document.getElementById('mcp-catalog-grid');
     if (!grid) return;
+    if (!catalog) {
+      grid.innerHTML = '<span style="opacity:0.4;font-size:12px;">Catalog unavailable — try closing and reopening.</span>';
+      return;
+    }
     grid.innerHTML = '';
     // A catalog entry is "natively connected" if its id loosely matches any key
     // in ~/.mcp.json (e.g. catalog id "obsidian" matches native key "mcp-obsidian").
