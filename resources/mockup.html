@@ -3879,8 +3879,11 @@
             // Primary path: Web Audio API — not subject to HTMLMediaElement autoplay gate
             (async () => {
               try {
-                const resp = await fetch(msg.dataUrl);
-                const arrayBuf = await resp.arrayBuffer();
+                const base64 = msg.dataUrl.split(',')[1];
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const arrayBuf = bytes.buffer;
                 const decoded = await _onbAudioCtx.decodeAudioData(arrayBuf);
                 if (!_onbSpeakEnabled) return;
                 const src = _onbAudioCtx.createBufferSource();
