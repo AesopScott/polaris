@@ -6576,8 +6576,13 @@
     }
   };
 
+  let mouseDownInFloat = false;
+  document.addEventListener('mousedown', e => {
+    mouseDownInFloat = !!(e.target.closest('#float-launcher'));
+  });
   document.addEventListener('click', e => {
     if (!resumeTarget) return;
+    if (mouseDownInFloat) { mouseDownInFloat = false; return; }
     if (e.target.closest('.card') || e.target.closest('.launch-bar') || e.target.closest('#float-launcher')) return;
     window.clearResumeMode();
   });
