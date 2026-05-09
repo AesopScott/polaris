@@ -4171,6 +4171,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   let finalModel = null;
   let lastAssistantText = '';
   let committedDuringRun = false;
+  let firstTokenMs = null, totalChars = 0, rateInterval = null;
 
   proc.stdout.on('data', chunk => {
     totalOutBytes += chunk.length;
@@ -4197,6 +4198,15 @@ async function spawnMaxChat(sessionId, prompt, config) {
         lastAssistantText = '';
         for (const part of evt.message.content) {
           if (part.type === 'text' && part.text) {
+            if (!firstTokenMs) {
+              firstTokenMs = Date.now();
+              rateInterval = setInterval(() => {
+                const elapsed = (Date.now() - firstTokenMs) / 1000;
+                const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
+                broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - startMs });
+              }, 400);
+            }
+            totalChars += part.text.length;
             lastAssistantText += part.text;
             broadcast({ type: 'line', sessionId, text: part.text, role: 'assistant' });
           } else if (part.type === 'tool_use') {
@@ -4239,6 +4249,10 @@ async function spawnMaxChat(sessionId, prompt, config) {
 
   proc.on('close', async code => {
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
+    if (rateInterval) clearInterval(rateInterval);
+    const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
+    const finalTps = firstTokenElapsed && firstTokenElapsed > 0 ? Math.round((totalChars / 4) / firstTokenElapsed) : 0;
+    if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - startMs, final: true });
     if (finalUsage) {
       const modelTag = finalModel || 'claude-cli (Max plan)';
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
@@ -4473,6 +4487,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
     // Stream response by polling DOM every 300 ms
     let prevText = '';
     let doneCount = 0;
+    let firstTokenMs = null, totalChars = 0, rateInterval = null;
     const MAX_POLLS = 400; // 400 × 300 ms = 2 minutes max
 
     for (let i = 0; i < MAX_POLLS; i++) {
@@ -4490,6 +4505,15 @@ async function spawnGptChat(sessionId, prompt, tier) {
       if (!state) continue;
       const { text, done } = state;
       if (text.length > prevText.length) {
+        if (!firstTokenMs) {
+          firstTokenMs = Date.now();
+          rateInterval = setInterval(() => {
+            const elapsed = (Date.now() - firstTokenMs) / 1000;
+            const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
+            broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - startMs });
+          }, 400);
+        }
+        totalChars += text.length - prevText.length;
         broadcast({ type: 'line', sessionId, text: text.slice(prevText.length), role: 'assistant', class: 'ai-text' });
         prevText = text;
         doneCount = 0;
@@ -4500,6 +4524,10 @@ async function spawnGptChat(sessionId, prompt, tier) {
       }
     }
 
+    if (rateInterval) clearInterval(rateInterval);
+    const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
+    const finalTps = firstTokenElapsed && firstTokenElapsed > 0 ? Math.round((totalChars / 4) / firstTokenElapsed) : 0;
+    if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - startMs, final: true });
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
     broadcast({ type: 'line', sessionId, text: `[gpt] done | ${elapsed}s | ${prevText.length} chars`, role: 'system' });
     session.status = 'done';
