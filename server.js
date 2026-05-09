@@ -2494,9 +2494,8 @@ async function getPendingBuilds() {
   const projects = config.projects || [];
   const results = [];
   const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
-  const AESOP_WORK_DIR   = 'C:\\Users\\scott\\Code\\aesop';
 
-  // Always include Polaris itself, regardless of whether it appears in config.projects.
+  // Always include Polaris; other projects must have buildScript configured via the Projects panel.
   const polarisEntry = { name: 'Polaris', workDir: POLARIS_WORK_DIR };
   const projectsToCheck = [polarisEntry, ...projects.filter(p => p.workDir !== POLARIS_WORK_DIR && p.workDir !== POLARIS_WORK_DIR.replace(/\\/g, '/'))];
 
@@ -2504,9 +2503,8 @@ async function getPendingBuilds() {
     const workDir = project.workDir;
     if (!workDir || !fs.existsSync(workDir)) continue;
 
-    const isAesop = workDir.toLowerCase().replace(/\//g, '\\') === AESOP_WORK_DIR.toLowerCase();
-    const buildScript = path.join(workDir, 'scripts', 'build-install.ps1');
-    if (!fs.existsSync(buildScript) && !isAesop) continue;
+    const isPolaris = workDir === POLARIS_WORK_DIR;
+    if (!isPolaris && !project.buildScript) continue;
 
     let currentHead = null;
     let hasUncommitted = false;
@@ -2546,8 +2544,7 @@ async function getPendingBuilds() {
       commitCount,
       hasUncommitted,
       lastBuiltAt,
-      isPolaris: workDir === POLARIS_WORK_DIR,
-      isAesop,
+      isPolaris,
     });
   }
 
@@ -5697,12 +5694,10 @@ function handleMessage(ws, raw) {
     const projectName = msg.projectName || 'Polaris';
     const buildType   = msg.buildType === 'public' ? 'public' : msg.buildType === 'mac' ? 'mac' : 'private';
     const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
-    const AESOP_WORK_DIR   = 'C:\\Users\\scott\\Code\\aesop';
     const isPolaris   = sourcePath === POLARIS_WORK_DIR;
-    const isAesop     = sourcePath.toLowerCase().replace(/\//g, '\\') === AESOP_WORK_DIR.toLowerCase();
 
-    // Pre-build cross-check gate — skipped for Aesop (deploy-only, no build artifacts).
-    if (!msg.skipCheck && !isAesop) {
+    // Pre-build cross-check gate — required for all projects.
+    if (!msg.skipCheck) {
       const status = getPreBuildCheckStatus(sourcePath, projectName);
       if (!status.fresh) {
         sendTo(ws, { type: 'build-result', ok: false, requiresCheck: true,
@@ -5715,20 +5710,6 @@ function handleMessage(ws, raw) {
       }
     }
 
-    // Aesop: deploy by pushing to main — GitHub Actions handles FTP upload (~5-15 min).
-    if (isAesop) {
-      try {
-        const head = execSync('git rev-parse HEAD', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-        fs.writeFileSync(lastBuildHeadPath(projectName, sourcePath), JSON.stringify({ head, builtAt: new Date().toISOString() }), 'utf8');
-      } catch {}
-      try {
-        execSync('git push origin main', { cwd: sourcePath, encoding: 'utf8', timeout: 30000 });
-        sendTo(ws, { type: 'build-result', ok: true, message: 'Aesop deploy triggered — pushed to main. GitHub Actions will FTP-upload to production in ~5–15 min.' });
-      } catch (e) {
-        sendTo(ws, { type: 'build-result', ok: false, message: `Aesop deploy failed: ${e.message}` });
-      }
-      return;
-    }
     if (buildType === 'mac') {
       try {
         execSync('gh workflow run build-mac.yml', { cwd: sourcePath, encoding: 'utf8', timeout: 15000 });
@@ -5754,9 +5735,24 @@ function handleMessage(ws, raw) {
       fs.writeFileSync(lastBuildHeadPath(projectName, sourcePath), JSON.stringify(entry), 'utf8');
     } catch {}
 
-    // Non-Polaris projects always use build-install.ps1; Polaris supports public variant too.
-    const scriptName = (isPolaris && buildType === 'public') ? 'build-public.ps1' : 'build-install.ps1';
-    const fullScript = path.join(sourcePath, 'scripts', scriptName);
+    // Resolve the script to run: Polaris uses its own scripts; others use buildScript from config.
+    let fullScript;
+    if (isPolaris) {
+      const scriptName = buildType === 'public' ? 'build-public.ps1' : 'build-install.ps1';
+      fullScript = path.join(sourcePath, 'scripts', scriptName);
+    } else {
+      const cfg = readConfig();
+      const project = (cfg.projects || []).find(p =>
+        p.workDir === sourcePath || p.workDir === sourcePath.replace(/\\/g, '/')
+      );
+      if (!project?.buildScript) {
+        sendTo(ws, { type: 'build-result', ok: false, message: `No build script configured for ${projectName}. Add one via the Projects panel.` });
+        return;
+      }
+      fullScript = path.isAbsolute(project.buildScript)
+        ? project.buildScript
+        : path.join(sourcePath, project.buildScript);
+    }
     if (!fs.existsSync(fullScript)) {
       sendTo(ws, { type: 'build-result', ok: false, message: `Script not found: ${fullScript}` });
       return;
