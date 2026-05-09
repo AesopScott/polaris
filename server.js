@@ -46,6 +46,7 @@ const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15-minute hard cap on agent/routine sessions
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
@@ -2493,6 +2494,7 @@ async function getPendingBuilds() {
   const projects = config.projects || [];
   const results = [];
   const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+  const AESOP_WORK_DIR   = 'C:\\Users\\scott\\Code\\aesop';
 
   // Always include Polaris itself, regardless of whether it appears in config.projects.
   const polarisEntry = { name: 'Polaris', workDir: POLARIS_WORK_DIR };
@@ -2502,8 +2504,9 @@ async function getPendingBuilds() {
     const workDir = project.workDir;
     if (!workDir || !fs.existsSync(workDir)) continue;
 
+    const isAesop = workDir.toLowerCase().replace(/\//g, '\\') === AESOP_WORK_DIR.toLowerCase();
     const buildScript = path.join(workDir, 'scripts', 'build-install.ps1');
-    if (!fs.existsSync(buildScript)) continue;
+    if (!fs.existsSync(buildScript) && !isAesop) continue;
 
     let currentHead = null;
     let hasUncommitted = false;
@@ -2544,6 +2547,7 @@ async function getPendingBuilds() {
       hasUncommitted,
       lastBuiltAt,
       isPolaris: workDir === POLARIS_WORK_DIR,
+      isAesop,
     });
   }
 
@@ -3555,6 +3559,23 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   while (!session.aborted && iterations < 50) {
     iterations++;
     dlog('ITER', iterations);
+
+    // 15-minute wall-clock hard cap
+    const elapsed = Date.now() - startMs;
+    if (elapsed > SESSION_TIMEOUT_MS) {
+      const elapsedMin = (elapsed / 60000).toFixed(1);
+      const timeoutMsg = `Session timed out after ${elapsedMin} min (limit: 15 min) — stopped automatically.`;
+      dlog('TIMEOUT', timeoutMsg);
+      broadcast({ type: 'line', sessionId, text: timeoutMsg, role: 'error' });
+      broadcast({ type: 'session-status', sessionId, status: 'error' });
+      const ts = sessions.get(sessionId);
+      if (ts) { ts.status = 'error'; ts.endAt = Date.now(); }
+      notifyRoutineTimeout(sessionId, session.routineTag || 'Agent Session', elapsed).catch(() => {});
+      saveSessionMessages(sessionId);
+      releaseSessionMemory(sessionId);
+      return;
+    }
+
     const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
@@ -3692,6 +3713,11 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   autoObsidianForSession(sessionId);
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   releaseSessionMemory(sessionId);
+  if (s?.routineTag?.startsWith('ModGenActivate-')) {
+    sessions.delete(sessionId);
+    saveSessions();
+    broadcast({ type: 'session-closed', sessionId });
+  }
 }
 
 // Drop heavy per-session fields after the agent loop finishes. The leak
@@ -3714,6 +3740,42 @@ function releaseSessionMemory(sessionId) {
   if (s.watcher) {
     try { s.watcher.close(); } catch {}
     s.watcher = null;
+  }
+}
+
+async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
+  const elapsedMin = (elapsedMs / 60000).toFixed(1);
+  const timestamp  = new Date().toISOString();
+  try {
+    const notif = {
+      id:          Date.now().toString(),
+      routineName: routineTag,
+      title:       `Timeout: ${routineTag}`,
+      timestamp,
+      items: [
+        `Session ${sessionId} ran for ${elapsedMin} min with no result.`,
+        `Hard limit is 15 minutes — run was stopped automatically.`,
+      ],
+      dismissed: false,
+      isError:   true,
+    };
+    const existing = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+    const updated  = [notif, ...existing];
+    writeJSON(ROUTINE_NOTIFICATIONS_PATH, updated);
+    broadcast({ type: 'event-routine-notifications', notifications: updated });
+  } catch (e) {
+    console.warn('[timeout-notify] notification write failed:', e.message);
+  }
+  try {
+    await callMcpTool('brevo', 'send_email', {
+      to:          [{ email: 'ravenshroud@gmail.com' }],
+      from:        { email: 'noreply@aesopacademy.org', name: 'Polaris' },
+      subject:     `[Polaris] Routine timeout: ${routineTag} (${elapsedMin} min)`,
+      htmlContent: `<p>Routine <strong>${routineTag}</strong> (session <code>${sessionId}</code>) ran ${elapsedMin} min with no result — stopped by the 15-minute hard cap.</p>`,
+      textContent: `Polaris routine timeout\n\nRoutine: ${routineTag}\nSession: ${sessionId}\nElapsed: ${elapsedMin} min\nLimit:   15 min\n\nStopped automatically.`,
+    });
+  } catch (e) {
+    console.warn('[timeout-notify] Brevo email skipped:', e.message);
   }
 }
 
@@ -3804,6 +3866,11 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
 
         s.status = 'done'; s.endAt = Date.now();
         broadcast({ type: 'session-status', sessionId, status: 'done' });
+        if (s.routineTag?.startsWith('ModGenActivate-')) {
+          sessions.delete(sessionId);
+          saveSessions();
+          broadcast({ type: 'session-closed', sessionId });
+        }
       } catch (e) {
         broadcast({ type: 'line', sessionId, text: `DeepSeek parse error: ${e.message}`, role: 'error' });
         broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -3812,10 +3879,20 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
     });
   });
   req.on('error', err => {
-    broadcast({ type: 'line', sessionId, text: `DeepSeek connection error: ${err.message}`, role: 'error' });
+    const isTimeout = /timed out/i.test(err.message);
+    const msg = isTimeout
+      ? `Routine timed out after 15 minutes — stopped automatically.`
+      : `DeepSeek connection error: ${err.message}`;
+    broadcast({ type: 'line', sessionId, text: msg, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
     const s = sessions.get(sessionId);
     if (s) { s.status = 'error'; s.endAt = Date.now(); }
+    if (isTimeout) {
+      notifyRoutineTimeout(sessionId, session.routineTag || 'Routine', Date.now() - startMs).catch(() => {});
+    }
+  });
+  req.setTimeout(SESSION_TIMEOUT_MS, () => {
+    req.destroy(new Error('Routine timed out after 15 minutes'));
   });
   req.write(payload);
   req.end();
@@ -5620,10 +5697,12 @@ function handleMessage(ws, raw) {
     const projectName = msg.projectName || 'Polaris';
     const buildType   = msg.buildType === 'public' ? 'public' : msg.buildType === 'mac' ? 'mac' : 'private';
     const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+    const AESOP_WORK_DIR   = 'C:\\Users\\scott\\Code\\aesop';
     const isPolaris   = sourcePath === POLARIS_WORK_DIR;
+    const isAesop     = sourcePath.toLowerCase().replace(/\//g, '\\') === AESOP_WORK_DIR.toLowerCase();
 
-    // Pre-build cross-check gate applies to all projects with a build-install.ps1.
-    if (!msg.skipCheck) {
+    // Pre-build cross-check gate — skipped for Aesop (deploy-only, no build artifacts).
+    if (!msg.skipCheck && !isAesop) {
       const status = getPreBuildCheckStatus(sourcePath, projectName);
       if (!status.fresh) {
         sendTo(ws, { type: 'build-result', ok: false, requiresCheck: true,
@@ -5634,6 +5713,21 @@ function handleMessage(ws, raw) {
         });
         return;
       }
+    }
+
+    // Aesop: deploy by pushing to main — GitHub Actions handles FTP upload (~5-15 min).
+    if (isAesop) {
+      try {
+        const head = execSync('git rev-parse HEAD', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        fs.writeFileSync(lastBuildHeadPath(projectName, sourcePath), JSON.stringify({ head, builtAt: new Date().toISOString() }), 'utf8');
+      } catch {}
+      try {
+        execSync('git push origin main', { cwd: sourcePath, encoding: 'utf8', timeout: 30000 });
+        sendTo(ws, { type: 'build-result', ok: true, message: 'Aesop deploy triggered — pushed to main. GitHub Actions will FTP-upload to production in ~5–15 min.' });
+      } catch (e) {
+        sendTo(ws, { type: 'build-result', ok: false, message: `Aesop deploy failed: ${e.message}` });
+      }
+      return;
     }
     if (buildType === 'mac') {
       try {
