@@ -4643,6 +4643,51 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/api/launch-routine') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { routineName, courseId } = JSON.parse(body);
+        if (!routineName || !courseId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: false, error: 'routineName and courseId are required' }));
+        }
+        const cfg = readConfig();
+        const routine = (cfg.routines || []).find(r => r.name === routineName);
+        if (!routine) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: false, error: `Routine not found: ${routineName}` }));
+        }
+        const fullPrompt  = `COURSE_ID: ${courseId}\n\n${routine.prompt}`;
+        const id          = `s_${Date.now()}`;
+        const name        = generateSessionName(fullPrompt);
+        const routineTag  = `eval-${courseId}-activate`;
+        const projectName = routine.projectName || null;
+        const projectEntry = projectName ? (cfg.projects || []).find(p => p.name === projectName) : null;
+        const workDir     = projectEntry?.workDir || CHAT_DIR;
+        sessions.set(id, {
+          id, name, workDir, projectName, model: null, tier: 'balanced',
+          isChat: false, status: 'running', startAt: Date.now(),
+          proc: null, watcher: null, timeout: null, lines: [],
+          lastPrompt: fullPrompt, claudeSessionId: null, routineTag,
+          pendingImages: [], pendingDocs: [], pendingAudio: [],
+        });
+        broadcast({ type: 'session-created', sessionId: id, name, workDir, projectName, model: null, routineTag });
+        saveSessions();
+        runDirectAgent(id, fullPrompt, workDir).catch(err =>
+          console.error('[launch-routine] agent error:', err.message)
+        );
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, sessionId: id }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
