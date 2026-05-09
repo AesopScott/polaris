@@ -3393,7 +3393,9 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
         for (const f of files) {
           try { mem[f] = fs.readFileSync(path.join(obsDir, f), 'utf8'); } catch {}
         }
-      } catch {}
+      } catch (e) {
+        broadcast({ type: 'line', sessionId, text: `[project-memory] failed to load from Obsidian: ${e.message}`, role: 'error' });
+      }
       session.projectMemory = mem;
     } else {
       session.projectMemory = {};
@@ -3471,6 +3473,9 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory);
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
+  const _memKeys = Object.keys(session.projectMemory || {});
+  const _hasFileMap = _memKeys.some(k => k.toLowerCase().includes('file-map'));
+  broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded${_hasFileMap ? ' — file-map injected' : ' — no file-map found'}`, role: 'system' });
 
   // Diag log
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
