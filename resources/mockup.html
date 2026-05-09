@@ -2296,6 +2296,7 @@
       <div id="eval-model-roster"></div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <button id="eval-run-btn" onclick="runCourseEval()" style="padding:5px 16px;border-radius:5px;border:1px solid #a78bfa;background:#a78bfa22;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='#a78bfa44'" onmouseout="this.style.background='#a78bfa22'">Run Eval</button>
+        <button onclick="clearEvalResults()" style="padding:5px 12px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Clear</button>
         <div id="eval-status" style="font-size:11px;color:var(--text-muted,#64748b);"></div>
       </div>
       <div id="eval-results" style="display:flex;flex-direction:column;gap:6px;"></div>
@@ -8435,7 +8436,6 @@
     if (!selected.length) { pushDebugLog('[eval] No models selected', true); _setEvalStatus('Select at least one model.'); return; }
     _evalRunning    = true;
     _evalQueue      = selected.map(m => ({ id: m.id, label: m.id.split('/').pop() }));
-    _evalResults    = [];
     _evalCurrentIdx = -1;
     _evalRunStart   = Date.now();
     const btn = document.getElementById('eval-run-btn');
@@ -8595,10 +8595,17 @@
     _setEvalStatus('⟳ Writing to Obsidian…');
   }
 
+  function clearEvalResults() {
+    _evalResults = [];
+    _setEvalStatus('');
+    _renderEvalResults(false);
+  }
+
   window.switchCourseTab        = switchCourseTab;
   window.renderEvalRoster       = renderEvalRoster;
   window.loadEvalModels         = loadEvalModels;
   window.runCourseEval          = runCourseEval;
+  window.clearEvalResults       = clearEvalResults;
   window.saveEvalToObsidian     = saveEvalToObsidian;
   window._evalSelectRecommended = _evalSelectRecommended;
   window._evalSelectNone        = _evalSelectNone;
