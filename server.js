@@ -4404,6 +4404,115 @@ async function cdpEval(send, expression) {
   return r?.result?.value;
 }
 
+function buildGptContextPrompt(projectName) {
+  const buildFolder = `${projectName}_Build`;
+  const sessionsFolder = `${projectName}_Sessions`;
+  return [
+    `You're starting a new session on the **${projectName}** project.`,
+    ``,
+    `Use your Google Drive connection to load the project context before we begin:`,
+    ``,
+    `1. Open **My Drive > Aesop Academy > Obsidian > ${buildFolder}** and read:`,
+    `   - 1-Soul.md`,
+    `   - 2-Architecture.md`,
+    `   - 3-Build-Plan.md`,
+    `   - The top section of 4-Changelog.md (recent builds only)`,
+    ``,
+    `2. Open **My Drive > Aesop Academy > Obsidian > ${sessionsFolder}** and read the most recent session note.`,
+    ``,
+    `Reply with a brief summary:`,
+    `- What the project does (1–2 sentences)`,
+    `- Current status / what's in progress`,
+    `- Key architectural decisions`,
+    `- What was covered in the last session`,
+    ``,
+    `Then I'll give you the first task.`,
+  ].join('\n');
+}
+
+async function gptTypeAndSend(cdpSend, text) {
+  const serialized = JSON.stringify(text);
+  const typed = await cdpEval(cdpSend, `
+    (function() {
+      const ta = document.querySelector('.ProseMirror[contenteditable="true"]') ||
+                 document.querySelector('[contenteditable="true"]');
+      if (!ta) return { ok: false, error: 'No input found' };
+      ta.focus();
+      document.execCommand('selectAll');
+      document.execCommand('delete');
+      document.execCommand('insertText', false, ${serialized});
+      return { ok: true };
+    })()
+  `);
+  if (!typed?.ok) throw new Error(typed?.error || 'Could not type into ChatGPT input');
+  await new Promise(r => setTimeout(r, 500));
+
+  const sent = await cdpEval(cdpSend, `
+    (function() {
+      const btn = document.querySelector('button[aria-label="Send prompt"]') ||
+                  document.querySelector('button[aria-label*="Send" i]');
+      if (!btn || btn.disabled) return { ok: false, error: btn ? 'disabled — text may not have registered' : 'not found' };
+      const fk = Object.keys(btn).find(k => k.startsWith('__reactFiber'));
+      if (fk) {
+        let f = btn[fk];
+        while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
+      } else { btn.click(); }
+      return { ok: true };
+    })()
+  `);
+  if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
+}
+
+async function gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount = 0 }) {
+  let prevText = '';
+  let doneCount = 0;
+  let firstTokenMs = null, totalChars = 0, rateInterval = null;
+  const MAX_POLLS = 400; // 400 × 300 ms = 2 minutes max
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, 300));
+    const state = await cdpEval(cdpSend, `
+      (function() {
+        const msgs = document.querySelectorAll('[data-message-author-role="assistant"]');
+        if (msgs.length <= ${minMessageCount}) return { text: '', done: false };
+        const last = msgs[msgs.length - 1];
+        const streaming = !!document.querySelector('[data-testid="stop-button"]');
+        const prose = last.querySelector('.markdown') || last.querySelector('[class*="prose"]') || last;
+        return { text: (prose.innerText || prose.textContent || '').trim(), done: !streaming };
+      })()
+    `);
+    if (!state) continue;
+    const { text, done } = state;
+    if (text.length > prevText.length) {
+      if (!firstTokenMs) {
+        firstTokenMs = Date.now();
+        dlog('FIRST_TOKEN', `ttft=${firstTokenMs - startMs}ms`);
+        rateInterval = setInterval(() => {
+          const elapsed = (Date.now() - firstTokenMs) / 1000;
+          const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
+          broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - startMs });
+        }, 400);
+      }
+      const delta = text.length - prevText.length;
+      totalChars += delta;
+      dlog('POLL_CHUNK', `+${delta} chars | total=${text.length} | done=${done}`);
+      broadcast({ type: 'line', sessionId, text: text.slice(prevText.length), role: 'assistant', class: 'ai-text' });
+      prevText = text;
+      doneCount = 0;
+    }
+    if (done && text.length > 0) {
+      doneCount++;
+      if (doneCount >= 3) break;
+    }
+  }
+
+  if (rateInterval) clearInterval(rateInterval);
+  const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
+  const finalTps = firstTokenElapsed && firstTokenElapsed > 0 ? Math.round((totalChars / 4) / firstTokenElapsed) : 0;
+  if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - startMs, final: true });
+  return { text: prevText, totalChars, finalTps };
+}
+
 async function spawnGptChat(sessionId, prompt, tier) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -4470,92 +4579,31 @@ async function spawnGptChat(sessionId, prompt, tier) {
     `);
     await new Promise(r => setTimeout(r, 400));
 
-    // Type the message
-    const typed = await cdpEval(cdpSend, `
-      (function() {
-        const ta = document.querySelector('.ProseMirror[contenteditable="true"]') ||
-                   document.querySelector('[contenteditable="true"]');
-        if (!ta) return { ok: false, error: 'No input found' };
-        ta.focus();
-        document.execCommand('selectAll');
-        document.execCommand('delete');
-        document.execCommand('insertText', false, ${JSON.stringify(prompt)});
-        return { ok: true };
-      })()
-    `);
-    dlog('TYPED', typed?.ok ? `ok | prompt_chars=${prompt.length}` : typed?.error);
-    if (!typed?.ok) throw new Error(typed?.error || 'Could not type into ChatGPT input');
-    await new Promise(r => setTimeout(r, 500));
-
-    // Click send via React fiber (plain .click() is ignored by Radix/React)
-    const sent = await cdpEval(cdpSend, `
-      (function() {
-        const btn = document.querySelector('button[aria-label="Send prompt"]') ||
-                    document.querySelector('button[aria-label*="Send" i]');
-        if (!btn || btn.disabled) return { ok: false, error: btn ? 'disabled — text may not have registered' : 'not found' };
-        const fk = Object.keys(btn).find(k => k.startsWith('__reactFiber'));
-        if (fk) {
-          let f = btn[fk];
-          while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
-        } else { btn.click(); }
-        return { ok: true };
-      })()
-    `);
-    dlog('SENT', sent?.ok ? 'ok' : sent?.error);
-    if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
-
-    broadcast({ type: 'line', sessionId, text: '[gpt] message sent', role: 'system' });
-
-    // Stream response by polling DOM every 300 ms
-    let prevText = '';
-    let doneCount = 0;
-    let firstTokenMs = null, totalChars = 0, rateInterval = null;
-    const MAX_POLLS = 400; // 400 × 300 ms = 2 minutes max
-
-    for (let i = 0; i < MAX_POLLS; i++) {
-      await new Promise(r => setTimeout(r, 300));
-      const state = await cdpEval(cdpSend, `
-        (function() {
-          const msgs = document.querySelectorAll('[data-message-author-role="assistant"]');
-          const last = msgs[msgs.length - 1];
-          if (!last) return { text: '', done: false };
-          const streaming = !!document.querySelector('[data-testid="stop-button"]');
-          const prose = last.querySelector('.markdown') || last.querySelector('[class*="prose"]') || last;
-          return { text: (prose.innerText || prose.textContent || '').trim(), done: !streaming };
-        })()
-      `);
-      if (!state) continue;
-      const { text, done } = state;
-      if (text.length > prevText.length) {
-        if (!firstTokenMs) {
-          firstTokenMs = Date.now();
-          dlog('FIRST_TOKEN', `ttft=${firstTokenMs - startMs}ms`);
-          rateInterval = setInterval(() => {
-            const elapsed = (Date.now() - firstTokenMs) / 1000;
-            const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
-            broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - startMs });
-          }, 400);
-        }
-        const delta = text.length - prevText.length;
-        totalChars += delta;
-        dlog('POLL_CHUNK', `+${delta} chars | total=${text.length} | done=${done}`);
-        broadcast({ type: 'line', sessionId, text: text.slice(prevText.length), role: 'assistant', class: 'ai-text' });
-        prevText = text;
-        doneCount = 0;
-      }
-      if (done && text.length > 0) {
-        doneCount++;
-        if (doneCount >= 3) break;
-      }
+    // Init turn: load project context from Google Drive (new conversations with a project only)
+    if (!session.gptContextLoaded && session.projectName) {
+      const contextPrompt = buildGptContextPrompt(session.projectName);
+      dlog('CONTEXT_INIT', `project=${session.projectName}`);
+      broadcast({ type: 'line', sessionId, text: `[gpt] loading project context for ${session.projectName}…`, role: 'system' });
+      await gptTypeAndSend(cdpSend, contextPrompt);
+      dlog('CONTEXT_SENT');
+      await gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount: 0 });
+      dlog('CONTEXT_DONE');
+      session.gptContextLoaded = true;
+      broadcast({ type: 'line', sessionId, text: '[gpt] context loaded — sending your message…', role: 'system' });
+      await new Promise(r => setTimeout(r, 800));
     }
 
-    if (rateInterval) clearInterval(rateInterval);
-    const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
-    const finalTps = firstTokenElapsed && firstTokenElapsed > 0 ? Math.round((totalChars / 4) / firstTokenElapsed) : 0;
-    if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - startMs, final: true });
+    // Query current assistant message count so the poll waits for the NEXT response
+    const currentMsgCount = await cdpEval(cdpSend, `document.querySelectorAll('[data-message-author-role="assistant"]').length`) || 0;
+    dlog('TYPED', `ok | prompt_chars=${prompt.length} | before_msg_count=${currentMsgCount}`);
+    await gptTypeAndSend(cdpSend, prompt);
+    dlog('SENT', 'ok');
+    broadcast({ type: 'line', sessionId, text: '[gpt] message sent', role: 'system' });
+
+    const result = await gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount: currentMsgCount });
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
-    dlog('DONE', `elapsed=${elapsed}s | total_chars=${prevText.length} | tps=${finalTps}`);
-    broadcast({ type: 'line', sessionId, text: `[gpt] done | ${elapsed}s | ${prevText.length} chars`, role: 'system' });
+    dlog('DONE', `elapsed=${elapsed}s | total_chars=${result.text.length} | tps=${result.finalTps}`);
+    broadcast({ type: 'line', sessionId, text: `[gpt] done | ${elapsed}s | ${result.text.length} chars`, role: 'system' });
     session.status = 'done';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: 'done' });
