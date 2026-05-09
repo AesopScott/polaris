@@ -2432,6 +2432,16 @@ function lastBuildHeadPath(projectName, workDir) {
   return path.join(LAST_BUILD_HEADS_DIR, `${projectName}.json`);
 }
 
+// Returns the per-project pre-build-check state path (Polaris uses its legacy singleton).
+function preBuildCheckPath(projectName, workDir) {
+  const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+  if (!projectName || workDir === POLARIS_WORK_DIR || workDir === POLARIS_WORK_DIR.replace(/\\/g, '/')) {
+    return PRE_BUILD_CHECK_PATH;
+  }
+  fs.mkdirSync(LAST_BUILD_HEADS_DIR, { recursive: true });
+  return path.join(LAST_BUILD_HEADS_DIR, `${projectName}-pre-build-check.json`);
+}
+
 // Scans all configured projects for a scripts/build-install.ps1 and compares
 // the current git HEAD to the last-build-head snapshot to find pending builds.
 async function getPendingBuilds() {
@@ -2502,10 +2512,11 @@ function getRepoSnapshot(sourcePath) {
   }
 }
 
-function getPreBuildCheckStatus(sourcePath) {
+function getPreBuildCheckStatus(sourcePath, projectName) {
   const current = getRepoSnapshot(sourcePath);
+  const checkPath = preBuildCheckPath(projectName, sourcePath);
   let state = null;
-  try { state = JSON.parse(fs.readFileSync(PRE_BUILD_CHECK_PATH, 'utf8')); } catch {}
+  try { state = JSON.parse(fs.readFileSync(checkPath, 'utf8')); } catch {}
   if (!state) return { fresh: false, lastCheckedAt: null, currentSnapshot: current };
   const fresh = state.repoHead === current.head && state.repoStatus === current.status;
   return {
@@ -2541,16 +2552,18 @@ function getChangedFiles(sourcePath, baseCommit) {
   return [...files].filter(f => !skip(f));
 }
 
-async function runPreBuildCheck(ws, sourcePath) {
+async function runPreBuildCheck(ws, sourcePath, projectName) {
   const config = readConfig();
   const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
   const model = config.crossCheckModel || CROSS_CHECK_DEFAULT_MODEL;
+  const checkPath = preBuildCheckPath(projectName, sourcePath);
+  const headPath = lastBuildHeadPath(projectName, sourcePath);
 
   // Read the git SHA from when the last build was triggered
   let baseCommit = null;
   let baseVersion = null;
   try {
-    const saved = JSON.parse(fs.readFileSync(LAST_BUILD_HEAD_PATH, 'utf8'));
+    const saved = JSON.parse(fs.readFileSync(headPath, 'utf8'));
     baseCommit = saved.head || null;
     baseVersion = saved.version || null;
   } catch {}
@@ -2588,7 +2601,7 @@ async function runPreBuildCheck(ws, sourcePath) {
 
   if (files.length === 0) {
     const snapshot = getRepoSnapshot(sourcePath);
-    fs.writeFileSync(PRE_BUILD_CHECK_PATH, JSON.stringify({
+    fs.writeFileSync(checkPath, JSON.stringify({
       lastCheckedAt: new Date().toISOString(),
       repoHead: snapshot.head,
       repoStatus: snapshot.status,
@@ -2670,7 +2683,7 @@ async function runPreBuildCheck(ws, sourcePath) {
   const summary = `${passCount}/${results.length} files passed since ${baseLabel} (${model.split('/').pop()}).`;
 
   const snapshot = getRepoSnapshot(sourcePath);
-  fs.writeFileSync(PRE_BUILD_CHECK_PATH, JSON.stringify({
+  fs.writeFileSync(checkPath, JSON.stringify({
     lastCheckedAt: new Date().toISOString(),
     repoHead: snapshot.head,
     repoStatus: snapshot.status,
@@ -5524,8 +5537,9 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'run-pre-build-check') {
-    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
-    runPreBuildCheck(ws, sourcePath).catch(e => {
+    const sourcePath  = msg.sourcePath  || 'C:\\Users\\scott\\Code\\Polaris';
+    const projectName = msg.projectName || 'Polaris';
+    runPreBuildCheck(ws, sourcePath, projectName).catch(e => {
       console.error('[pre-build-check] failed:', e);
       sendTo(ws, { type: 'pre-build-check-error', message: e.message });
     });
@@ -5533,8 +5547,9 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'get-pre-build-check-status') {
-    const sourcePath = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
-    sendTo(ws, { type: 'pre-build-check-status', ...getPreBuildCheckStatus(sourcePath) });
+    const sourcePath  = msg.sourcePath  || 'C:\\Users\\scott\\Code\\Polaris';
+    const projectName = msg.projectName || 'Polaris';
+    sendTo(ws, { type: 'pre-build-check-status', ...getPreBuildCheckStatus(sourcePath, projectName) });
     return;
   }
 
@@ -5545,9 +5560,9 @@ function handleMessage(ws, raw) {
     const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
     const isPolaris   = sourcePath === POLARIS_WORK_DIR;
 
-    // Pre-build cross-check gate applies only to Polaris. Other projects run directly.
-    if (isPolaris && !msg.skipCheck) {
-      const status = getPreBuildCheckStatus(sourcePath);
+    // Pre-build cross-check gate applies to all projects with a build-install.ps1.
+    if (!msg.skipCheck) {
+      const status = getPreBuildCheckStatus(sourcePath, projectName);
       if (!status.fresh) {
         sendTo(ws, { type: 'build-result', ok: false, requiresCheck: true,
           message: status.lastCheckedAt
