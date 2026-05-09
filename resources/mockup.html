@@ -8870,7 +8870,7 @@
         ${escHtml(generateSpaceBlurb(scores))}
       </div>
       <div style="margin-top:12px;display:flex;justify-content:flex-end;">
-        <button class="fbtn" style="font-size:11px;padding:4px 10px;height:26px;" onclick="requestSpaceAnalysis(${JSON.stringify(escHtml(projectName))})">🔍 Deep Analysis</button>
+        <button class="fbtn" style="font-size:11px;padding:4px 10px;height:26px;" data-project="${escHtml(projectName)}" onclick="requestSpaceAnalysis(this.dataset.project)">🔍 Deep Analysis</button>
       </div>
       <div id="space-analysis-out" style="display:none;margin-top:10px;padding:12px;background:var(--bg-secondary,#1e1e1e);border:1px solid var(--border);border-radius:6px;font-size:11px;line-height:1.65;"></div>
       <p style="margin-top:10px;font-size:10px;opacity:0.35;">Scores from last 7 days of session events · ${escHtml(projectName)}</p>`;
