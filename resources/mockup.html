@@ -2554,6 +2554,7 @@
     } else {
       closePreview();
     }
+    savePanelState();
   }
   function closePreview() {
     document.getElementById('preview-panel-p1').classList.add('hidden');
@@ -2692,6 +2693,50 @@
         relPath: document.getElementById('prv-file-input').value,
       }));
     } catch {}
+  }
+
+  function savePanelState() {
+    const ids = [
+      'preview-panel-p1', 'projects-panel', 'file-manager-panel',
+      'monaco-panel', 'web-panel', 'code-health-panel', 'support-panel',
+      'cross-check-panel', 'archive-panel',
+    ];
+    const state = {};
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) state[id] = !el.classList.contains('hidden');
+    }
+    wsSend({ type: 'save-panel-state', panelState: state });
+  }
+
+  function restorePanelState(panelState) {
+    if (!panelState) return;
+    const floatingPanels = new Set(['preview-panel-p1', 'monaco-panel', 'web-panel']);
+    const overlayPanels  = new Set(['projects-panel', 'cross-check-panel']);
+    let needsOverlay = false;
+    for (const [id, isVisible] of Object.entries(panelState)) {
+      const el = document.getElementById(id);
+      if (!el || !isVisible) continue;
+      if (floatingPanels.has(id)) {
+        el.style.zIndex = '1100';
+        el.style.pointerEvents = 'auto';
+      } else {
+        el.style.zIndex = '1002';
+      }
+      el.classList.remove('hidden');
+      if (overlayPanels.has(id)) needsOverlay = true;
+      if (id === 'preview-panel-p1')   { previewPopulateProjectSelect(); previewRestoreState(); }
+      if (id === 'projects-panel')     renderProjectsPanel();
+      if (id === 'file-manager-panel') { populateFmProjectSelect(); loadFileManager(); }
+      if (id === 'monaco-panel')       { mpPopulateProjectSelect(); _initMpEditor(); }
+      if (id === 'web-panel')          { webPopulateProjectSelect(); wsSend({ type: 'get-live-server-status' }); }
+      if (id === 'code-health-panel')  { populateChProjectSelect(); loadCodeHealth(); }
+      if (id === 'support-panel')      { switchSupTab('submit'); onSupTypeChange(); }
+      if (id === 'cross-check-panel')  wsSend({ type: 'get-cross-check-history', limit: 200 });
+      if (id === 'archive-panel')      { wsSend({ type: 'get-archives' }); renderArchiveDetail(null, null); }
+    }
+    const overlay = document.getElementById('overlay-bg');
+    if (overlay && needsOverlay) overlay.classList.remove('hidden');
   }
 
   function _prvLangFor(filePath) {
@@ -3021,6 +3066,7 @@
     document.getElementById('projects-panel').classList.toggle('hidden');
     document.getElementById('overlay-bg').classList.toggle('hidden');
     if (!document.getElementById('projects-panel').classList.contains('hidden')) renderProjectsPanel();
+    savePanelState();
   }
   function closeProjects() {
     document.getElementById('projects-panel').classList.add('hidden');
@@ -3767,6 +3813,7 @@
           if (mBtn) mBtn.style.display = 'none';
         }
         renderGrid();
+        restorePanelState(msg.config?.panelState);
         (msg.sessions || []).forEach(s => { if (s.lastUsage) updateContextBar(s.id, s.lastUsage); });
         if (!msg.config?.skipOnboarding) setTimeout(initOnboardingPrompt, 900);
         wsSend({ type: 'get-locks' });
@@ -5712,6 +5759,7 @@
       if (overlay) overlay.classList.remove('hidden');
       wsSend({ type: 'get-cross-check-history', limit: 200 });
     }
+    savePanelState();
   }
   window.toggleCrossCheckPanel = toggleCrossCheckPanel;
 
@@ -5920,6 +5968,7 @@
       if (searchEl) { searchEl.value = ''; }
       renderArchiveDetail(null, null);
     }
+    savePanelState();
   }
   window.toggleArchivePanel = toggleArchivePanel;
 
@@ -9813,6 +9862,7 @@
       populateChProjectSelect();
       loadCodeHealth();
     }
+    savePanelState();
   }
 
   function closeCodeHealth() {
@@ -9939,6 +9989,7 @@
       populateFmProjectSelect();
       loadFileManager();
     }
+    savePanelState();
   }
 
   function closeFileManager() {
@@ -10087,6 +10138,7 @@
       if (idEl && installIdStore) idEl.textContent = installIdStore;
       wsSend({ type: 'get-tickets' });
     }
+    savePanelState();
   }
 
   function closeSupport() {
@@ -10493,6 +10545,7 @@
     } else {
       closeMonacoPanel();
     }
+    savePanelState();
   }
   function closeMonacoPanel() {
     document.getElementById('monaco-panel').classList.add('hidden');
@@ -10806,6 +10859,7 @@
     } else {
       closeWebPanel();
     }
+    savePanelState();
   }
   function closeWebPanel() {
     document.getElementById('web-panel').classList.add('hidden');

@@ -5969,6 +5969,12 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'save-panel-state') {
+    const current = readJSON(CONFIG_PATH, {});
+    writeJSON(CONFIG_PATH, { ...current, panelState: msg.panelState || {} });
+    return;
+  }
+
   if (type === 'tts-speak') {
     const cfg = readConfig();
     const rawKey = cfg.elevenLabsApiKey ? decryptSecret(cfg.elevenLabsApiKey) : null;
