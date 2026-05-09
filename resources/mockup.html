@@ -12282,14 +12282,15 @@
     closePendingBuildsModal();
     if (selected.length === 0) return;
     window._pendingBuildProject = null;
-    selected.forEach(p => {
-      if (p.isPolaris) {
-        showPolarisPreBuildPrompt(p.name);
-      } else {
-        window._pendingBuildProject = p;
-        wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name });
-      }
+    // Fire non-Polaris builds first — they don't need cross-check sequencing
+    selected.filter(p => !p.isPolaris).forEach(p => {
+      wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name });
     });
+    // Then start Polaris cross-check flow (async — doesn't clobber _pendingBuildProject)
+    const polarisProject = selected.find(p => p.isPolaris);
+    if (polarisProject) {
+      showPolarisPreBuildPrompt(polarisProject.name);
+    }
   }
   window.buildSelected = buildSelected;
 
