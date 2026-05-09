@@ -378,7 +378,7 @@ function maskedMcpCredentials() {
 
 // ─── Support ticket submission ───────────────────────────────────────────────
 function getInstallId() {
-  const cfg = readJSON(CONFIG_PATH, {});
+  const cfg = readConfigRaw();
   if (cfg.installId) return cfg.installId;
   const id = crypto.randomBytes(8).toString('hex');
   cfg.installId = id;
@@ -648,6 +648,20 @@ function readJSON(filePath, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// Like readJSON but falls back to config.backup.json when the main config
+// reads back empty (race condition: file mid-write when another handler reads).
+// Prevents save-panel-state / save-hidden-sessions from wiping all keys.
+function readConfigRaw() {
+  const main = readJSON(CONFIG_PATH, null);
+  if (main && Object.keys(main).length >= 3) return main;
+  const backup = readJSON(CONFIG_PATH.replace('.json', '.backup.json'), null);
+  if (backup && Object.keys(backup).length >= 3) {
+    console.warn('[config] readConfigRaw: main config thin/missing, using backup');
+    return backup;
+  }
+  return main || {};
 }
 
 const CONFIG_ARCHIVE_DIR    = path.join(POLARIS_DIR, 'config-archive');
@@ -2984,6 +2998,8 @@ async function toolWebSearch({ query, num_results = 5 }) {
 }
 
 function toolAskUserQuestion({ question, options }, sessionId) {
+  const session = sessions.get(sessionId);
+  if (session?.evalRunner) return Promise.resolve('(eval session — no user interaction available)');
   return new Promise(resolve => {
     const questionId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     pendingQuestions.set(questionId, resolve);
@@ -6001,13 +6017,13 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'save-panel-state') {
-    const current = readJSON(CONFIG_PATH, {});
+    const current = readConfigRaw();
     writeJSON(CONFIG_PATH, { ...current, panelState: msg.panelState || {} });
     return;
   }
 
   if (type === 'save-hidden-sessions') {
-    const current = readJSON(CONFIG_PATH, {});
+    const current = readConfigRaw();
     writeJSON(CONFIG_PATH, { ...current, hiddenSessions: msg.hiddenSessions || [] });
     return;
   }
@@ -6167,7 +6183,7 @@ function handleMessage(ws, raw) {
         sendTo(ws, { type: 'mcp-server-enabled', id, ok: false, error: 'Add at least one project' });
         return;
       }
-      const cfg = readJSON(CONFIG_PATH, {});
+      const cfg = readConfigRaw();
       cfg.mcp_instances = cfg.mcp_instances || {};
       const builtInstances = instances.map(inst => ({
         name: inst.name,
@@ -6200,7 +6216,7 @@ function handleMessage(ws, raw) {
         return;
       }
     }
-    const cfg = readJSON(CONFIG_PATH, {});
+    const cfg = readConfigRaw();
     cfg.mcp_credentials = cfg.mcp_credentials || {};
     cfg.mcp_credentials[id] = {};
     for (const credDef of (entry.credentials || [])) {
@@ -6235,7 +6251,7 @@ function handleMessage(ws, raw) {
     cj.mcpServers = cj.mcpServers || {};
     if (entry && entry.multiInstance && slug) {
       delete cj.mcpServers[slug];
-      const cfg = readJSON(CONFIG_PATH, {});
+      const cfg = readConfigRaw();
       cfg.mcp_instances = cfg.mcp_instances || {};
       cfg.mcp_instances[id] = (cfg.mcp_instances[id] || []).filter(i => i.slug !== slug);
       writeJSON(CONFIG_PATH, cfg);
@@ -7381,7 +7397,7 @@ wss.on('connection', (ws) => {
 
     // Fire one-time `app-update` event if the version has changed since last launch
     try {
-      const cfg = readJSON(CONFIG_PATH, {});
+      const cfg = readConfigRaw();
       const current = require('./package.json').version;
       if (cfg.lastSeenVersion !== current) {
         const previous = cfg.lastSeenVersion || null;
