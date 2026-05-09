@@ -6571,7 +6571,7 @@ function handleMessage(ws, raw) {
     try {
       const state  = await ensureMcpProcess('elevenlabs', servers.elevenlabs);
       const raw    = await mcpStdioCall(state, 'tools/call', {
-        name: 'text_to_speech',
+        name: 'generate_speech',
         arguments: { text, voice_id: voiceId, model_id: 'eleven_turbo_v2_5' },
       }, 30000);
       // ElevenLabs MCP saves audio to a temp file; extract the path from the text response

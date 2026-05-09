@@ -177,7 +177,7 @@
     "productUrl": "https://elevenlabs.io",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "@elevenlabs/mcp"],
+    "args": ["-y", "@mindstone-engineering/mcp-server-elevenlabs"],
     "env": {
       "ELEVENLABS_API_KEY": "{{ELEVENLABS_API_KEY}}"
     },
