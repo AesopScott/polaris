@@ -3918,7 +3918,7 @@
             });
           }
         } else if (msg.error && _onbSpeakEnabled) {
-          let info = msg.error === 'no-key' ? 'ElevenLabs key not set' : `ElevenLabs error: ${msg.error}`;
+          let info = msg.error === 'no-key' ? 'Enable ElevenLabs in Connect panel' : `ElevenLabs error: ${msg.error}`;
           if (msg.detail) {
             try {
               const d = typeof msg.detail === 'string' ? JSON.parse(msg.detail) : msg.detail;
@@ -12422,13 +12422,13 @@
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     document.getElementById('onb-audio-dot')?.classList.remove('active');
     const lbl = document.getElementById('onb-tts-label');
-    if (currentConfig?.elevenLabsApiKey) {
+    if (currentConfig?.elevenLabsTtsEnabled) {
       if (lbl) lbl.textContent = '';
-      console.log('[tts] routing to ElevenLabs');
+      console.log('[tts] routing to ElevenLabs via MCP credentials');
       wsSend({ type: 'tts-speak', text });
     } else {
-      console.warn('[tts] no ElevenLabs key in currentConfig — using browser TTS');
-      if (lbl) lbl.textContent = 'ElevenLabs key not set';
+      console.warn('[tts] ElevenLabs not enabled in Connect — using browser TTS');
+      if (lbl) { lbl.textContent = 'Enable ElevenLabs in Connect panel'; lbl.style.color = '#f87171'; lbl.style.fontWeight = '600'; }
       onbSpeakFallback(text);
     }
   }

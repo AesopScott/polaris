@@ -226,6 +226,9 @@ async function extractDocText(dataUrl, filename) {
 function maskedConfig(cfg) {
   const result = { ...cfg };
   for (const key of SENSITIVE_KEYS) { result[key] = cfg[key] ? SECRET_MASK : ''; }
+  // Derived flag: client uses this to decide whether to attempt ElevenLabs TTS.
+  // Key lives in mcp_credentials (Connect panel) — never sent to the client raw.
+  result.elevenLabsTtsEnabled = !!((cfg.mcp_credentials || {}).elevenlabs?.ELEVENLABS_API_KEY);
   return result;
 }
 
@@ -3111,8 +3114,11 @@ async function ensureMcpProcess(serverName, serverConfig) {
   if (existing && !existing.proc.killed) return existing;
 
   const cfg = readConfig();
-  const creds = (cfg.mcp_credentials || {})[serverName] || {};
-  const env = { ...process.env, ...(serverConfig.env || {}), ...creds };
+  const rawCreds = {};
+  for (const [k, v] of Object.entries((cfg.mcp_credentials || {})[serverName] || {})) {
+    rawCreds[k] = (typeof v === 'string' && v.startsWith('enc:')) ? decryptSecret(v) : v;
+  }
+  const env = { ...process.env, ...(serverConfig.env || {}), ...rawCreds };
 
   const proc = spawn(serverConfig.command, serverConfig.args || [], {
     env, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true,
@@ -6555,38 +6561,50 @@ function handleMessage(ws, raw) {
 
   if (type === 'tts-speak') {
     const cfg = readConfig();
-    const rawKey = cfg.elevenLabsApiKey ? decryptSecret(cfg.elevenLabsApiKey) : null;
-    if (!rawKey) { sendTo(ws, { type: 'tts-audio', error: 'no-key' }); return; }
-    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — Clear, Engaging Educator (British)
-    const body = JSON.stringify({
-      text: String(msg.text || '').slice(0, 1500),
-      model_id: 'eleven_turbo_v2_5',
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-    });
-    const req = https.request({
-      hostname: 'api.elevenlabs.io',
-      path: `/v1/text-to-speech/${voiceId}`,
-      method: 'POST',
-      headers: { 'xi-api-key': rawKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        if (res.statusCode !== 200) {
-          const detail = Buffer.concat(chunks).toString('utf8').slice(0, 400);
-          console.error(`[tts] ElevenLabs ${res.statusCode}:`, detail);
-          sendTo(ws, { type: 'tts-audio', error: `elevenlabs-${res.statusCode}`, detail });
-          return;
+    const servers = getMcpServerConfigs();
+    if (!servers.elevenlabs) {
+      sendTo(ws, { type: 'tts-audio', error: 'no-key', detail: 'Enable ElevenLabs in the Connect panel to use voice narration.' });
+      return;
+    }
+    const text    = String(msg.text || '').slice(0, 1500);
+    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — British female
+    try {
+      const state  = await ensureMcpProcess('elevenlabs', servers.elevenlabs);
+      const raw    = await mcpStdioCall(state, 'tools/call', {
+        name: 'text_to_speech',
+        arguments: { text, voice_id: voiceId, model_id: 'eleven_turbo_v2_5' },
+      }, 30000);
+      // ElevenLabs MCP saves audio to a temp file; extract the path from the text response
+      let dataUrl = null;
+      for (const item of (raw?.content || [])) {
+        if ((item.type === 'audio' || item.type === 'image') && item.data) {
+          dataUrl = `data:${item.mimeType || 'audio/mpeg'};base64,${item.data}`;
+          break;
         }
-        sendTo(ws, { type: 'tts-audio', dataUrl: `data:audio/mpeg;base64,${Buffer.concat(chunks).toString('base64')}` });
-      });
-    });
-    req.on('error', e => {
-      console.error('[tts] ElevenLabs request error:', e.message);
-      sendTo(ws, { type: 'tts-audio', error: e.message });
-    });
-    req.write(body);
-    req.end();
+        if (item.type === 'text') {
+          const m = item.text.match(/([A-Za-z]:[\\\/][^\n\r"']+\.(?:mp3|wav|ogg))|(\/?(?:tmp|temp)[^\n\r"' ]+\.(?:mp3|wav|ogg))/i);
+          if (m) {
+            const fp = (m[1] || m[2]).trim();
+            if (fs.existsSync(fp)) {
+              dataUrl = `data:audio/mpeg;base64,${fs.readFileSync(fp).toString('base64')}`;
+              try { fs.unlinkSync(fp); } catch(e) {}
+              break;
+            }
+          }
+        }
+      }
+      if (dataUrl) {
+        console.log('[tts] ElevenLabs MCP audio ready');
+        sendTo(ws, { type: 'tts-audio', dataUrl });
+      } else {
+        const detail = formatMcpResult(raw);
+        console.error('[tts] ElevenLabs MCP unexpected result:', detail.slice(0, 300));
+        sendTo(ws, { type: 'tts-audio', error: 'mcp-no-audio', detail: detail.slice(0, 300) });
+      }
+    } catch(err) {
+      console.error('[tts] ElevenLabs MCP error:', err.message);
+      sendTo(ws, { type: 'tts-audio', error: err.message });
+    }
     return;
   }
 
