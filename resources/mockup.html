@@ -72,7 +72,8 @@
   #filter-waiting-label:hover, #filter-running-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
-  .btn-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .btn-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; position: relative; }
+  #nav-divider-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
     border: none; border-radius: 12px;
@@ -1265,6 +1266,7 @@
     <!-- Right: Button Grid -->
     <div class="header-buttons">
       <div class="btn-grid">
+        <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
         <button id="btn-course-creator" class="hbtn btn-gold" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
@@ -12046,6 +12048,84 @@
     </button>
   </div>
 </div>
+<script>
+(function () {
+  var canvas = document.getElementById('nav-divider-canvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+
+  function getGaps() {
+    var grid    = canvas.parentElement;
+    var buttons = Array.from(grid.querySelectorAll('button')).slice(0, 6);
+    if (buttons.length < 6) return [];
+    var rect = grid.getBoundingClientRect();
+    return buttons.slice(0, 5).map(function (btn, i) {
+      var r = btn.getBoundingClientRect().right  - rect.left;
+      var l = buttons[i + 1].getBoundingClientRect().left - rect.left;
+      return (r + l) / 2;
+    });
+  }
+
+  function fit() {
+    var r = canvas.parentElement.getBoundingClientRect();
+    canvas.width  = r.width;
+    canvas.height = r.height;
+  }
+
+  function draw() {
+    fit();
+    var W   = canvas.width;
+    var H   = canvas.height;
+    var now = performance.now();
+    ctx.clearRect(0, 0, W, H);
+
+    getGaps().forEach(function (x, gi) {
+      var phase = ((now / 2200) + gi * 0.2) % 1;
+
+      var lg = ctx.createLinearGradient(x, 0, x, H);
+      lg.addColorStop(0,   'rgba(160,112,16,0)');
+      lg.addColorStop(0.1, 'rgba(245,158,11,0.5)');
+      lg.addColorStop(0.5, 'rgba(251,191,36,0.65)');
+      lg.addColorStop(0.9, 'rgba(245,158,11,0.5)');
+      lg.addColorStop(1,   'rgba(160,112,16,0)');
+
+      ctx.save();
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur  = 8;
+      ctx.strokeStyle = lg;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+      ctx.restore();
+
+      var spotY = phase * (H + 80) - 40;
+      var sg = ctx.createLinearGradient(x, spotY - 45, x, spotY + 45);
+      sg.addColorStop(0,   'rgba(253,230,138,0)');
+      sg.addColorStop(0.3, 'rgba(253,230,138,0.85)');
+      sg.addColorStop(0.5, 'rgba(255,252,210,1)');
+      sg.addColorStop(0.7, 'rgba(253,230,138,0.85)');
+      sg.addColorStop(1,   'rgba(253,230,138,0)');
+
+      ctx.save();
+      ctx.shadowColor = '#fde68a';
+      ctx.shadowBlur  = 14;
+      ctx.strokeStyle = sg;
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x, Math.max(0, spotY - 45));
+      ctx.lineTo(x, Math.min(H, spotY + 45));
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+</script>
 </body>
 </html>
 
