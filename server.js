@@ -4415,6 +4415,17 @@ async function spawnGptChat(sessionId, prompt, tier) {
   session.startAt = Date.now();
   const startMs = Date.now();
 
+  const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
+  const dlog = (label, text) => {
+    const t = ((Date.now() - startMs) / 1000).toFixed(3);
+    try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': ' + String(text).slice(0, 500) : ''}\n`, 'utf8'); } catch {}
+  };
+  try {
+    fs.writeFileSync(diagPath,
+      `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model.slug}\nTIER: ${tierKey}\n--- USER PROMPT ---\n${prompt.slice(0, 500)}\n--- STREAM ---\n`,
+      'utf8');
+  } catch {}
+
   broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.display}`, role: 'system' });
 
   let cdpConn = null;
@@ -4423,9 +4434,11 @@ async function spawnGptChat(sessionId, prompt, tier) {
     const wsUrl = await getGptCdpTarget();
     cdpConn = await openCdpConnection(wsUrl);
     const { send: cdpSend } = cdpConn;
+    dlog('CONNECT', wsUrl);
 
     // Navigate to a fresh conversation for new sessions
     if (!session.gptConversationStarted) {
+      dlog('NAVIGATE', 'chatgpt.com new conversation');
       await cdpSend('Page.navigate', { url: 'https://chatgpt.com/?window_style=main_view' });
       await new Promise(r => setTimeout(r, 2500));
       session.gptConversationStarted = true;
@@ -4433,6 +4446,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
 
     // Best-effort model selection via UI (pill button → Radix dropdown)
     const modelLabel = model.label;
+    dlog('MODEL_SELECT', modelLabel);
     await cdpEval(cdpSend, `
       (async function() {
         const pill = document.querySelector('button.__composer-pill');
@@ -4469,6 +4483,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
         return { ok: true };
       })()
     `);
+    dlog('TYPED', typed?.ok ? `ok | prompt_chars=${prompt.length}` : typed?.error);
     if (!typed?.ok) throw new Error(typed?.error || 'Could not type into ChatGPT input');
     await new Promise(r => setTimeout(r, 500));
 
@@ -4486,6 +4501,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
         return { ok: true };
       })()
     `);
+    dlog('SENT', sent?.ok ? 'ok' : sent?.error);
     if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
 
     broadcast({ type: 'line', sessionId, text: '[gpt] message sent', role: 'system' });
@@ -4513,13 +4529,16 @@ async function spawnGptChat(sessionId, prompt, tier) {
       if (text.length > prevText.length) {
         if (!firstTokenMs) {
           firstTokenMs = Date.now();
+          dlog('FIRST_TOKEN', `ttft=${firstTokenMs - startMs}ms`);
           rateInterval = setInterval(() => {
             const elapsed = (Date.now() - firstTokenMs) / 1000;
             const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
             broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - startMs });
           }, 400);
         }
-        totalChars += text.length - prevText.length;
+        const delta = text.length - prevText.length;
+        totalChars += delta;
+        dlog('POLL_CHUNK', `+${delta} chars | total=${text.length} | done=${done}`);
         broadcast({ type: 'line', sessionId, text: text.slice(prevText.length), role: 'assistant', class: 'ai-text' });
         prevText = text;
         doneCount = 0;
@@ -4535,12 +4554,14 @@ async function spawnGptChat(sessionId, prompt, tier) {
     const finalTps = firstTokenElapsed && firstTokenElapsed > 0 ? Math.round((totalChars / 4) / firstTokenElapsed) : 0;
     if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - startMs, final: true });
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
+    dlog('DONE', `elapsed=${elapsed}s | total_chars=${prevText.length} | tps=${finalTps}`);
     broadcast({ type: 'line', sessionId, text: `[gpt] done | ${elapsed}s | ${prevText.length} chars`, role: 'system' });
     session.status = 'done';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: 'done' });
 
   } catch (err) {
+    dlog('ERROR', err.message);
     broadcast({ type: 'line', sessionId, text: `ChatGPT error: ${err.message}`, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
     session.status = 'error';
