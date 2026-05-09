@@ -9,7 +9,7 @@ if (!fs.existsSync(distDir)) {
   process.exit(0);
 }
 
-const installerPattern = /^Polaris Setup .+\.exe$/;
+const installerPattern = /^Polaris (Private )?Setup .+\.exe$/;
 
 const installers = fs.readdirSync(distDir)
   .filter(name => installerPattern.test(name))
