@@ -261,7 +261,9 @@
   .launch-btn .icon { font-size: 14px; font-weight: 800; }
 
   /* Session Grid */
-  .session-grid { position: absolute; inset: 0; padding: 12px 16px; display: flex; gap: 12px; align-items: stretch; overflow-y: auto; }
+  .session-grid { position: absolute; inset: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  .session-wide-row { display: flex; gap: 12px; flex-shrink: 0; }
+  .session-cols-row { display: flex; gap: 12px; flex-shrink: 0; align-items: stretch; }
   .session-col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; justify-content: flex-start; min-height: 120px; }
 
   /* Session Card */
@@ -508,6 +510,7 @@
   .palette .fbtn { background: var(--fbtn-bg); color: var(--fbtn-text); }
   .palette .card-btn { background: var(--card-btn-bg); color: var(--text); }
   .card-btn.is-pinned { background: rgba(239,68,68,0.35) !important; color: #fff !important; }
+  .card-btn.is-expanded { background: rgba(96,165,250,0.3) !important; color: #60a5fa !important; }
   .card-btn.fork-active { background: rgba(167,139,250,0.35) !important; color: #c4b5fd !important; }
   .card-btn.fork-linked { background: rgba(96,165,250,0.25) !important; color: #93c5fd !important; }
   .card.pinned { box-shadow: inset 0 0 0 2px rgba(239,68,68,0.45); }
@@ -5158,15 +5161,27 @@
     const grid = getActiveGrid();
     if (!grid) return;
     grid.innerHTML = '';
-    const cols = [0, 1, 2].map((idx) => {
+    const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
+    const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
+    const normalCards = ordered.filter(s => (s.columnSpan || 1) <= 1);
+
+    if (wideCards.length > 0) {
+      const wideRow = document.createElement('div');
+      wideRow.className = 'session-wide-row';
+      wideCards.forEach(s => wideRow.appendChild(buildCard(s)));
+      grid.appendChild(wideRow);
+    }
+
+    const colsRow = document.createElement('div');
+    colsRow.className = 'session-cols-row';
+    const cols = [0, 1, 2].map(() => {
       const col = document.createElement('div');
       col.className = 'session-col';
-      grid.appendChild(col);
+      colsRow.appendChild(col);
       return col;
     });
     const colHeights = [0, 0, 0];
-    const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
-    ordered.forEach(s => {
+    normalCards.forEach(s => {
       let idx = s.column;
       if (idx == null) {
         idx = colHeights.indexOf(Math.min(...colHeights));
@@ -5177,6 +5192,8 @@
       cols[idx].appendChild(card);
       colHeights[idx] += hiddenCards.has(s.id) ? 0 : (parseInt(s.height) || 260) + 12;
     });
+    grid.appendChild(colsRow);
+
     updateStats();
     updateMiniCards();
     updateHiddenCount();
@@ -5256,6 +5273,7 @@
             <button class="card-btn ${s.isForked ? 'fork-linked' : (s.forkActive ? 'fork-active' : '')}" title="${s.isForked ? 'Forked — click to promote to independent session' : (s.forkActive ? 'Fork active — click to stop mirroring' : 'Fork — mirror all prompts to a second model')}" data-action="fork" data-fork-btn>⑂</button>
             <button class="card-btn" title="Verbose — show tool calls and responses" data-action="toggle-verbose" data-verb-btn>≡</button>
             <button class="card-btn" title="Stop" data-action="stop">■</button>
+            <button class="card-btn ${(s.columnSpan || 1) > 1 ? 'is-expanded' : ''}" title="${(s.columnSpan || 1) > 1 ? 'Collapse — return to single column' : 'Expand — span full width'}" data-action="cycle-span" data-expand-btn>↔</button>
             <button class="card-btn" title="Hide — remove from view; use 'Hidden · Show' in stats bar to restore" data-action="hide-card">⊗</button>
           </div>
         </div>
@@ -5713,6 +5731,18 @@
       case 'clear':
         if (s) { s.lines = []; const t = cardEl.querySelector('[data-term]'); if (t) t.innerHTML = ''; }
         break;
+      case 'cycle-span': {
+        if (!s) break;
+        s.columnSpan = (s.columnSpan || 1) > 1 ? 1 : 3;
+        wsSend({ type: 'session-column-span', sessionId, columnSpan: s.columnSpan });
+        const btn = cardEl.querySelector('[data-expand-btn]');
+        if (btn) {
+          btn.classList.toggle('is-expanded', s.columnSpan > 1);
+          btn.title = s.columnSpan > 1 ? 'Collapse — return to single column' : 'Expand — span full width';
+        }
+        renderGrid();
+        break;
+      }
       case 'archive': {
         if (!s) break;
         showInlineConfirm(cardEl, `Archive "${s.name || 'session'}"? It will be removed from the grid and saved for later.`, () => {

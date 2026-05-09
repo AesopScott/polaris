@@ -5290,6 +5290,12 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'session-column-span') {
+    const s = sessions.get(msg.sessionId);
+    if (s) { s.columnSpan = msg.columnSpan || 1; saveSessions(); }
+    return;
+  }
+
   if (type === 'cost-update') {
     const s = sessions.get(msg.sessionId);
     if (s) { s.totalCost = msg.totalCost || 0; }
