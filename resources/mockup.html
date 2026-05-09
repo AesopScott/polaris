@@ -3671,8 +3671,13 @@
           if (confirm(msg.message + '\n\nRun pre-build cross-check now?')) {
             runPreBuildCheck();
           } else if (confirm('Build anyway WITHOUT running the cross-check?\n\nThis is unusual — only do it if you know the changes are safe.')) {
-            const bt = window._pendingBuildType || 'private';
-            wsSend({ type: 'run-build', skipCheck: true, buildType: bt });
+            const p = window._pendingBuildProject;
+            if (p && !p.isPolaris) {
+              wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name, skipCheck: true });
+            } else {
+              const bt = window._pendingBuildType || 'private';
+              wsSend({ type: 'run-build', skipCheck: true, buildType: bt });
+            }
           }
         } else {
           alert('Build failed to start:\n' + msg.message);
@@ -3753,7 +3758,12 @@
         if (window._buildAfterCheck) {
           window._buildAfterCheck = false;
           if (msg.verdict === 'PASS') {
-            showBuildTypeModal(false);
+            const p = window._pendingBuildProject;
+            if (p && !p.isPolaris) {
+              wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name, skipCheck: true });
+            } else {
+              showBuildTypeModal(false);
+            }
           } else {
             const statusEl = document.getElementById('pre-build-check-status');
             if (statusEl) {
@@ -12094,13 +12104,23 @@
   window.onbClose           = onbClose;
 
   function ccBuild() {
-    showBuildTypeModal(false);
+    const p = window._pendingBuildProject;
+    if (p && !p.isPolaris) {
+      wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name, skipCheck: true });
+    } else {
+      showBuildTypeModal(false);
+    }
   }
   window.ccBuild = ccBuild;
 
   function ccOverrideBuild() {
     if (!confirm('The cross-check failed. Build anyway?\n\nOnly proceed if you know the flagged issues are safe to ignore.')) return;
-    showBuildTypeModal(false);
+    const p = window._pendingBuildProject;
+    if (p && !p.isPolaris) {
+      wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name, skipCheck: true });
+    } else {
+      showBuildTypeModal(false);
+    }
   }
   window.ccOverrideBuild = ccOverrideBuild;
 
@@ -12112,6 +12132,7 @@
   window.executeBuild = executeBuild;
 
   function showPolarisPreBuildPrompt() {
+    window._pendingBuildProject = null;
     if (confirm('Run pre-build cross-check before building?')) {
       window._buildAfterCheck = true;
       runPreBuildCheck();
@@ -12158,10 +12179,12 @@
     });
     closePendingBuildsModal();
     if (selected.length === 0) return;
+    window._pendingBuildProject = null;
     selected.forEach(p => {
       if (p.isPolaris) {
         showPolarisPreBuildPrompt();
       } else {
+        window._pendingBuildProject = p;
         wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name });
       }
     });
