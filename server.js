@@ -4410,21 +4410,17 @@ function buildGptContextPrompt(projectName) {
   return [
     `You're starting a new session on the **${projectName}** project.`,
     ``,
-    `Use your Google Drive connection to load the project context before we begin:`,
+    `Use your Google Drive connection to load the full project context before we begin:`,
     ``,
-    `1. Open **My Drive > Aesop Academy > Obsidian > ${buildFolder}** and read:`,
-    `   - 1-Soul.md`,
-    `   - 2-Architecture.md`,
-    `   - 3-Build-Plan.md`,
-    `   - The top section of 4-Changelog.md (recent builds only)`,
+    `1. Open **My Drive > Aesop Academy > Obsidian > ${buildFolder}** and read **every file** in that folder.`,
     ``,
-    `2. Open **My Drive > Aesop Academy > Obsidian > ${sessionsFolder}** and read the most recent session note.`,
+    `2. Open **My Drive > Aesop Academy > Obsidian > ${sessionsFolder}** and read **every file** in that folder.`,
     ``,
-    `Reply with a brief summary:`,
+    `Read all files completely — don't skip or summarize while reading. Once you've finished, reply with a brief summary:`,
     `- What the project does (1–2 sentences)`,
     `- Current status / what's in progress`,
     `- Key architectural decisions`,
-    `- What was covered in the last session`,
+    `- What was covered in the most recent session`,
     ``,
     `Then I'll give you the first task.`,
   ].join('\n');
@@ -4463,11 +4459,11 @@ async function gptTypeAndSend(cdpSend, text) {
   if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
 }
 
-async function gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount = 0 }) {
+async function gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount = 0, maxPolls = 400 }) {
   let prevText = '';
   let doneCount = 0;
   let firstTokenMs = null, totalChars = 0, rateInterval = null;
-  const MAX_POLLS = 400; // 400 × 300 ms = 2 minutes max
+  const MAX_POLLS = maxPolls; // default 400 × 300 ms = 2 min; pass higher for context-loading turns
 
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise(r => setTimeout(r, 300));
@@ -4586,7 +4582,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
       broadcast({ type: 'line', sessionId, text: `[gpt] loading project context for ${session.projectName}…`, role: 'system' });
       await gptTypeAndSend(cdpSend, contextPrompt);
       dlog('CONTEXT_SENT');
-      await gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount: 0 });
+      await gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount: 0, maxPolls: 1200 }); // 6 min for Drive reads
       dlog('CONTEXT_DONE');
       session.gptContextLoaded = true;
       broadcast({ type: 'line', sessionId, text: '[gpt] context loaded — sending your message…', role: 'system' });
