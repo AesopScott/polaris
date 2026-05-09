@@ -5230,7 +5230,7 @@ function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, workDir, tier, images, docs, audio } = msg;
+    const { prompt, workDir, tier, images, docs, audio, chipLabel, chipColor } = msg;
     if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
@@ -5263,6 +5263,7 @@ function handleMessage(ws, raw) {
       : (config.chatModel || 'deepseek/deepseek-chat');
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
+      chipLabel: chipLabel || null, chipColor: chipColor || null,
       isChat: true, model: chatModel, tier: chatTier,
       status: 'running', startAt: Date.now(),
       proc: null, watcher: null, timeout: null,
@@ -5271,7 +5272,7 @@ function handleMessage(ws, raw) {
       pendingDocs:   Array.isArray(docs)   ? docs.filter(d => d && typeof d.dataUrl === 'string')   : [],
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
     });
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: chatModel, isChat: true });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, chipLabel: chipLabel || null, chipColor: chipColor || null, model: chatModel, isChat: true });
     const launchAttachments = [
       ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
       ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),

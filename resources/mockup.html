@@ -3144,7 +3144,10 @@
     if (!s || !card) return;
     let chipLabel = '';
     let chipColor = null;
-    if (s.projectName) {
+    if (s.chipLabel) {
+      chipLabel = s.chipLabel;
+      chipColor = s.chipColor || null;
+    } else if (s.projectName) {
       chipLabel = s.projectName;
       chipColor = getProjectColorByName(s.projectName);
     } else if (s.isChat) {
@@ -3918,6 +3921,7 @@
         sessionStore[msg.sessionId] = {
           id: msg.sessionId, name: msg.name,
           workDir: msg.workDir, projectName: msg.projectName,
+          chipLabel: msg.chipLabel || null, chipColor: msg.chipColor || null,
           model: msg.model || resolveModel('balanced'),
           isChat: msg.isChat || false,
           isForked: msg.isForked || false,
@@ -6001,7 +6005,7 @@
       : '';
     const opPart = msg.operation ? ` on ${msg.operation}` : '';
     const prompt = `Cross-check ${msg.verdict}${opPart} of ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease review and fix the issues identified above.`;
-    wsSend({ type: 'launch-chat', prompt, workDir: sess.workDir, projectName: sess.projectName });
+    wsSend({ type: 'launch-chat', prompt, workDir: sess.workDir, projectName: sess.projectName, chipLabel: 'Cross Check', chipColor: '#ef4444' });
   }
   window.launchCrossCheckValidation = launchCrossCheckValidation;
 
