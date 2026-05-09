@@ -39,11 +39,8 @@ if ($killed -gt 0) {
     Write-Host "    none running" -ForegroundColor DarkGray
 }
 
-Write-Host "==> Bumping patch version..." -ForegroundColor Cyan
-$newVersion = node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));const [a,b,c]=p.version.split('.');p.version=a+'.'+b+'.'+(+c+1);fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n','utf8');process.stdout.write(p.version);"
-Write-Host "    version → $newVersion" -ForegroundColor DarkGray
-
-Write-Host "==> Building Polaris (dist:fast)..." -ForegroundColor Cyan
+$newVersion = node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)"
+Write-Host "==> Building Polaris v$newVersion (dist:fast)..." -ForegroundColor Cyan
 npm run dist:fast
 if (-not $?) {
     Write-Host "==> Build failed. Aborting." -ForegroundColor Red

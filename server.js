@@ -6055,17 +6055,6 @@ function handleMessage(ws, raw) {
       return;
     }
 
-    // Save current git HEAD to per-project last-build-head file before spawning.
-    try {
-      const head = execSync('git rev-parse HEAD', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-      const entry = { head, builtAt: new Date().toISOString() };
-      if (isPolaris) {
-        const pkg = JSON.parse(fs.readFileSync(path.join(sourcePath, 'package.json'), 'utf8'));
-        entry.version = pkg.version;
-      }
-      fs.writeFileSync(lastBuildHeadPath(projectName, sourcePath), JSON.stringify(entry), 'utf8');
-    } catch {}
-
     // Resolve the script to run: Polaris uses its own scripts; others use buildScript from config.
     let fullScript;
     if (isPolaris) {
