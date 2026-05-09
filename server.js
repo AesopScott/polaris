@@ -46,7 +46,7 @@ const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
-const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15-minute hard cap on agent/routine sessions
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routine sessions
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
@@ -603,6 +603,7 @@ const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
 function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
+    chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
     model: s.model || null, isChat: s.isChat || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
@@ -1565,8 +1566,18 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
 ];
 
-function buildDirectSystemPrompt(config, workDir, projectMemory = {}) {
+function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false) {
   const layers = [BASE_SYSTEM_PROMPT];
+
+  if (isRoutine) {
+    layers.push(
+      '--- AUTONOMOUS ROUTINE (CRITICAL) ---\n' +
+      'This session is an unattended background routine. There is no user present.\n' +
+      'You MUST NOT ask for permission, confirmation, or clarification under any circumstances.\n' +
+      'Never output text asking whether to proceed. Never call AskUserQuestion. Never pause for input.\n' +
+      'Execute every step in the prompt fully and autonomously. If you encounter an ambiguity, make a reasonable decision and proceed.'
+    );
+  }
 
   // Layer 2: Project CLAUDE.md ({workDir}/CLAUDE.md)
   if (workDir) {
@@ -2094,7 +2105,7 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
   const cfg = readConfig();
   if (cfg.crossCheckEnabled === false) return;
   const session = sessions.get(sessionId);
-  if (session?.evalRunner) return;
+  if (session?.evalRunner || session?.isChat === false) return;
 
   const origBytes = Buffer.byteLength(originalContent, 'utf8');
   const newBytes  = Buffer.byteLength(newContent, 'utf8');
@@ -2152,10 +2163,10 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
   const cfg = readConfig();
   if (cfg.crossCheckEnabled === false) return true; // explicitly disabled
 
-  // Bypass for Agent Eval sessions — they run unattended in a tmp workdir, so
-  // there's no human to approve and the cells need to complete promptly.
+  // Bypass for Agent Eval sessions and background routine sessions — both run
+  // unattended with no human to approve.
   const session = sessions.get(sessionId);
-  if (session?.evalRunner) return true;
+  if (session?.evalRunner || session?.isChat === false) return true;
 
   const origBytes = Buffer.byteLength(originalContent || '', 'utf8');
   const newBytes  = Buffer.byteLength(newContent, 'utf8');
@@ -3030,7 +3041,7 @@ async function toolWebSearch({ query, num_results = 5 }) {
 
 function toolAskUserQuestion({ question, options }, sessionId) {
   const session = sessions.get(sessionId);
-  if (session?.evalRunner) return Promise.resolve('(eval session — no user interaction available)');
+  if (session?.evalRunner || session?.routineTag) return Promise.resolve('(routine session — no user interaction available)');
   return new Promise(resolve => {
     const questionId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     pendingQuestions.set(questionId, resolve);
@@ -3528,7 +3539,7 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   if (!session.resolvedModel) session.resolvedModel = model;
   session.aborted = false;
 
-  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory);
+  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false);
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
@@ -3564,11 +3575,11 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     iterations++;
     dlog('ITER', iterations);
 
-    // 15-minute wall-clock hard cap
+    // 30-minute wall-clock hard cap
     const elapsed = Date.now() - startMs;
     if (elapsed > SESSION_TIMEOUT_MS) {
       const elapsedMin = (elapsed / 60000).toFixed(1);
-      const timeoutMsg = `Session timed out after ${elapsedMin} min (limit: 15 min) — stopped automatically.`;
+      const timeoutMsg = `Session timed out after ${elapsedMin} min (limit: 30 min) — stopped automatically.`;
       dlog('TIMEOUT', timeoutMsg);
       broadcast({ type: 'line', sessionId, text: timeoutMsg, role: 'error' });
       broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -3758,7 +3769,7 @@ async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
       timestamp,
       items: [
         `Session ${sessionId} ran for ${elapsedMin} min with no result.`,
-        `Hard limit is 15 minutes — run was stopped automatically.`,
+        `Hard limit is 30 minutes — run was stopped automatically.`,
       ],
       dismissed: false,
       isError:   true,
@@ -3775,8 +3786,8 @@ async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
       to:          [{ email: 'ravenshroud@gmail.com' }],
       from:        { email: 'noreply@aesopacademy.org', name: 'Polaris' },
       subject:     `[Polaris] Routine timeout: ${routineTag} (${elapsedMin} min)`,
-      htmlContent: `<p>Routine <strong>${routineTag}</strong> (session <code>${sessionId}</code>) ran ${elapsedMin} min with no result — stopped by the 15-minute hard cap.</p>`,
-      textContent: `Polaris routine timeout\n\nRoutine: ${routineTag}\nSession: ${sessionId}\nElapsed: ${elapsedMin} min\nLimit:   15 min\n\nStopped automatically.`,
+      htmlContent: `<p>Routine <strong>${routineTag}</strong> (session <code>${sessionId}</code>) ran ${elapsedMin} min with no result — stopped by the 30-minute hard cap.</p>`,
+      textContent: `Polaris routine timeout\n\nRoutine: ${routineTag}\nSession: ${sessionId}\nElapsed: ${elapsedMin} min\nLimit:   30 min\n\nStopped automatically.`,
     });
   } catch (e) {
     console.warn('[timeout-notify] Brevo email skipped:', e.message);
@@ -3885,7 +3896,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
   req.on('error', err => {
     const isTimeout = /timed out/i.test(err.message);
     const msg = isTimeout
-      ? `Routine timed out after 15 minutes — stopped automatically.`
+      ? `Routine timed out after 30 minutes — stopped automatically.`
       : `DeepSeek connection error: ${err.message}`;
     broadcast({ type: 'line', sessionId, text: msg, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -5244,7 +5255,9 @@ function handleMessage(ws, raw) {
     if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
-    const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
+    // Skip detection when chipLabel is set (e.g. "Cross Check") — the label wins and
+    // the prompt may contain unrelated project directory names that would mis-match.
+    const detectedProject = (!msg.projectName && !chipLabel) ? detectProjectFromPrompt(prompt) : null;
     const projectName = msg.projectName || (detectedProject ? detectedProject.name : null);
     const resolvedWorkDir = (workDir && workDir.trim()) ? workDir.trim()
       : (detectedProject && detectedProject.workDir) ? detectedProject.workDir
@@ -7206,6 +7219,55 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  // -- Project Status handlers ------------------------------------------
+
+  if (type === 'get-project-statuses') {
+    const config = readConfig();
+    const vaultPath = config.obsidianVaultPath;
+    if (!vaultPath) {
+      sendTo(ws, { type: 'project-statuses', statuses: {} });
+      return;
+    }
+    const statusDir = path.join(vaultPath, 'Project Status');
+    const statuses = {};
+    try {
+      if (fs.existsSync(statusDir)) {
+        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md'));
+        for (const f of files) {
+          const projectName = f.replace(/\.md$/, '');
+          statuses[projectName] = fs.readFileSync(path.join(statusDir, f), 'utf8');
+        }
+      }
+    } catch (e) {
+      log(`[project-status] read error: ${e.message}`);
+    }
+    sendTo(ws, { type: 'project-statuses', statuses });
+    return;
+  }
+
+  if (type === 'update-project-status') {
+    const { projectName, note } = msg;
+    const config = readConfig();
+    const vaultPath = config.obsidianVaultPath;
+    if (!vaultPath) {
+      sendTo(ws, { type: 'error', text: 'No Obsidian vault path configured. Open Settings to set one.' });
+      return;
+    }
+    try {
+      const statusDir = path.join(vaultPath, 'Project Status');
+      fs.mkdirSync(statusDir, { recursive: true });
+      const safeName = (projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_');
+      const filePath = path.join(statusDir, `${safeName}.md`);
+      const now = new Date().toISOString().split('T')[0];
+      const content = `# ${projectName} — Status\n\n**Last Updated:** ${now}\n\n${note || ''}`;
+      fs.writeFileSync(filePath, content, 'utf8');
+      sendTo(ws, { type: 'project-status-saved', projectName, filePath });
+    } catch (e) {
+      sendTo(ws, { type: 'error', text: `Project status save failed: ${e.message}` });
+    }
+    return;
+  }
+
   // -- Archive handlers -------------------------------------------------
 
   if (type === 'archive-session') {
@@ -7434,7 +7496,14 @@ function handleMessage(ws, raw) {
         }
       } catch (_) { /* drafts dir unreadable — continue with empty */ }
 
-      sendTo(ws, { type: 'course-creator-data', pending, ready_to_activate: readyToActivate, approved_drafts: approvedDrafts });
+      const building = [];
+      for (const [, s] of sessions) {
+        if (s.status === 'running' && s.routineTag && s.routineTag.startsWith('ModGenDev-')) {
+          building.push(s.routineTag.slice('ModGenDev-'.length));
+        }
+      }
+
+      sendTo(ws, { type: 'course-creator-data', pending, ready_to_activate: readyToActivate, approved_drafts: approvedDrafts, building });
     } catch (e) {
       sendTo(ws, { type: 'course-creator-data', error: e.message });
     }

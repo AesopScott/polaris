@@ -5325,11 +5325,11 @@
 
     let chipLabel = '';
     let chipColor = null;
-    // Project chip wins over Max chip — Max sessions are project sessions
-    // routed to the CLI backend, so once a project is picked the card should
-    // look like a Code session in that project. Fall back to "Max" only when
-    // no project is set on a chat-routed session.
-    if (s.projectName) {
+    // chipLabel wins (e.g. "Cross Check") — then project name — then "Max" fallback.
+    if (s.chipLabel) {
+      chipLabel = s.chipLabel;
+      chipColor = s.chipColor || null;
+    } else if (s.projectName) {
       chipLabel = s.projectName;
       chipColor = window.getProjectColorByName ? window.getProjectColorByName(s.projectName) : null;
     } else if (s.isChat) {
