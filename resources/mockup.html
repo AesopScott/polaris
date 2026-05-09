@@ -2456,7 +2456,7 @@
         </div>
         <div class="onb-level-card" id="onb-level-reference" onclick="onbSelectLevel('reference')">
           <div class="onb-level-icon">📖</div>
-          <div class="onb-level-name">Full Reference</div>
+          <div class="onb-level-name">Navigation Tour</div>
           <div class="onb-level-desc">Every button,<br>every feature explained</div>
         </div>
       </div>
@@ -6444,6 +6444,8 @@
     const floatEl = document.getElementById('float-launcher');
     if (floatEl && floatEl.classList.contains('visible')) {
       floatEl.classList.remove('visible');
+      const fpa = document.getElementById('float-prompt-area');
+      if (fpa) fpa.style.height = '';
     }
   };
 
@@ -11677,8 +11679,7 @@
       { title: "You're Ready", text: "Try wiring up your first Routine to automate something you do every day. The Walkthrough button brings you back here anytime.", target: null },
     ],
     reference: [
-      { title: 'Full Button Reference', text: "This tour walks through every button in the Polaris navigation — what each one does, when to use it, and what to watch out for. It covers all 25 controls in the header grid plus the Manifest button in the header center. Each step spotlights the button being described so you always know exactly where to look. Use Back and Next to move at your own pace, and hit Exit Tour if you want to jump to a specific button yourself.", target: null },
-      { title: 'Manifest', text: "Manifest opens a table of every feature flag and secret key registered in the codebase, each with a public/private toggle. Before you run a public or Mac build, this is the screen you review to confirm that nothing sensitive ships in the output — API keys, internal feature flags, and unreleased modules all live here. A leaked API key or private route can't be un-shipped once an installer is distributed, so treat this step as non-negotiable before any public release. The flags are saved to config.json and respected by the build pipeline automatically.", target: '#btn-manifest' },
+      { title: 'Navigation Tour', text: "This tour walks through every button in the Polaris navigation — what each one does, when to use it, and what to watch out for. Each step spotlights the button being described so you always know exactly where to look. Use Back and Next to move at your own pace, and hit Exit Tour if you want to jump to a specific button yourself.", target: null },
       { title: 'Courses', text: "Courses opens the Aesop Academy ModGen pipeline — the full workflow for developing and activating educational content for Scott's learning products. From here you draft a module outline, hand it to an AI agent for lesson generation, and push the finished content through the activation sequence that makes it live in the course system. Each step in the pipeline runs as an agent session using your configured model tier, so the quality of the output scales with the model you choose. Think of it as a production line for course content, not just a chat interface.", target: '#btn-course-creator' },
       { title: 'Build', text: "Build runs the full build-and-install loop by invoking scripts/build-install.ps1 — it compiles the Electron app, packages it with NSIS, and installs a fresh copy of Polaris on your machine in a single pipeline. Before the build starts, Polaris automatically runs a cross-check of recent file writes and surfaces any flagged issues; the build button stays gated until that check has been reviewed. When triggered, a chooser appears with three build types: Private keeps your full feature set and API keys intact for your machine only; Public strips everything flagged as private in the Manifest, making the output safe to distribute to others; Mac produces a cross-platform package targeting macOS. If the cross-check failed, you can override and proceed anyway — but you should only do this after opening the Cross-Check panel and confirming that the flagged items are genuinely safe to ignore. The pipeline also supports pending builds: you can queue multiple build requests and batch them, then approve them all at once when you're ready. Running the NSIS installer will trigger a Windows security prompt, which is expected and not a malware warning — it's standard behavior for any unsigned Windows installer.", target: '#btn-build' },
       { title: 'Files', text: "Files opens an in-app File Manager scoped strictly to your currently selected project's working directory. You can browse the full folder tree, click into any file to view its contents, and open files directly in Monaco — all without leaving Polaris or switching to Windows Explorer. It's especially useful right after an AI session finishes a batch of writes: you can inspect each changed file immediately to confirm the output looks right. The scope is locked to the active project, so you're never accidentally browsing the wrong codebase.", target: '#btn-files' },
