@@ -5428,7 +5428,9 @@ function handleMessage(ws, raw) {
       broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
     }
     broadcast({ type: 'session-status', sessionId, status: 'running' });
-    if (session.isChat) {
+    if (session.isGpt) {
+      spawnGptChat(sessionId, prompt, session.tier);
+    } else if (session.isChat) {
       spawnChatRouter(sessionId, prompt, readConfig());
     } else {
       runDirectAgent(sessionId, prompt, session.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
