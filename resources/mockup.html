@@ -12066,66 +12066,83 @@
     });
   }
 
-  // Each column gets its own cycle duration (slow, varied) and a random start offset
+  // Per-column pulse and sweep offsets — randomized once on load
   var cols = [0,1,2,3,4].map(function () {
     return {
-      speed:  5000 + Math.random() * 4000,  // 5s–9s per cycle
-      offset: Math.random()
+      pulseOffset: Math.random() * Math.PI * 2,
+      sweepOffset: Math.random()
     };
   });
 
+  var W = 0, H = 0;
+
   function fit() {
     var r = canvas.parentElement.getBoundingClientRect();
-    canvas.width  = r.width;
-    canvas.height = r.height;
+    if (r.width !== W || r.height !== H) {
+      W = canvas.width  = r.width;
+      H = canvas.height = r.height;
+    }
+  }
+
+  function drawRail(x, alpha, glow) {
+    var rl = ctx.createLinearGradient(x, 0, x, H);
+    rl.addColorStop(0,    'rgba(160,112,16,0)');
+    rl.addColorStop(0.08, 'rgba(212,175,55,' + (0.7 + 0.3 * glow) + ')');
+    rl.addColorStop(0.5,  'rgba(251,191,36,' + (0.9 + 0.1 * glow) + ')');
+    rl.addColorStop(0.92, 'rgba(212,175,55,' + (0.7 + 0.3 * glow) + ')');
+    rl.addColorStop(1,    'rgba(160,112,16,0)');
+    ctx.save();
+    ctx.shadowColor = '#d4af37';
+    ctx.shadowBlur  = 5 + 5 * glow;
+    ctx.strokeStyle = rl;
+    ctx.lineWidth   = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function draw() {
     fit();
-    var W   = canvas.width;
-    var H   = canvas.height;
-    var now = performance.now();
+    var now = performance.now() / 1000;
     ctx.clearRect(0, 0, W, H);
 
     getGaps().forEach(function (x, gi) {
-      var phase = ((now / cols[gi].speed) + cols[gi].offset) % 1;
+      var c     = cols[gi];
+      var rail  = 3;
+      var pulse = 0.5 + 0.5 * Math.sin(now * 0.7 + c.pulseOffset);
+      var glow  = 0.3 + 0.7 * pulse;
 
-      var lg = ctx.createLinearGradient(x, 0, x, H);
-      lg.addColorStop(0,   'rgba(160,112,16,0)');
-      lg.addColorStop(0.1, 'rgba(245,158,11,0.5)');
-      lg.addColorStop(0.5, 'rgba(251,191,36,0.65)');
-      lg.addColorStop(0.9, 'rgba(245,158,11,0.5)');
-      lg.addColorStop(1,   'rgba(160,112,16,0)');
-
+      // Fill between rails
+      var fill = ctx.createLinearGradient(x, 0, x, H);
+      fill.addColorStop(0,    'rgba(180,130,20,0)');
+      fill.addColorStop(0.12, 'rgba(212,175,55,' + (0.25 * pulse) + ')');
+      fill.addColorStop(0.5,  'rgba(251,191,36,' + (0.45 * pulse) + ')');
+      fill.addColorStop(0.88, 'rgba(212,175,55,' + (0.25 * pulse) + ')');
+      fill.addColorStop(1,    'rgba(180,130,20,0)');
       ctx.save();
-      ctx.shadowColor = '#f59e0b';
-      ctx.shadowBlur  = 8;
-      ctx.strokeStyle = lg;
-      ctx.lineWidth   = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, H);
-      ctx.stroke();
+      ctx.fillStyle = fill;
+      ctx.fillRect(x - rail, 0, rail * 2, H);
       ctx.restore();
 
-      var spotY = phase * (H + 80) - 40;
-      var sg = ctx.createLinearGradient(x, spotY - 45, x, spotY + 45);
-      sg.addColorStop(0,   'rgba(253,230,138,0)');
-      sg.addColorStop(0.3, 'rgba(253,230,138,0.85)');
-      sg.addColorStop(0.5, 'rgba(255,252,210,1)');
-      sg.addColorStop(0.7, 'rgba(253,230,138,0.85)');
-      sg.addColorStop(1,   'rgba(253,230,138,0)');
-
+      // Shimmer sweep — each column has its own speed and start position
+      var sweepSpeed = 0.18 + gi * 0.013;
+      var sweepY = ((now * sweepSpeed + c.sweepOffset) % 1.3) * H - H * 0.15;
+      var swH    = H * 0.28;
+      var sg = ctx.createLinearGradient(x, sweepY, x, sweepY + swH);
+      sg.addColorStop(0,    'rgba(253,230,138,0)');
+      sg.addColorStop(0.4,  'rgba(253,230,138,' + (0.5 * pulse) + ')');
+      sg.addColorStop(0.55, 'rgba(255,248,200,' + (0.75 * pulse) + ')');
+      sg.addColorStop(1,    'rgba(253,230,138,0)');
       ctx.save();
-      ctx.shadowColor = '#fde68a';
-      ctx.shadowBlur  = 14;
-      ctx.strokeStyle = sg;
-      ctx.lineWidth   = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(x, Math.max(0, spotY - 45));
-      ctx.lineTo(x, Math.min(H, spotY + 45));
-      ctx.stroke();
+      ctx.fillStyle = sg;
+      ctx.fillRect(x - rail, sweepY, rail * 2, swH);
       ctx.restore();
+
+      // Left and right rails
+      drawRail(x - rail, pulse, glow);
+      drawRail(x + rail, pulse, glow);
     });
 
     requestAnimationFrame(draw);
