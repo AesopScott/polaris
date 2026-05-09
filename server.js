@@ -4198,7 +4198,6 @@ async function spawnMaxChat(sessionId, prompt, config) {
           } else if (part.type === 'tool_use') {
             const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
             broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'tool' });
-            dlog('TOOL_USE', summary);
             if ((part.name === 'Bash' || part.name === 'PowerShell' || part.name === 'computer') && /\bgit\s+(commit|push)\b/i.test(JSON.stringify(part.input || {}))) {
               committedDuringRun = true;
             }
@@ -4206,9 +4205,9 @@ async function spawnMaxChat(sessionId, prompt, config) {
         }
       } else if (t === 'user' && evt.message?.content) {
         for (const part of evt.message.content) {
-          if (part.type === 'tool_result') {
+          if (part.type === 'tool_result' && part.is_error) {
             const txt = (typeof part.content === 'string' ? part.content : JSON.stringify(part.content || '')).slice(0, 200);
-            dlog('TOOL_RESULT', txt);
+            dlog('TOOL_RESULT_ERROR', txt);
           }
         }
       } else if (t === 'result') {
