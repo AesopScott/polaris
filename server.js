@@ -3885,7 +3885,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
     const s = sessions.get(sessionId);
     if (s) { s.status = 'error'; s.endAt = Date.now(); }
     if (isTimeout) {
-      notifyRoutineTimeout(sessionId, session.routineTag || 'Routine', Date.now() - startMs).catch(() => {});
+      notifyRoutineTimeout(sessionId, s?.routineTag || 'Routine', Date.now() - startMs).catch(() => {});
     }
   });
   req.setTimeout(SESSION_TIMEOUT_MS, () => {
@@ -5968,8 +5968,8 @@ function handleMessage(ws, raw) {
       if (!status.fresh) {
         sendTo(ws, { type: 'build-result', ok: false, requiresCheck: true,
           message: status.lastCheckedAt
-            ? `Repo state has changed since last cross-check (${status.lastCheckedAt}). Run cross-check first.`
-            : 'No cross-check has been run against this repo state yet. Run cross-check first.',
+            ? `[${projectName}] Repo state has changed since last cross-check (${status.lastCheckedAt}). Run cross-check first.`
+            : `[${projectName}] No cross-check has been run against this repo state yet. Run cross-check first.`,
           status,
         });
         return;

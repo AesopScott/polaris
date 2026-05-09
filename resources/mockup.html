@@ -12229,9 +12229,9 @@
   }
   window.executeBuild = executeBuild;
 
-  function showPolarisPreBuildPrompt() {
+  function showPolarisPreBuildPrompt(projectName) {
     window._pendingBuildProject = null;
-    if (confirm('Run pre-build cross-check before building?')) {
+    if (confirm(`[${projectName}] Run pre-build cross-check before building?`)) {
       window._buildAfterCheck = true;
       runPreBuildCheck();
     } else {
@@ -12280,7 +12280,7 @@
     window._pendingBuildProject = null;
     selected.forEach(p => {
       if (p.isPolaris) {
-        showPolarisPreBuildPrompt();
+        showPolarisPreBuildPrompt(p.name);
       } else {
         window._pendingBuildProject = p;
         wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name });
