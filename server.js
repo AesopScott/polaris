@@ -6326,7 +6326,7 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'test-deepseek-key') {
-    const apiKey = msg.apiKey || readConfig().deepSeekApiKey;
+    const apiKey = (msg.apiKey && msg.apiKey !== SECRET_MASK) ? msg.apiKey : readConfig().deepSeekApiKey;
     if (!apiKey) {
       sendTo(ws, { type: 'deepseek-key-test', ok: false, message: 'No API key provided' });
       return;
@@ -6354,7 +6354,7 @@ function handleMessage(ws, raw) {
   }
 
   if (type === 'test-routine-api-model') {
-    const apiKey = msg.apiKey || readConfig().deepSeekApiKey;
+    const apiKey = (msg.apiKey && msg.apiKey !== SECRET_MASK) ? msg.apiKey : readConfig().deepSeekApiKey;
     const model = msg.model || 'deepseek-chat';
     if (!apiKey) {
       sendTo(ws, { type: 'routine-api-model-test', ok: false, message: 'No API key — set DeepSeek key first' });
