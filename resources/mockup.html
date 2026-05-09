@@ -8135,7 +8135,7 @@
         <td style="text-align:center;">
           <div style="display:flex;gap:3px;justify-content:center;">
             <button class="fbtn" style="background:#3b82f6;color:#fff;padding:2px 6px;" onclick="launchRoutine(${i})" title="Launch now">▶</button>
-            <button class="fbtn" style="background:#7c3aed;color:#fff;padding:2px 6px;" onclick="viewLastRoutineRun(${JSON.stringify(r.name || '')})" title="View last run">↺</button>
+            <button class="fbtn" style="background:#7c3aed;color:#fff;padding:2px 6px;" onclick="viewLastRoutineRun(${escHtmlAttr(JSON.stringify(r.name || ''))})" title="View last run">↺</button>
             <button class="card-btn" onclick="deleteRoutineRow(${i})" title="Remove">✕</button>
           </div>
         </td>`;
@@ -9958,7 +9958,7 @@
           <span style="width:8px;height:8px;border-radius:50%;background:${escHtml(color)};flex-shrink:0;display:inline-block;"></span>
           <span class="status-card-name">${escHtml(name)}</span>
           ${date ? `<span class="status-card-date">${escHtml(date)}</span>` : ''}
-          <button class="status-card-edit" onclick="openStatusModal(${JSON.stringify(name)})">Edit</button>
+          <button class="status-card-edit" onclick="openStatusModal(${escHtmlAttr(JSON.stringify(name))})">Edit</button>
         </div>
         ${noteBody
           ? `<div class="status-card-body">${escHtml(noteBody)}</div>`
