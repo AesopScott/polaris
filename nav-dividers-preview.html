@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polaris Nav Dividers — 5 Looks</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #07090f;
+    color: #c8d4e8;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 32px 24px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, #f59e0b, #fde68a, #d4af37, #fbbf24);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 12px;
+    color: #4a5568;
+    letter-spacing: 2px;
+    margin-bottom: 40px;
+  }
+
+  .section { margin-bottom: 40px; }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #4a5568;
+    margin-bottom: 8px;
+    padding-left: 4px;
+  }
+  .section-label em {
+    font-style: normal;
+    background: linear-gradient(90deg, #f59e0b, #fde68a);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-right: 8px;
+  }
+
+  .tag {
+    display: inline-block;
+    background: #1a1500;
+    border: 1px solid #3d2e00;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #d4af37;
+    margin-bottom: 10px;
+  }
+
+  /* ── Nav mock ── */
+  .nav-mock {
+    background: linear-gradient(180deg, #0d1117 0%, #0a0e1a 100%);
+    border: 1px solid #1e2d45;
+    border-radius: 14px;
+    padding: 14px 18px;
+  }
+
+  .btn-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    position: relative;
+  }
+
+  /* Canvas sits on top of buttons */
+  .btn-grid canvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .hbtn {
+    background: linear-gradient(145deg, #1a2030, #0d1117);
+    border: none;
+    border-radius: 10px;
+    padding: 7px 10px;
+    min-height: 36px;
+    box-shadow:
+      4px 4px 10px rgba(0,0,0,0.6),
+      -2px -2px 6px rgba(70,90,130,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+    cursor: pointer;
+  }
+
+  .lbl {
+    font-size: 11px;
+    font-weight: 800;
+    display: block;
+    text-align: center;
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: holoShift 6s ease infinite;
+  }
+
+  .sub {
+    font-size: 8.5px;
+    font-weight: 600;
+    color: #3a4a62;
+    display: block;
+    text-align: center;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  @keyframes holoShift {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  .btn-danger    .lbl { background-image: linear-gradient(135deg, #ff006e, #f87171, #f59e0b, #f87171); }
+  .btn-tracking  .lbl { background-image: linear-gradient(135deg, #06b6d4, #60a5fa, #8b5cf6, #60a5fa); }
+  .btn-interface .lbl { background-image: linear-gradient(135deg, #14b8a6, #4ade80, #84cc16, #4ade80); }
+  .btn-systems   .lbl { background-image: linear-gradient(135deg, #f59e0b, #fb923c, #ef4444, #fb923c); }
+  .btn-config    .lbl { background-image: linear-gradient(135deg, #ec4899, #c084fc, #6366f1, #c084fc); }
+  .btn-gold      .lbl { background-image: linear-gradient(90deg, #f59e0b, #fde68a, #f59e0b, #fb923c, #f59e0b); }
+</style>
+</head>
+<body>
+
+<h1>Nav Column Dividers</h1>
+<p class="subtitle">5 looks — pick one to ship</p>
+
+<!-- STYLE 1 -->
+<div class="section">
+  <div class="section-label"><em>01</em> Thin Shimmer</div>
+  <div class="tag">SINGLE LINE · TRAVELING HIGHLIGHT</div>
+  <div class="nav-mock">
+    <div class="btn-grid" id="g1">
+      <canvas id="c1"></canvas>
+      <button class="hbtn btn-gold"><span class="lbl">Courses</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Build</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Files</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Restart</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Routines</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Settings</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Factory</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Cross-Check</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Archive</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reload</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Projects</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Tour</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Web</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Code Health</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Obsidian</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reset</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Connect</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Docs</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Preview</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Monaco</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Version</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Close</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Balance</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Support</span><span class="sub">CFG</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- STYLE 2 -->
+<div class="section">
+  <div class="section-label"><em>02</em> Art Deco Fan</div>
+  <div class="tag">FAN FLARE · GEOMETRY AT EDGE</div>
+  <div class="nav-mock">
+    <div class="btn-grid" id="g2">
+      <canvas id="c2"></canvas>
+      <button class="hbtn btn-gold"><span class="lbl">Courses</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Build</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Files</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Restart</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Routines</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Settings</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Factory</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Cross-Check</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Archive</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reload</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Projects</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Tour</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Web</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Code Health</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Obsidian</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reset</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Connect</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Docs</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Preview</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Monaco</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Version</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Close</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Balance</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Support</span><span class="sub">CFG</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- STYLE 3 -->
+<div class="section">
+  <div class="section-label"><em>03</em> Liquid Drip</div>
+  <div class="tag">RADIAL HALOS · PULSING SPREAD</div>
+  <div class="nav-mock">
+    <div class="btn-grid" id="g3">
+      <canvas id="c3"></canvas>
+      <button class="hbtn btn-gold"><span class="lbl">Courses</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Build</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Files</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Restart</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Routines</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Settings</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Factory</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Cross-Check</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Archive</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reload</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Projects</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Tour</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Web</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Code Health</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Obsidian</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reset</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Connect</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Docs</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Preview</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Monaco</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Version</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Close</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Balance</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Support</span><span class="sub">CFG</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- STYLE 4 -->
+<div class="section">
+  <div class="section-label"><em>04</em> Double Rail</div>
+  <div class="tag">TWIN LINES · GLOWING FILL</div>
+  <div class="nav-mock">
+    <div class="btn-grid" id="g4">
+      <canvas id="c4"></canvas>
+      <button class="hbtn btn-gold"><span class="lbl">Courses</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Build</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Files</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Restart</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Routines</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Settings</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Factory</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Cross-Check</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Archive</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reload</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Projects</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Tour</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Web</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Code Health</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Obsidian</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reset</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Connect</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Docs</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Preview</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Monaco</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Version</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Close</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Balance</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Support</span><span class="sub">CFG</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- STYLE 5 -->
+<div class="section">
+  <div class="section-label"><em>05</em> Crown Rule</div>
+  <div class="tag">ORNAMENTAL DIAMOND · BLOOM ENDS</div>
+  <div class="nav-mock">
+    <div class="btn-grid" id="g5">
+      <canvas id="c5"></canvas>
+      <button class="hbtn btn-gold"><span class="lbl">Courses</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Build</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Files</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Restart</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Routines</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Settings</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Factory</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Cross-Check</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Archive</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reload</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Projects</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Tour</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Web</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Code Health</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Obsidian</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reset</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Connect</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Docs</span><span class="sub">CFG</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Preview</span><span class="sub">GOLD</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Monaco</span><span class="sub">CTRL</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Version</span><span class="sub">PWR</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Close</span><span class="sub">UI</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Balance</span><span class="sub">SYS</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Support</span><span class="sub">CFG</span></button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Get the 5 gap x-positions from the first row of buttons ──
+function getColGaps(gridId) {
+  const grid    = document.getElementById(gridId);
+  const buttons = Array.from(grid.querySelectorAll('button')).slice(0, 6);
+  const rect    = grid.getBoundingClientRect();
+  return buttons.slice(0, 5).map((btn, i) => {
+    const rightEdge = btn.getBoundingClientRect().right - rect.left;
+    const leftEdge  = buttons[i + 1].getBoundingClientRect().left - rect.left;
+    return { x: (rightEdge + leftEdge) / 2, gap: leftEdge - rightEdge };
+  });
+}
+
+// ── Fit canvas to its grid container ──
+function fitCanvas(canvas, gridId) {
+  const r = document.getElementById(gridId).getBoundingClientRect();
+  canvas.width  = r.width;
+  canvas.height = r.height;
+}
+
+
+// ════════════════════════════════════════════
+// 01 — THIN SHIMMER
+// 1px gold line; bright spot travels down each column, staggered
+// ════════════════════════════════════════════
+(function () {
+  const canvas = document.getElementById('c1');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    fitCanvas(canvas, 'g1');
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const now = performance.now();
+    ctx.clearRect(0, 0, W, H);
+
+    getColGaps('g1').forEach(({ x }, gi) => {
+      const phase = ((now / 2200) + gi * 0.2) % 1;
+
+      // Permanent glow line
+      const lg = ctx.createLinearGradient(x, 0, x, H);
+      lg.addColorStop(0,   'rgba(160,112,16,0)');
+      lg.addColorStop(0.1, 'rgba(245,158,11,0.5)');
+      lg.addColorStop(0.5, 'rgba(251,191,36,0.65)');
+      lg.addColorStop(0.9, 'rgba(245,158,11,0.5)');
+      lg.addColorStop(1,   'rgba(160,112,16,0)');
+
+      ctx.save();
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur  = 8;
+      ctx.strokeStyle = lg;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+      ctx.restore();
+
+      // Traveling bright spot
+      const spotY = phase * (H + 80) - 40;
+      const sg = ctx.createLinearGradient(x, spotY - 45, x, spotY + 45);
+      sg.addColorStop(0,   'rgba(253,230,138,0)');
+      sg.addColorStop(0.3, 'rgba(253,230,138,0.85)');
+      sg.addColorStop(0.5, 'rgba(255,252,210,1)');
+      sg.addColorStop(0.7, 'rgba(253,230,138,0.85)');
+      sg.addColorStop(1,   'rgba(253,230,138,0)');
+
+      ctx.save();
+      ctx.shadowColor = '#fde68a';
+      ctx.shadowBlur  = 14;
+      ctx.strokeStyle = sg;
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x, Math.max(0, spotY - 45));
+      ctx.lineTo(x, Math.min(H, spotY + 45));
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+
+
+// ════════════════════════════════════════════
+// 02 — ART DECO FAN
+// Center line + V-fan of rays at top and bottom edges, pulsing
+// ════════════════════════════════════════════
+(function () {
+  const canvas = document.getElementById('c2');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    fitCanvas(canvas, 'g2');
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const now = performance.now() / 1000;
+    ctx.clearRect(0, 0, W, H);
+
+    getColGaps('g2').forEach(({ x, gap }, gi) => {
+      const pulse  = 0.6 + 0.4 * Math.sin(now * 1.1 + gi * 1.0);
+      const fanW   = Math.max(gap * 2.5, 20); // how wide the fan spreads
+      const nRays  = 7;
+      const topY   = 0;
+      const botY   = H;
+      const lineTop = H * 0.12;
+      const lineBot = H * 0.88;
+
+      // ── Center body line ──
+      const cl = ctx.createLinearGradient(x, lineTop, x, lineBot);
+      cl.addColorStop(0,   `rgba(212,175,55,${0.5 * pulse})`);
+      cl.addColorStop(0.5, `rgba(251,191,36,${0.75 * pulse})`);
+      cl.addColorStop(1,   `rgba(212,175,55,${0.5 * pulse})`);
+
+      ctx.save();
+      ctx.shadowColor = '#d4af37';
+      ctx.shadowBlur  = 8 * pulse;
+      ctx.strokeStyle = cl;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, lineTop);
+      ctx.lineTo(x, lineBot);
+      ctx.stroke();
+      ctx.restore();
+
+      // ── Fan helper ──
+      function drawFan(originY, edgeY) {
+        for (let r = 0; r < nRays; r++) {
+          const frac  = r / (nRays - 1);       // 0..1
+          const endX  = x + (frac - 0.5) * fanW * 2;
+          const alpha = pulse * (1 - Math.abs(frac - 0.5) * 1.8) * 0.85;
+          if (alpha <= 0) continue;
+
+          const rg = ctx.createLinearGradient(x, originY, endX, edgeY);
+          rg.addColorStop(0,   `rgba(251,191,36,${alpha})`);
+          rg.addColorStop(0.5, `rgba(245,158,11,${alpha * 0.7})`);
+          rg.addColorStop(1,   'rgba(180,130,20,0)');
+
+          ctx.save();
+          ctx.strokeStyle = rg;
+          ctx.lineWidth   = r === Math.floor(nRays / 2) ? 1.5 : 0.8;
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur  = 6 * pulse;
+          ctx.beginPath();
+          ctx.moveTo(x, originY);
+          ctx.lineTo(endX, edgeY);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      drawFan(lineTop, topY);
+      drawFan(lineBot, botY);
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+
+
+// ════════════════════════════════════════════
+// 03 — LIQUID DRIP
+// Center line + radial halos expanding outward like ripples
+// ════════════════════════════════════════════
+(function () {
+  const canvas = document.getElementById('c3');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    fitCanvas(canvas, 'g3');
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const now = performance.now() / 1000; // seconds
+    ctx.clearRect(0, 0, W, H);
+
+    getColGaps('g3').forEach(({ x }, gi) => {
+      const colPhase = gi * 0.22;
+
+      // Permanent base line
+      const bl = ctx.createLinearGradient(x, 0, x, H);
+      bl.addColorStop(0,   'rgba(160,112,16,0)');
+      bl.addColorStop(0.15,'rgba(212,175,55,0.55)');
+      bl.addColorStop(0.5, 'rgba(245,158,11,0.7)');
+      bl.addColorStop(0.85,'rgba(212,175,55,0.55)');
+      bl.addColorStop(1,   'rgba(160,112,16,0)');
+
+      ctx.save();
+      ctx.shadowColor = '#b8860b';
+      ctx.shadowBlur  = 6;
+      ctx.strokeStyle = bl;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+      ctx.restore();
+
+      // Three ripple halos spaced down the column
+      const haloCount  = 3;
+      const cycleSpeed = 1.4; // seconds per cycle
+      for (let k = 0; k < haloCount; k++) {
+        const cy = H * (k + 1) / (haloCount + 1);
+        const t  = ((now * cycleSpeed + colPhase + k * 0.33) % 1);
+        const r  = t * 44;
+        // fade in fast, fade out slow
+        const alpha = t < 0.25
+          ? (t / 0.25) * 0.75
+          : (1 - (t - 0.25) / 0.75) * 0.75;
+
+        const rg = ctx.createRadialGradient(x, cy, 0, x, cy, r + 1);
+        rg.addColorStop(0,   `rgba(253,230,138,${Math.min(alpha * 1.4, 1)})`);
+        rg.addColorStop(0.35,`rgba(245,158,11,${alpha})`);
+        rg.addColorStop(0.7, `rgba(212,175,55,${alpha * 0.4})`);
+        rg.addColorStop(1,   'rgba(180,130,20,0)');
+
+        ctx.save();
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(x, cy, r + 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Bright center pip
+        ctx.save();
+        ctx.shadowColor = '#fde68a';
+        ctx.shadowBlur  = 10;
+        ctx.fillStyle   = `rgba(253,230,138,${0.95 - t * 0.8})`;
+        ctx.beginPath();
+        ctx.arc(x, cy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+
+
+// ════════════════════════════════════════════
+// 04 — DOUBLE RAIL
+// Two parallel lines; fill between them glows and has a shimmer sweep
+// ════════════════════════════════════════════
+(function () {
+  const canvas = document.getElementById('c4');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    fitCanvas(canvas, 'g4');
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const now = performance.now() / 1000;
+    ctx.clearRect(0, 0, W, H);
+
+    getColGaps('g4').forEach(({ x }, gi) => {
+      const rail  = 3;          // half-width between rails
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.9 + gi * 1.2);
+
+      // ── Glow fill between rails ──
+      const fill = ctx.createLinearGradient(x, 0, x, H);
+      fill.addColorStop(0,    'rgba(180,130,20,0)');
+      fill.addColorStop(0.12, `rgba(212,175,55,${0.25 * pulse})`);
+      fill.addColorStop(0.5,  `rgba(251,191,36,${0.45 * pulse})`);
+      fill.addColorStop(0.88, `rgba(212,175,55,${0.25 * pulse})`);
+      fill.addColorStop(1,    'rgba(180,130,20,0)');
+
+      ctx.save();
+      ctx.fillStyle = fill;
+      ctx.fillRect(x - rail, 0, rail * 2, H);
+      ctx.restore();
+
+      // ── Shimmer sweep band ──
+      const sweepY = ((now * 0.22 + gi * 0.14) % 1.3) * H - H * 0.15;
+      const swH    = H * 0.28;
+      const sg = ctx.createLinearGradient(x, sweepY, x, sweepY + swH);
+      sg.addColorStop(0,   'rgba(253,230,138,0)');
+      sg.addColorStop(0.4, `rgba(253,230,138,${0.5 * pulse})`);
+      sg.addColorStop(0.55,`rgba(255,248,200,${0.75 * pulse})`);
+      sg.addColorStop(1,   'rgba(253,230,138,0)');
+
+      ctx.save();
+      ctx.fillStyle = sg;
+      ctx.fillRect(x - rail, sweepY, rail * 2, swH);
+      ctx.restore();
+
+      // ── Rail lines ──
+      function drawRail(rx) {
+        const rl = ctx.createLinearGradient(rx, 0, rx, H);
+        rl.addColorStop(0,    'rgba(160,112,16,0)');
+        rl.addColorStop(0.08, `rgba(212,175,55,${0.7 + 0.3 * pulse})`);
+        rl.addColorStop(0.5,  `rgba(251,191,36,${0.9 + 0.1 * pulse})`);
+        rl.addColorStop(0.92, `rgba(212,175,55,${0.7 + 0.3 * pulse})`);
+        rl.addColorStop(1,    'rgba(160,112,16,0)');
+
+        ctx.save();
+        ctx.shadowColor = '#d4af37';
+        ctx.shadowBlur  = 5 + 5 * pulse;
+        ctx.strokeStyle = rl;
+        ctx.lineWidth   = 1.25;
+        ctx.beginPath();
+        ctx.moveTo(rx, 0);
+        ctx.lineTo(rx, H);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      drawRail(x - rail);
+      drawRail(x + rail);
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+
+
+// ════════════════════════════════════════════
+// 05 — CROWN RULE
+// Narrow center line capped with pulsing diamond ornaments
+// Spreading rays fan into the gap space at mid-height
+// ════════════════════════════════════════════
+(function () {
+  const canvas = document.getElementById('c5');
+  const ctx    = canvas.getContext('2d');
+
+  function diamond(cx, cy, hw, hh, alpha) {
+    const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(hw, hh) * 1.2);
+    rg.addColorStop(0,   `rgba(255,252,210,${alpha})`);
+    rg.addColorStop(0.4, `rgba(251,191,36,${alpha * 0.8})`);
+    rg.addColorStop(1,   'rgba(180,130,20,0)');
+
+    ctx.save();
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur  = 14 * alpha;
+    ctx.fillStyle   = rg;
+    ctx.strokeStyle = `rgba(253,230,138,${alpha * 0.9})`;
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx,      cy - hh);
+    ctx.lineTo(cx + hw, cy);
+    ctx.lineTo(cx,      cy + hh);
+    ctx.lineTo(cx - hw, cy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function draw() {
+    fitCanvas(canvas, 'g5');
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const now = performance.now() / 1000;
+    ctx.clearRect(0, 0, W, H);
+
+    getColGaps('g5').forEach(({ x, gap }, gi) => {
+      const pulse  = 0.65 + 0.35 * Math.sin(now * 1.4 + gi * 1.1);
+      const dHW    = 7  * pulse;   // diamond half-width
+      const dHH    = 11 * pulse;   // diamond half-height
+      const topY   = 10;
+      const botY   = H - 10;
+      const lineT  = topY  + dHH + 3;
+      const lineB  = botY  - dHH - 3;
+      const spreadW = Math.max(gap * 3, 22);
+
+      // ── Center line ──
+      const cl = ctx.createLinearGradient(x, lineT, x, lineB);
+      cl.addColorStop(0,   `rgba(212,175,55,${0.6 * pulse})`);
+      cl.addColorStop(0.5, `rgba(251,191,36,${0.85 * pulse})`);
+      cl.addColorStop(1,   `rgba(212,175,55,${0.6 * pulse})`);
+
+      ctx.save();
+      ctx.shadowColor = '#d4af37';
+      ctx.shadowBlur  = 7 * pulse;
+      ctx.strokeStyle = cl;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, lineT);
+      ctx.lineTo(x, lineB);
+      ctx.stroke();
+      ctx.restore();
+
+      // ── Spreading fan rays at mid-height ──
+      const midY  = H / 2;
+      const nRays = 5;
+      for (let r = 0; r < nRays; r++) {
+        const frac  = r / (nRays - 1);
+        const endX  = x + (frac - 0.5) * spreadW * 2;
+        const alpha = (1 - Math.abs(frac - 0.5) * 2) * pulse * 0.55;
+        if (alpha <= 0) continue;
+
+        const rg = ctx.createLinearGradient(x, midY - 30, endX, midY + 30);
+        rg.addColorStop(0,   `rgba(245,158,11,${alpha})`);
+        rg.addColorStop(0.6, `rgba(212,175,55,${alpha * 0.5})`);
+        rg.addColorStop(1,   'rgba(180,130,20,0)');
+
+        ctx.save();
+        ctx.strokeStyle = rg;
+        ctx.lineWidth   = 0.75;
+        ctx.beginPath();
+        ctx.moveTo(x,    midY - 28);
+        ctx.lineTo(endX, midY + 28);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── Diamonds at top and bottom ──
+      diamond(x, topY, dHW, dHH, pulse);
+      diamond(x, botY, dHW, dHH, pulse);
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
