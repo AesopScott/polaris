@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -108,6 +108,14 @@
   }
   .hbtn-sub { font-size: 9px; font-weight: 400; opacity: 0.7; white-space: nowrap; }
   #btn-routines { padding: 8px 6px; }
+  .status-card { background: var(--card-bg, #1e2433); border: 1px solid var(--border, #2d3748); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .status-card-header { display: flex; align-items: center; gap: 8px; }
+  .status-card-name { font-size: 12px; font-weight: 800; flex: 1; }
+  .status-card-date { font-size: 10px; opacity: 0.4; flex-shrink: 0; }
+  .status-card-body { font-size: 12px; line-height: 1.6; opacity: 0.8; white-space: pre-wrap; word-break: break-word; }
+  .status-card-edit { align-self: flex-end; background: #374151; color: #9ca3af; border: none; border-radius: 5px; padding: 4px 12px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .status-card-edit:hover { background: #4b5563; color: #e2e8f0; }
+  .status-card-empty { font-size: 11px; opacity: 0.35; font-style: italic; }
   .btn-gold .lbl { background: linear-gradient(90deg, #f59e0b, #fde68a, #f59e0b, #fb923c, #f59e0b); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: holoShift 6s ease infinite; }
 
   /* Launch Bar — compact stacked layout */
@@ -1252,7 +1260,6 @@
 
     <!-- Middle: Version + Session Search + Live Clock -->
     <div class="header-center" style="gap:20px;">
-      <button id="btn-manifest" class="hbtn btn-config" onclick="openManifest()" data-tooltip="Manage public/private flags for all features and secrets — controls what ships in the public build" style="width:auto;padding:8px 18px;flex-shrink:0;"><span class="lbl">Manifest</span></button>
       <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px;width:40%;">
         <div id="header-version" style="text-align:center;display:block;padding:3px 14px;background:linear-gradient(180deg,rgba(96,165,250,0.18),rgba(96,165,250,0.06));border:1px solid rgba(96,165,250,0.35);border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.14em;color:#93c5fd;box-shadow:0 0 10px rgba(96,165,250,0.15),inset 0 1px 0 rgba(255,255,255,0.08);white-space:nowrap;">v—</div>
         <div style="position:relative;display:flex;align-items:center;">
@@ -1291,10 +1298,12 @@
         <!-- Row 4 -->
         <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
         <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
-        <button id="btn-obsidian" class="hbtn btn-danger" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note" style="padding-left: 4px; padding-right: 4px;"><span class="lbl">Obsidian</span></button>
+        <button id="btn-obsidian" class="hbtn btn-danger" onclick="obsidianUp()" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note" style="padding-left: 4px; padding-right: 4px;"><span class="lbl">Obsidian</span></button>
         <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button id="btn-balance" class="hbtn btn-systems" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
+        <!-- Row 5 -->
+        <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project"><span class="lbl">Status</span></button>
       </div>
     </div>
 
@@ -1803,6 +1812,39 @@
       <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveRoutines()">💾 Save Routines</button>
       <button class="fbtn" id="domain-scout-btn" style="background:#7c3aed;color:#fff;font-weight:700;margin-left:auto;" onclick="fireDomainScout()">🔍 Domain Scout</button>
       <button class="fbtn" style="background:#374151;color:#9ca3af;" onclick="clearDomainScout()" title="Clear all accumulated Domain Scout results">✕ Clear Scout</button>
+    </div>
+  </div>
+
+  <!-- Project Status Panel -->
+  <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:640px;">
+    <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar">
+      <span class="preview-drag-handle">⠿⠿</span>
+      <span style="flex:1;font-size:13px;font-weight:800;">Project Status</span>
+      <button class="preview-close-btn" onclick="closeStatusPanel()">✕</button>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+      <span style="font-size:11px;opacity:0.5;">Where each project stands — updated every time you push a session to Obsidian.</span>
+      <button onclick="wsSend({type:'get-project-statuses'})" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    </div>
+    <div class="projects-panel-body" id="status-panel-body" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;overflow-y:auto;"></div>
+  </div>
+
+  <!-- Status Update Modal -->
+  <div id="status-update-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+    <div style="background:var(--card-bg,#1e2433);border:1px solid var(--border,#2d3748);border-radius:10px;padding:0;width:480px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border,#2d3748);display:flex;align-items:center;gap:10px;">
+        <span style="font-size:13px;font-weight:800;flex:1;">Update Project Status</span>
+        <button onclick="closeStatusModal()" style="background:none;border:none;color:var(--text-muted,#6b7280);font-size:16px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+      <div style="padding:16px 18px;">
+        <div id="status-modal-project-label" style="font-size:11px;font-weight:700;letter-spacing:0.06em;opacity:0.5;margin-bottom:8px;"></div>
+        <textarea id="status-modal-textarea" placeholder="Where did we leave things? e.g. 'Completed auth flow, left off at JWT refresh. Next: wire up the settings page.'" style="width:100%;height:110px;resize:vertical;background:var(--input-bg,#111827);color:var(--text,#e2e8f0);border:1px solid var(--border,#2d3748);border-radius:6px;padding:10px;font-size:12px;font-family:inherit;box-sizing:border-box;line-height:1.5;"></textarea>
+      </div>
+      <div style="padding:10px 18px 14px;display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="closeStatusModal()" style="background:#374151;color:#9ca3af;border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;">Skip</button>
+        <button onclick="saveStatusNote()" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;">Save Status</button>
+      </div>
     </div>
   </div>
 
@@ -3830,28 +3872,50 @@
         const dot2 = document.getElementById('onb-audio-dot');
         const lbl2 = document.getElementById('onb-tts-label');
         if (msg.dataUrl && _onbSpeakEnabled) {
+          // Stop any currently playing Web Audio source
+          if (_onbAudioSrc) { try { _onbAudioSrc.stop(); } catch(e) {} _onbAudioSrc = null; }
           if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
-          // Reuse the gesture-warmed element so Chrome doesn't block the play call.
-          // A fresh new Audio() created here (outside a gesture) gets blocked;
-          // the same element that was .play()'d in the click handler is already unlocked.
-          const audio = _onbGestureAudio || new Audio();
-          _onbGestureAudio = null;
-          _onbAudio = audio;
-          _onbAudio.onended = null;
-          _onbAudio.src = msg.dataUrl;
-          _onbAudio.volume = 1;
           if (dot2) dot2.classList.add('active');
           if (lbl2) lbl2.textContent = '';
-          _onbAudio.onended = () => { _onbAudio = null; if (dot2) dot2.classList.remove('active'); };
-          _onbAudio.play().then(() => {
-            console.log('[tts] ElevenLabs audio playing ✓');
-          }).catch(err => {
-            console.error('[tts] Audio.play() blocked:', err.message, '— falling back to browser TTS');
-            if (lbl2) lbl2.textContent = 'ElevenLabs blocked (autoplay)';
-            _onbAudio = null;
-            if (dot2) dot2.classList.remove('active');
-            onbSpeakFallback(_onbLastText);
-          });
+          if (_onbAudioCtx && _onbAudioCtx.state !== 'closed') {
+            // Primary path: Web Audio API — not subject to HTMLMediaElement autoplay gate
+            (async () => {
+              try {
+                const resp = await fetch(msg.dataUrl);
+                const arrayBuf = await resp.arrayBuffer();
+                const decoded = await _onbAudioCtx.decodeAudioData(arrayBuf);
+                if (!_onbSpeakEnabled) return;
+                const src = _onbAudioCtx.createBufferSource();
+                src.buffer = decoded;
+                src.connect(_onbAudioCtx.destination);
+                src.onended = () => { _onbAudioSrc = null; if (dot2) dot2.classList.remove('active'); };
+                _onbAudioSrc = src;
+                src.start(0);
+                console.log('[tts] ElevenLabs playing via Web Audio ✓');
+              } catch(err) {
+                console.error('[tts] Web Audio playback failed:', err.message);
+                if (lbl2) lbl2.textContent = `TTS error: ${err.message}`;
+                if (dot2) dot2.classList.remove('active');
+                onbSpeakFallback(_onbLastText);
+              }
+            })();
+          } else {
+            // Fallback: reuse gesture-warmed HTMLMediaElement
+            const audio = _onbGestureAudio || new Audio();
+            _onbGestureAudio = null;
+            _onbAudio = audio;
+            _onbAudio.onended = null;
+            _onbAudio.src = msg.dataUrl;
+            _onbAudio.volume = 1;
+            _onbAudio.onended = () => { _onbAudio = null; if (dot2) dot2.classList.remove('active'); };
+            _onbAudio.play().catch(err => {
+              console.error('[tts] Audio.play() blocked:', err.message);
+              if (lbl2) lbl2.textContent = 'ElevenLabs blocked (autoplay)';
+              _onbAudio = null;
+              if (dot2) dot2.classList.remove('active');
+              onbSpeakFallback(_onbLastText);
+            });
+          }
         } else if (msg.error && _onbSpeakEnabled) {
           const info = msg.error === 'no-key' ? 'ElevenLabs key not set' : `ElevenLabs error: ${msg.error}`;
           console.warn('[tts]', info, msg.detail || '');
@@ -4426,6 +4490,18 @@
       case 'obsidian-up-done':
         pushDebugLog(`[obsidian] ✓ ${msg.filePath}`);
         if (typeof camOnObsidianDone === 'function') camOnObsidianDone();
+        if (pendingStatusProject) openStatusModal(pendingStatusProject);
+        break;
+
+      case 'project-statuses':
+        renderStatusPanel(msg.statuses || {});
+        break;
+
+      case 'project-status-saved':
+        pushDebugLog(`[project-status] ✓ saved: ${msg.projectName}`);
+        closeStatusModal();
+        projectStatusCache[msg.projectName] = '';
+        wsSend({ type: 'get-project-statuses' });
         break;
 
       // ── Archive messages ────────────────────────────────────────────────
@@ -9589,6 +9665,7 @@
   window.closeManifest  = closeManifest;
   window.switchManifestTab = switchManifestTab;
   window.saveManifest   = saveManifest;
+
   // ─────────────────────────────────────────────────────────────────────────
 
   function showConnectApprovalBanner({ approvalId, description }) {
@@ -9787,10 +9864,94 @@
     const sid = document.querySelector('.card.selected')?.dataset.sid;
     const s = sid ? sessionStore[sid] : null;
     if (!s) { alert('Select a session card first, then click Obsidian.'); return; }
-    wsSend({ type: 'obsidian-up', sessionId: s.id, sessionName: s.name, content: sessionToMarkdown(s) });
+
+    wsSend({ type: 'obsidian-up', sessionId: s.id, sessionName: s.name, projectName: s.projectName || null, content: sessionToMarkdown(s) });
     pushDebugLog(`[obsidian] Exporting session: ${s.name}`);
+    pendingStatusProject = s.projectName || null;
   }
   window.obsidianUp = obsidianUp;
+  // ── Project Status Panel ──────────────────────────────────────────────────────
+  let projectStatusCache = {};
+  let pendingStatusProject = null;
+
+  function openStatusPanel() {
+    document.getElementById('project-status-panel').classList.remove('hidden');
+    document.getElementById('overlay-bg').classList.remove('hidden');
+    wsSend({ type: 'get-project-statuses' });
+  }
+  function closeStatusPanel() {
+    document.getElementById('project-status-panel').classList.add('hidden');
+    document.getElementById('overlay-bg').classList.add('hidden');
+  }
+  function toggleStatusPanel() {
+    const panel = document.getElementById('project-status-panel');
+    if (panel.classList.contains('hidden')) openStatusPanel();
+    else closeStatusPanel();
+  }
+
+  function renderStatusPanel(statuses) {
+    projectStatusCache = statuses || {};
+    const body = document.getElementById('status-panel-body');
+    if (!body) return;
+    const projects = projectsList || [];
+    if (!projects.length) {
+      body.innerHTML = '<div style="opacity:0.4;font-size:12px;padding:8px;">No projects configured.</div>';
+      return;
+    }
+    body.innerHTML = projects.map(p => {
+      const name = p.name || '';
+      const color = p.color || '#94a3b8';
+      const raw = statuses[name] || '';
+      const dateMatch = raw.match(/\*\*Last Updated:\*\*\s*(\S+)/);
+      const date = dateMatch ? dateMatch[1] : '';
+      const noteBody = raw.replace(/^# .+\n\n\*\*Last Updated:\*\*.*\n\n?/, '').trim();
+      return `<div class="status-card">
+        <div class="status-card-header">
+          <span style="width:8px;height:8px;border-radius:50%;background:${escHtml(color)};flex-shrink:0;display:inline-block;"></span>
+          <span class="status-card-name">${escHtml(name)}</span>
+          ${date ? `<span class="status-card-date">${escHtml(date)}</span>` : ''}
+          <button class="status-card-edit" onclick="openStatusModal(${JSON.stringify(name)})">Edit</button>
+        </div>
+        ${noteBody
+          ? `<div class="status-card-body">${escHtml(noteBody)}</div>`
+          : `<div class="status-card-empty">No status yet — push a session to Obsidian to add one.</div>`}
+      </div>`;
+    }).join('');
+  }
+
+  function openStatusModal(projectName, prefill) {
+    pendingStatusProject = projectName;
+    const label = document.getElementById('status-modal-project-label');
+    const textarea = document.getElementById('status-modal-textarea');
+    if (label) label.textContent = projectName ? `PROJECT: ${projectName}` : 'PROJECT';
+    if (textarea) {
+      const raw = prefill !== undefined ? prefill : (projectStatusCache[projectName] || '');
+      const noteOnly = raw.replace(/^# .+\n\n\*\*Last Updated:\*\*.*\n\n?/, '').trim();
+      textarea.value = noteOnly;
+    }
+    const modal = document.getElementById('status-update-modal');
+    modal.style.display = 'flex';
+    if (textarea) textarea.focus();
+  }
+
+  function closeStatusModal() {
+    document.getElementById('status-update-modal').style.display = 'none';
+    pendingStatusProject = null;
+  }
+
+  function saveStatusNote() {
+    const textarea = document.getElementById('status-modal-textarea');
+    const note = textarea ? textarea.value.trim() : '';
+    if (!pendingStatusProject) { closeStatusModal(); return; }
+    wsSend({ type: 'update-project-status', projectName: pendingStatusProject, note });
+  }
+
+  window.openStatusPanel   = openStatusPanel;
+  window.closeStatusPanel  = closeStatusPanel;
+  window.toggleStatusPanel = toggleStatusPanel;
+  window.openStatusModal   = openStatusModal;
+  window.closeStatusModal  = closeStatusModal;
+  window.saveStatusNote    = saveStatusNote;
 
   // ── Restart & Reset Layout ────────────────────────────────────────────────────
   function doRestart() {
@@ -11265,6 +11426,7 @@
       row.appendChild(progressEl);
     }
     camCurrentPushSid = sid;
+    pendingStatusProject = s.projectName || null;
     camOnObsidianDone = () => { camOnObsidianDone = null; camCurrentPushSid = null; camMarkDone(sid, '✓ Pushed', '#4ade80'); };
     wsSend({ type: 'obsidian-up', sessionName: s.name, projectName: s.projectName || null, content: (s.lines || []).map(l => l.text).join('\n') });
   }
@@ -11409,6 +11571,7 @@
     closeDocs();
     closeCrossCheckPanel();
     closeManifest();
+    closeStatusPanel();
   }
   window.closeActivePanel = closeActivePanel;
 
@@ -11535,7 +11698,6 @@
       if (label === 'Routines')     btn.addEventListener('click', openRoutines);
       if (label === 'Balance')      btn.addEventListener('click', openApiBalance);
       if (label === 'Connect')      btn.addEventListener('click', openConnections);
-      if (label === 'Obsidian')     btn.addEventListener('click', obsidianUp);
       if (label === 'Restart')      btn.addEventListener('click', doRestart);
       if (label === 'Reset')        btn.addEventListener('click', resetLayout);
     });
@@ -11879,6 +12041,8 @@
   let _onbSteps = [];
   let _onbAudio = null;
   let _onbGestureAudio = null;
+  let _onbAudioCtx = null;
+  let _onbAudioSrc = null;
   let _onbSpeakEnabled = false;
   let _onbPanelClose = null;
   let _onbLastText = '';
@@ -11997,7 +12161,7 @@
       { title: 'Docs', text: "Docs opens the official Polaris user guide in an overlay panel directly inside the app. The guide covers every feature, panel, and configuration option in plain language with examples, edge cases, and troubleshooting notes — it's the canonical written reference for anything this tour doesn't have room to fully explain. If you're unsure why something behaves a certain way, Docs is the first place to check before filing a Support ticket. It's kept up to date with each release, so the version in the app always reflects the current build you're running.", target: '#btn-docs' },
       { title: 'Preview', text: "Preview opens a floating live-preview panel that renders any project file in an embedded iframe, positioned and sized independently of the session grid. Enter a path relative to your project root and hit Load — HTML files, images, and built assets all render here. The viewport switcher at the top lets you constrain the preview width to mobile (375px), tablet (768px), or full-width, so you can test responsive layouts without resizing the window. Pair it with the Web button: the live server handles file watching and reload, and Preview gives you an in-app view of the result. You can also open the current URL in an external browser or copy the path to the clipboard using the controls in the preview toolbar.", target: '#btn-preview' },
       { title: 'Monaco', text: "Monaco gives you a full IDE editing environment inside Polaris, powered by the same editor engine that runs Visual Studio Code. The panel includes a project switcher at the top so you can navigate any configured project's file tree without changing your active session context; a full file tree that reflects the actual directory structure on disk; multi-tab editing with persistent tab state across panel opens; syntax highlighting and bracket matching for every major language; and find-and-replace with optional regex support. Every save in Monaco writes directly to the file on disk immediately — there is no staging buffer, so changes are instantly visible to any AI sessions that subsequently read those files. This makes Monaco and active sessions naturally synchronized: an agent can write a file, you can open it in Monaco to review and adjust, and the agent's next read will see your correction without any extra steps. Use Monaco for quick targeted edits where opening a full external editor would be disruptive, for reviewing AI output before committing it, for side-by-side comparison of files when debugging a regression, and for any coding work where you want to stay inside Polaris rather than context-switching to another application.", target: '#btn-monaco' },
-      { title: 'Obsidian', text: "Obsidian pushes the currently selected session's full transcript to your Obsidian vault as a formatted markdown note. The note is saved under a path derived from the session's project name and date, organized for easy retrieval. This requires the Obsidian Local REST API plugin to be running in Obsidian and your vault directory path set in the Settings panel. Use it at the end of any session where the AI produced significant decisions, architecture notes, code reviews, or reference material — these become searchable, linkable nodes in your personal knowledge base, and future AI sessions can read them back via the Obsidian MCP server. This is the primary mechanism through which Polaris builds persistent, cross-session memory.", target: '#btn-obsidian' },
+      { title: 'Status', text: "Status opens the Project Status board — a card for every configured project showing a free-form note about where things stand. Click Edit on any card to update the note, or notes update automatically when you push a session to Obsidian via the Close All flow. Notes are stored in your Obsidian vault under a Project Status folder so they're searchable and part of your knowledge base. Use this at the start of any work block to re-orient yourself, or after finishing a sprint to capture where you left off before switching to another project.", target: '#btn-status' },
       { title: 'Close All', text: "Close All terminates every open session card at once and clears the grid. Before closing each session Polaris prompts you individually — giving you a final chance to push the transcript to Obsidian before the card disappears. Sessions move to the Archive rather than being deleted, so they're always recoverable; closing is not permanent. Use this at the end of a work block to get back to a clean slate, or before a long break to stop idle sessions from accumulating tokens and holding context window space. If you want to close just one session, use the close button on the individual card instead.", target: '#btn-close' },
       { title: 'Balance', text: "Balance opens the API Balance panel — your financial dashboard for AI usage in Polaris. At the top, a live query hits the OpenRouter API directly and shows your real-time remaining credit balance without requiring you to open a browser. Below that, a spend graph built from the local token-log.jsonl file plots your daily token consumption over the trailing 30 days, broken down by model tier. Each session's usage is logged the moment the session closes — input tokens, output tokens, and estimated dollar cost — so the graph reflects actual billed usage, not projections or estimates. The per-model breakdown lets you see which tier is responsible for most of your spend: if Power is unexpectedly high, it usually means too many long-context deep-reasoning sessions that could be switched to Balanced; if Balanced is spiking, look for sessions that ran much longer than intended. Use this panel at the end of each week to set a realistic usage budget for the following week. Check it before starting a Factory run or a batch of parallel long-context sessions to confirm you have enough headroom to complete the work without running out of credits mid-pipeline. If your balance drops faster than expected on a given day, token-log.jsonl is queryable directly for per-session breakdowns that can identify the specific session responsible.", target: '#btn-balance' },
       { title: 'Support', text: "Support opens a direct submission form to the Polaris team for bug reports, feature requests, and questions. Tickets are delivered via the email service configured in your environment. The most useful reports include a precise description of what you expected to happen, what actually happened, the session ID if relevant, and any error messages from the Diagnostics panel. Every report is read and triaged — you're not submitting into a void. For reproducible bugs, include steps to reproduce; for feature requests, include a description of the workflow you're trying to enable and why the current tools fall short.", target: '#btn-support' },
@@ -12076,23 +12240,25 @@
   }
 
   function _onbWarmAudio() {
-    // Create an Audio element and call .play() within the user gesture.
-    // We hold the reference in _onbGestureAudio and reuse it in the tts-audio
-    // handler — the same element retains its gesture-activation even after
-    // an async delay, whereas a brand-new element created in a WS handler does not.
+    // Resume a persistent AudioContext within this user gesture. Web Audio API
+    // (decodeAudioData + BufferSourceNode) bypasses the HTMLMediaElement autoplay
+    // gate, so ElevenLabs audio can play freely from async WS callbacks as long
+    // as this context was resumed inside a click handler.
+    try {
+      if (!_onbAudioCtx) {
+        _onbAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (_onbAudioCtx.state === 'suspended') _onbAudioCtx.resume().catch(() => {});
+      const sil = _onbAudioCtx.createBuffer(1, 1, _onbAudioCtx.sampleRate);
+      const silSrc = _onbAudioCtx.createBufferSource();
+      silSrc.buffer = sil; silSrc.connect(_onbAudioCtx.destination); silSrc.start(0);
+    } catch(e) {}
+    // Belt-and-suspenders: warm HTMLMediaElement element too
     try {
       if (_onbGestureAudio) { _onbGestureAudio.pause(); }
       _onbGestureAudio = new Audio('data:audio/mpeg;base64,/+MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
       _onbGestureAudio.volume = 0;
       _onbGestureAudio.play().catch(() => {});
-    } catch(e) {}
-    // Also warm AudioContext as belt-and-suspenders
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const buf = ctx.createBuffer(1, 1, 22050);
-      const src2 = ctx.createBufferSource();
-      src2.buffer = buf; src2.connect(ctx.destination); src2.start(0);
-      ctx.resume().catch(() => {});
     } catch(e) {}
   }
 
@@ -12177,6 +12343,7 @@
 
   function onbHideTour() {
     _onbSpeakEnabled = false;
+    if (_onbAudioSrc) { try { _onbAudioSrc.stop(); } catch(e) {} _onbAudioSrc = null; }
     if (_onbAudio) { _onbAudio.pause(); _onbAudio = null; }
     if (_onbGestureAudio) { _onbGestureAudio.pause(); _onbGestureAudio = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
