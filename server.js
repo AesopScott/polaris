@@ -2457,7 +2457,11 @@ async function getPendingBuilds() {
   const results = [];
   const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
 
-  for (const project of projects) {
+  // Always include Polaris itself, regardless of whether it appears in config.projects.
+  const polarisEntry = { name: 'Polaris', workDir: POLARIS_WORK_DIR };
+  const projectsToCheck = [polarisEntry, ...projects.filter(p => p.workDir !== POLARIS_WORK_DIR && p.workDir !== POLARIS_WORK_DIR.replace(/\\/g, '/'))];
+
+  for (const project of projectsToCheck) {
     const workDir = project.workDir;
     if (!workDir || !fs.existsSync(workDir)) continue;
 
