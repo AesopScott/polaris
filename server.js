@@ -1613,7 +1613,7 @@ function buildPolarisContextBlock(config, session) {
     lines.push(
       '',
       'Current session project: (none selected)',
-      `BEFORE doing anything else, ask the user which project this session should work in. Use the Available projects list below as the choices, plus a "no project (scratch)" option for one-off tasks. Do not begin the user's actual request until they have picked. Once the user tells you the project, run this command (fill in the exact project name from the list), then continue:\ncurl -s -X POST http://127.0.0.1:${PORT}/set-project -H "Content-Type: application/json" -d "{\\"sessionId\\":\\"${session?.id}\\",\\"projectName\\":\\"PROJECT_NAME\\"}"`,
+      `No project is set for this session. Before doing anything else:\n1. Read the user's current message. If it names a project from the Available projects list, call mcp__polaris__SetProject immediately with that exact name — do not ask, just set it and proceed.\n2. If the user has not named a project, ask them to pick one (Available projects list below, plus "no project (scratch)" for one-off tasks), then call mcp__polaris__SetProject with the exact name.\nDo not proceed with the user's actual request until mcp__polaris__SetProject has been called.`,
     );
   }
 
