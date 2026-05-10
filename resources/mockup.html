@@ -5445,6 +5445,7 @@
             <button class="card-btn" title="Stop" data-action="stop">■</button>
             <button class="card-btn ${(s.columnSpan || 1) > 1 ? 'is-expanded' : ''}" title="${(s.columnSpan || 1) > 1 ? 'Collapse — return to single column' : 'Expand — span full width'}" data-action="cycle-span" data-expand-btn>↔</button>
             <button class="card-btn" title="Hide — remove from view; use 'Hidden · Show' in stats bar to restore" data-action="hide-card">⊗</button>
+            <button class="card-btn" title="Transfer — copy this session's diag log to a new session and continue the work" data-action="transfer">⇄</button>
           </div>
         </div>
         <div class="card-corner-btns">
@@ -5949,6 +5950,14 @@
         if (!s) break;
         showInlineConfirm(cardEl, `Archive "${s.name || 'session'}"? It will be removed from the grid and saved for later.`, () => {
           wsSend({ type: 'archive-session', sessionId });
+        });
+        break;
+      }
+      case 'transfer': {
+        if (!s) break;
+        showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will be asked to continue the work using the same model and project.`, () => {
+          wsSend({ type: 'transfer-session', sessionId });
+          pushDebugLog(`[card] Transfer requested: ${s.name || sessionId}`);
         });
         break;
       }
