@@ -11753,27 +11753,6 @@
 
   // ── Wire UI events ────────────────────────────────────────────────────────────
   function wireUI() {
-    // Tag connection indicator elements for easy updates
-    document.querySelectorAll('.minimized-row').forEach(row => {
-      const mid = row.children[1];
-      if (mid) {
-        const dot   = mid.querySelector('span:first-child');
-        const label = mid.querySelector('span:last-child');
-        if (dot)   dot.dataset.connDot   = '1';
-        if (label) label.dataset.connLabel = '1';
-      }
-      // Tag stat count spans
-      const statsDiv = row.children[2];
-      if (statsDiv) {
-        statsDiv.querySelectorAll('.stat').forEach(stat => {
-          const count = stat.querySelector('span:first-child');
-          if (!count) return;
-          if (stat.querySelector('.stat-running'))   count.dataset.statRunning   = '1';
-          if (stat.querySelector('.stat-waiting'))   count.dataset.statWaiting   = '1';
-        });
-      }
-    });
-
     // Launch button
     document.querySelectorAll('.launch-btn').forEach(btn => {
       if (btn.textContent.includes('Launch')) btn.addEventListener('click', doLaunch);
