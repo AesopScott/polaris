@@ -4352,6 +4352,154 @@ function spawnChatRouter(sessionId, prompt, config) {
   return spawnMaxChat(sessionId, prompt, config);
 }
 
+// spawnCodexSession — runs a prompt via the Codex CLI (`codex exec --json`).
+// Turn 1: spawns a new session, captures thread_id from thread.started event.
+// Turn 2+: resumes via `codex exec resume <thread_id>`.
+// Prompt is written to stdin so there's no command-line length limit.
+async function spawnCodexSession(sessionId, prompt, config) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  const startMs = Date.now();
+  const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
+  const dlog = (label, text) => {
+    const t = ((Date.now() - startMs) / 1000).toFixed(3);
+    try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': ' + String(text).slice(0, 500) : ''}\n`, 'utf8'); } catch {}
+  };
+
+  const cwd = (session.workDir && fs.existsSync(session.workDir))
+    ? session.workDir
+    : (() => { if (!fs.existsSync(CHAT_DIR)) fs.mkdirSync(CHAT_DIR, { recursive: true }); return CHAT_DIR; })();
+
+  const isResume = !!session.codexThreadId;
+  const codexBin = config.codexBinaryPath || 'codex';
+
+  // Build args: resume uses `exec resume <thread_id> -`, new session uses `exec`
+  const sharedFlags = ['--json', '--sandbox', 'workspace-write', '--skip-git-repo-check'];
+  const args = isResume
+    ? ['exec', 'resume', session.codexThreadId, '-', ...sharedFlags]
+    : ['exec', ...sharedFlags];
+
+  // Turn 1: prepend Polaris context + history. Turn 2+: just the new message.
+  let fullPrompt;
+  if (isResume) {
+    fullPrompt = prompt;
+  } else {
+    const history = (session.lines || [])
+      .filter(l => l.role === 'user' || l.role === 'assistant')
+      .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
+      .join('\n\n');
+    const polarisContext = buildPolarisContextBlock(config, session);
+    fullPrompt = polarisContext + '\n\n' + (history || prompt);
+  }
+
+  try {
+    fs.appendFileSync(diagPath,
+      `=== DIAG ${new Date().toISOString()} ===\n` +
+      `SESSION: ${sessionId}\n` +
+      `MODEL: codex-cli\n` +
+      `MODE: codex\n` +
+      `WORKDIR: ${cwd}\n` +
+      `RESUME: ${isResume} thread=${session.codexThreadId || 'none'}\n` +
+      `--- USER PROMPT ---\n${prompt}\n` +
+      `--- LOOP ---\n`, 'utf8');
+  } catch {}
+
+  dlog('SPAWN', `bin=${codexBin} args=${args.join(' ')} cwd=${cwd}`);
+  let proc;
+  try {
+    proc = spawn(codexBin, args, { cwd, env: process.env, shell: true });
+  } catch (e) {
+    dlog('SPAWN_ERR', e.message);
+    broadcast({ type: 'line', sessionId, text: `Failed to spawn Codex CLI: ${e.message}. Install via: npm install -g @openai/codex`, role: 'error' });
+    broadcast({ type: 'session-status', sessionId, status: 'error' });
+    session.status = 'error';
+    session.endAt = Date.now();
+    return;
+  }
+  session.proc = proc;
+  dlog('PID', proc.pid);
+  if (session.aborted) { proc.kill(); return; }
+
+  let lineBuf = '';
+  let finalUsage = null;
+  let lastAssistantText = '';
+  let firstTokenMs = null;
+
+  proc.stdout.on('data', chunk => {
+    lineBuf += chunk.toString('utf8');
+    const lines = lineBuf.split(/\r?\n/);
+    lineBuf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let evt;
+      try { evt = JSON.parse(line); } catch {
+        broadcast({ type: 'line', sessionId, text: line, role: 'assistant' });
+        continue;
+      }
+      const t = evt.type;
+      if (t === 'thread.started' && evt.thread_id) {
+        session.codexThreadId = evt.thread_id;
+        dlog('THREAD_ID', evt.thread_id);
+      } else if (t === 'item.completed' && evt.item?.type === 'agent_message' && evt.item?.text) {
+        if (!firstTokenMs) firstTokenMs = Date.now();
+        lastAssistantText = evt.item.text;
+        broadcast({ type: 'line', sessionId, text: evt.item.text, role: 'assistant' });
+      } else if (t === 'turn.completed' && evt.usage) {
+        finalUsage = {
+          input_tokens: evt.usage.input_tokens || 0,
+          output_tokens: evt.usage.output_tokens || 0,
+          cache_read_input_tokens: evt.usage.cached_input_tokens || 0,
+          cache_creation_input_tokens: 0,
+        };
+        dlog('USAGE', `in=${finalUsage.input_tokens} out=${finalUsage.output_tokens} cached=${finalUsage.cache_read_input_tokens}`);
+      } else {
+        dlog('EVENT', `type=${t}`);
+      }
+    }
+  });
+
+  proc.stderr.on('data', chunk => {
+    const text = chunk.toString();
+    dlog('STDERR', text.slice(0, 400));
+    if (/error|fail|invalid|unauthor|rate.?limit/i.test(text) && !/reading.*stdin|reading.*prompt/i.test(text)) {
+      broadcast({ type: 'line', sessionId, text: `[codex] ${text.slice(0, 600)}`, role: 'error' });
+    }
+  });
+
+  proc.on('close', code => {
+    dlog('CLOSE', `code=${code}`);
+    if (finalUsage) {
+      try { appendTokenLog(sessionId, 'openai/codex-1', finalUsage); } catch {}
+      broadcastUsage(sessionId, finalUsage, session.codexThreadId || null, null);
+    }
+    session.status = code === 0 ? inferTermStatus(lastAssistantText) : 'error';
+    session.endAt = Date.now();
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+  });
+
+  proc.on('error', err => {
+    dlog('ERROR', err.code === 'ENOENT' ? 'CLI_NOT_FOUND' : `${err.code || ''} ${err.message}`);
+    if (err.code === 'ENOENT') {
+      broadcast({ type: 'line', sessionId, role: 'error', text: `Codex CLI not found. Install via: npm install -g @openai/codex` });
+    } else {
+      broadcast({ type: 'line', sessionId, text: `Codex CLI error: ${err.message}`, role: 'error' });
+    }
+    session.status = 'error';
+    session.endAt = Date.now();
+    broadcast({ type: 'session-status', sessionId, status: 'error' });
+  });
+
+  try {
+    proc.stdin.write(fullPrompt);
+    proc.stdin.end();
+    dlog('STDIN_SENT', `bytes=${Buffer.byteLength(fullPrompt, 'utf8')}`);
+  } catch (e) {
+    dlog('STDIN_ERR', e.message);
+    broadcast({ type: 'line', sessionId, text: `Failed to send prompt to Codex CLI: ${e.message}`, role: 'error' });
+  }
+}
+
 // ─── ChatGPT CDP Integration ──────────────────────────────────────────────────
 const GPT_CDP_PORT = 9222;
 const GPT_TIER_MODELS = {
@@ -5463,6 +5611,35 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'launch-codex') {
+    const { prompt, workDir, tier } = msg;
+    if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+
+    const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
+    const projectName = msg.projectName || (detectedProject ? detectedProject.name : null);
+    const resolvedWorkDir = (workDir && workDir.trim()) ? workDir.trim()
+      : (detectedProject && detectedProject.workDir) ? detectedProject.workDir
+      : null;
+    const effectiveWorkDir = (resolvedWorkDir && fs.existsSync(resolvedWorkDir)) ? resolvedWorkDir : null;
+
+    addToHistory(prompt);
+    const id = `codex_${Date.now()}`;
+    const name = generateSessionName(prompt);
+    const codexTier = (tier || 'balanced').toLowerCase();
+    sessions.set(id, {
+      id, name, workDir: effectiveWorkDir, projectName: projectName || null,
+      isChat: true, isCodex: true, model: 'openai/codex-1 (Codex CLI)', tier: codexTier,
+      status: 'running', startAt: Date.now(),
+      proc: null, watcher: null, timeout: null,
+      lines: [], lastPrompt: prompt, codexThreadId: null,
+    });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
+    broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
+    saveSessions();
+    spawnCodexSession(id, prompt, readConfig());
+    return;
+  }
+
   if (type === 'launch') {
     const { prompt, workDir, sessionId } = msg;
     if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
@@ -5568,7 +5745,9 @@ async function handleMessage(ws, raw) {
       broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
     }
     broadcast({ type: 'session-status', sessionId, status: 'running' });
-    if (session.isGpt) {
+    if (session.isCodex) {
+      spawnCodexSession(sessionId, prompt, readConfig());
+    } else if (session.isGpt) {
       spawnGptChat(sessionId, prompt, session.tier);
     } else if (session.isChat) {
       spawnChatRouter(sessionId, prompt, readConfig());
