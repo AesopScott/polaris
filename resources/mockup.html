@@ -7009,14 +7009,15 @@
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
     } else if (mode === 'gpt') {
-      wsSend({ type: 'launch-gpt', prompt: fullPrompt, projectName: f.projectName, tier: f.tier });
+      wsSend({ type: 'launch-gpt', prompt: fullPrompt, displayPrompt: f.prompt, projectName: f.projectName, tier: f.tier });
     } else if (mode === 'codex') {
-      wsSend({ type: 'launch-codex', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier });
+      if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
+      wsSend({ type: 'launch-codex', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
     } else {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch', prompt: fullPrompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }

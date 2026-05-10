@@ -49,6 +49,16 @@ check(
   /if\s*\(\s*type\s*===\s*['"]stop['"]\s*\)\s*{[\s\S]{0,1200}session\.pendingTurns\s*=\s*\[\s*\]/.test(server),
   'Stop handler should clear session.pendingTurns so canceled sessions do not replay queued prompts.'
 );
+check(
+  /function\s+broadcastInitialUserPrompt\s*\(\s*sessionId\s*,\s*prompt\s*,\s*displayPrompt\s*\)/.test(server),
+  'server.js is missing broadcastInitialUserPrompt(sessionId, prompt, displayPrompt).'
+);
+for (const launchType of ['launch-chat', 'launch-gpt', 'launch-codex', 'launch']) {
+  check(
+    new RegExp(`if\\s*\\(\\s*type\\s*===\\s*['"]${launchType}['"]\\s*\\)[\\s\\S]{0,5000}broadcastInitialUserPrompt\\s*\\(`).test(server),
+    `${launchType} should broadcast the initial user prompt after creating the session.`
+  );
+}
 
 if (failures.length > 0) {
   console.error('FAIL polaris-sync');

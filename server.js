@@ -5854,6 +5854,12 @@ function detectProjectFromPrompt(prompt) {
   return null;
 }
 
+function broadcastInitialUserPrompt(sessionId, prompt, displayPrompt) {
+  const text = displayPrompt !== undefined ? displayPrompt : prompt;
+  if (!text) return;
+  broadcast({ type: 'line', sessionId, role: 'user', text });
+}
+
 // ─── Resume turn dispatch + queue drain ──────────────────────────────────────
 // executeResumeTurn — runs the post-guard portion of the resume handler for a
 // single turn (whether it just arrived from the WS handler or was popped from
@@ -5935,7 +5941,7 @@ async function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, workDir, tier, images, docs, audio, chipLabel, chipColor, model: overrideModel } = msg;
+    const { prompt, displayPrompt, workDir, tier, images, docs, audio, chipLabel, chipColor, model: overrideModel } = msg;
     if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
@@ -5987,6 +5993,7 @@ async function handleMessage(ws, raw) {
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, chipLabel: chipLabel || null, chipColor: chipColor || null, model: chatModel, isChat: true });
+    broadcastInitialUserPrompt(id, prompt, displayPrompt);
     const launchAttachments = [
       ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
       ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
@@ -5998,7 +6005,7 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'launch-gpt') {
-    const { prompt, tier } = msg;
+    const { prompt, displayPrompt, tier } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
@@ -6020,13 +6027,14 @@ async function handleMessage(ws, raw) {
       gptConversationStarted: false,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: projectName || null, model: modelDisplay, isChat: true, isGpt: true });
+    broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
     spawnGptChat(id, prompt, tierKey);
     return;
   }
 
   if (type === 'launch-codex') {
-    const { prompt, workDir, tier } = msg;
+    const { prompt, displayPrompt, workDir, tier } = msg;
     if (!prompt) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
@@ -6052,13 +6060,14 @@ async function handleMessage(ws, raw) {
       pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
+    broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
     spawnCodexSession(id, prompt, readConfig());
     return;
   }
 
   if (type === 'launch') {
-    const { prompt, workDir, sessionId } = msg;
+    const { prompt, displayPrompt, workDir, sessionId } = msg;
     if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
@@ -6084,6 +6093,7 @@ async function handleMessage(ws, raw) {
     sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
+    broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
     // Tier guard — Balanced/Power must be explicitly configured. No silent fallback to Floor.
