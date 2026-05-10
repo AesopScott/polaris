@@ -4567,10 +4567,19 @@ async function spawnCodexSession(sessionId, prompt, config) {
     const realCodexHome = path.join(os.homedir(), '.codex');
     try { fs.copyFileSync(path.join(realCodexHome, 'auth.json'), path.join(codexSessionDir, 'auth.json')); } catch {}
     // Merge global MCP servers + Polaris session endpoint into config.toml.
-    const globalMcp = readJSON(path.join(os.homedir(), '.mcp.json'), {});
-    const allMcp = { ...(globalMcp.mcpServers || {}), polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` } };
+    // If the project workDir contains .polaris-mcp.json (a name-allowlist),
+    // filter the global server map down to that list to avoid spawning every
+    // MCP server in every Codex session. Single source of truth stays global.
+    const globalServers = readJSON(path.join(os.homedir(), '.mcp.json'), {}).mcpServers || {};
+    const allowPath = session.workDir ? path.join(session.workDir, '.polaris-mcp.json') : null;
+    const allowFile = (allowPath && fs.existsSync(allowPath)) ? readJSON(allowPath, {}) : null;
+    const allowList = allowFile && Array.isArray(allowFile.servers) ? allowFile.servers : null;
+    const sourceMcp = allowList
+      ? Object.fromEntries(Object.entries(globalServers).filter(([k]) => allowList.includes(k)))
+      : globalServers;
+    const allMcp = { ...sourceMcp, polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` } };
     fs.writeFileSync(path.join(codexSessionDir, 'config.toml'), buildCodexConfigToml(allMcp), 'utf8');
-    dlog('CODEX_HOME', `${codexSessionDir} servers=${Object.keys(allMcp).join(',')}`);
+    dlog('CODEX_HOME', `${codexSessionDir} servers=${Object.keys(allMcp).join(',')} scope=${allowList ? 'project' : 'global'}`);
   } catch (e) { dlog('CODEX_HOME_ERR', e.message); }
 
   const spawnEnv = { ...process.env, CODEX_HOME: codexSessionDir };
