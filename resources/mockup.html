@@ -5958,7 +5958,7 @@
         showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will be asked to continue the work using the same model and project.`, () => {
           wsSend({ type: 'transfer-session', sessionId });
           pushDebugLog(`[card] Transfer requested: ${s.name || sessionId}`);
-        });
+        }, 'Yes, Transfer');
         break;
       }
       case 'fork': {
@@ -6233,7 +6233,7 @@
   window.closeCrossCheckDetail = closeCrossCheckDetail;
 
   // ── Inline confirm overlay (used by archive, etc.) ────────────────────────────
-  function showInlineConfirm(cardEl, message, onConfirm) {
+  function showInlineConfirm(cardEl, message, onConfirm, buttonLabel) {
     const existing = cardEl.querySelector('.inline-confirm-overlay');
     if (existing) existing.remove();
     const overlay = document.createElement('div');
@@ -6250,7 +6250,7 @@
     const btns = document.createElement('div');
     btns.style.cssText = 'display:flex;gap:8px;';
     const yes = document.createElement('button');
-    yes.textContent = 'Yes, Archive';
+    yes.textContent = buttonLabel || 'Yes, Archive';
     yes.style.cssText = 'flex:1;padding:5px 10px;font-size:11px;background:#c0392b;border:none;border-radius:4px;color:#fff;cursor:pointer;';
     const cancel = document.createElement('button');
     cancel.textContent = 'Cancel';
