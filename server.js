@@ -5908,6 +5908,24 @@ function executeResumeTurn(sessionId, turn) {
   }
 }
 
+function drainPendingTurns(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  const pending = Array.isArray(session.pendingTurns) ? session.pendingTurns : [];
+  if (pending.length === 0) return;
+
+  if (session.status === 'running') {
+    broadcast({ type: 'queue-status', sessionId, pending: pending.length });
+    return;
+  }
+
+  const nextTurn = pending.shift();
+  session.pendingTurns = pending;
+  broadcast({ type: 'queue-status', sessionId, pending: pending.length });
+  saveSessions();
+  setImmediate(() => executeResumeTurn(sessionId, nextTurn));
+}
+
 
 // ─── WebSocket message handler ────────────────────────────────────────────────
 async function handleMessage(ws, raw) {
@@ -6123,6 +6141,14 @@ async function handleMessage(ws, raw) {
     // drain it from the prior turn's terminal close handler. Prevents two
     // `claude --resume <session_id>` processes from racing the same on-disk
     // session-history file (root cause of orphaned-zombie hangs).
+    if (session.status === 'running') {
+      if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
+      session.pendingTurns.push(turn);
+      broadcast({ type: 'line', sessionId, role: 'system', text: `[queued - runs after current turn (${session.pendingTurns.length} ahead)]` });
+      broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+      saveSessions();
+      return;
+    }
     executeResumeTurn(sessionId, turn);
     return;
   }
@@ -6183,6 +6209,12 @@ async function handleMessage(ws, raw) {
       if (session.req) {
         session.req.destroy();
         session.req = null;
+      }
+      const cleared = Array.isArray(session.pendingTurns) ? session.pendingTurns.length : 0;
+      session.pendingTurns = [];
+      if (cleared > 0) {
+        broadcast({ type: 'line', sessionId: msg.sessionId, role: 'system', text: `[stop - cleared ${cleared} queued turn${cleared === 1 ? '' : 's'}]` });
+        broadcast({ type: 'queue-status', sessionId: msg.sessionId, pending: 0 });
       }
       session.status = 'done';
       session.endAt  = session.endAt || Date.now();
