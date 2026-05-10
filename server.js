@@ -5922,6 +5922,7 @@ function executeResumeTurn(sessionId, turn) {
   session.lastActivityAt = Date.now();
   session.stallCount = 0;
   session.lastPrompt = prompt;
+  broadcast({ type: 'line', sessionId, role: 'user', text: turn.displayPrompt || prompt });
   if (projectName !== undefined) {
     const newProject = projectName || null;
     if (newProject !== session.projectName) {

@@ -6960,11 +6960,6 @@
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
       wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload });
-      const s = sessionStore[resumeTarget.sessionId];
-      if (s) {
-        s.lines.push({ text: f.prompt, role: 'user' });
-        appendLineToCard(resumeTarget.sessionId, { text: f.prompt, role: 'user' });
-      }
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
