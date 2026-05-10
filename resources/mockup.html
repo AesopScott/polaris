@@ -7047,6 +7047,13 @@
     return map[tier] || map.balanced;
   }
 
+  function routineLaunchModelFields(modelChoice) {
+    const choice = modelChoice || 'balanced';
+    if (['floor', 'balanced', 'power'].includes(choice)) return { tier: choice };
+    if (choice === 'chat') return { model: 'chat' };
+    return { model: choice };
+  }
+
   function applyModelSelectColor(sel) {
     const colors = {
       floor:    { bg: '#16a34a', fg: '#fff' },
@@ -8171,7 +8178,7 @@
     const project = (projectsList || []).find(p => p.name === r.projectName);
     const workDir = project ? (project.workDir || '') : '';
     const routineTag = r.name || '(unnamed)';
-    wsSend({ type: 'launch', prompt: r.prompt, workDir, projectName: r.projectName || null, model: resolveModel(r.model || 'balanced'), routineTag });
+    wsSend({ type: 'launch', prompt: r.prompt, workDir, projectName: r.projectName || null, ...routineLaunchModelFields(r.model), routineTag });
     pushDebugLog(`[routine] Fired AI: ${routineTag} → ${r.projectName || '(no project)'}`);
   }
 
@@ -8637,7 +8644,7 @@
     const aesop      = (projectsList || []).find(p => p.name === 'Aesop');
     const wDir       = (r.workDir) || (aesop ? aesop.workDir : '') || '';
     wsSend({ type: 'launch', prompt, workDir: wDir, projectName: r.projectName || 'Aesop',
-             model: resolveModel(r.model || 'balanced'), routineTag });
+             ...routineLaunchModelFields(r.model), routineTag });
     pushDebugLog(`[course] Fired ${routineName} for ${courseId} (tag: ${routineTag})`);
   }
 
@@ -8714,7 +8721,7 @@
     _courseInFlight.add(courseId);
     updateCourseRowStatus(courseId, 'launching', '⏳ Launching scaffold agent…');
     wsSend({ type: 'launch', prompt, workDir: wDir, projectName: 'Aesop',
-             model: resolveModel('balanced'), routineTag });
+             ...routineLaunchModelFields('balanced'), routineTag });
     pushDebugLog(`[course] Scaffold fired: ${courseId}`);
   }
 

@@ -3209,12 +3209,20 @@ function toolTodoWrite({ todos }, sessionId) {
 // ── MCP Integration ───────────────────────────────────────────────────────────
 
 const mcpProcesses = new Map(); // serverName → { proc, pending, buffer, nextId }
-let mcpToolsCache = null;
-let mcpToolsCacheTime = 0;
+const mcpToolsCache = new Map();
 const MCP_CACHE_TTL = 60000;
 
-function getMcpServerConfigs() {
-  return readClaudeJson().mcpServers || {};
+function normalizeMcpAllowlist(allowlist) {
+  if (!Array.isArray(allowlist)) return null;
+  return allowlist.map(s => String(s || '').trim()).filter(Boolean);
+}
+
+function getMcpServerConfigs(allowlist = null) {
+  const servers = readClaudeJson().mcpServers || {};
+  const normalized = normalizeMcpAllowlist(allowlist);
+  if (normalized === null) return servers;
+  const allowed = new Set(normalized);
+  return Object.fromEntries(Object.entries(servers).filter(([name]) => allowed.has(name)));
 }
 
 function isCatalogManagedKey(key, catalogIds) {
@@ -3338,11 +3346,14 @@ function formatMcpResult(result) {
   return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
 }
 
-async function discoverMcpTools() {
+async function discoverMcpTools(allowlist = null) {
   const now = Date.now();
-  if (mcpToolsCache && now - mcpToolsCacheTime < MCP_CACHE_TTL) return mcpToolsCache;
+  const normalized = normalizeMcpAllowlist(allowlist);
+  const cacheKey = normalized === null ? '__all__' : normalized.sort().join('\n');
+  const cached = mcpToolsCache.get(cacheKey);
+  if (cached && now - cached.time < MCP_CACHE_TTL) return cached.tools;
 
-  const servers = getMcpServerConfigs();
+  const servers = getMcpServerConfigs(normalized);
   const allTools = [];
 
   for (const [serverName, serverConfig] of Object.entries(servers)) {
@@ -3372,8 +3383,7 @@ async function discoverMcpTools() {
     }
   }
 
-  mcpToolsCache = allTools;
-  mcpToolsCacheTime = now;
+  mcpToolsCache.set(cacheKey, { tools: allTools, time: now });
   return allTools;
 }
 
@@ -3607,13 +3617,14 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     addToHistory(userMessage);
   }
 
+  const matchedProject = (config.projects || []).find(p => p.workDir && workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
+
   // Load project memory from Obsidian once per session (server-side, never sent to API directly)
   if (!session.projectMemory) {
-    const matched = (config.projects || []).find(p => p.workDir && workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
-    if (matched?.obsidianDir) {
+    if (matchedProject?.obsidianDir) {
       const mem = {};
       try {
-        const obsDir = resolveObsDir(matched.obsidianDir, config.obsidianVaultPath);
+        const obsDir = resolveObsDir(matchedProject.obsidianDir, config.obsidianVaultPath);
         const files = fs.readdirSync(obsDir).filter(f => f.endsWith('.md')).sort();
         for (const f of files) {
           try { mem[f] = fs.readFileSync(path.join(obsDir, f), 'utf8'); } catch {}
@@ -3726,10 +3737,13 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   // Discover MCP tools and merge with native tools for this session
   let sessionTools = DIRECT_TOOLS;
   try {
-    const mcpTools = await discoverMcpTools();
+    const mcpAllowlist = matchedProject && Array.isArray(matchedProject.mcpServers) ? matchedProject.mcpServers : null;
+    const mcpTools = await discoverMcpTools(mcpAllowlist);
     if (mcpTools.length > 0) {
       sessionTools = [...DIRECT_TOOLS, ...mcpTools];
       dlog('MCP_TOOLS', mcpTools.length);
+    } else if (mcpAllowlist) {
+      dlog('MCP_TOOLS', 0);
     }
   } catch (e) {
     console.warn('[mcp] discovery failed, using native tools only:', e.message);
@@ -5489,18 +5503,25 @@ const httpServer = http.createServer((req, res) => {
         const fullPrompt  = `COURSE_ID: ${courseId}\n\n${routine.prompt}`;
         const id          = `s_${Date.now()}`;
         const name        = generateSessionName(fullPrompt);
-        const routineTag  = `eval-${courseId}-activate`;
+        const routineTag  = routineName === 'ModGen Course Development' ? `ModGenDev-${courseId}`
+                          : routineName === 'ModGen Course Activation'  ? `ModGenActivate-${courseId}`
+                          : routineName === 'ModGen Course Scaffold'    ? `ModGenScaffold-${courseId}`
+                          : `routine-${routineName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${courseId}`;
         const projectName = routine.projectName || null;
         const projectEntry = projectName ? (cfg.projects || []).find(p => p.name === projectName) : null;
         const workDir     = projectEntry?.workDir || CHAT_DIR;
+        const routineModel = routine.model || 'balanced';
+        const isTierModel = ['floor', 'balanced', 'power'].includes(routineModel);
+        const tier = isTierModel ? routineModel : 'balanced';
+        const model = isTierModel ? null : routineModel;
         sessions.set(id, {
-          id, name, workDir, projectName, model: null, tier: 'balanced',
+          id, name, workDir, projectName, model, tier,
           isChat: false, status: 'running', startAt: Date.now(),
           proc: null, watcher: null, timeout: null, lines: [],
           lastPrompt: fullPrompt, claudeSessionId: null, routineTag,
           pendingImages: [], pendingDocs: [], pendingAudio: [],
         });
-        broadcast({ type: 'session-created', sessionId: id, name, workDir, projectName, model: null, routineTag });
+        broadcast({ type: 'session-created', sessionId: id, name, workDir, projectName, model, routineTag });
         saveSessions();
         runDirectAgent(id, fullPrompt, workDir).catch(err =>
           console.error('[launch-routine] agent error:', err.message)
@@ -8399,8 +8420,9 @@ async function handleMessage(ws, raw) {
 
       const building = [];
       for (const [, s] of sessions) {
-        if (s.status === 'running' && s.routineTag && s.routineTag.startsWith('ModGenDev-')) {
-          building.push(s.routineTag.slice('ModGenDev-'.length));
+        if (s.status === 'running' && s.routineTag) {
+          const match = s.routineTag.match(/^ModGen(?:Dev|Activate|Scaffold)-(.+)$/);
+          if (match) building.push(match[1]);
         }
       }
 

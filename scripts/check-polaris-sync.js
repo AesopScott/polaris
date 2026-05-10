@@ -59,6 +59,23 @@ for (const launchType of ['launch-chat', 'launch-gpt', 'launch-codex', 'launch']
     `${launchType} should broadcast the initial user prompt after creating the session.`
   );
 }
+check(
+  /async\s+function\s+discoverMcpTools\s*\(\s*allowlist\s*=\s*null\s*\)/.test(server)
+    && /getMcpServerConfigs\s*\(\s*normalized\s*\)/.test(server)
+    && /matchedProject[\s\S]{0,600}discoverMcpTools\s*\(\s*mcpAllowlist\s*\)/.test(server),
+  'Direct-agent MCP discovery should honor the active project mcpServers allowlist.'
+);
+check(
+  /function\s+routineLaunchModelFields\s*\(\s*modelChoice\s*\)/.test(readRequired(path.join(ROOT, 'resources', 'mockup.html')))
+    && !/model:\s*resolveModel\s*\(\s*r\.model\s*\|\|\s*['"]balanced['"]\s*\)/.test(readRequired(path.join(ROOT, 'resources', 'mockup.html'))),
+  'Routine launchers should send tier/model fields without resolving tier choices client-side.'
+);
+check(
+  /ModGenDev-\$\{courseId\}/.test(server)
+    && /ModGenActivate-\$\{courseId\}/.test(server)
+    && /\^ModGen\(\?:Dev\|Activate\|Scaffold\)-/.test(server),
+  'Course routine API and Courses panel building state should use ModGenDev/Activate/Scaffold routine tags.'
+);
 
 if (failures.length > 0) {
   console.error('FAIL polaris-sync');
