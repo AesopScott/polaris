@@ -608,7 +608,7 @@ function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
     chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
-    model: s.model || null, isChat: s.isChat || false,
+    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
     claudeSessionId: s.claudeSessionId || null,
@@ -4370,10 +4370,39 @@ function spawnChatRouter(sessionId, prompt, config) {
   return spawnMaxChat(sessionId, prompt, config);
 }
 
+// Converts Polaris MCP server map (from ~/.mcp.json) into a Codex config.toml string.
+function buildCodexConfigToml(mcpServers) {
+  const lines = [];
+  for (const [rawName, server] of Object.entries(mcpServers)) {
+    const key = rawName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    lines.push(`[mcp_servers.${key}]`);
+    if (server.url) {
+      lines.push(`url = ${JSON.stringify(server.url)}`);
+    } else if (server.command) {
+      lines.push(`command = ${JSON.stringify(server.command)}`);
+      if (Array.isArray(server.args) && server.args.length) {
+        lines.push(`args = ${JSON.stringify(server.args)}`);
+      }
+    }
+    lines.push('');
+    if (server.env && Object.keys(server.env).length) {
+      lines.push(`[mcp_servers.${key}.env]`);
+      for (const [k, v] of Object.entries(server.env)) {
+        lines.push(`${k} = ${JSON.stringify(String(v))}`);
+      }
+      lines.push('');
+    }
+  }
+  return lines.join('\n');
+}
+
 // spawnCodexSession — runs a prompt via the Codex CLI (`codex exec --json`).
 // Turn 1: spawns a new session, captures thread_id from thread.started event.
 // Turn 2+: resumes via `codex exec resume <thread_id>`.
 // Prompt is written to stdin so there's no command-line length limit.
+// A session-scoped CODEX_HOME is created under POLARIS_DIR/codex-sessions/<id>
+// with auth.json copied from ~/.codex and a config.toml containing all MCP
+// servers from ~/.mcp.json plus the Polaris session endpoint.
 async function spawnCodexSession(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -4423,10 +4452,26 @@ async function spawnCodexSession(sessionId, prompt, config) {
       `--- LOOP ---\n`, 'utf8');
   } catch {}
 
+  // Build a session-scoped CODEX_HOME so MCP servers from the Connections panel
+  // are available without touching the user's global ~/.codex/config.toml.
+  const codexSessionDir = path.join(POLARIS_DIR, 'codex-sessions', sessionId);
+  try {
+    fs.mkdirSync(codexSessionDir, { recursive: true });
+    // Copy auth.json from real CODEX_HOME so the CLI can authenticate.
+    const realCodexHome = path.join(os.homedir(), '.codex');
+    try { fs.copyFileSync(path.join(realCodexHome, 'auth.json'), path.join(codexSessionDir, 'auth.json')); } catch {}
+    // Merge global MCP servers + Polaris session endpoint into config.toml.
+    const globalMcp = readJSON(path.join(os.homedir(), '.mcp.json'), {});
+    const allMcp = { ...(globalMcp.mcpServers || {}), polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` } };
+    fs.writeFileSync(path.join(codexSessionDir, 'config.toml'), buildCodexConfigToml(allMcp), 'utf8');
+    dlog('CODEX_HOME', `${codexSessionDir} servers=${Object.keys(allMcp).join(',')}`);
+  } catch (e) { dlog('CODEX_HOME_ERR', e.message); }
+
+  const spawnEnv = { ...process.env, CODEX_HOME: codexSessionDir };
   dlog('SPAWN', `bin=${codexBin} args=${args.join(' ')} cwd=${cwd}`);
   let proc;
   try {
-    proc = spawn(codexBin, args, { cwd, env: process.env, shell: true });
+    proc = spawn(codexBin, args, { cwd, env: spawnEnv, shell: true });
   } catch (e) {
     dlog('SPAWN_ERR', e.message);
     broadcast({ type: 'line', sessionId, text: `Failed to spawn Codex CLI: ${e.message}. Install via: npm install -g @openai/codex`, role: 'error' });
@@ -4494,6 +4539,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
     session.status = code === 0 ? inferTermStatus(lastAssistantText) : 'error';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
+    try { fs.rmSync(codexSessionDir, { recursive: true, force: true }); } catch {}
   });
 
   proc.on('error', err => {
@@ -8349,7 +8395,7 @@ wss.on('connection', (ws) => {
       type: 'init',
       sessions: Array.from(sessions.values()).map(s => ({
         id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
-        model: s.model || null, isChat: s.isChat || false,
+        model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
         status: s.status, startAt: s.startAt, endAt: s.endAt || null,
         resumeId: s.claudeSessionId || null,
         lastPrompt: s.lastPrompt || null,

@@ -1737,6 +1737,14 @@
           <span id="routine-model-test-result" style="font-size:11px;margin-top:4px;display:none;"></span>
         </div>
       </div>
+      <div style="padding:14px 16px;border-radius:8px;background:rgba(52,211,153,0.09);border:1px solid rgba(52,211,153,0.18);display:flex;flex-direction:column;gap:16px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;opacity:0.4;">CODEX CLI</div>
+        <div class="panel-section">
+          <div class="context-label accent-label">BINARY PATH</div>
+          <input type="text" id="settings-codex-binary" class="panel-input" placeholder="codex" style="flex:1;" />
+          <div style="font-size:10px;opacity:0.5;margin-top:4px;">Path to the Codex CLI binary. Default: <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">codex</code> (uses npm global install). Change only if binary is not on PATH. Auth uses <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">~/.codex/auth.json</code> from your Codex desktop app login. MCP servers from the Connections panel are injected automatically into each session.</div>
+        </div>
+      </div>
     </div>
     <div class="projects-footer">
       <button class="fbtn" style="background:#6366f1;color:#fff;font-weight:700;" onclick="syncGlobalFiles()">↺ Sync Global Files</button>
@@ -3950,7 +3958,7 @@
             id: s.id, name: s.name,
             workDir: s.workDir, projectName: s.projectName,
             model: s.model || resolveModel('balanced'),
-            isChat: s.isChat || false,
+            isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
             status: s.status || 'done',
             startAt: s.startAt, endAt: s.endAt || null,
             resumeId: s.resumeId || null,
@@ -7087,6 +7095,10 @@
       const inp = document.getElementById('settings-brave-key');
       if (inp) inp.value = cfg.braveSearchApiKey;
     }
+    if (cfg.codexBinaryPath !== undefined) {
+      const inp = document.getElementById('settings-codex-binary');
+      if (inp) inp.value = cfg.codexBinaryPath;
+    }
     if (cfg.timezone !== undefined) {
       const sel = document.getElementById('settings-timezone');
       if (sel) sel.value = cfg.timezone || '';
@@ -7482,6 +7494,7 @@
     const openAiKey       = document.getElementById('settings-openai-key')?.value || '';
     const elevenLabsKey   = document.getElementById('settings-elevenlabs-key')?.value || '';
     const braveKey        = document.getElementById('settings-brave-key')?.value || '';
+    const codexBinary     = document.getElementById('settings-codex-binary')?.value?.trim() || '';
     const useDirectAnthr  = document.getElementById('settings-use-direct-anthropic')?.checked || false;
     const anthropicModel  = document.getElementById('settings-anthropic-model')?.value?.trim() || 'claude-sonnet-4-6';
     const defaultForkModel = document.getElementById('settings-fork-model')?.value?.trim() || '';
@@ -7498,6 +7511,7 @@
       deepSeekEmail: dsEmail, deepSeekPassword: dsPassword, chatModel: dsModel,
       deepSeekApiKey: dsApiKey, deepSeekApiModel: dsApiModel,
       anthropicApiKey: anthropicKey, openAiApiKey: openAiKey, elevenLabsApiKey: elevenLabsKey, braveSearchApiKey: braveKey,
+      codexBinaryPath: codexBinary,
       useDirectAnthropic: useDirectAnthr, anthropicModel,
     };
     wsSend({ type: 'save-config', config: cfg });
