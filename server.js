@@ -1656,6 +1656,68 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
   return layers.join('\n\n');
 }
 
+// Loads the project's Obsidian knowledge base (.md files from obsidianDir) and
+// CLAUDE.md into session.projectMemory (cached after first call) and returns a
+// formatted block ready to prepend to a turn-1 stdin prompt. Used by both
+// spawnMaxChat and spawnCodexSession so CLI-backed session types get the same
+// project knowledge that runDirectAgent injects via buildDirectSystemPrompt.
+function buildProjectKnowledgeBlock(config, session) {
+  if (!session) return '';
+  const projects = config.projects || [];
+  const matched = projects.find(p =>
+    (session.projectName && p.name === session.projectName) ||
+    (session.workDir && p.workDir && p.workDir.toLowerCase() === session.workDir.toLowerCase())
+  );
+  if (!matched) return '';
+
+  // Load and cache Obsidian files — mirrors runDirectAgent lines 3491-3508
+  if (!session.projectMemory) {
+    const mem = {};
+    if (matched.obsidianDir) {
+      try {
+        const obsDir = resolveObsDir(matched.obsidianDir, config.obsidianVaultPath);
+        const files = fs.readdirSync(obsDir).filter(f => f.endsWith('.md')).sort();
+        for (const f of files) {
+          try { mem[f] = fs.readFileSync(path.join(obsDir, f), 'utf8'); } catch {}
+        }
+      } catch {}
+    }
+    session.projectMemory = mem;
+  }
+
+  const parts = [];
+
+  // Project CLAUDE.md rules
+  if (matched.workDir) {
+    try {
+      const claudeMd = fs.readFileSync(path.join(matched.workDir, 'CLAUDE.md'), 'utf8');
+      if (claudeMd.trim()) parts.push(`--- Project Rules (CLAUDE.md) ---\n${claudeMd}`);
+    } catch {}
+  }
+
+  // Project identity / paths
+  const configLines = [
+    `Project name: ${matched.name}`,
+    matched.workDir             ? `Working directory: ${matched.workDir}`             : null,
+    matched.repo                ? `Remote repository: ${matched.repo}`                : null,
+    matched.obsidianDir         ? `Obsidian knowledge folder: ${matched.obsidianDir}` : null,
+    matched.obsidianSessionsDir ? `Obsidian sessions folder: ${matched.obsidianSessionsDir}` : null,
+    matched.instructions        ? `Custom instructions: ${matched.instructions}`      : null,
+  ].filter(Boolean).join('\n');
+  if (configLines) parts.push(`--- Project Configuration ---\n${configLines}`);
+
+  // Full Obsidian knowledge base
+  const mem = session.projectMemory;
+  if (mem && Object.keys(mem).length > 0) {
+    const obsContent = Object.entries(mem)
+      .map(([k, v]) => `=== ${k} ===\n${v}`)
+      .join('\n\n');
+    parts.push(`--- Project Knowledge Base (Obsidian) ---\n${obsContent}`);
+  }
+
+  return parts.length ? '\n\n' + parts.join('\n\n') : '';
+}
+
 // ── Tool implementations ──────────────────────────────────────────────────────
 
 // Builds a compact Polaris runtime context block injected at the top of every
@@ -4087,10 +4149,11 @@ async function spawnMaxChat(sessionId, prompt, config) {
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
     const polarisContext = buildPolarisContextBlock(config, session);
-    fullPrompt = polarisContext + '\n\n' + (history || prompt);
+    const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
+    fullPrompt = polarisContext + knowledgeBlock + '\n\n' + (history || prompt);
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
-  dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
+  dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} knowledgeFiles=${Object.keys(session.projectMemory||{}).length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
 
   const claudeBin = config.claudeBinaryPath || 'claude';
   // Translate session tier → Claude Code --model flag.
@@ -4454,7 +4517,8 @@ async function spawnCodexSession(sessionId, prompt, config) {
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
     const polarisContext = buildPolarisContextBlock(config, session);
-    fullPrompt = polarisContext + '\n\n' + (history || prompt);
+    const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
+    fullPrompt = polarisContext + knowledgeBlock + '\n\n' + (history || prompt);
   }
 
   // Extract text from DOCX/PDF attachments and prepend to prompt (Codex stdin is text-only).
