@@ -903,6 +903,7 @@ function broadcast(data) {
     if (s && s.status === 'running') {
       s.lastActivityAt = Date.now();
       if (s.stallCount > 0) s.stallCount = 0;
+      if (s.keepAliveInjected) s.keepAliveInjected = false;
     }
   }
   const msg = JSON.stringify(data);
@@ -3853,7 +3854,8 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   // Continuation pass: if the loop exited without a final assistant text response
   // (e.g. hit the 50-iteration limit mid-tool-chain), nudge the model once so the
   // user gets an actual answer rather than silence.
-  if (!session.aborted) {
+  // Skip if we just injected a keep-alive prompt (let loop process normally with that message).
+  if (!session.aborted && !session.keepAliveInjected) {
     const lastMsg = session.messages[session.messages.length - 1];
     const lastIsAssistantText = lastMsg && lastMsg.role === 'assistant' &&
       lastMsg.content && lastMsg.content.trim().length > 0;
@@ -5949,6 +5951,7 @@ async function handleMessage(ws, raw) {
       chipLabel: chipLabel || null, chipColor: chipColor || null,
       isChat: true, model: chatModel, tier: chatTier,
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
+      keepAliveInjected: false, lastKeepAliveAt: null,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
       pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
@@ -5983,6 +5986,7 @@ async function handleMessage(ws, raw) {
       id, name, workDir: null, projectName: projectName || null,
       isChat: true, isGpt: true, model: modelDisplay, tier: tierKey,
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
+      keepAliveInjected: false, lastKeepAliveAt: null,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt,
       gptConversationStarted: false,
@@ -6049,7 +6053,7 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
+    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
     saveSessions();
@@ -8740,14 +8744,26 @@ setInterval(() => {
 
     if (idleMs >= STALL_KICK_MS) {
       const idleSec = Math.floor(idleMs / 1000);
-      session.aborted = true;
-      if (session.req)  { try { session.req.destroy();          } catch (_) {} }
-      if (session.proc) { try { session.proc.kill('SIGTERM');   } catch (_) {} }
-      broadcast({ type: 'session-kick',    sessionId, idleSec });
-      broadcast({ type: 'line', sessionId, text: `Session unresponsive for ${idleSec}s — killed automatically.`, role: 'error' });
-      broadcast({ type: 'session-status',  sessionId, status: 'error' });
-      session.status = 'error';
-      session.endAt  = Date.now();
+      const shouldInjectKeepAlive = !session.keepAliveInjected && session.messages && session.messages.length > 0;
+
+      if (shouldInjectKeepAlive) {
+        session.messages.push({
+          role: 'user',
+          content: 'The session appears idle for 45+ seconds. Please continue working on your task or provide a status update if you are waiting for something.',
+        });
+        session.keepAliveInjected = true;
+        session.lastKeepAliveAt = Date.now();
+        broadcast({ type: 'line', sessionId, text: '⚙ Session idle for 45s — requesting continuation', role: 'system' });
+      } else {
+        session.aborted = true;
+        if (session.req)  { try { session.req.destroy();          } catch (_) {} }
+        if (session.proc) { try { session.proc.kill('SIGTERM');   } catch (_) {} }
+        broadcast({ type: 'session-kick',    sessionId, idleSec });
+        broadcast({ type: 'line', sessionId, text: `Session unresponsive for ${idleSec}s — killed automatically.`, role: 'error' });
+        broadcast({ type: 'session-status',  sessionId, status: 'error' });
+        session.status = 'error';
+        session.endAt  = Date.now();
+      }
     } else {
       const idleSec = Math.floor(idleMs / 1000);
       session.stallCount = (session.stallCount || 0) + 1;
