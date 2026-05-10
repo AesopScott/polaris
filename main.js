@@ -4,10 +4,6 @@ const fs = require('fs');
 const os = require('os');
 const { fork } = require('child_process');
 
-// Allow async Audio.play() calls outside a user gesture (needed for ElevenLabs TTS
-// responses that arrive via WebSocket 500ms-2s after the triggering click).
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-
 const APPDATA = process.env.APPDATA || os.homedir();
 const POLARIS_DIR = path.join(APPDATA, '.claude', 'polaris');
 const MOCKUP_SRC = app.isPackaged
@@ -191,6 +187,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Allow async Audio.play() calls outside a user gesture (needed for ElevenLabs TTS
+  // responses that arrive via WebSocket 500ms-2s after the triggering click).
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   ensureAppData();
   startServer();
   createWindow();
