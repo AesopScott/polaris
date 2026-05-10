@@ -2461,34 +2461,25 @@ async function checkQueueRelevance(sessionId, newPrompt) {
   const apiKey = config.openRouterApiKey;
   if (!apiKey) return { related: false, reason: 'No API key configured' };
 
-  // Build context from both the last user prompt and the tail of the last assistant response
-  let lastUserPrompt = '';
-  let lastAssistantTail = '';
+  // Find the most recent assistant message to understand the current task
+  let currentTaskContext = 'No prior context';
   for (let i = session.lines.length - 1; i >= 0; i--) {
-    const line = session.lines[i];
-    if (!lastAssistantTail && line.role === 'assistant') {
-      const text = line.text || '';
-      lastAssistantTail = text.length > 600 ? '…' + text.slice(-600) : text;
+    if (session.lines[i].role === 'assistant') {
+      const text = session.lines[i].text || '';
+      currentTaskContext = text.slice(0, 500); // Use first 500 chars as context
+      break;
     }
-    if (!lastUserPrompt && line.role === 'user') {
-      lastUserPrompt = (line.text || '').slice(0, 300);
-    }
-    if (lastUserPrompt && lastAssistantTail) break;
   }
-  const currentTaskContext = [
-    lastUserPrompt     ? `Last user prompt: ${lastUserPrompt}`               : '',
-    lastAssistantTail  ? `Last assistant response (tail): ${lastAssistantTail}` : '',
-  ].filter(Boolean).join('\n\n') || 'No prior context';
 
   const systemPrompt = `You are a semantic relevance classifier. Determine if a new user prompt is directly related to the current task context.
 
-Current task context:
+Current task context (last assistant response):
 ${currentTaskContext}
 
 New user prompt:
 ${newPrompt}
 
-Respond with ONLY a JSON object, no markdown fences: {"related": boolean, "reason": "one sentence explanation"}
+Respond with a single JSON object: {"related": boolean, "reason": "one sentence explanation"}
 
 Related = the new prompt is clarifying, continuing, or directly addressing the current task. Not related = a different task, unrelated question, or context switch.`;
 
@@ -2504,8 +2495,7 @@ Related = the new prompt is clarifying, continuing, or directly addressing the c
     }
 
     const responseText = result.content?.trim() || '{}';
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+    const parsed = JSON.parse(responseText);
     return { related: Boolean(parsed.related), reason: parsed.reason || 'No reason provided' };
   } catch (e) {
     console.error('[queue-relevance] parse error:', e.message);
@@ -5913,7 +5903,6 @@ function executeResumeTurn(sessionId, turn) {
   session.lastActivityAt = Date.now();
   session.stallCount = 0;
   session.lastPrompt = prompt;
-  broadcast({ type: 'line', sessionId, role: 'user', text: turn.displayPrompt || prompt });
   if (projectName !== undefined) {
     const newProject = projectName || null;
     if (newProject !== session.projectName) {
@@ -6177,13 +6166,12 @@ async function handleMessage(ws, raw) {
 
       checkQueueRelevance(sessionId, prompt).then(({ related, reason }) => {
         if (related) {
-          // Related: run immediately after the current turn finishes (unshift = front of queue)
-          session.pendingTurns ||= [];
-          session.pendingTurns.unshift(turn);
+          // Merge into current workflow
+          session.lines.push({ role: 'user', text: prompt, displayPrompt, resumeId, images, docs, audio, mergedFromQueue: true });
           broadcast({ type: 'line', sessionId,
-            text: `✅ Will run after current task (${reason})`,
+            text: `✅ Merged into current task (${reason})`,
             role: 'system' });
-          broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+          broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns?.length || 0 });
         } else {
           // Queue for later
           session.pendingTurns ||= [];
@@ -8136,7 +8124,7 @@ async function handleMessage(ws, raw) {
     const statuses = {};
     try {
       if (fs.existsSync(statusDir)) {
-        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md'));
+        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md') && !f.includes('.'));
         for (const f of files) {
           const projectName = f.replace(/\.md$/, '');
           let content = fs.readFileSync(path.join(statusDir, f), 'utf8');
