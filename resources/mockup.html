@@ -5317,7 +5317,11 @@
     if (wideCards.length > 0) {
       const wideRow = document.createElement('div');
       wideRow.className = 'session-wide-row';
-      wideCards.forEach(s => wideRow.appendChild(buildCard(s)));
+      wideCards.forEach(s => {
+        const card = buildCard(s);
+        if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
+        wideRow.appendChild(card);
+      });
       grid.appendChild(wideRow);
     }
 
@@ -5338,8 +5342,9 @@
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
       const card = buildCard(s);
+      if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
       cols[idx].appendChild(card);
-      colHeights[idx] += hiddenCards.has(s.id) ? 0 : (parseInt(s.height) || 260) + 12;
+      colHeights[idx] += (s.minimized || hiddenCards.has(s.id)) ? 0 : (parseInt(s.height) || 260) + 12;
     });
     grid.appendChild(colsRow);
 
@@ -6352,6 +6357,7 @@
 
   let sessionFilter = null;
   const hiddenCards = new Set();
+  const miniCardOffsets = { min: 0, hid: 0 };
 
   function saveHiddenCards() {
     wsSend({ type: 'save-hidden-sessions', hiddenSessions: [...hiddenCards] });
@@ -6430,6 +6436,7 @@
       const sid = card.dataset.sid;
       if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       const s = sessionStore[sid];
+      if (s && s.minimized) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
       const isWaiting = s.status === 'waiting';
@@ -6438,13 +6445,26 @@
   }
 
   function updateMiniCards() {
+    const PAGE = 4;
     const minimized = Object.values(sessionStore).filter(s => s.minimized && !hiddenCards.has(s.id));
     const hidden = Object.values(sessionStore).filter(s => hiddenCards.has(s.id));
+    // clamp offsets so they stay valid after sessions are removed
+    if (minimized.length > 0) miniCardOffsets.min = miniCardOffsets.min % minimized.length;
+    else miniCardOffsets.min = 0;
+    if (hidden.length > 0) miniCardOffsets.hid = miniCardOffsets.hid % hidden.length;
+    else miniCardOffsets.hid = 0;
+
     document.querySelectorAll('.minimized-row').forEach(row => {
       const chips = row.querySelector('div:first-child');
       if (!chips) return;
       chips.innerHTML = '';
-      minimized.slice(0, 4).forEach(s => {
+
+      // minimized chips with cycling
+      const mOff = miniCardOffsets.min;
+      const mSlice = minimized.length <= PAGE
+        ? minimized
+        : [...minimized.slice(mOff), ...minimized.slice(0, mOff)].slice(0, PAGE);
+      mSlice.forEach(s => {
         const chip = document.createElement('div');
         chip.className = 'mini-card';
         chip.style.cursor = 'pointer';
@@ -6454,14 +6474,24 @@
         chip.onclick = () => restoreCard(s.id);
         chips.appendChild(chip);
       });
-      if (minimized.length > 4) {
+      if (minimized.length > PAGE) {
+        const remaining = minimized.length - PAGE;
         const chip = document.createElement('div');
         chip.className = 'mini-card';
-        chip.style.opacity = '0.4';
-        chip.textContent = `+ ${minimized.length - 4} more`;
+        chip.style.opacity = '0.6';
+        chip.style.cursor = 'pointer';
+        chip.title = 'Click to cycle through more minimized sessions';
+        chip.textContent = `+${remaining} more`;
+        chip.onclick = () => { miniCardOffsets.min = (miniCardOffsets.min + 1) % minimized.length; updateMiniCards(); };
         chips.appendChild(chip);
       }
-      hidden.slice(0, 4).forEach(s => {
+
+      // hidden chips with cycling
+      const hOff = miniCardOffsets.hid;
+      const hSlice = hidden.length <= PAGE
+        ? hidden
+        : [...hidden.slice(hOff), ...hidden.slice(0, hOff)].slice(0, PAGE);
+      hSlice.forEach(s => {
         const chip = document.createElement('div');
         chip.className = 'mini-card mini-card--hidden';
         chip.style.cursor = 'pointer';
@@ -6471,11 +6501,15 @@
         chip.onclick = () => unhideCard(s.id);
         chips.appendChild(chip);
       });
-      if (hidden.length > 4) {
+      if (hidden.length > PAGE) {
+        const remaining = hidden.length - PAGE;
         const chip = document.createElement('div');
         chip.className = 'mini-card mini-card--hidden';
-        chip.style.opacity = '0.4';
-        chip.textContent = `+ ${hidden.length - 4} more hidden`;
+        chip.style.opacity = '0.6';
+        chip.style.cursor = 'pointer';
+        chip.title = 'Click to cycle through more hidden sessions';
+        chip.textContent = `+${remaining} more hidden`;
+        chip.onclick = () => { miniCardOffsets.hid = (miniCardOffsets.hid + 1) % hidden.length; updateMiniCards(); };
         chips.appendChild(chip);
       }
     });
