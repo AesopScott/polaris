@@ -5993,16 +5993,16 @@ async function handleMessage(ws, raw) {
       spawnChatRouter(sessionId, prompt, readConfig());
     } else {
       runDirectAgent(sessionId, prompt, session.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
-      // Mirror prompt to linked fork session
-      const forkId = forkMap.get(sessionId);
-      if (forkId) {
-        const forkSession = sessions.get(forkId);
-        if (forkSession) {
-          forkSession.status = 'running';
-          broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
-          broadcast({ type: 'line', sessionId: forkId, text: displayPrompt || prompt, role: 'user' });
-          runDirectAgent(forkId, prompt, forkSession.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
-        }
+    }
+    // Mirror prompt to linked fork session (applies to all session types)
+    const forkId = forkMap.get(sessionId);
+    if (forkId) {
+      const forkSession = sessions.get(forkId);
+      if (forkSession) {
+        forkSession.status = 'running';
+        broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
+        broadcast({ type: 'line', sessionId: forkId, text: displayPrompt || prompt, role: 'user' });
+        runDirectAgent(forkId, prompt, forkSession.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
       }
     }
     return;
@@ -8579,6 +8579,8 @@ wss.on('connection', (ws) => {
         lines: (s.lines || []).slice(-300),
         lastUsage: s.lastUsage || null,
         totalCost: s.totalCost || 0,
+        isForked: !!s.isForked,
+        primarySessionId: s.primarySessionId || null,
       })),
       history: readJSON(HISTORY_PATH, []),
       config:  (() => {
