@@ -3544,7 +3544,7 @@ function loadSessionMessages(sessionId) {
 
 // ── Agentic loop ──────────────────────────────────────────────────────────────
 
-async function runDirectAgent(sessionId, userMessage, workDir) {
+async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMessage = true) {
   const session = sessions.get(sessionId);
   if (!session) return;
   const config = readConfig();
@@ -3555,7 +3555,9 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   }
 
   addToHistory(userMessage);
-  broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
+  if (broadcastUserMessage) {
+    broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
+  }
 
   // Load project memory from Obsidian once per session (server-side, never sent to API directly)
   if (!session.projectMemory) {
@@ -6011,7 +6013,7 @@ async function handleMessage(ws, raw) {
         forkSession.status = 'running';
         broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
         // runDirectAgent broadcasts the user line itself — don't duplicate it here
-        runDirectAgent(forkId, prompt, forkSession.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
+        runDirectAgent(forkId, prompt, forkSession.workDir, false).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
       }
     }
     return;
