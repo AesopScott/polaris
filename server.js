@@ -2610,13 +2610,15 @@ function getPreBuildCheckStatus(sourcePath, projectName) {
 function getChangedFiles(sourcePath, baseCommit) {
   const skip = f => f.startsWith('dist/') || f.startsWith('node_modules/') || f.endsWith('.lock');
   const files = new Set();
-  try {
-    if (baseCommit) {
+  if (baseCommit) {
+    try {
       const committed = execSync(`git diff "${baseCommit}"..HEAD --name-only`, {
         cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'],
       }).toString();
       committed.split('\n').map(l => l.trim()).filter(Boolean).forEach(f => files.add(f));
-    }
+    } catch {}
+  }
+  try {
     const out = execSync('git status --porcelain', { cwd: sourcePath, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
     out.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
       const m = l.match(/^.{1,3}\s+(?:.+\s->\s)?(.+)$/);
@@ -2633,11 +2635,13 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
   const checkPath = preBuildCheckPath(projectName, sourcePath);
   const headPath = lastBuildHeadPath(projectName, sourcePath);
 
-  // Read the git SHA from when the last build was triggered
+  // Read the git SHA from when the last build was triggered.
+  // Strip UTF-8 BOM that PowerShell 5.1 Set-Content -Encoding utf8 prepends.
   let baseCommit = null;
   let baseVersion = null;
   try {
-    const saved = JSON.parse(fs.readFileSync(headPath, 'utf8'));
+    const raw = fs.readFileSync(headPath, 'utf8').replace(/^﻿/, '');
+    const saved = JSON.parse(raw);
     baseCommit = saved.head || null;
     baseVersion = saved.version || null;
   } catch {}
@@ -2694,6 +2698,7 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
   }
 
   // ── Syntax check: run node --check on every JS file before AI review ────────
+  const results = [];
   const syntaxFailed = new Set();
   for (const rel of files) {
     if (!rel.endsWith('.js')) continue;

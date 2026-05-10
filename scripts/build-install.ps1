@@ -65,8 +65,9 @@ Start-Process $privateName -Wait
 
 Write-Host "==> Done." -ForegroundColor Green
 
-$head = git rev-parse HEAD
+$head = (git rev-parse HEAD).Trim()
 $builtAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 $stateFile = "$env:APPDATA\.claude\polaris\last-build-head.json"
-@{ head = $head; builtAt = $builtAt; version = $newVersion } | ConvertTo-Json -Compress | Set-Content -Encoding utf8 $stateFile
+$json = "{`"head`":`"$head`",`"builtAt`":`"$builtAt`",`"version`":`"$newVersion`"}"
+[System.IO.File]::WriteAllText($stateFile, $json, [System.Text.UTF8Encoding]::new($false))
 Write-Host "==> Notified Polaris: HEAD $($head.Substring(0,7)) v$newVersion marked as built." -ForegroundColor Green
