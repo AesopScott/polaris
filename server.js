@@ -8041,7 +8041,12 @@ wss.on('connection', (ws) => {
         totalCost: s.totalCost || 0,
       })),
       history: readJSON(HISTORY_PATH, []),
-      config:  maskedConfig(readConfig()),
+      config:  (() => {
+        const cfg = maskedConfig(readConfig());
+        const activeIds = new Set(sessions.keys());
+        cfg.hiddenSessions = (cfg.hiddenSessions || []).filter(id => activeIds.has(id));
+        return cfg;
+      })(),
       protectedPatterns: (readConfig().protectedPatterns || ['*.md']),
       installId: getInstallId(),
       supportEnabled: !!getMcpServerConfigs().brevo,
