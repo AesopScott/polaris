@@ -47,6 +47,9 @@ const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routine sessions
+const STALL_CHECK_MS  = 3000;   // heartbeat interval
+const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
+const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
@@ -870,6 +873,14 @@ function broadcast(data) {
         s.endAt = s.endAt || Date.now();
         saveSessions();
       }
+    }
+  }
+  // Reset stall tracking on any real session activity (not the stall events themselves)
+  if (data.sessionId && data.type !== 'session-stalled' && data.type !== 'session-kick') {
+    const s = sessions.get(data.sessionId);
+    if (s && s.status === 'running') {
+      s.lastActivityAt = Date.now();
+      if (s.stallCount > 0) s.stallCount = 0;
     }
   }
   const msg = JSON.stringify(data);
@@ -3615,7 +3626,8 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
     const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
-      if (!session.aborted && retryCount < 3) {
+      if (session.aborted) return; // kicked externally — status already set
+      if (retryCount < 3) {
         retryCount++;
         const wait = retryCount * 2000;
         broadcast({ type: 'line', sessionId, text: `⚠️ API error. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
@@ -5564,7 +5576,7 @@ async function handleMessage(ws, raw) {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       chipLabel: chipLabel || null, chipColor: chipColor || null,
       isChat: true, model: chatModel, tier: chatTier,
-      status: 'running', startAt: Date.now(),
+      status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, claudeSessionId: null,
       pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
@@ -5600,7 +5612,7 @@ async function handleMessage(ws, raw) {
     sessions.set(id, {
       id, name, workDir: null, projectName: projectName || null,
       isChat: true, isGpt: true, model: modelDisplay, tier: tierKey,
-      status: 'running', startAt: Date.now(),
+      status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt,
       gptConversationStarted: false,
@@ -5630,7 +5642,7 @@ async function handleMessage(ws, raw) {
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       isChat: true, isCodex: true, model: 'openai/codex-1 (Codex CLI)', tier: codexTier,
-      status: 'running', startAt: Date.now(),
+      status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, codexThreadId: null,
     });
@@ -5665,7 +5677,7 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
+    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
     saveSessions();
@@ -5723,6 +5735,8 @@ async function handleMessage(ws, raw) {
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     session.status = 'running';
+    session.lastActivityAt = Date.now();
+    session.stallCount = 0;
     session.lastPrompt = prompt;
     if (projectName !== undefined) {
       const newProject = projectName || null;
@@ -6697,6 +6711,25 @@ async function handleMessage(ws, raw) {
     if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('file:///'))) {
       exec(`start "" "${url}"`);
     }
+    return;
+  }
+
+  if (type === 'launch-thecard') {
+    const THE_CARD_URL = 'http://localhost:3000';
+    const THE_CARD_DIR = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'thecard');
+    http.get(THE_CARD_URL, (res) => {
+      if (res.statusCode < 500) {
+        exec(`start "" "${THE_CARD_URL}"`);
+      }
+    }).on('error', () => {
+      const child = spawn('cmd', ['/c', 'pnpm --filter @thecard/web dev'], {
+        cwd: THE_CARD_DIR,
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+      setTimeout(() => exec(`start "" "${THE_CARD_URL}"`), 4000);
+    });
     return;
   }
 
@@ -8209,6 +8242,35 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 });
 
 wss = new WebSocket.Server({ server: httpServer });
+
+// ── Session heartbeat / stall detector ───────────────────────────────────────
+// Checks every 3 s for running sessions with no broadcast activity.
+// 15 s idle → amber stall badge on card.
+// 45 s idle → kick: abort in-flight request, kill proc, set error status.
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of sessions) {
+    if (session.status !== 'running') continue;
+    const idleMs = now - (session.lastActivityAt || session.startAt);
+    if (idleMs < STALL_WARN_MS) continue;
+
+    if (idleMs >= STALL_KICK_MS) {
+      const idleSec = Math.floor(idleMs / 1000);
+      session.aborted = true;
+      if (session.req)  { try { session.req.destroy();          } catch (_) {} }
+      if (session.proc) { try { session.proc.kill('SIGTERM');   } catch (_) {} }
+      broadcast({ type: 'session-kick',    sessionId, idleSec });
+      broadcast({ type: 'line', sessionId, text: `Session unresponsive for ${idleSec}s — killed automatically.`, role: 'error' });
+      broadcast({ type: 'session-status',  sessionId, status: 'error' });
+      session.status = 'error';
+      session.endAt  = Date.now();
+    } else {
+      const idleSec = Math.floor(idleMs / 1000);
+      session.stallCount = (session.stallCount || 0) + 1;
+      broadcast({ type: 'session-stalled', sessionId, idleSec, stallCount: session.stallCount });
+    }
+  }
+}, STALL_CHECK_MS);
 
 wss.on('connection', (ws) => {
   console.log('[polaris] WebSocket client connected');

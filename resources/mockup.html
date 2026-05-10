@@ -420,6 +420,8 @@
   .card-title.selected-title { font-weight: 900; }
   .card-title-rename-input { background: rgba(0,0,0,0.55); border: 1px solid #3b82f6; border-radius: 4px; color: #93c5fd; font-size: 12px; font-weight: 700; font-family: inherit; padding: 1px 5px; width: 130px; outline: none; caret-color: #60a5fa; }
   .status-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
+  .stall-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #78350f; color: #fbbf24; display: none; align-items: center; justify-content: center; animation: stallPulse 1.4s ease-in-out infinite; }
+  @keyframes stallPulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
   .card-btns { display: grid; grid-template-rows: repeat(2, 22px); grid-auto-flow: column; gap: 4px; justify-content: flex-end; }
   /* Grid with exactly 2 rows of 22px and column-flow auto-placement: buttons
      fill row 1 left-to-right, then wrap to row 2. Deterministic 2-row layout
@@ -4143,6 +4145,31 @@
         break;
       }
 
+      case 'session-stalled': {
+        const stalledCard = document.querySelector(`[data-sid="${msg.sessionId}"]`);
+        if (stalledCard) {
+          const sb = stalledCard.querySelector('[data-stall-badge]');
+          if (sb) { sb.textContent = `stalled ${msg.idleSec}s`; sb.style.display = 'flex'; }
+        }
+        if (msg.stallCount === 1 || msg.idleSec % 15 === 0) {
+          pushDebugLog(`[stall] Session ${msg.sessionId} idle ${msg.idleSec}s`, true);
+        }
+        break;
+      }
+
+      case 'session-kick': {
+        const kickedCard = document.querySelector(`[data-sid="${msg.sessionId}"]`);
+        if (kickedCard) {
+          const sb = kickedCard.querySelector('[data-stall-badge]');
+          if (sb) sb.style.display = 'none';
+        }
+        pushDebugLog(`[kick] Session ${msg.sessionId} killed after ${msg.idleSec}s of inactivity`, true);
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Polaris — Session Killed', { body: `A session was unresponsive for ${msg.idleSec}s and was killed automatically.` });
+        }
+        break;
+      }
+
       case 'context-usage': {
         const s = sessionStore[msg.sessionId];
         if (!s) break;
@@ -5389,6 +5416,7 @@
         <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
           <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
+          <span class="stall-badge" data-stall-badge></span>
           <div class="card-btns">
             <button class="card-btn" title="Diagnostic log" data-action="show-diag">📋</button>
             <button class="card-btn" title="Re-run" data-action="rerun">↺</button>
@@ -5709,6 +5737,8 @@
     if (!grid) return;
     const card = grid.querySelector(`[data-sid="${sessionId}"]`);
     if (!card) return;
+    const stallEl = card.querySelector('[data-stall-badge]');
+    if (stallEl) stallEl.style.display = 'none';
     const badge = card.querySelector('.status-badge');
     if (badge) {
       badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' }[status] || 'status-running');
