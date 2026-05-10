@@ -7624,6 +7624,27 @@ async function handleMessage(ws, raw) {
       fs.mkdirSync(statusDir, { recursive: true });
       const safeName = (projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(statusDir, `${safeName}.md`);
+
+      // Archive prior content before overwrite — guards against accidental clobbers.
+      if (fs.existsSync(filePath)) {
+        try {
+          const archiveDir = path.join(statusDir, 'archive');
+          fs.mkdirSync(archiveDir, { recursive: true });
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          fs.copyFileSync(filePath, path.join(archiveDir, `${safeName}.${stamp}.md`));
+          const KEEP = 20;
+          const prefix = `${safeName}.`;
+          const olderFirst = fs.readdirSync(archiveDir)
+            .filter(f => f.startsWith(prefix) && f.endsWith('.md'))
+            .sort();
+          while (olderFirst.length > KEEP) {
+            try { fs.unlinkSync(path.join(archiveDir, olderFirst.shift())); } catch {}
+          }
+        } catch (archErr) {
+          log(`[project-status] archive failed for ${safeName}: ${archErr.message}`);
+        }
+      }
+
       const now = new Date().toISOString().split('T')[0];
       const content = `# ${projectName} — Status\n\n**Last Updated:** ${now}\n\n${note || ''}`;
       fs.writeFileSync(filePath, content, 'utf8');
