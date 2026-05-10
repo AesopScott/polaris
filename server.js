@@ -3263,7 +3263,7 @@ async function ensureMcpProcess(serverName, serverConfig) {
   return state;
 }
 
-function mcpHttpCall(url, headers, method, params) {
+function mcpHttpCall(url, headers, method, params, timeout = 10000) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: params || {} });
     let urlObj;
@@ -3287,6 +3287,7 @@ function mcpHttpCall(url, headers, method, params) {
         } catch (e) { reject(new Error(`MCP HTTP parse: ${e.message}`)); }
       });
     });
+    req.setTimeout(timeout, () => { req.destroy(); reject(new Error(`MCP HTTP timeout: ${url}`)); });
     req.on('error', reject);
     req.write(body);
     req.end();
