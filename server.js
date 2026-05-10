@@ -2453,6 +2453,56 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
   });
 }
 
+async function checkQueueRelevance(sessionId, newPrompt) {
+  const session = sessions.get(sessionId);
+  if (!session) return { related: false, reason: 'Session not found' };
+
+  const config = readConfig();
+  const apiKey = config.openRouterApiKey;
+  if (!apiKey) return { related: false, reason: 'No API key configured' };
+
+  // Find the most recent assistant message to understand the current task
+  let currentTaskContext = 'No prior context';
+  for (let i = session.lines.length - 1; i >= 0; i--) {
+    if (session.lines[i].role === 'assistant') {
+      const text = session.lines[i].text || '';
+      currentTaskContext = text.slice(0, 500); // Use first 500 chars as context
+      break;
+    }
+  }
+
+  const systemPrompt = `You are a semantic relevance classifier. Determine if a new user prompt is directly related to the current task context.
+
+Current task context (last assistant response):
+${currentTaskContext}
+
+New user prompt:
+${newPrompt}
+
+Respond with a single JSON object: {"related": boolean, "reason": "one sentence explanation"}
+
+Related = the new prompt is clarifying, continuing, or directly addressing the current task. Not related = a different task, unrelated question, or context switch.`;
+
+  const messages = [
+    { role: 'user', content: systemPrompt }
+  ];
+
+  try {
+    const result = await callOpenRouterOnce('openai/gpt-4o-mini', apiKey, messages, 100);
+    if (result.error) {
+      console.error('[queue-relevance] API error:', result.error);
+      return { related: false, reason: 'Relevance check failed, queuing for safety' };
+    }
+
+    const responseText = result.content?.trim() || '{}';
+    const parsed = JSON.parse(responseText);
+    return { related: Boolean(parsed.related), reason: parsed.reason || 'No reason provided' };
+  } catch (e) {
+    console.error('[queue-relevance] parse error:', e.message);
+    return { related: false, reason: 'Relevance check failed, queuing for safety' };
+  }
+}
+
 async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey, unifiedDiff }) {
   const startMs = Date.now();
   const useModel = model || CROSS_CHECK_DEFAULT_MODEL;
@@ -6109,11 +6159,38 @@ async function handleMessage(ws, raw) {
     // `claude --resume <session_id>` processes from racing the same on-disk
     // session-history file (root cause of orphaned-zombie hangs).
     if (session.status === 'running') {
-      session.pendingTurns ||= [];
-      session.pendingTurns.push(turn);
+      // Check if this new prompt is semantically related to the current task
       broadcast({ type: 'line', sessionId,
-        text: `[queued — runs after current turn (${session.pendingTurns.length} ahead)]`,
+        text: '⏳ Checking if this input is related to current task…',
         role: 'system' });
+
+      checkQueueRelevance(sessionId, prompt).then(({ related, reason }) => {
+        if (related) {
+          // Merge into current workflow
+          session.lines.push({ role: 'user', text: prompt, displayPrompt, resumeId, images, docs, audio, mergedFromQueue: true });
+          broadcast({ type: 'line', sessionId,
+            text: `✅ Merged into current task (${reason})`,
+            role: 'system' });
+          broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns?.length || 0 });
+        } else {
+          // Queue for later
+          session.pendingTurns ||= [];
+          session.pendingTurns.push(turn);
+          broadcast({ type: 'line', sessionId,
+            text: `⏸️ Queued for later (${reason}) — ${session.pendingTurns.length} task${session.pendingTurns.length === 1 ? '' : 's'} ahead`,
+            role: 'system' });
+          broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+        }
+      }).catch(err => {
+        console.error('[resume-relevance-check] error:', err);
+        // Safe default: queue it
+        session.pendingTurns ||= [];
+        session.pendingTurns.push(turn);
+        broadcast({ type: 'line', sessionId,
+          text: `⏸️ Queued (relevance check failed) — ${session.pendingTurns.length} task${session.pendingTurns.length === 1 ? '' : 's'} ahead`,
+          role: 'system' });
+        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+      });
       return;
     }
     executeResumeTurn(sessionId, turn);

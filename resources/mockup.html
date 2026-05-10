@@ -4119,6 +4119,40 @@
         break;
       }
 
+      case 'queue-status': {
+        const s = sessionStore[msg.sessionId];
+        if (s) {
+          s.pendingTurns = msg.pending || 0;
+          // Update card to show queue badge
+          const card = document.querySelector(`[data-sid="${msg.sessionId}"]`);
+          if (card && msg.pending > 0) {
+            let badge = card.querySelector('[data-queue-badge]');
+            if (!badge) {
+              badge = document.createElement('div');
+              badge.setAttribute('data-queue-badge', '');
+              badge.style.position = 'absolute';
+              badge.style.top = '8px';
+              badge.style.right = '8px';
+              badge.style.background = '#f59e0b';
+              badge.style.color = '#000';
+              badge.style.padding = '2px 8px';
+              badge.style.borderRadius = '12px';
+              badge.style.fontSize = '11px';
+              badge.style.fontWeight = '700';
+              badge.style.zIndex = '10';
+              const cardContent = card.querySelector('.card-content');
+              if (cardContent) cardContent.style.position = 'relative';
+              card.appendChild(badge);
+            }
+            badge.textContent = `+${msg.pending}`;
+          } else if (card) {
+            const badge = card.querySelector('[data-queue-badge]');
+            if (badge) badge.remove();
+          }
+        }
+        break;
+      }
+
       case 'streaming-rate': {
         const card = document.querySelector(`[data-sid="${msg.sessionId}"]`);
         if (!card) break;
