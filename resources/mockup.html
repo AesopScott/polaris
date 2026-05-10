@@ -4045,7 +4045,7 @@
         s.lines.push(line);
         if (msg.role === 'user') s.lastPrompt = msg.text;
         appendLineToCard(msg.sessionId, line);
-        pushDebugLog(`[${msg.role}] ${msg.text.slice(0, 80)}`);
+        if (msg.role !== 'tool') pushDebugLog(`[${msg.role}] ${msg.text.slice(0, 80)}`);
         break;
       }
 
