@@ -2462,65 +2462,6 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-async function checkQueueRelevance(sessionId, newPrompt) {
-  const session = sessions.get(sessionId);
-  if (!session) return { related: false, reason: 'Session not found' };
-
-  const config = readConfig();
-  const apiKey = config.openRouterApiKey;
-  if (!apiKey) return { related: false, reason: 'No API key configured' };
-
-  // Find the most recent assistant message to understand the current task
-  let currentTaskContext = 'No prior context';
-  for (let i = session.lines.length - 1; i >= 0; i--) {
-    if (session.lines[i].role === 'assistant') {
-      const text = session.lines[i].text || '';
-      currentTaskContext = text.slice(0, 500); // Use first 500 chars as context
-      break;
-    }
-  }
-
-  const systemPrompt = `You are a semantic relevance classifier. Determine if a new user prompt is directly related to the current task context.
-
-Current task context (last assistant response):
-${currentTaskContext}
-
-New user prompt:
-${newPrompt}
-
-Respond with a single JSON object: {"related": boolean, "reason": "one sentence explanation"}
-
-Related = the new prompt is clarifying, continuing, or directly addressing the current task. Not related = a different task, unrelated question, or context switch.`;
-
-  const messages = [
-    { role: 'user', content: systemPrompt }
-  ];
-
-  try {
-    // Wrap with 12s timeout to prevent hung promises from blocking the queue
-    const result = await withTimeout(
-      callOpenRouterOnce('openai/gpt-4o-mini', apiKey, messages, 100),
-      12000
-    );
-
-    if (result.timeout) {
-      console.warn('[queue-relevance] timeout after 12s, queueing for safety');
-      return { related: false, reason: 'Relevance check timed out, queuing for safety' };
-    }
-
-    if (result.error) {
-      console.error('[queue-relevance] API error:', result.error);
-      return { related: false, reason: 'Relevance check failed, queuing for safety' };
-    }
-
-    const responseText = result.content?.trim() || '{}';
-    const parsed = JSON.parse(responseText);
-    return { related: Boolean(parsed.related), reason: parsed.reason || 'No reason provided' };
-  } catch (e) {
-    console.error('[queue-relevance] parse error:', e.message);
-    return { related: false, reason: 'Relevance check failed, queuing for safety' };
-  }
-}
 
 async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey, unifiedDiff }) {
   const startMs = Date.now();
@@ -5961,16 +5902,6 @@ function executeResumeTurn(sessionId, turn) {
   }
 }
 
-function drainPendingTurns(sessionId) {
-  const session = sessions.get(sessionId);
-  if (!session) return;
-  if (!Array.isArray(session.pendingTurns) || session.pendingTurns.length === 0) return;
-  const next = session.pendingTurns.shift();
-  // setImmediate so the calling close handler / status broadcast fully unwinds
-  // before the next spawn. Avoids re-entering the spawn function from inside
-  // its own proc.on('close') stack frame.
-  setImmediate(() => executeResumeTurn(sessionId, next));
-}
 
 // ─── WebSocket message handler ────────────────────────────────────────────────
 async function handleMessage(ws, raw) {
@@ -6178,28 +6109,6 @@ async function handleMessage(ws, raw) {
     // drain it from the prior turn's terminal close handler. Prevents two
     // `claude --resume <session_id>` processes from racing the same on-disk
     // session-history file (root cause of orphaned-zombie hangs).
-    if (session.status === 'running') {
-      // Check if this new prompt is semantically related to the current task
-      checkQueueRelevance(sessionId, prompt).then(({ related, reason }) => {
-        if (related) {
-          // Merge into current workflow
-          session.lines.push({ role: 'user', text: prompt, displayPrompt, resumeId, images, docs, audio, mergedFromQueue: true });
-          broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns?.length || 0 });
-        } else {
-          // Queue for later
-          session.pendingTurns ||= [];
-          session.pendingTurns.push(turn);
-          broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
-        }
-      }).catch(err => {
-        console.error('[resume-relevance-check] error:', err);
-        // Safe default: queue it
-        session.pendingTurns ||= [];
-        session.pendingTurns.push(turn);
-        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
-      });
-      return;
-    }
     executeResumeTurn(sessionId, turn);
     return;
   }
@@ -6260,14 +6169,6 @@ async function handleMessage(ws, raw) {
       if (session.req) {
         session.req.destroy();
         session.req = null;
-      }
-      // Drop any prompts the user queued behind the active turn — Stop = cancel.
-      const droppedTurns = Array.isArray(session.pendingTurns) ? session.pendingTurns.length : 0;
-      session.pendingTurns = [];
-      if (droppedTurns) {
-        broadcast({ type: 'line', sessionId: msg.sessionId,
-          text: `[stop — cleared ${droppedTurns} queued turn${droppedTurns === 1 ? '' : 's'}]`,
-          role: 'system' });
       }
       session.status = 'done';
       session.endAt  = session.endAt || Date.now();
