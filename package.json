@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.413",
+  "version": "1.0.414",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "dist:fast": "electron-builder --config.compression=store --config.asar=false",
     "dist": "electron-builder",
     "dist:public": "electron-builder",
+    "check:sync": "node scripts/check-polaris-sync.js",
     "postdist": "node scripts/prune-dist.js",
     "postdist:fast": "node scripts/prune-dist.js",
     "postdist:public": "node scripts/prune-dist.js"

@@ -1,0 +1,59 @@
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const OBSIDIAN_BUILD = 'G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build';
+
+const failures = [];
+
+function readRequired(filePath) {
+  if (!fs.existsSync(filePath)) {
+    failures.push(`Missing required file: ${filePath}`);
+    return '';
+  }
+  return fs.readFileSync(filePath, 'utf8');
+}
+
+function check(condition, message) {
+  if (!condition) failures.push(message);
+}
+
+const packageJson = JSON.parse(readRequired(path.join(ROOT, 'package.json')));
+const server = readRequired(path.join(ROOT, 'server.js'));
+const buildPlan = readRequired(path.join(OBSIDIAN_BUILD, '3-Build-Plan.md'));
+const changelog = readRequired(path.join(OBSIDIAN_BUILD, '4-Changelog.md'));
+const version = packageJson.version;
+
+check(Boolean(version), 'package.json is missing a version.');
+check(buildPlan.includes(`v${version}`), `Build plan is not aligned with package version v${version}.`);
+check(changelog.includes(`| ${version} |`), `Changelog is missing a row for package version ${version}.`);
+
+const drainCalls = (server.match(/\bdrainPendingTurns\s*\(/g) || []).length;
+check(
+  /function\s+drainPendingTurns\s*\(\s*sessionId\s*\)/.test(server),
+  'server.js calls drainPendingTurns but does not define function drainPendingTurns(sessionId).'
+);
+check(
+  drainCalls >= 2,
+  'server.js should call drainPendingTurns from terminal session paths, not only define it.'
+);
+check(
+  /if\s*\(\s*session\.status\s*===\s*['"]running['"]\s*\)\s*{[\s\S]{0,700}session\.pendingTurns\.push\s*\(\s*turn\s*\)/.test(server),
+  'resume handler is missing the running-session guard that queues follow-up turns.'
+);
+check(
+  /function\s+drainPendingTurns\s*\(\s*sessionId\s*\)\s*{[\s\S]{0,900}setImmediate\s*\(\s*\(\s*\)\s*=>\s*executeResumeTurn\s*\(\s*sessionId\s*,\s*nextTurn\s*\)\s*\)/.test(server),
+  'drainPendingTurns no longer schedules queued turns through executeResumeTurn.'
+);
+check(
+  /if\s*\(\s*type\s*===\s*['"]stop['"]\s*\)\s*{[\s\S]{0,1200}session\.pendingTurns\s*=\s*\[\s*\]/.test(server),
+  'Stop handler should clear session.pendingTurns so canceled sessions do not replay queued prompts.'
+);
+
+if (failures.length > 0) {
+  console.error('FAIL polaris-sync');
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log(`PASS polaris-sync v${version}`);
