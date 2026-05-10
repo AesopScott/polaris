@@ -1385,16 +1385,16 @@
   </div>
 
   <!-- Minimized / Stats Row -->
-  <div class="minimized-row" style="display:grid;grid-template-columns:2fr 1fr;align-items:center;padding:6px 16px;">
+  <div class="minimized-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:6px 16px;">
 
-    <!-- Left two-thirds: minimized + hidden session chips -->
-    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap;">
+    <!-- Left two columns: minimized + hidden session chips -->
+    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap;grid-column:span 2;">
       <div class="mini-card">Fix Auth Bug</div>
       <div class="mini-card">DB Migration</div>
       <div class="mini-card" style="opacity:0.4;">+ 2 more</div>
     </div>
 
-    <!-- Right third: Waiting + Running Sessions + Hidden count on one row -->
+    <!-- Right column: Waiting + Running Sessions + Hidden count on one row -->
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
@@ -11762,7 +11762,7 @@
         if (label) label.dataset.connLabel = '1';
       }
       // Tag stat count spans
-      const statsDiv = row.children[1];
+      const statsDiv = row.children[2];
       if (statsDiv) {
         statsDiv.querySelectorAll('.stat').forEach(stat => {
           const count = stat.querySelector('span:first-child');
