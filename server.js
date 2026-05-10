@@ -2660,7 +2660,7 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
   const files = getChangedFiles(sourcePath, baseCommit);
   const baseLabel = baseVersion ? `v${baseVersion}` : (baseCommit ? baseCommit.slice(0, 7) : 'last commit');
 
-  sendTo(ws, { type: 'pre-build-check-progress', phase: 'start', total: files.length, baseLabel });
+  sendTo(ws, { type: 'pre-build-check-progress', phase: 'start', total: files.length, baseLabel }); // total = all changed files incl. syntax-checked
 
   if (files.length === 0) {
     const snapshot = getRepoSnapshot(sourcePath);
@@ -2682,9 +2682,23 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
     return;
   }
 
-  const results = [];
-  for (let i = 0; i < files.length; i++) {
-    const rel = files[i];
+  // ── Syntax check: run node --check on every JS file before AI review ────────
+  const syntaxFailed = new Set();
+  for (const rel of files) {
+    if (!rel.endsWith('.js')) continue;
+    const abs = path.join(sourcePath, rel);
+    try {
+      execSync(`node --check "${abs}"`, { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString().trim() : String(e.message || e);
+      results.push({ file: rel, verdict: 'FAIL', summary: 'Syntax error (node --check)', issues: [stderr], ms: 0 });
+      syntaxFailed.add(rel);
+    }
+  }
+  const filesToReview = files.filter(f => !syntaxFailed.has(f));
+
+  for (let i = 0; i < filesToReview.length; i++) {
+    const rel = filesToReview[i];
     const abs = path.join(sourcePath, rel);
 
     // Use git diff for the review — correct multi-hunk output regardless of file size.
@@ -2706,7 +2720,7 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
       } catch {}
     }
 
-    sendTo(ws, { type: 'pre-build-check-progress', phase: 'reviewing', completed: i, total: files.length, file: rel });
+    sendTo(ws, { type: 'pre-build-check-progress', phase: 'reviewing', completed: i, total: filesToReview.length, file: rel });
 
     const review = await crossCheckChange({
       sessionId: 'pre-build-check',
