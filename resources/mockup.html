@@ -6283,7 +6283,11 @@
       : '';
     const opPart = msg.operation ? ` on ${msg.operation}` : '';
     const prompt = `Cross-check ${msg.verdict}${opPart} of ${msg.filePath}:\n\n${msg.summary}${issueLines}\n\nPlease review and fix the issues identified above.`;
-    wsSend({ type: 'launch-chat', prompt, workDir: sess.workDir, projectName: sess.projectName, chipLabel: 'Cross Check', chipColor: '#ef4444' });
+    const payload = { type: 'launch-chat', prompt, workDir: sess.workDir, projectName: sess.projectName, chipLabel: 'Cross Check', chipColor: '#ef4444' };
+    if (currentConfig?.crossCheckModel) {
+      payload.model = currentConfig.crossCheckModel;
+    }
+    wsSend(payload);
   }
   window.launchCrossCheckValidation = launchCrossCheckValidation;
 
