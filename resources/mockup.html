@@ -6459,6 +6459,23 @@
         chip.textContent = `+ ${minimized.length - 4} more`;
         chips.appendChild(chip);
       }
+      hidden.slice(0, 4).forEach(s => {
+        const chip = document.createElement('div');
+        chip.className = 'mini-card mini-card--hidden';
+        chip.style.cursor = 'pointer';
+        chip.style.color = s.isChat ? '#a78bfa' : (window.getProjectColorByName ? window.getProjectColorByName(s.projectName) || '#60a5fa' : '#60a5fa');
+        chip.title = `Click to unhide: ${s.name}`;
+        chip.textContent = (s.name || 'Session').split(' ').slice(0, 3).join(' ');
+        chip.onclick = () => unhideCard(s.id);
+        chips.appendChild(chip);
+      });
+      if (hidden.length > 4) {
+        const chip = document.createElement('div');
+        chip.className = 'mini-card mini-card--hidden';
+        chip.style.opacity = '0.4';
+        chip.textContent = `+ ${hidden.length - 4} more hidden`;
+        chips.appendChild(chip);
+      }
     });
   }
 
