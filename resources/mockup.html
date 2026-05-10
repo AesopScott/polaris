@@ -57,7 +57,7 @@
   .ticker-item .ticker-joke  { color: #a78bfa; font-style: italic; }
   .ticker-item .ticker-gold  { color: #fbbf24; font-weight: 600; }
   @keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-  .header { padding: 10px 16px; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; position: relative; min-height: 64px; }
+  .header { padding: 10px 16px; display: grid; grid-template-columns: 1fr 0.65fr 1.55fr; align-items: center; position: relative; min-height: 64px; }
   .header-identity { display: flex; align-items: center; justify-content: center; }
   .header-center { display: flex; align-items: center; justify-content: center; }
   .header-buttons { display: flex; justify-content: flex-end; }
@@ -77,7 +77,7 @@
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
     border: none; border-radius: 12px;
-    padding: 8px 12px; min-height: 38px;
+    padding: 8px 5px; min-height: 38px;
     cursor: pointer; white-space: nowrap;
     display: flex; align-items: center; justify-content: center;
     width: 100%; min-width: 0;
@@ -107,7 +107,7 @@
     50%      { background-position: 100% 50%; }
   }
   .hbtn-sub { font-size: 9px; font-weight: 400; opacity: 0.7; white-space: nowrap; }
-  #btn-routines { padding: 8px 6px; }
+  #btn-routines { padding: 8px 5px; }
   .status-card { background: var(--card-bg, #1e2433); border: 1px solid var(--border, #2d3748); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
   .status-card-header { display: flex; align-items: center; gap: 8px; }
   .status-card-name { font-size: 12px; font-weight: 800; flex: 1; }
@@ -1259,32 +1259,32 @@
       <div class="btn-grid">
         <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
-        <button id="btn-thecard" class="hbtn btn-gold" onclick="openTheCard()" data-tooltip="The Card — start the Next.js dev server and open the prediction market app in your browser"><span class="lbl">The Card</span></button>
         <button id="btn-course-creator" class="hbtn btn-gold" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
+        <button id="btn-thecard" class="hbtn btn-gold" onclick="openTheCard()" data-tooltip="The Card — start the Next.js dev server and open the prediction market app in your browser"><span class="lbl">The Card</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
         <button id="btn-files" class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
         <button id="btn-restart" class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
-        <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button id="btn-reload" class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
-        <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
         <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Version</span></button>
         <button id="btn-reset" class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
         <button id="btn-connect" class="hbtn btn-systems" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
         <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
         <!-- Row 4 -->
-        <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
         <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
         <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
         <button id="btn-obsidian" class="hbtn btn-danger" onclick="obsidianUp()" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note" style="padding-left: 4px; padding-right: 4px;"><span class="lbl">Obsidian</span></button>
         <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
