@@ -6160,25 +6160,15 @@ async function handleMessage(ws, raw) {
     // session-history file (root cause of orphaned-zombie hangs).
     if (session.status === 'running') {
       // Check if this new prompt is semantically related to the current task
-      broadcast({ type: 'line', sessionId,
-        text: '⏳ Checking if this input is related to current task…',
-        role: 'system' });
-
       checkQueueRelevance(sessionId, prompt).then(({ related, reason }) => {
         if (related) {
           // Merge into current workflow
           session.lines.push({ role: 'user', text: prompt, displayPrompt, resumeId, images, docs, audio, mergedFromQueue: true });
-          broadcast({ type: 'line', sessionId,
-            text: `✅ Merged into current task (${reason})`,
-            role: 'system' });
           broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns?.length || 0 });
         } else {
           // Queue for later
           session.pendingTurns ||= [];
           session.pendingTurns.push(turn);
-          broadcast({ type: 'line', sessionId,
-            text: `⏸️ Queued for later (${reason}) — ${session.pendingTurns.length} task${session.pendingTurns.length === 1 ? '' : 's'} ahead`,
-            role: 'system' });
           broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
         }
       }).catch(err => {
@@ -6186,9 +6176,6 @@ async function handleMessage(ws, raw) {
         // Safe default: queue it
         session.pendingTurns ||= [];
         session.pendingTurns.push(turn);
-        broadcast({ type: 'line', sessionId,
-          text: `⏸️ Queued (relevance check failed) — ${session.pendingTurns.length} task${session.pendingTurns.length === 1 ? '' : 's'} ahead`,
-          role: 'system' });
         broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
       });
       return;
