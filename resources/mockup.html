@@ -4541,7 +4541,11 @@
       case 'obsidian-up-done':
         pushDebugLog(`[obsidian] ✓ ${msg.filePath}`);
         if (typeof camOnObsidianDone === 'function') camOnObsidianDone();
-        if (pendingStatusProject) openStatusModal(pendingStatusProject);
+        if (pendingStatusProject) {
+          // Fetch fresh status data before opening modal
+          pendingOpenStatusModal = pendingStatusProject;
+          wsSend({ type: 'get-project-statuses' });
+        }
         break;
 
       case 'project-statuses':
@@ -10136,6 +10140,7 @@
   // ── Project Status Panel ──────────────────────────────────────────────────────
   let projectStatusCache = {};
   let pendingStatusProject = null;
+  let pendingOpenStatusModal = null;  // Project to open in modal after statuses refresh
 
   function openStatusPanel() {
     document.getElementById('project-status-panel').classList.remove('hidden');
@@ -10180,6 +10185,13 @@
           : `<div class="status-card-empty">No status yet — push a session to Obsidian to add one.</div>`}
       </div>`;
     }).join('');
+
+    // If there's a pending modal to open, open it now that cache is fresh
+    if (pendingOpenStatusModal) {
+      const projectToOpen = pendingOpenStatusModal;
+      pendingOpenStatusModal = null;
+      openStatusModal(projectToOpen);
+    }
   }
 
   function openStatusModal(projectName, prefill) {
