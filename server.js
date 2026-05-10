@@ -4512,11 +4512,12 @@ async function spawnCodexSession(sessionId, prompt, config) {
   const isResume = !!session.codexThreadId;
   const codexBin = config.codexBinaryPath || 'codex';
 
-  // Build args: resume uses `exec resume <thread_id> -`, new session uses `exec`
-  const sharedFlags = ['--json', '--sandbox', 'workspace-write', '--skip-git-repo-check'];
+  // `exec resume` only accepts --json; sandbox/git flags belong to the original
+  // session and are rejected on resume. Flags must precede the `resume`
+  // subcommand for the CLI to parse them.
   const args = isResume
-    ? ['exec', 'resume', session.codexThreadId, '-', ...sharedFlags]
-    : ['exec', ...sharedFlags];
+    ? ['exec', '--json', 'resume', session.codexThreadId, '-']
+    : ['exec', '--json', '--sandbox', 'workspace-write', '--skip-git-repo-check'];
 
   // Turn 1: prepend Polaris context + history. Turn 2+: just the new message.
   let fullPrompt;
