@@ -32,7 +32,7 @@
   .pal-btn.active { border-color: #fff; }
 
   /* App Shell */
-  .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .app { min-height: 100vh; display: flex; flex-direction: column; }
 
   /* Notification Banner */
   .notif-banner {
@@ -1430,7 +1430,7 @@
   </div>
 
   <!-- Session Grid -->
-  <div style="flex:1;position:relative;overflow:hidden;">
+  <div id="grid-wrapper" style="position:relative;overflow:hidden;">
     <div class="session-grid"></div>
     <div id="hidden-all-state" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--bg);z-index:2;">
       <div id="hidden-all-msg" style="font-size:15px;font-weight:600;color:var(--text);opacity:0.7;"></div>
@@ -2574,11 +2574,26 @@
     document.body.appendChild(clone);
   });
 
+  function fitGridWrapper() {
+    const app = document.querySelector('.palette:not(.hidden).app');
+    const wrapper = document.getElementById('grid-wrapper');
+    if (!app || !wrapper) return;
+    let used = 0;
+    for (const child of app.children) {
+      if (child === wrapper) break;
+      used += child.getBoundingClientRect().height;
+    }
+    wrapper.style.height = Math.max(120, window.innerHeight - used) + 'px';
+  }
+  window.fitGridWrapper = fitGridWrapper;
+  window.addEventListener('resize', fitGridWrapper);
+
   function toggleLaunchBar(btn) {
     const bar = btn.closest('.launch-bar');
     const minimized = bar.classList.toggle('minimized');
     btn.textContent = minimized ? '▢' : '_';
     btn.title = minimized ? 'Maximize' : 'Minimize';
+    fitGridWrapper();
   }
 
   function expandLaunchBar(el) {
@@ -3983,6 +3998,7 @@
           }
         }
         renderGrid();
+        fitGridWrapper();
         restorePanelState(msg.config?.panelState);
         (msg.sessions || []).forEach(s => { if (s.lastUsage) updateContextBar(s.id, s.lastUsage); });
         if (!msg.config?.skipOnboarding) setTimeout(initOnboardingPrompt, 900);
@@ -12616,6 +12632,7 @@
     wireUI();
     startTimers();
     wsConnect();
+    fitGridWrapper();
   });
 
 })();
