@@ -2622,9 +2622,45 @@
     const drawer = card.querySelector('[data-preview-drawer]');
     if (!drawer) return;
     drawer.classList.toggle('open');
-    if (drawer.classList.contains('open')) populateCardPreviewFiles(sid);
+    if (drawer.classList.contains('open')) {
+      populateCardPreviewFiles(sid);
+      detectAndShowDevServer(sid, card);
+    }
   }
   window.toggleCardPreview = toggleCardPreview;
+
+  async function detectAndShowDevServer(sid, card) {
+    const commonPorts = [3000, 3001, 8000, 8080, 5173, 4173];
+    const body = card.querySelector('[data-preview-body]');
+    if (!body) return;
+
+    for (const port of commonPorts) {
+      try {
+        const response = await fetch(`http://localhost:${port}`, { method: 'HEAD', mode: 'no-cors', timeout: 500 });
+        // If we get here without error, a server is likely running
+        const iframeHtml = `
+          <div style="display:flex; flex-direction:column; height:100%; gap:8px; padding:12px;">
+            <div style="background:#1a1a1a; color:#4ade80; padding:8px 12px; border-radius:6px; font-size:12px; font-family:monospace;">
+              ✓ Dev server detected on port ${port}
+            </div>
+            <iframe src="http://localhost:${port}" style="flex:1; border:none; border-radius:6px; background:white;"></iframe>
+          </div>
+        `;
+        body.innerHTML = iframeHtml;
+        return;
+      } catch (e) {
+        // Port not responding, try next
+      }
+    }
+
+    // No dev server found
+    body.innerHTML = `
+      <div style="padding:16px; text-align:center; color:#999;">
+        <p style="margin:0 0 12px; font-size:14px;">No dev server detected</p>
+        <p style="margin:0; font-size:12px; line-height:1.6;">Click the <strong>Web</strong> button to start the live server, then refresh this preview.</p>
+      </div>
+    `;
+  }
 
   function populateCardPreviewFiles(sid) {
     const s = sessionStore[sid];
