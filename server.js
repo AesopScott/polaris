@@ -3594,9 +3594,6 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   // (continuation context has its own framing)
   if (!continuationContext) {
     addToHistory(userMessage);
-    if (broadcastUserMessage) {
-      broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
-    }
   }
 
   // Load project memory from Obsidian once per session (server-side, never sent to API directly)
@@ -5872,8 +5869,6 @@ function executeResumeTurn(sessionId, turn) {
       ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
       ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
     ];
-    const imgLabel2 = resumeAttachments.length ? '\n' + resumeAttachments.join('  ') : '';
-    broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
   }
   broadcast({ type: 'session-status', sessionId, status: 'running' });
   if (session.isCodex) {
@@ -5965,8 +5960,6 @@ async function handleMessage(ws, raw) {
       ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
       ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
     ];
-    const imgLabel = launchAttachments.length ? '\n' + launchAttachments.join('  ') : '';
-    broadcast({ type: 'line', sessionId: id, text: prompt + imgLabel, role: 'user' });
     saveSessions();
     spawnChatRouter(id, prompt, config);
     return;
@@ -5994,7 +5987,6 @@ async function handleMessage(ws, raw) {
       gptConversationStarted: false,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: projectName || null, model: modelDisplay, isChat: true, isGpt: true });
-    broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
     saveSessions();
     spawnGptChat(id, prompt, tierKey);
     return;
@@ -6027,7 +6019,6 @@ async function handleMessage(ws, raw) {
       pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
-    broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
     saveSessions();
     spawnCodexSession(id, prompt, readConfig());
     return;
@@ -6094,7 +6085,6 @@ async function handleMessage(ws, raw) {
         const routeMsg = `[routing] routineTag="${routineTag}" model=chat → chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
-        broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
         spawnChatRouter(id, prompt, cfg);
       } else {
         const routeMsg = `[routing] routineTag="${routineTag}" → runDirectAgent (model=${routineModel || 'default'})`;
@@ -6973,7 +6963,6 @@ async function handleMessage(ws, raw) {
     broadcast(createdMsg);
 
     // Display only the short header in the terminal — full diag is in lastPrompt.
-    broadcast({ type: 'line', sessionId: newId, text: displayPrompt, role: 'user' });
     saveSessions();
 
     if (isCodex) {
