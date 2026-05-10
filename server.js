@@ -1586,8 +1586,19 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
 ];
 
-function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = true) {
+function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = true, continuationContext = null) {
   const layers = [BASE_SYSTEM_PROMPT];
+
+  if (continuationContext) {
+    layers.push(
+      '--- SESSION CONTINUATION ---\n' +
+      'You are continuing a previous Polaris session. The diagnostic log from that session is provided below.\n' +
+      'Pick up where it left off: address any unfinished task or unanswered question.\n' +
+      'Do not restate the prior session\'s work; reference it only as needed.\n' +
+      'The diagnostic log shows every tool call, prompt, and response from the prior session.\n\n' +
+      continuationContext
+    );
+  }
 
   if (isRoutine) {
     layers.push(
@@ -3545,7 +3556,7 @@ function loadSessionMessages(sessionId) {
 
 // ── Agentic loop ──────────────────────────────────────────────────────────────
 
-async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMessage = true) {
+async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMessage = true, continuationContext = null) {
   const session = sessions.get(sessionId);
   if (!session) return;
   const config = readConfig();
@@ -3555,9 +3566,18 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     return;
   }
 
-  addToHistory(userMessage);
-  if (broadcastUserMessage) {
-    broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
+  // Store continuation context in session for later injection into system prompt
+  if (continuationContext) {
+    session.continuationContext = continuationContext;
+  }
+
+  // Only treat userMessage as a regular user input if there's no continuation context
+  // (continuation context has its own framing)
+  if (!continuationContext) {
+    addToHistory(userMessage);
+    if (broadcastUserMessage) {
+      broadcast({ type: 'line', sessionId, text: userMessage, role: 'user' });
+    }
   }
 
   // Load project memory from Obsidian once per session (server-side, never sent to API directly)
@@ -3621,8 +3641,12 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     }
     if (blocks.length > 0) messageContent = blocks;
   }
-  session.messages.push({ role: 'user', content: messageContent });
-  if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
+  // Only add message to history if not a continuation context session
+  // (continuation context goes into system prompt and agent starts autonomously)
+  if (!continuationContext) {
+    session.messages.push({ role: 'user', content: messageContent });
+    if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
+  }
 
   const tier  = session.tier || 'floor';
   const hasImage = Array.isArray(messageContent)
@@ -3649,7 +3673,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   session.aborted = false;
 
   const isTurn1 = !session.messages || session.messages.filter(m => m.role === 'user').length === 0;
-  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, isTurn1);
+  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, isTurn1, session.continuationContext || null);
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
@@ -3659,7 +3683,12 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   // Diag log
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
   const dlog = (label, text) => { const t = ((Date.now()-startMs)/1000).toFixed(3); try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': '+String(text).slice(0,500) : ''}\n`, 'utf8'); } catch {} };
-  try { fs.appendFileSync(diagPath, `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api\nWORKDIR: ${workDir}\n--- USER PROMPT ---\n${userMessage}\n--- LOOP ---\n`, 'utf8'); } catch {}
+  try {
+    const diagHeader = continuationContext
+      ? `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api\nWORKDIR: ${workDir}\nTYPE: CONTINUATION (prior session diagnostics in system prompt)\n--- LOOP ---\n`
+      : `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api\nWORKDIR: ${workDir}\n--- USER PROMPT ---\n${userMessage}\n--- LOOP ---\n`;
+    fs.appendFileSync(diagPath, diagHeader, 'utf8');
+  } catch {}
 
   // Mark session id (use sessionId as claudeSessionId in direct mode for resume tracking)
   if (!session.claudeSessionId) session.claudeSessionId = sessionId;
@@ -6928,8 +6957,8 @@ async function handleMessage(ws, raw) {
     } else if (isChatLike) {
       spawnChatRouter(newId, continuationPrompt, readConfig());
     } else {
-      // Agent: pass broadcastUserMessage=false so the giant diag dump doesn't flood the terminal.
-      runDirectAgent(newId, continuationPrompt, newSession.workDir, false)
+      // Agent: pass continuation context (no user message needed for continuation)
+      runDirectAgent(newId, '', newSession.workDir, false, continuationPrompt)
         .catch(err => console.error('[transfer-agent] unhandled error:', err.stack || err.message));
     }
     return;
