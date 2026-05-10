@@ -6010,7 +6010,7 @@ async function handleMessage(ws, raw) {
       if (forkSession) {
         forkSession.status = 'running';
         broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
-        broadcast({ type: 'line', sessionId: forkId, text: displayPrompt || prompt, role: 'user' });
+        // runDirectAgent broadcasts the user line itself — don't duplicate it here
         runDirectAgent(forkId, prompt, forkSession.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
       }
     }
