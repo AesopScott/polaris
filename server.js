@@ -4459,15 +4459,26 @@ async function gptTypeAndSend(cdpSend, text) {
 
   const sent = await cdpEval(cdpSend, `
     (function() {
-      const btn = document.querySelector('button[aria-label="Send prompt"]') ||
-                  document.querySelector('button[aria-label*="Send" i]');
-      if (!btn || btn.disabled) return { ok: false, error: btn ? 'disabled — text may not have registered' : 'not found' };
-      const fk = Object.keys(btn).find(k => k.startsWith('__reactFiber'));
-      if (fk) {
-        let f = btn[fk];
-        while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
-      } else { btn.click(); }
-      return { ok: true };
+      const btn = document.querySelector('button[data-testid="send-button"]') ||
+                  document.querySelector('button[data-testid="fruitjuice-send-button"]') ||
+                  document.querySelector('button[aria-label="Send prompt"]') ||
+                  document.querySelector('button[aria-label*="Send" i]') ||
+                  document.querySelector('form button[type="submit"]');
+      if (btn && !btn.disabled) {
+        const fk = Object.keys(btn).find(k => k.startsWith('__reactFiber'));
+        if (fk) {
+          let f = btn[fk];
+          while (f) { if (f.memoizedProps?.onClick) { f.memoizedProps.onClick({ stopPropagation:()=>{}, preventDefault:()=>{} }); break; } f = f.return; }
+        } else { btn.click(); }
+        return { ok: true };
+      }
+      const ta = document.querySelector('.ProseMirror[contenteditable="true"]') ||
+                 document.querySelector('[contenteditable="true"]');
+      if (ta) {
+        ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        return { ok: true, via: 'enter-key' };
+      }
+      return { ok: false, error: btn ? 'disabled — text may not have registered' : 'not found' };
     })()
   `);
   if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
