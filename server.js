@@ -4603,7 +4603,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   // subcommand for the CLI to parse them.
   const args = isResume
     ? ['exec', '--json', 'resume', session.codexThreadId, '-']
-    : ['--sandbox', 'workspace-write', 'exec', '--json', '--skip-git-repo-check'];
+    : ['--sandbox', 'danger-full-access', 'exec', '--json', '--skip-git-repo-check'];
 
   // Turn 1: prepend Polaris context + history. Turn 2+: just the new message.
   let fullPrompt;
