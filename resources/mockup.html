@@ -6375,10 +6375,17 @@
 
   function unhideCard(sid) {
     hiddenCards.delete(sid);
-    const card = document.querySelector(`.card[data-sid="${sid}"]`);
-    if (card) card.style.display = '';
-    updateHiddenCount();
-    updateMiniCards();
+    const s = sessionStore[sid];
+    if (s) {
+      s.column = null;
+      sessionOrder = [sid, ...sessionOrder.filter(id => id !== sid)];
+      renderGrid();
+    } else {
+      const card = document.querySelector(`.card[data-sid="${sid}"]`);
+      if (card) card.style.display = '';
+      updateHiddenCount();
+      updateMiniCards();
+    }
     applySessionFilter();
     saveHiddenCards();
   }
@@ -6520,12 +6527,9 @@
     const s = sessionStore[sessionId];
     if (!s) return;
     s.minimized = false;
-    const grid = getActiveGrid();
-    if (grid) {
-      const card = grid.querySelector(`[data-sid="${sessionId}"]`);
-      if (card && !hiddenCards.has(sessionId)) card.style.display = '';
-    }
-    updateMiniCards();
+    s.column = null;
+    sessionOrder = [sessionId, ...sessionOrder.filter(id => id !== sessionId)];
+    renderGrid();
     pushDebugLog(`[card] Restored: ${s.name || sessionId}`);
   }
 
