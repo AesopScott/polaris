@@ -1391,20 +1391,14 @@
   </div>
 
   <!-- Minimized / Stats Row -->
-  <div class="minimized-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:6px 16px;">
+  <div class="minimized-row" style="display:grid;grid-template-columns:2fr 1fr;align-items:center;padding:6px 16px;">
 
-    <!-- Left third: New Session link (when minimized) + up to 4 minimized session chips -->
-    <div style="display:flex;gap:6px;align-items:center;width:100%;">
+    <!-- Left two-thirds: New Session link + minimized + hidden session chips -->
+    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap;">
       <a class="new-session-link" href="#" onclick="expandLaunchBar(this);return false;">New Session</a>
       <div class="mini-card">Fix Auth Bug</div>
       <div class="mini-card">DB Migration</div>
       <div class="mini-card" style="opacity:0.4;">+ 2 more</div>
-    </div>
-
-    <!-- Middle third: Connected, centered -->
-    <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
-      <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;display:block;flex-shrink:0;"></span>
-      <span style="font-size:12px;font-weight:600;color:#22c55e;">Connected</span>
     </div>
 
     <!-- Right third: Waiting + Running Sessions + Hidden count on one row -->
