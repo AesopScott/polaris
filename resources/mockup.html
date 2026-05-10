@@ -3707,6 +3707,17 @@
         }
         break;
       }
+      case 'factory-status': {
+        if (msg.error) {
+          pushDebugLog(`[factory] launch error: ${msg.error}`, true);
+        } else if (msg.running) {
+          pushDebugLog('[factory] AI Factory already running on :40100');
+        } else if (msg.launching) {
+          pushDebugLog('[factory] AI Factory launching — npm install && npm start...');
+        }
+        break;
+      }
+
       case 'build-result': {
         pushDebugLog(`[build] ${msg.ok ? 'started' : 'rejected'}: ${msg.message}`);
         if (msg.ok) {
@@ -8223,6 +8234,7 @@
   window.closeChangelogPopup = closeChangelogPopup;
 
   function launchFactory() {
+    pushDebugLog('[factory] checking AI Factory status...');
     wsSend({ type: 'launch-factory' });
   }
   window.launchFactory = launchFactory;
