@@ -871,6 +871,20 @@ function broadcast(data) {
       s.lines.push({ text: data.text, role: data.role });
       if (data.role === 'user') s.lastPrompt = data.text;
       if (data.role === 'assistant') saveSessions();
+      // Auto-revert status from error to running when session produces output
+      if (s.status === 'error' && ['assistant', 'tool', 'system'].includes(data.role)) {
+        s.status = 'running';
+        s.endAt = null;
+        // Broadcast the status change so UI reflects that session is running again
+        setImmediate(() => {
+          const msg = JSON.stringify({ type: 'session-status', sessionId: data.sessionId, status: 'running' });
+          if (wss) {
+            for (const client of wss.clients) {
+              if (client.readyState === WebSocket.OPEN) client.send(msg);
+            }
+          }
+        });
+      }
     }
   }
   if (data.type === 'session-status' && data.sessionId) {
