@@ -6763,61 +6763,6 @@ async function handleMessage(ws, raw) {
     return;
   }
 
-  if (type === 'launch-factory') {
-    const AIFACTORY_DIR = 'C:\\Users\\scott\\Code\\aifactory';
-    const req = http.get('http://127.0.0.1:40100/health', (res) => {
-      res.resume();
-      sendTo(ws, { type: 'factory-status', running: true });
-    });
-    req.on('error', () => {
-      try {
-        const env = { ...process.env };
-        delete env.ELECTRON_RUN_AS_NODE;
-        const child = spawn('npm install && npm start', [], {
-          cwd: AIFACTORY_DIR,
-          env,
-          detached: true,
-          stdio: 'ignore',
-          shell: true
-        });
-        child.unref();
-        sendTo(ws, { type: 'factory-status', running: false, launching: true });
-      } catch (e) {
-        sendTo(ws, { type: 'factory-status', running: false, launching: false, error: e.message });
-      }
-    });
-    req.setTimeout(2000, () => req.destroy());
-    return;
-  }
-
-  if (type === 'launch-factory') {
-    const AIFACTORY_DIR = 'C:\\Users\\scott\\Code\\aifactory';
-    const req = http.get('http://127.0.0.1:40100/health', (res) => {
-      res.resume();
-      sendTo(ws, { type: 'factory-status', running: true });
-    });
-    req.on('error', () => {
-      try {
-        const env = { ...process.env };
-        delete env.ELECTRON_RUN_AS_NODE;
-        const child = spawn('npm install && npm start', [], {
-          cwd: AIFACTORY_DIR,
-          env,
-          detached: true,
-          stdio: 'ignore',
-          shell: true
-        });
-        child.unref();
-        sendTo(ws, { type: 'factory-status', running: false, launching: true });
-      } catch (e) {
-        console.error('[factory] spawn failed:', e.message);
-        sendTo(ws, { type: 'factory-status', running: false, launching: false, error: e.message });
-      }
-    });
-    req.setTimeout(2000, () => req.destroy());
-    return;
-  }
-
   if (type === 'set-session-status') {
     const result = toolSetStatus({ status: msg.status }, msg.sessionId);
     console.log(`[set-session-status] ${msg.sessionId} → ${msg.status}: ${result}`);
