@@ -2632,21 +2632,21 @@
   async function detectAndShowDevServer(sid, card) {
     const commonPorts = [3000, 3001, 8000, 8080, 5173, 4173];
     const body = card.querySelector('[data-preview-body]');
-    if (!body) return;
+    const urlInput = card.querySelector('[data-preview-url]');
+    if (!body || !urlInput) return;
 
     for (const port of commonPorts) {
       try {
         const response = await fetch(`http://localhost:${port}`, { method: 'HEAD', mode: 'no-cors', timeout: 500 });
         // If we get here without error, a server is likely running
-        const iframeHtml = `
-          <div style="display:flex; flex-direction:column; height:100%; gap:8px; padding:12px;">
-            <div style="background:#1a1a1a; color:#4ade80; padding:8px 12px; border-radius:6px; font-size:12px; font-family:monospace;">
-              ✓ Dev server detected on port ${port}
-            </div>
-            <iframe src="http://localhost:${port}" style="flex:1; border:none; border-radius:6px; background:white;"></iframe>
-          </div>
-        `;
-        body.innerHTML = iframeHtml;
+        urlInput.value = `http://localhost:${port}`;
+        urlInput.addEventListener('change', () => {
+          const url = urlInput.value.trim();
+          if (!url) return;
+          const finalUrl = url.startsWith('http') ? url : `http://localhost:3000${url.startsWith('/') ? '' : '/'}${url}`;
+          body.innerHTML = `<iframe src="${escHtmlAttr(finalUrl)}" style="width:100%; height:100%; border:none; border-radius:6px; background:white;"></iframe>`;
+        });
+        urlInput.dispatchEvent(new Event('change'));
         return;
       } catch (e) {
         // Port not responding, try next
@@ -2654,10 +2654,11 @@
     }
 
     // No dev server found
+    urlInput.placeholder = 'No server detected — type URL to load';
     body.innerHTML = `
       <div style="padding:16px; text-align:center; color:#999;">
         <p style="margin:0 0 12px; font-size:14px;">No dev server detected</p>
-        <p style="margin:0; font-size:12px; line-height:1.6;">Click the <strong>Web</strong> button to start the live server, then refresh this preview.</p>
+        <p style="margin:0; font-size:12px; line-height:1.6;">Click the <strong>Web</strong> button to start, then type a URL above (e.g., localhost:3000/card)</p>
       </div>
     `;
   }
@@ -5542,6 +5543,7 @@
       <div class="preview-drawer" data-preview-drawer>
         <div class="preview-drawer-header">
           <select data-preview-file><option value="">— Pick a recently edited file —</option></select>
+          <input type="text" data-preview-url placeholder="http://localhost:3000 or /path" style="flex:1; padding:4px 8px; border:1px solid #333; border-radius:4px; background:#1a1a1a; color:#fff; font-size:12px; font-family:monospace;" />
           <button class="card-btn" data-action="preview-refresh" title="Refresh preview">↻</button>
           <button class="card-btn" data-action="preview-close" title="Close preview">✕</button>
         </div>
