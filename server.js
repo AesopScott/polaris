@@ -8047,10 +8047,34 @@ async function handleMessage(ws, raw) {
     const statuses = {};
     try {
       if (fs.existsSync(statusDir)) {
-        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md'));
+        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md') && !f.includes('.'));
         for (const f of files) {
           const projectName = f.replace(/\.md$/, '');
-          statuses[projectName] = fs.readFileSync(path.join(statusDir, f), 'utf8');
+          let content = fs.readFileSync(path.join(statusDir, f), 'utf8');
+
+          // If main file is empty or near-empty, auto-load most recent archive
+          if (!content.trim() || content.trim().length < 50) {
+            const archiveDir = path.join(statusDir, 'archive');
+            if (fs.existsSync(archiveDir)) {
+              const safeName = projectName.replace(/[<>:"/\\|?*]/g, '_');
+              const archiveFiles = fs.readdirSync(archiveDir)
+                .filter(af => af.startsWith(safeName + '.') && af.endsWith('.md'))
+                .sort()
+                .reverse();
+
+              if (archiveFiles.length > 0) {
+                const mostRecent = archiveFiles[0];
+                try {
+                  content = fs.readFileSync(path.join(archiveDir, mostRecent), 'utf8');
+                  log(`[project-status] loaded archive for ${projectName}: ${mostRecent}`);
+                } catch (archErr) {
+                  log(`[project-status] failed to load archive ${mostRecent}: ${archErr.message}`);
+                }
+              }
+            }
+          }
+
+          statuses[projectName] = content;
         }
       }
     } catch (e) {
