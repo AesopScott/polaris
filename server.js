@@ -6851,6 +6851,92 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'transfer-session') {
+    const src = sessions.get(msg.sessionId);
+    if (!src) return sendTo(ws, { type: 'error', text: 'Source session not found for transfer' });
+
+    // Read the full diag log — user explicitly requested no truncation.
+    const srcDiagPath = path.join(LOGS_DIR, `diag-${src.id}.txt`);
+    let diagContent;
+    try {
+      diagContent = fs.existsSync(srcDiagPath) ? fs.readFileSync(srcDiagPath, 'utf8') : '(no diag log found for source session)';
+    } catch (e) {
+      diagContent = `(failed to read diag log: ${e.message})`;
+    }
+
+    const continuationPrompt =
+      'You are continuing a previous Polaris session. Below is the full diagnostic ' +
+      'log from that session — every tool call, prompt, and response. Pick up where ' +
+      'it left off: address any unfinished task or unanswered question. Do not ' +
+      'restate the prior session\'s work; reference it only as needed.\n\n' +
+      `--- PRIOR SESSION DIAG (sessionId=${src.id}) ---\n${diagContent}\n--- END DIAG ---`;
+
+    // Pick id prefix and runner to mirror source session type.
+    const isCodex = !!src.isCodex;
+    const isGpt = !!src.isGpt;
+    const isChatLike = !isCodex && !isGpt && !!src.isChat;
+    const idPrefix = isCodex ? 'codex' : isGpt ? 'gpt' : isChatLike ? 'chat' : 's';
+    const newId = `${idPrefix}_${Date.now()}`;
+    const newName = `Transfer: ${src.name || 'session'}`;
+    const displayPrompt = `[Transfer from ${src.name || src.id}] Continuing prior session — full diag log handed to new session as context.`;
+
+    const newSession = {
+      id: newId,
+      name: newName,
+      workDir: src.workDir || null,
+      projectName: src.projectName || null,
+      model: src.model || null,
+      tier: src.tier || null,
+      isChat: !!src.isChat,
+      isGpt,
+      isCodex,
+      status: 'running',
+      startAt: Date.now(),
+      lastActivityAt: Date.now(),
+      stallCount: 0,
+      proc: null,
+      watcher: null,
+      timeout: null,
+      lines: [],
+      lastPrompt: continuationPrompt,
+      claudeSessionId: null,
+      pendingImages: [],
+      pendingDocs: [],
+      pendingAudio: [],
+    };
+    sessions.set(newId, newSession);
+
+    const createdMsg = {
+      type: 'session-created',
+      sessionId: newId,
+      name: newName,
+      workDir: newSession.workDir,
+      projectName: newSession.projectName,
+      model: newSession.model,
+    };
+    if (isChatLike || isGpt || isCodex) createdMsg.isChat = true;
+    if (isGpt) createdMsg.isGpt = true;
+    if (isCodex) createdMsg.isCodex = true;
+    broadcast(createdMsg);
+
+    // Display only the short header in the terminal — full diag is in lastPrompt.
+    broadcast({ type: 'line', sessionId: newId, text: displayPrompt, role: 'user' });
+    saveSessions();
+
+    if (isCodex) {
+      spawnCodexSession(newId, continuationPrompt, readConfig());
+    } else if (isGpt) {
+      spawnGptChat(newId, continuationPrompt, newSession.tier);
+    } else if (isChatLike) {
+      spawnChatRouter(newId, continuationPrompt, readConfig());
+    } else {
+      // Agent: pass broadcastUserMessage=false so the giant diag dump doesn't flood the terminal.
+      runDirectAgent(newId, continuationPrompt, newSession.workDir, false)
+        .catch(err => console.error('[transfer-agent] unhandled error:', err.stack || err.message));
+    }
+    return;
+  }
+
   if (type === 'get-diag') {
     const diagPath = path.join(LOGS_DIR, `diag-${msg.sessionId}.txt`);
     try {
