@@ -107,16 +107,14 @@ const BASE_SYSTEM_PROMPT = [
   'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
   'Never ask the user for file paths, directory names, or code locations. Use Glob to find files by pattern and Grep to search content. Always search first, then act. If you need to find something, find it yourself.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
-  'End-of-session ritual when source files were modified: (1) Bump `package.json` version — patch increment (1.0.X → 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and that they can install with: & C:\\Users\\scott\\Code\\Polaris\\scripts\\build-install.ps1. The server\'s extractSessionToKnowledge runs automatically and writes a changelog row to Obsidian\'s 4-Changelog.md when it sees the bumped version — you do NOT need to write the changelog manually.',
-  'Obsidian writes are automatic. You do NOT need to manually write session notes or numbered-file updates to Obsidian. When this session ends, Polaris runs extractSessionToKnowledge server-side, which calls DeepSeek to distill what happened and writes to 2-Architecture.md / 3-Build-Plan.md / 7-Integrations.md / 4-Changelog.md as appropriate. Your job is to (a) do the work, (b) bump the version if source changed, (c) commit. The Obsidian sync handles itself.',
+  'End-of-session ritual when source files were modified: (1) Bump `package.json` version — patch increment (1.0.X → 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and prompt them to run the build-install script.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses. Do not give constant "I am reading X", "I have finished Y" status updates — just do the work and provide the final result or the next proposal.',
   'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The three values and when to use them: (1) SetStatus("test") — after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses so it\'s visually obvious. (2) SetStatus("waiting") — whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("done") — only when the task is fully complete and requires no further verification. The server auto-detects git commits → "test" and a trailing question mark → "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
   'When you need to ask the user a question, need clarification, or require their input before proceeding, you MUST use the AskUserQuestion tool — never write the question as plain text in your response. The AskUserQuestion tool renders a visually prominent interactive prompt in the UI and pauses the session so the user cannot miss it. Plain-text questions get buried in terminal output and are routinely missed.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
-  'At the start of every session, your FIRST action must be to call QueryMemory with no arguments. This loads your full project knowledge base — architecture, file map, build plan, changelog. Do not respond to the user or take any other action until you have called QueryMemory. This is mandatory, not optional.',
   "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away — generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
   "Source files inside the project workDir are auto-backed-up to %APPDATA%\\.claude\\polaris\\source-backups\\<projectName>\\ before every Edit, Write, or shell-tool write (Set-Content, Out-File, > redirection, etc.). To restore a corrupted file, find the most recent backup at that path (filename: <sanitizedRelPath>.<ISO>.<ext>) and copy it back to the source. Do not assume backups are absent without checking.",
-  "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop, including the `projectMemory` loader that reads Obsidian files at session start), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these and other key functions — consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The same propose-before-act rule, cross-check approval gate, and Phase 0 backup all apply — you cannot bypass them, and they make self-modification safe. After a code change, bump `package.json` and tell Scott to reinstall (you cannot restart the server yourself).",
+  "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these — consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The propose-before-act rule, approval gate, and Phase 0 backup all apply. After a code change, bump `package.json` and tell Scott to reinstall.",
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -1569,7 +1567,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
 ];
 
-function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false) {
+function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = true) {
   const layers = [BASE_SYSTEM_PROMPT];
 
   if (isRoutine) {
@@ -1635,9 +1633,11 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
 
       // Auto-inject file map from project memory — bypasses QueryMemory so any
       // model (including weaker eval models) gets critical file paths up front.
-      const fileMapKey = Object.keys(projectMemory).find(k => k.toLowerCase().includes('file-map'));
-      if (fileMapKey) {
-        layers.push(`--- Project File Map ---\n${projectMemory[fileMapKey]}`);
+      if (injectFileMap || isRoutine) {
+        const fileMapKey = Object.keys(projectMemory).find(k => k.toLowerCase().includes('file-map'));
+        if (fileMapKey) {
+          layers.push(`--- Project File Map ---\n${projectMemory[fileMapKey]}`);
+        }
       }
     }
   }
@@ -3559,12 +3559,13 @@ async function runDirectAgent(sessionId, userMessage, workDir) {
   if (!session.resolvedModel) session.resolvedModel = model;
   session.aborted = false;
 
-  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false);
+  const isTurn1 = !session.messages || session.messages.filter(m => m.role === 'user').length === 0;
+  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, isTurn1);
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
   const _hasFileMap = _memKeys.some(k => k.toLowerCase().includes('file-map'));
-  broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded${_hasFileMap ? ' — file-map injected' : ' — no file-map found'}`, role: 'system' });
+  broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded${_hasFileMap ? (isTurn1 ? ' — file-map injected' : ' — file-map skipped (turn 2+)') : ' — no file-map found'}`, role: 'system' });
 
   // Diag log
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
