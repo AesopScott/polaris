@@ -6496,7 +6496,7 @@
         const chip = document.createElement('div');
         chip.className = 'mini-card mini-card--hidden';
         chip.style.cursor = 'pointer';
-        chip.style.color = s.isChat ? '#a78bfa' : (window.getProjectColorByName ? window.getProjectColorByName(s.projectName) || '#60a5fa' : '#60a5fa');
+        chip.style.color = '#6b7280';
         chip.title = `Click to unhide: ${s.name}`;
         chip.textContent = (s.name || 'Session').split(' ').slice(0, 3).join(' ');
         chip.onclick = () => unhideCard(s.id);
