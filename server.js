@@ -619,6 +619,8 @@ function serializeSession(s) {
     lines: (s.lines || []).slice(-300),
     lastUsage: s.lastUsage || null,
     totalCost: s.totalCost || 0,
+    isForked: !!s.isForked,
+    primarySessionId: s.primarySessionId || null,
   };
 }
 
@@ -640,6 +642,12 @@ function loadPersistedSessions() {
         proc: null, watcher: null, timeout: null,
         lines: s.lines || [],
       });
+    }
+    // Rebuild forkMap from persisted sessions
+    for (const s of arr) {
+      if (s.isForked && s.primarySessionId) {
+        forkMap.set(s.primarySessionId, s.id);
+      }
     }
   } catch {}
 }
