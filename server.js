@@ -4418,6 +4418,23 @@ async function spawnCodexSession(sessionId, prompt, config) {
     ? session.workDir
     : (() => { if (!fs.existsSync(CHAT_DIR)) fs.mkdirSync(CHAT_DIR, { recursive: true }); return CHAT_DIR; })();
 
+  // Start workdir file watcher so Preview/Versions panel populates as Codex edits files.
+  if (session.workDir && !session.watcher) {
+    try {
+      const watcher = watchSessionFiles(sessionId, session.workDir);
+      if (watcher) session.watcher = watcher;
+      dlog('WATCHER_STARTED', session.workDir);
+    } catch (e) { dlog('WATCHER_ERR', e.message); }
+  }
+
+  // Snapshot modified files before this turn so post-hoc cross-check can detect net-new changes.
+  let preTurnDiff = '';
+  if (session.workDir) {
+    try {
+      preTurnDiff = execSync('git diff HEAD --name-only', { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+    } catch {}
+  }
+
   const isResume = !!session.codexThreadId;
   const codexBin = config.codexBinaryPath || 'codex';
 
@@ -4439,6 +4456,23 @@ async function spawnCodexSession(sessionId, prompt, config) {
     const polarisContext = buildPolarisContextBlock(config, session);
     fullPrompt = polarisContext + '\n\n' + (history || prompt);
   }
+
+  // Extract text from DOCX/PDF attachments and prepend to prompt (Codex stdin is text-only).
+  const codexDocs = session.pendingDocs || [];
+  session.pendingDocs = [];
+  let docTextPrefix = '';
+  for (const doc of codexDocs) {
+    if (!doc.dataUrl || !doc.name) continue;
+    const text = await extractDocText(doc.dataUrl, doc.name);
+    if (text) {
+      docTextPrefix += `--- File: ${doc.name} ---\n${text.trim()}\n--- End: ${doc.name} ---\n\n`;
+      dlog('DOC_EXTRACT', `name=${doc.name} chars=${text.length}`);
+      broadcast({ type: 'line', sessionId, text: `[document extracted: ${doc.name} (${text.length} chars)]`, role: 'system' });
+    } else {
+      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} — could not extract text]`, role: 'system' });
+    }
+  }
+  if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
 
   try {
     fs.appendFileSync(diagPath,
@@ -4487,7 +4521,8 @@ async function spawnCodexSession(sessionId, prompt, config) {
   let lineBuf = '';
   let finalUsage = null;
   let lastAssistantText = '';
-  let firstTokenMs = null;
+  let firstTokenMs = null, totalChars = 0, eventCount = 0, rateInterval = null;
+  let committedDuringRun = false;
 
   proc.stdout.on('data', chunk => {
     lineBuf += chunk.toString('utf8');
@@ -4500,14 +4535,36 @@ async function spawnCodexSession(sessionId, prompt, config) {
         broadcast({ type: 'line', sessionId, text: line, role: 'assistant' });
         continue;
       }
+      eventCount++;
       const t = evt.type;
       if (t === 'thread.started' && evt.thread_id) {
         session.codexThreadId = evt.thread_id;
         dlog('THREAD_ID', evt.thread_id);
-      } else if (t === 'item.completed' && evt.item?.type === 'agent_message' && evt.item?.text) {
-        if (!firstTokenMs) firstTokenMs = Date.now();
-        lastAssistantText = evt.item.text;
-        broadcast({ type: 'line', sessionId, text: evt.item.text, role: 'assistant' });
+      } else if (t === 'item.created') {
+        // Show tool calls as they start (local shell, MCP, function calls).
+        const item = evt.item;
+        if (item && (item.type === 'local_shell_call' || item.type === 'mcp_tool_call' || item.type === 'function_call')) {
+          const name = item.name || item.type;
+          const inputStr = item.arguments ? JSON.stringify(item.arguments).slice(0, 120)
+            : item.action ? JSON.stringify(item.action).slice(0, 120) : '';
+          broadcast({ type: 'line', sessionId, text: `⚙ ${name}${inputStr ? ' ' + inputStr : ''}`, role: 'tool' });
+          if (/\bgit\s+(commit|push)\b/i.test(JSON.stringify(item))) committedDuringRun = true;
+        }
+      } else if (t === 'item.completed') {
+        const item = evt.item;
+        if (item?.type === 'agent_message' && item.text) {
+          if (!firstTokenMs) {
+            firstTokenMs = Date.now();
+            rateInterval = setInterval(() => {
+              const elapsed = (Date.now() - firstTokenMs) / 1000;
+              const tps = elapsed > 0 ? Math.round((totalChars / 4) / elapsed) : 0;
+              broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: tps, ttft: firstTokenMs - startMs });
+            }, 400);
+          }
+          lastAssistantText = item.text;
+          totalChars += item.text.length;
+          broadcast({ type: 'line', sessionId, text: item.text, role: 'assistant' });
+        }
       } else if (t === 'turn.completed' && evt.usage) {
         finalUsage = {
           input_tokens: evt.usage.input_tokens || 0,
@@ -4530,15 +4587,56 @@ async function spawnCodexSession(sessionId, prompt, config) {
     }
   });
 
-  proc.on('close', code => {
-    dlog('CLOSE', `code=${code}`);
+  proc.on('close', async code => {
+    dlog('CLOSE', `code=${code} events=${eventCount}`);
+    if (rateInterval) clearInterval(rateInterval);
+    const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
+    const finalTps = firstTokenElapsed && firstTokenElapsed > 0 ? Math.round((totalChars / 4) / firstTokenElapsed) : 0;
+    if (firstTokenMs) broadcast({ type: 'streaming-rate', sessionId, tokensPerSecond: finalTps, ttft: firstTokenMs - startMs, final: true });
+
+    // Windows can return null exit code even on success; treat as success when we got events + usage.
+    const effectiveCode = (code === null && finalUsage && eventCount > 0) ? 0 : code;
+
     if (finalUsage) {
       try { appendTokenLog(sessionId, 'openai/codex-1', finalUsage); } catch {}
       broadcastUsage(sessionId, finalUsage, session.codexThreadId || null, null);
     }
-    session.status = code === 0 ? inferTermStatus(lastAssistantText) : 'error';
+
+    let termStatus;
+    if (effectiveCode !== 0) {
+      termStatus = 'error';
+    } else if (committedDuringRun) {
+      termStatus = 'test';
+    } else {
+      termStatus = inferTermStatus(lastAssistantText);
+    }
+    session.status = termStatus;
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
+
+    // Post-hoc cross-check: find files Codex changed this turn and run the reviewer.
+    if (session.workDir && effectiveCode === 0) {
+      try {
+        const postTurnDiff = execSync('git diff HEAD --name-only', { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+        const preDiffs = new Set((preTurnDiff || '').split('\n').filter(Boolean));
+        const newlyChanged = (postTurnDiff || '').split('\n').filter(f => f && !preDiffs.has(f));
+        for (const relPath of newlyChanged) {
+          const fullPath = path.join(session.workDir, relPath);
+          if (!fs.existsSync(fullPath)) continue;
+          try {
+            const newContent = fs.readFileSync(fullPath, 'utf8');
+            let originalContent = '';
+            try {
+              originalContent = execSync(`git show HEAD:${relPath.replace(/\\/g, '/')}`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
+            } catch {}
+            if (newContent !== originalContent) {
+              await runPostHocCrossCheck({ sessionId, filePath: fullPath, operation: 'Codex', originalContent, newContent, workDir: session.workDir });
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
     try { fs.rmSync(codexSessionDir, { recursive: true, force: true }); } catch {}
   });
 
@@ -5690,12 +5788,16 @@ async function handleMessage(ws, raw) {
     const id = `codex_${Date.now()}`;
     const name = generateSessionName(prompt);
     const codexTier = (tier || 'balanced').toLowerCase();
+    const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
+    const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
+    const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       isChat: true, isCodex: true, model: 'openai/codex-1 (Codex CLI)', tier: codexTier,
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, codexThreadId: null,
+      pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
     broadcast({ type: 'line', sessionId: id, text: prompt, role: 'user' });
