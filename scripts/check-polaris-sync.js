@@ -76,6 +76,15 @@ check(
     && /\^ModGen\(\?:Dev\|Activate\|Scaffold\)-/.test(server),
   'Course routine API and Courses panel building state should use ModGenDev/Activate/Scaffold routine tags.'
 );
+check(
+  /approval_policy\s*=\s*"never"/.test(server)
+    && /sandbox_mode\s*=\s*"danger-full-access"/.test(server)
+    && !/default_permissions\s*=/.test(server)
+    && /--dangerously-bypass-approvals-and-sandbox/.test(server)
+    && /resume',\s*session\.codexThreadId/.test(server)
+    && /--skip-git-repo-check',\s*'resume'/.test(server),
+  'Codex sessions should use explicit dangerous bypass flags and carry skip-git-repo-check on resume.'
+);
 
 if (failures.length > 0) {
   console.error('FAIL polaris-sync');

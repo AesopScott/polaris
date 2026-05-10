@@ -4545,7 +4545,6 @@ function buildCodexConfigToml(mcpServers) {
   const lines = [];
   lines.push('approval_policy = "never"');
   lines.push('sandbox_mode = "danger-full-access"');
-  lines.push('default_permissions = ":danger-no-sandbox"');
   lines.push('');
   for (const [rawName, server] of Object.entries(mcpServers)) {
     const key = rawName.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -4612,12 +4611,13 @@ async function spawnCodexSession(sessionId, prompt, config) {
   const isResume = !!session.codexThreadId;
   const codexBin = config.codexBinaryPath || 'codex';
 
-  // `exec resume` only accepts --json; sandbox/git flags belong to the original
-  // session and are rejected on resume. Flags must precede the `resume`
-  // subcommand for the CLI to parse them.
+  // Keep permissions explicit in the CLI invocation instead of relying on
+  // config profiles that can drift across Codex CLI versions. The bypass flag
+  // is intentionally dangerous: Polaris only uses it for the user-selected
+  // Codex mode on this local machine.
   const args = isResume
-    ? ['exec', '--json', 'resume', session.codexThreadId, '-']
-    : ['--sandbox', 'danger-full-access', 'exec', '--json', '--skip-git-repo-check'];
+    ? ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', 'resume', session.codexThreadId, '-']
+    : ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'];
 
   // Turn 1: prepend Polaris context + history. Turn 2+: just the new message.
   let fullPrompt;
