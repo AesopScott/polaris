@@ -3812,6 +3812,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
   if (s?.aborted) {
     // Stop handler already set status='done' and broadcast — just persist messages and free memory.
+    // Stop also clears session.pendingTurns, so no drain is needed here.
     saveSessionMessages(sessionId);
     releaseSessionMemory(sessionId);
     return;
@@ -3844,6 +3845,8 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     saveSessions();
     broadcast({ type: 'session-closed', sessionId });
   }
+  // Drain any prompts the user fired while this turn was running.
+  drainPendingTurns(sessionId);
 }
 
 // Drop heavy per-session fields after the agent loop finishes. The leak
@@ -4384,6 +4387,9 @@ async function spawnMaxChat(sessionId, prompt, config) {
     session.status = termStatus;
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
+    // Drain queued turns before the post-hoc cross-check kicks off so a user
+    // who fires a follow-up isn't blocked behind a reviewer modal.
+    drainPendingTurns(sessionId);
 
     // Post-hoc cross-check: compare git state after turn to pre-turn snapshot.
     // Files that changed during this Max turn are reviewed via runPostHocCrossCheck.
@@ -4424,6 +4430,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
     session.status = 'error';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: 'error' });
+    drainPendingTurns(sessionId);
   });
 
   try {
@@ -4698,6 +4705,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
     session.status = termStatus;
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
+    drainPendingTurns(sessionId);
 
     // Post-hoc cross-check: find files Codex changed this turn and run the reviewer.
     if (session.workDir && effectiveCode === 0) {
@@ -4735,6 +4743,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
     session.status = 'error';
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: 'error' });
+    drainPendingTurns(sessionId);
   });
 
   try {
@@ -5032,6 +5041,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
     session.endAt = Date.now();
   } finally {
     try { cdpConn?.ws?.close(); } catch {}
+    drainPendingTurns(sessionId);
   }
 }
 
@@ -5765,6 +5775,72 @@ function detectProjectFromPrompt(prompt) {
   return null;
 }
 
+// ─── Resume turn dispatch + queue drain ──────────────────────────────────────
+// executeResumeTurn — runs the post-guard portion of the resume handler for a
+// single turn (whether it just arrived from the WS handler or was popped from
+// session.pendingTurns). drainPendingTurns is called from every terminal-status
+// broadcast in runDirectAgent / spawnMaxChat / spawnCodexSession / spawnGptChat,
+// so queued turns auto-fire in order without ever creating concurrent CLI
+// children for the same Claude Code session_id.
+function executeResumeTurn(sessionId, turn) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  const { prompt, displayPrompt, projectName, images, docs, audio } = turn;
+  session.status = 'running';
+  session.lastActivityAt = Date.now();
+  session.stallCount = 0;
+  session.lastPrompt = prompt;
+  if (projectName !== undefined) {
+    const newProject = projectName || null;
+    if (newProject !== session.projectName) {
+      session.projectName = newProject;
+      if (newProject) broadcast({ type: 'session-project-changed', sessionId, projectName: newProject, workDir: session.workDir });
+    }
+  }
+  if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
+  if (Array.isArray(docs)   && docs.length)   session.pendingDocs   = docs.filter(d => d && typeof d.dataUrl === 'string');
+  if (Array.isArray(audio)  && audio.length)  session.pendingAudio  = audio.filter(a => a && typeof a.dataUrl === 'string');
+  if (session.isChat) {
+    const resumeAttachments = [
+      ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
+      ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
+      ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
+    ];
+    const imgLabel2 = resumeAttachments.length ? '\n' + resumeAttachments.join('  ') : '';
+    broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
+  }
+  broadcast({ type: 'session-status', sessionId, status: 'running' });
+  if (session.isCodex) {
+    spawnCodexSession(sessionId, prompt, readConfig());
+  } else if (session.isGpt) {
+    spawnGptChat(sessionId, prompt, session.tier);
+  } else if (session.isChat) {
+    spawnChatRouter(sessionId, prompt, readConfig());
+  } else {
+    runDirectAgent(sessionId, prompt, session.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
+  }
+  const forkId = forkMap.get(sessionId);
+  if (forkId) {
+    const forkSession = sessions.get(forkId);
+    if (forkSession) {
+      forkSession.status = 'running';
+      broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
+      runDirectAgent(forkId, prompt, forkSession.workDir, false).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
+    }
+  }
+}
+
+function drainPendingTurns(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  if (!Array.isArray(session.pendingTurns) || session.pendingTurns.length === 0) return;
+  const next = session.pendingTurns.shift();
+  // setImmediate so the calling close handler / status broadcast fully unwinds
+  // before the next spawn. Avoids re-entering the spawn function from inside
+  // its own proc.on('close') stack frame.
+  setImmediate(() => executeResumeTurn(sessionId, next));
+}
+
 // ─── WebSocket message handler ────────────────────────────────────────────────
 async function handleMessage(ws, raw) {
   let msg;
@@ -5971,52 +6047,20 @@ async function handleMessage(ws, raw) {
     const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
-    session.status = 'running';
-    session.lastActivityAt = Date.now();
-    session.stallCount = 0;
-    session.lastPrompt = prompt;
-    if (projectName !== undefined) {
-      const newProject = projectName || null;
-      if (newProject !== session.projectName) {
-        session.projectName = newProject;
-        if (newProject) broadcast({ type: 'session-project-changed', sessionId, projectName: newProject, workDir: session.workDir });
-      }
+    const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio };
+    // Re-entrancy guard: if a prior turn is still running, queue this one and
+    // drain it from the prior turn's terminal close handler. Prevents two
+    // `claude --resume <session_id>` processes from racing the same on-disk
+    // session-history file (root cause of orphaned-zombie hangs).
+    if (session.status === 'running') {
+      session.pendingTurns ||= [];
+      session.pendingTurns.push(turn);
+      broadcast({ type: 'line', sessionId,
+        text: `[queued — runs after current turn (${session.pendingTurns.length} ahead)]`,
+        role: 'system' });
+      return;
     }
-    if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
-    if (Array.isArray(docs)   && docs.length)   session.pendingDocs   = docs.filter(d => d && typeof d.dataUrl === 'string');
-    if (Array.isArray(audio)  && audio.length)  session.pendingAudio  = audio.filter(a => a && typeof a.dataUrl === 'string');
-    // Chat: spawnChat doesn't broadcast the user line, so do it here.
-    // Agent: runDirectAgent broadcasts the user line itself — skip here to avoid double display.
-    if (session.isChat) {
-      const resumeAttachments = [
-        ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
-        ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
-        ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
-      ];
-      const imgLabel2 = resumeAttachments.length ? '\n' + resumeAttachments.join('  ') : '';
-      broadcast({ type: 'line', sessionId, text: (displayPrompt || prompt) + imgLabel2, role: 'user' });
-    }
-    broadcast({ type: 'session-status', sessionId, status: 'running' });
-    if (session.isCodex) {
-      spawnCodexSession(sessionId, prompt, readConfig());
-    } else if (session.isGpt) {
-      spawnGptChat(sessionId, prompt, session.tier);
-    } else if (session.isChat) {
-      spawnChatRouter(sessionId, prompt, readConfig());
-    } else {
-      runDirectAgent(sessionId, prompt, session.workDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
-    }
-    // Mirror prompt to linked fork session (applies to all session types)
-    const forkId = forkMap.get(sessionId);
-    if (forkId) {
-      const forkSession = sessions.get(forkId);
-      if (forkSession) {
-        forkSession.status = 'running';
-        broadcast({ type: 'session-status', sessionId: forkId, status: 'running' });
-        // runDirectAgent broadcasts the user line itself — don't duplicate it here
-        runDirectAgent(forkId, prompt, forkSession.workDir, false).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
-      }
-    }
+    executeResumeTurn(sessionId, turn);
     return;
   }
 
@@ -6076,6 +6120,14 @@ async function handleMessage(ws, raw) {
       if (session.req) {
         session.req.destroy();
         session.req = null;
+      }
+      // Drop any prompts the user queued behind the active turn — Stop = cancel.
+      const droppedTurns = Array.isArray(session.pendingTurns) ? session.pendingTurns.length : 0;
+      session.pendingTurns = [];
+      if (droppedTurns) {
+        broadcast({ type: 'line', sessionId: msg.sessionId,
+          text: `[stop — cleared ${droppedTurns} queued turn${droppedTurns === 1 ? '' : 's'}]`,
+          role: 'system' });
       }
       session.status = 'done';
       session.endAt  = session.endAt || Date.now();
