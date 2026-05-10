@@ -3722,7 +3722,7 @@
           break;
         }
         if (msg.projects.length === 1 && msg.projects[0].isPolaris) {
-          showPolarisPreBuildPrompt();
+          startPolarisAutoBuild();
         } else {
           showPendingBuildsModal(msg.projects);
         }
@@ -12592,16 +12592,12 @@
   }
   window.executeBuild = executeBuild;
 
-  function showPolarisPreBuildPrompt(projectName) {
+  function startPolarisAutoBuild() {
     window._pendingBuildProject = null;
-    if (confirm(`[${projectName}] Run pre-build cross-check before building?`)) {
-      window._buildAfterCheck = true;
-      runPreBuildCheck();
-    } else {
-      showBuildTypeModal(true);
-    }
+    window._buildAfterCheck = true;
+    runPreBuildCheck();
   }
-  window.showPolarisPreBuildPrompt = showPolarisPreBuildPrompt;
+  window.startPolarisAutoBuild = startPolarisAutoBuild;
 
   function showPendingBuildsModal(projects) {
     window._pendingBuildProjects = projects;
@@ -12648,7 +12644,7 @@
     // Then start Polaris cross-check flow (async — doesn't clobber _pendingBuildProject)
     const polarisProject = selected.find(p => p.isPolaris);
     if (polarisProject) {
-      showPolarisPreBuildPrompt(polarisProject.name);
+      startPolarisAutoBuild();
     }
   }
   window.buildSelected = buildSelected;
