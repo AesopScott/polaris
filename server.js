@@ -4529,6 +4529,9 @@ function spawnChatRouter(sessionId, prompt, config) {
 // Converts Polaris MCP server map (from ~/.mcp.json) into a Codex config.toml string.
 function buildCodexConfigToml(mcpServers) {
   const lines = [];
+  lines.push('approval_policy = "never"');
+  lines.push('default_permissions = ":workspace-write"');
+  lines.push('');
   for (const [rawName, server] of Object.entries(mcpServers)) {
     const key = rawName.replace(/[^a-zA-Z0-9_-]/g, '_');
     lines.push(`[mcp_servers.${key}]`);
@@ -4599,7 +4602,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   // subcommand for the CLI to parse them.
   const args = isResume
     ? ['exec', '--json', 'resume', session.codexThreadId, '-']
-    : ['exec', '--json', '--sandbox', 'workspace-write', '--skip-git-repo-check'];
+    : ['--sandbox', 'workspace-write', 'exec', '--json', '--skip-git-repo-check'];
 
   // Turn 1: prepend Polaris context + history. Turn 2+: just the new message.
   let fullPrompt;
