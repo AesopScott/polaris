@@ -6120,6 +6120,14 @@ async function handleMessage(ws, raw) {
       if (session.proc && !session.proc.killed) session.proc.kill();
       if (session.timeout) clearTimeout(session.timeout);
       if (session.watcher) session.watcher.close();
+      // Clean up fork linkage from both sides of a fork pair
+      if (session.isForked && session.primarySessionId) {
+        forkMap.delete(session.primarySessionId);
+        broadcast({ type: 'fork-stopped', primarySessionId: session.primarySessionId, forkSessionId: msg.sessionId });
+      } else {
+        const linkedForkId = forkMap.get(msg.sessionId);
+        if (linkedForkId) forkMap.delete(msg.sessionId);
+      }
       sessions.delete(msg.sessionId);
       saveSessions();
     }

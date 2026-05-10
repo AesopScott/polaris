@@ -3952,7 +3952,16 @@
             usage: s.lastUsage || null, totalCost: s.totalCost || 0,
             height: s.height || null, column: s.column != null ? s.column : null,
             pinned: !!s.pinned,
+            isForked: !!s.isForked,
+            primarySessionId: s.primarySessionId || null,
           };
+        });
+        // Restore forkActive + forkSessionId on primary sessions from fork session data
+        (msg.sessions || []).forEach(s => {
+          if (s.isForked && s.primarySessionId && sessionStore[s.primarySessionId]) {
+            sessionStore[s.primarySessionId].forkActive = true;
+            sessionStore[s.primarySessionId].forkSessionId = s.id;
+          }
         });
         applyConfig(msg.config || {});
         if (msg.protectedPatterns) protectedPatterns = msg.protectedPatterns;
