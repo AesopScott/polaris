@@ -2434,6 +2434,7 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
       },
       // Fresh agent per request — see callOpenRouterStream for rationale.
       agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
+      timeout: 10000, // 10s hard timeout on socket
     }, res => {
       let body = '';
       res.on('data', c => body += c);
@@ -2448,9 +2449,17 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
       });
     });
     req.on('error', e => resolve({ error: `Network: ${e.message}` }));
+    req.on('timeout', () => { req.destroy(); resolve({ error: 'Request timeout' }); });
     req.write(payload);
     req.end();
   });
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve({ timeout: true }), ms))
+  ]);
 }
 
 async function checkQueueRelevance(sessionId, newPrompt) {
@@ -2488,7 +2497,17 @@ Related = the new prompt is clarifying, continuing, or directly addressing the c
   ];
 
   try {
-    const result = await callOpenRouterOnce('openai/gpt-4o-mini', apiKey, messages, 100);
+    // Wrap with 12s timeout to prevent hung promises from blocking the queue
+    const result = await withTimeout(
+      callOpenRouterOnce('openai/gpt-4o-mini', apiKey, messages, 100),
+      12000
+    );
+
+    if (result.timeout) {
+      console.warn('[queue-relevance] timeout after 12s, queueing for safety');
+      return { related: false, reason: 'Relevance check timed out, queuing for safety' };
+    }
+
     if (result.error) {
       console.error('[queue-relevance] API error:', result.error);
       return { related: false, reason: 'Relevance check failed, queuing for safety' };
