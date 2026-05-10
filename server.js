@@ -4091,7 +4091,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   // Translate session tier → Claude Code --model flag.
   // Use full model ID for haiku — the 'haiku' shorthand resolves to 3.5, which isn't on Max.
   const tierForCli = (session.tier || 'balanced').toLowerCase();
-  const cliModel = tierForCli === 'power' ? 'opus' : tierForCli === 'floor' ? 'claude-haiku-4-5-20251001' : 'sonnet';
+  const cliModel = tierForCli === 'power' ? 'claude-opus-4-7' : tierForCli === 'floor' ? 'claude-haiku-4-5-20251001' : 'sonnet';
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
