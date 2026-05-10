@@ -3563,6 +3563,11 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   if (!config.openRouterApiKey) {
     broadcast({ type: 'line', sessionId, text: 'No OpenRouter API key configured. Add one in Settings.', role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
+    session.status = 'error';
+    session.endAt = Date.now();
+    saveSessionMessages(sessionId);
+    releaseSessionMemory(sessionId);
+    drainPendingTurns(sessionId);
     return;
   }
 
@@ -3727,6 +3732,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       notifyRoutineTimeout(sessionId, session.routineTag || 'Agent Session', elapsed).catch(() => {});
       saveSessionMessages(sessionId);
       releaseSessionMemory(sessionId);
+      drainPendingTurns(sessionId);
       return;
     }
 
@@ -3751,6 +3757,9 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       broadcast({ type: 'line', sessionId, text: errorText, role: 'error' });
       broadcast({ type: 'session-status', sessionId, status: 'error' });
       const s = sessions.get(sessionId); if (s) { s.status = 'error'; s.endAt = Date.now(); }
+      saveSessionMessages(sessionId);
+      releaseSessionMemory(sessionId);
+      drainPendingTurns(sessionId);
       return;
     }
 
@@ -3780,6 +3789,9 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       broadcast({ type: 'line', sessionId, text: reason, role: 'error' });
       broadcast({ type: 'session-status', sessionId, status: 'error' });
       const s = sessions.get(sessionId); if (s) { s.status = 'error'; s.endAt = Date.now(); }
+      saveSessionMessages(sessionId);
+      releaseSessionMemory(sessionId);
+      drainPendingTurns(sessionId);
       return;
     }
 
