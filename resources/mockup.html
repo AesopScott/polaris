@@ -494,12 +494,6 @@
   .minimized-row { padding: 4px 16px; display: flex; gap: 6px; border-bottom: 1px solid #333; }
   .mini-card { padding: 3px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; }
   .mini-card.mini-card--hidden { border: 1px dashed currentColor; opacity: 0.7; padding: 2px 11px; }
-  /* In-grid New Session bar — shown when sessions exist (replaces full minimized-row chrome) */
-  .grid-new-session-bar { display: none; padding: 6px 16px; text-align: center; border-bottom: 1px solid #333; }
-  .grid-new-session-bar.visible { display: block; }
-  .grid-new-session-bar .new-session-link { display: inline-flex !important; align-items: center; padding: 4px 18px; background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.4); border-radius: 6px; text-decoration: none; font-weight: 700; }
-  .grid-new-session-bar .new-session-link:hover { background: rgba(34,197,94,0.22); text-decoration: none; }
-  .palette .grid-new-session-bar { background: var(--header-bg); border-color: var(--border); }
 
   /* Palette definitions */
   .p1 { --bg: #0a0e1a; --card-bg: #111827; --header-bg: #0d1117; --launch-bg: #0f1520; --text: #e2e8f0; --text-muted: #64748b; --border: #1e293b; --input-bg: #1e293b; --tag-bg: #1e3a5f; --tag-text: #60a5fa; --terminal-bg: #060d18; --footer-bg: #0d1528; --fbtn-bg: #1e293b; --fbtn-text: #94a3b8; --card-btn-bg: #1e293b; --debug-bg: #060d18; --notif-bg: #1e3a5f; }
@@ -1393,9 +1387,8 @@
   <!-- Minimized / Stats Row -->
   <div class="minimized-row" style="display:grid;grid-template-columns:2fr 1fr;align-items:center;padding:6px 16px;">
 
-    <!-- Left two-thirds: New Session link + minimized + hidden session chips -->
+    <!-- Left two-thirds: minimized + hidden session chips -->
     <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap;">
-      <a class="new-session-link" href="#" onclick="expandLaunchBar(this);return false;">New Session</a>
       <div class="mini-card">Fix Auth Bug</div>
       <div class="mini-card">DB Migration</div>
       <div class="mini-card" style="opacity:0.4;">+ 2 more</div>
@@ -1420,9 +1413,6 @@
 
   <!-- Session Grid -->
   <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-    <div id="grid-new-session-bar" class="grid-new-session-bar">
-      <a class="new-session-link" href="#" onclick="expandLaunchBar(this);return false;">+ New Session</a>
-    </div>
     <div style="flex:1;position:relative;overflow:hidden;">
       <div class="session-grid"></div>
       <div id="hidden-all-state" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--bg);z-index:2;">
@@ -6356,15 +6346,8 @@
     updateGridNewSessionBar();
   }
 
-  // When sessions exist, hide the full minimized-row chrome and surface a single
-  // New Session button at the top of the active session grid instead.
   function updateGridNewSessionBar() {
-    const hasSessions = Object.keys(sessionStore).length > 0;
-    document.querySelectorAll('.minimized-row').forEach(row => {
-      row.style.display = hasSessions ? 'none' : '';
-    });
-    const bar = document.getElementById('grid-new-session-bar');
-    if (bar) bar.classList.toggle('visible', hasSessions);
+    // minimized-row is always visible; no grid-new-session-bar
   }
 
   let sessionFilter = null;
@@ -6461,12 +6444,6 @@
       const chips = row.querySelector('div:first-child');
       if (!chips) return;
       chips.innerHTML = '';
-      const newLink = document.createElement('a');
-      newLink.className = 'new-session-link';
-      newLink.href = '#';
-      newLink.textContent = 'New Session';
-      newLink.onclick = (e) => { e.preventDefault(); expandLaunchBar(newLink); };
-      chips.appendChild(newLink);
       minimized.slice(0, 4).forEach(s => {
         const chip = document.createElement('div');
         chip.className = 'mini-card';
