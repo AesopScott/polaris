@@ -9313,42 +9313,46 @@
     if (!projects.length) { el.innerHTML = '<span style="opacity:0.4;font-size:12px;">No projects configured.</span>'; return; }
     const servers = allServers.filter(s => s !== 'polaris');
     if (!servers.length) { el.innerHTML = '<span style="opacity:0.4;font-size:12px;">No MCP servers found in ~/.mcp.json.</span>'; return; }
-    const thStyle = 'padding:4px 6px;font-size:10px;font-weight:700;opacity:0.5;text-align:center;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;';
-    const headers = servers.map(s => `<th style="${thStyle}" title="${escHtmlAttr(s)}">${escHtml(s)}</th>`).join('');
-    const rows = projects.map(p => {
-      const enabledSet = p.mcpServers === null ? null : new Set(p.mcpServers || []);
-      const cells = servers.map(s => {
-        const checked = (enabledSet === null || enabledSet.has(s)) ? 'checked' : '';
-        return `<td style="text-align:center;padding:4px 6px;"><input type="checkbox" data-server="${escHtmlAttr(s)}" ${checked} style="cursor:pointer;" /></td>`;
-      }).join('');
-      return `<tr data-project="${escHtmlAttr(p.name)}" style="border-bottom:1px solid var(--border);">
-        <td style="padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap;">${escHtml(p.name)}</td>
-        ${cells}
-      </tr>`;
-    }).join('');
+    const options = projects.map(p => `<option value="${escHtmlAttr(p.name)}">${escHtml(p.name)}</option>`).join('');
     el.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:11px;">
-        <thead><tr style="border-bottom:1px solid var(--border);">
-          <th style="padding:4px 10px;font-size:10px;font-weight:700;opacity:0.5;text-align:left;">PROJECT</th>
-          ${headers}
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p style="margin-top:10px;font-size:10px;opacity:0.4;">All checked = no filter (use all servers). Uncheck boxes to restrict a project. Takes effect on next session launch.</p>`;
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;font-weight:700;opacity:0.6;display:block;margin-bottom:6px;">PROJECT</label>
+        <select id="project-mcp-select" onchange="renderProjectMcpChecks(this.value)" style="font-size:12px;padding:5px 8px;background:var(--input-bg);color:var(--text);border:1px solid #444;border-radius:4px;width:100%;cursor:pointer;">${options}</select>
+      </div>
+      <div id="project-mcp-checks"></div>
+      <p style="margin-top:10px;font-size:10px;opacity:0.4;">All checked = no filter. Uncheck to restrict. Takes effect on next session launch.</p>`;
+    renderProjectMcpChecks(projects[0].name);
   }
   window.renderProjectMcpGrid = renderProjectMcpGrid;
+
+  function renderProjectMcpChecks(projectName) {
+    const { projects, allServers } = _projectMcpData;
+    const el = document.getElementById('project-mcp-checks');
+    if (!el) return;
+    const servers = allServers.filter(s => s !== 'polaris');
+    const p = projects.find(proj => proj.name === projectName);
+    const enabledSet = (!p || p.mcpServers === null) ? null : new Set(p.mcpServers || []);
+    el.innerHTML = servers.map(s => {
+      const checked = (enabledSet === null || enabledSet.has(s)) ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px;">
+        <input type="checkbox" data-server="${escHtmlAttr(s)}" ${checked} style="cursor:pointer;" />
+        ${escHtml(s)}
+      </label>`;
+    }).join('');
+  }
+  window.renderProjectMcpChecks = renderProjectMcpChecks;
 
   function saveProjectMcp() {
     const { allServers } = _projectMcpData;
     const servers = allServers.filter(s => s !== 'polaris');
-    document.querySelectorAll('#project-mcp-grid tbody tr[data-project]').forEach(tr => {
-      const name = tr.dataset.project;
-      const checked = [...tr.querySelectorAll('input[type=checkbox]')]
-        .map((cb, i) => cb.checked ? servers[i] : null).filter(Boolean);
-      const mcpServers = checked.length === servers.length ? null : checked;
-      wsSend({ type: 'upsert-project', project: { name, mcpServers } });
-    });
-    pushDebugLog('[mcp] Per-project MCP config saved — takes effect on next session launch');
+    const sel = document.getElementById('project-mcp-select');
+    if (!sel) return;
+    const name = sel.value;
+    const checked = [...document.querySelectorAll('#project-mcp-checks input[type=checkbox]')]
+      .map((cb, i) => cb.checked ? servers[i] : null).filter(Boolean);
+    const mcpServers = checked.length === servers.length ? null : checked;
+    wsSend({ type: 'upsert-project', project: { name, mcpServers } });
+    pushDebugLog(`[mcp] Saved MCP config for "${name}" — takes effect on next session launch`);
   }
   window.saveProjectMcp = saveProjectMcp;
 
