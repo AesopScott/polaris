@@ -5346,7 +5346,7 @@ function detectProjectFromPrompt(prompt) {
 }
 
 // ─── WebSocket message handler ────────────────────────────────────────────────
-function handleMessage(ws, raw) {
+async function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
 
