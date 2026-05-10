@@ -3759,18 +3759,9 @@
           }
           alert(msg.message);
         } else if (msg.requiresCheck) {
-          // Pre-build check gate: stale or missing. Offer to run check first.
-          if (confirm(msg.message + '\n\nRun pre-build cross-check now?')) {
-            runPreBuildCheck();
-          } else if (confirm('Build anyway WITHOUT running the cross-check?\n\nThis is unusual — only do it if you know the changes are safe.')) {
-            const p = window._pendingBuildProject;
-            if (p && !p.isPolaris) {
-              wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name, skipCheck: true });
-            } else {
-              const bt = window._pendingBuildType || 'private';
-              wsSend({ type: 'run-build', skipCheck: true, buildType: bt });
-            }
-          }
+          // Cross-check stale or missing — re-run automatically, no prompt.
+          window._buildAfterCheck = true;
+          runPreBuildCheck(window._pendingBuildProject || null);
         } else {
           alert('Build failed to start:\n' + msg.message);
         }
@@ -3853,6 +3844,7 @@
             const p = window._pendingBuildProject;
             if (p && !p.isPolaris) {
               wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name, skipCheck: true });
+              processNextInBuildQueue();
             } else {
               showBuildTypeModal(false);
             }
@@ -6930,6 +6922,11 @@
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
       wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload });
+      const s = sessionStore[resumeTarget.sessionId];
+      if (s) {
+        s.lines.push({ text: f.prompt, role: 'user' });
+        appendLineToCard(resumeTarget.sessionId, { text: f.prompt, role: 'user' });
+      }
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
@@ -12681,11 +12678,23 @@
   window.executeBuild = executeBuild;
 
   function startPolarisAutoBuild() {
+    window._buildQueue = [];
     window._pendingBuildProject = null;
     window._buildAfterCheck = true;
     runPreBuildCheck();
   }
   window.startPolarisAutoBuild = startPolarisAutoBuild;
+
+  function processNextInBuildQueue() {
+    const queue = window._buildQueue || [];
+    if (queue.length === 0) return;
+    const next = queue.shift();
+    window._buildQueue = queue;
+    window._pendingBuildProject = next.isPolaris ? null : next;
+    window._buildAfterCheck = true;
+    runPreBuildCheck(next.isPolaris ? null : next);
+  }
+  window.processNextInBuildQueue = processNextInBuildQueue;
 
   function showPendingBuildsModal(projects) {
     window._pendingBuildProjects = projects;
@@ -12724,16 +12733,14 @@
     });
     closePendingBuildsModal();
     if (selected.length === 0) return;
-    window._pendingBuildProject = null;
-    // Fire non-Polaris builds first — they don't need cross-check sequencing
-    selected.filter(p => !p.isPolaris).forEach(p => {
-      wsSend({ type: 'run-build', sourcePath: p.workDir, projectName: p.name });
-    });
-    // Then start Polaris cross-check flow (async — doesn't clobber _pendingBuildProject)
-    const polarisProject = selected.find(p => p.isPolaris);
-    if (polarisProject) {
-      startPolarisAutoBuild();
-    }
+    // Queue: non-Polaris first (each has its own build script), Polaris last (shows build-type modal).
+    // Each project runs its cross-check before its build fires — no prompts.
+    const queue = [...selected.filter(p => !p.isPolaris), ...selected.filter(p => p.isPolaris)];
+    window._buildQueue = queue.slice(1);
+    const first = queue[0];
+    window._pendingBuildProject = first.isPolaris ? null : first;
+    window._buildAfterCheck = true;
+    runPreBuildCheck(first.isPolaris ? null : first);
   }
   window.buildSelected = buildSelected;
 
@@ -12768,7 +12775,7 @@
   }
   window.confirmBuild = confirmBuild;
 
-  function runPreBuildCheck() {
+  function runPreBuildCheck(project) {
     const statusEl = document.getElementById('pre-build-check-status');
     const resultsEl = document.getElementById('pre-build-check-results');
     if (statusEl) {
@@ -12776,10 +12783,14 @@
       statusEl.innerHTML = '⟳ Starting pre-build check…';
     }
     if (resultsEl) resultsEl.style.display = 'none';
-    // Make sure the panel is visible
     const panel = document.getElementById('cross-check-panel');
     if (panel?.classList.contains('hidden')) panel.classList.remove('hidden');
-    wsSend({ type: 'run-pre-build-check' });
+    const payload = { type: 'run-pre-build-check' };
+    if (project && !project.isPolaris) {
+      payload.sourcePath = project.workDir;
+      payload.projectName = project.name;
+    }
+    wsSend(payload);
   }
   window.runPreBuildCheck = runPreBuildCheck;
 
