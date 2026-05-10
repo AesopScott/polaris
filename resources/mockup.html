@@ -286,6 +286,15 @@
       0 16px 48px rgba(0,0,0,0.4),
       0 24px 80px rgba(0,0,0,0.3);
   }
+  /* Hidden cards collapse to a slim header stub */
+  .card.card--hidden {
+    height: 36px !important;
+    min-height: 36px !important;
+    overflow: hidden;
+    opacity: 0.55;
+  }
+  .card.card--hidden .card-corner-btn:not([data-action="unhide"]) { display: none !important; }
+  .card.card--hidden [data-action="unhide"] { display: flex !important; }
   /* Running cards pulse a soft blue aura */
   .card.status-running-card {
     animation: cardRunningPulse 3s ease-in-out infinite;
@@ -1256,6 +1265,7 @@
       <div class="btn-grid">
         <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
+        <button id="btn-thecard" class="hbtn btn-gold" onclick="openTheCard()" data-tooltip="The Card — start the Next.js dev server and open the prediction market app in your browser"><span class="lbl">The Card</span></button>
         <button id="btn-course-creator" class="hbtn btn-gold" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
         <button id="btn-files" class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
@@ -5395,6 +5405,7 @@
           </div>
         </div>
         <div class="card-corner-btns">
+          <button class="card-corner-btn" title="Unhide session" data-action="unhide" style="display:none">↩</button>
           <button class="card-corner-btn" title="Minimize to status bar" data-action="minimize">—</button>
           <button class="card-corner-btn" title="Close" data-action="close">✕</button>
         </div>
@@ -5792,6 +5803,7 @@
     switch (action) {
       case 'stop':       wsSend({ type: 'stop', sessionId }); break;
       case 'hide-card':  hideCard(sessionId); break;
+      case 'unhide':     unhideCard(sessionId); break;
       case 'close':      wsSend({ type: 'close-session', sessionId }); break;
       case 'toggle-locks': {
         const drawer = cardEl.querySelector('[data-locks-drawer]');
@@ -6317,15 +6329,24 @@
   function hideCard(sid) {
     hiddenCards.add(sid);
     const card = document.querySelector(`.card[data-sid="${sid}"]`);
-    if (card) card.style.display = 'none';
+    if (card) card.classList.add('card--hidden');
     updateHiddenCount();
+    saveHiddenCards();
+  }
+
+  function unhideCard(sid) {
+    hiddenCards.delete(sid);
+    const card = document.querySelector(`.card[data-sid="${sid}"]`);
+    if (card) card.classList.remove('card--hidden');
+    updateHiddenCount();
+    applySessionFilter();
     saveHiddenCards();
   }
 
   window.unhideAll = function() {
     hiddenCards.forEach(sid => {
       const card = document.querySelector(`.card[data-sid="${sid}"]`);
-      if (card) card.style.display = '';
+      if (card) card.classList.remove('card--hidden');
     });
     hiddenCards.clear();
     updateHiddenCount();
@@ -6373,7 +6394,8 @@
     if (!grid) return;
     grid.querySelectorAll('.card').forEach(card => {
       const sid = card.dataset.sid;
-      if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
+      if (hiddenCards.has(sid)) { card.classList.add('card--hidden'); return; }
+      card.classList.remove('card--hidden');
       const s = sessionStore[sid];
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
@@ -6421,7 +6443,7 @@
     const grid = getActiveGrid();
     if (grid) {
       const card = grid.querySelector(`[data-sid="${sessionId}"]`);
-      if (card) card.style.display = '';
+      if (card && !hiddenCards.has(sessionId)) card.style.display = '';
     }
     updateMiniCards();
     pushDebugLog(`[card] Restored: ${s.name || sessionId}`);
@@ -8247,6 +8269,12 @@
   }
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
+
+  function openTheCard() {
+    pushDebugLog('[thecard] launching The Card...');
+    wsSend({ type: 'launch-thecard' });
+  }
+  window.openTheCard = openTheCard;
 
   function launchFactory() {
     pushDebugLog('[factory] checking AI Factory status...');
@@ -12157,6 +12185,7 @@
   }
 
   const ONB_PANEL_MAP = {
+    'The Card':    { id: null,                         o: () => openTheCard(),                                                c: () => {} },
     'Courses':     { id: 'course-creator-panel',      o: () => openCourseCreator(),                                           c: () => closeCourseCreator() },
     'Files':       { id: 'file-manager-panel',        o: () => _onbOpen('file-manager-panel', toggleFileManager),             c: () => closeFileManager() },
     'Routines':    { id: 'routines-panel',            o: () => openRoutines(),                                                c: () => closeRoutines() },
