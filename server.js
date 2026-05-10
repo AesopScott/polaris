@@ -6739,22 +6739,29 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'launch-factory') {
-    const FACTORY_URL = 'http://localhost:40100';
     const FACTORY_DIR_SRC = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'aifactory');
-    http.get(`${FACTORY_URL}/health`, (res) => {
-      if (res.statusCode === 200) {
-        exec(`start "" "${FACTORY_URL}"`);
-      }
-    }).on('error', () => {
-      const child = spawn('cmd', ['/c', 'npm start'], {
-        cwd: FACTORY_DIR_SRC,
-        detached: true,
-        stdio: 'ignore',
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '' }
-      });
-      child.unref();
-      setTimeout(() => exec(`start "" "${FACTORY_URL}"`), 3000);
+    const req = http.get('http://127.0.0.1:40100/health', (res) => {
+      res.resume();
+      sendTo(ws, { type: 'factory-status', running: true });
     });
+    req.on('error', () => {
+      try {
+        const env = { ...process.env };
+        delete env.ELECTRON_RUN_AS_NODE;
+        const child = spawn('npm install && npm start', [], {
+          cwd: FACTORY_DIR_SRC,
+          env,
+          detached: true,
+          stdio: 'ignore',
+          shell: true
+        });
+        child.unref();
+        sendTo(ws, { type: 'factory-status', running: false, launching: true });
+      } catch (e) {
+        sendTo(ws, { type: 'factory-status', running: false, launching: false, error: e.message });
+      }
+    });
+    req.setTimeout(2000, () => req.destroy());
     return;
   }
 
