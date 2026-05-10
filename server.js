@@ -4530,7 +4530,7 @@ function spawnChatRouter(sessionId, prompt, config) {
 function buildCodexConfigToml(mcpServers) {
   const lines = [];
   lines.push('approval_policy = "never"');
-  lines.push('default_permissions = ":workspace-write"');
+  lines.push('default_permissions = ":danger-no-sandbox"');
   lines.push('');
   for (const [rawName, server] of Object.entries(mcpServers)) {
     const key = rawName.replace(/[^a-zA-Z0-9_-]/g, '_');
