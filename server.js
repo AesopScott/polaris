@@ -4239,15 +4239,26 @@ async function spawnMaxChat(sessionId, prompt, config) {
     stdinPayload = fullPrompt;
   }
   // Write .mcp.json so the Claude Code CLI can call Polaris-native tools (SetProject, SetStatus).
-  // For non-Polaris sessions also inject the servers from ~/.claude.json (Connections panel) so
-  // the CLI uses the Polaris-managed config rather than relying on the global ~/.mcp.json.
+  // If the project has an explicit mcpServers allowlist, only those servers from ~/.mcp.json
+  // are injected — reducing tool noise in the session.
   try {
     const mcpJsonPath = path.join(cwd, '.mcp.json');
     const existing = readJSON(mcpJsonPath, {});
+    const project = (readConfig().projects || []).find(p => p.workDir && p.workDir.toLowerCase() === cwd.toLowerCase());
+    let baseServers = existing.mcpServers || {};
+    if (project && Array.isArray(project.mcpServers) && project.mcpServers.length > 0) {
+      const globalMcp = readJSON(MCP_JSON_PATH, {});
+      baseServers = {};
+      for (const id of project.mcpServers) {
+        if (globalMcp.mcpServers && globalMcp.mcpServers[id]) {
+          baseServers[id] = globalMcp.mcpServers[id];
+        }
+      }
+    }
     const mcpConfig = {
       ...existing,
       mcpServers: {
-        ...(existing.mcpServers || {}),
+        ...baseServers,
         polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` },
       },
     };
@@ -7386,6 +7397,15 @@ async function handleMessage(ws, raw) {
       Object.entries(cfg.mcpServers || {}).filter(([k]) => !isCatalogManagedKey(k, catalogIds))
     );
     sendTo(ws, { type: 'mcp-servers', servers: customServers });
+    return;
+  }
+
+  if (type === 'get-project-mcp-data') {
+    const config = readConfig();
+    const projects = (config.projects || []).map(p => ({ name: p.name, mcpServers: p.mcpServers !== undefined ? p.mcpServers : null }));
+    const globalMcp = readJSON(MCP_JSON_PATH, {});
+    const allServers = Object.keys(globalMcp.mcpServers || {}).filter(k => k !== 'polaris');
+    sendTo(ws, { type: 'project-mcp-data', projects, servers: allServers });
     return;
   }
 

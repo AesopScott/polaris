@@ -2011,6 +2011,7 @@
     <div style="display:flex;border-bottom:1px solid var(--border);padding:0 16px;background:var(--header-bg);">
       <button class="conn-tab active" data-tab="mcp" onclick="switchConnTab('mcp')">MCP Servers</button>
       <button class="conn-tab" data-tab="git" onclick="switchConnTab('git')">Git Status</button>
+      <button class="conn-tab" data-tab="project-mcp" onclick="switchConnTab('project-mcp')">Per-Project</button>
     </div>
     <div id="conn-mcp-pane" class="projects-panel-body" style="padding:0;overflow-y:auto;">
       <div class="mcp-catalog-section">
@@ -2034,12 +2035,19 @@
     <div id="conn-git-pane" class="projects-panel-body" style="padding:16px;display:none;">
       <div id="connections-content"><span style="opacity:0.4;font-size:12px;">Loading…</span></div>
     </div>
+    <div id="conn-project-mcp-pane" class="projects-panel-body" style="padding:0;overflow-y:auto;display:none;">
+      <div id="project-mcp-grid" style="padding:16px;"><span style="opacity:0.4;font-size:12px;">Loading…</span></div>
+    </div>
     <div class="projects-footer" id="conn-mcp-footer">
       <button class="fbtn" style="background:#22c55e;color:#000;font-weight:700;" onclick="addMcpRow()">+ Add Server</button>
       <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveMcpServers()">💾 Save MCP Config</button>
     </div>
     <div class="projects-footer" id="conn-git-footer" style="display:none;">
       <div></div><div></div>
+    </div>
+    <div class="projects-footer" id="conn-project-mcp-footer" style="display:none;">
+      <div style="font-size:11px;opacity:0.5;">Takes effect on next session launch</div>
+      <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveProjectMcp()">💾 Save Per-Project MCP</button>
     </div>
   </div>
 
@@ -4247,6 +4255,10 @@
       case 'mcp-servers':
         mcpServers = msg.servers || {};
         renderMcpServers();
+        break;
+
+      case 'project-mcp-data':
+        renderProjectMcpGrid(msg.projects || [], msg.servers || []);
         break;
 
       case 'space-data':
@@ -9212,10 +9224,13 @@
 
   function switchConnTab(tab) {
     document.querySelectorAll('.conn-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-    document.getElementById('conn-mcp-pane').style.display   = tab === 'mcp' ? '' : 'none';
-    document.getElementById('conn-git-pane').style.display   = tab === 'git' ? '' : 'none';
-    document.getElementById('conn-mcp-footer').style.display = tab === 'mcp' ? '' : 'none';
-    document.getElementById('conn-git-footer').style.display = tab === 'git' ? '' : 'none';
+    document.getElementById('conn-mcp-pane').style.display             = tab === 'mcp'         ? '' : 'none';
+    document.getElementById('conn-git-pane').style.display             = tab === 'git'         ? '' : 'none';
+    document.getElementById('conn-project-mcp-pane').style.display    = tab === 'project-mcp' ? '' : 'none';
+    document.getElementById('conn-mcp-footer').style.display           = tab === 'mcp'         ? '' : 'none';
+    document.getElementById('conn-git-footer').style.display           = tab === 'git'         ? '' : 'none';
+    document.getElementById('conn-project-mcp-footer').style.display  = tab === 'project-mcp' ? '' : 'none';
+    if (tab === 'project-mcp') wsSend({ type: 'get-project-mcp-data' });
   }
   window.switchConnTab = switchConnTab;
 
@@ -9287,6 +9302,55 @@
     pushDebugLog(`[mcp] Saved ${Object.keys(mcpServers).length} server(s) — restart Claude CLI to apply`);
   }
   window.saveMcpServers = saveMcpServers;
+
+  // ── Per-Project MCP ───────────────────────────────────────────────────────────
+  let _projectMcpData = { projects: [], allServers: [] };
+
+  function renderProjectMcpGrid(projects, allServers) {
+    _projectMcpData = { projects, allServers };
+    const el = document.getElementById('project-mcp-grid');
+    if (!el) return;
+    if (!projects.length) { el.innerHTML = '<span style="opacity:0.4;font-size:12px;">No projects configured.</span>'; return; }
+    const servers = allServers.filter(s => s !== 'polaris');
+    if (!servers.length) { el.innerHTML = '<span style="opacity:0.4;font-size:12px;">No MCP servers found in ~/.mcp.json.</span>'; return; }
+    const thStyle = 'padding:4px 6px;font-size:10px;font-weight:700;opacity:0.5;text-align:center;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;';
+    const headers = servers.map(s => `<th style="${thStyle}" title="${escHtmlAttr(s)}">${escHtml(s)}</th>`).join('');
+    const rows = projects.map(p => {
+      const enabledSet = p.mcpServers === null ? null : new Set(p.mcpServers || []);
+      const cells = servers.map(s => {
+        const checked = (enabledSet === null || enabledSet.has(s)) ? 'checked' : '';
+        return `<td style="text-align:center;padding:4px 6px;"><input type="checkbox" data-server="${escHtmlAttr(s)}" ${checked} style="cursor:pointer;" /></td>`;
+      }).join('');
+      return `<tr data-project="${escHtmlAttr(p.name)}" style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap;">${escHtml(p.name)}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:4px 10px;font-size:10px;font-weight:700;opacity:0.5;text-align:left;">PROJECT</th>
+          ${headers}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin-top:10px;font-size:10px;opacity:0.4;">All checked = no filter (use all servers). Uncheck boxes to restrict a project. Takes effect on next session launch.</p>`;
+  }
+  window.renderProjectMcpGrid = renderProjectMcpGrid;
+
+  function saveProjectMcp() {
+    const { allServers } = _projectMcpData;
+    const servers = allServers.filter(s => s !== 'polaris');
+    document.querySelectorAll('#project-mcp-grid tbody tr[data-project]').forEach(tr => {
+      const name = tr.dataset.project;
+      const checked = [...tr.querySelectorAll('input[type=checkbox]')]
+        .map((cb, i) => cb.checked ? servers[i] : null).filter(Boolean);
+      const mcpServers = checked.length === servers.length ? null : checked;
+      wsSend({ type: 'upsert-project', project: { name, mcpServers } });
+    });
+    pushDebugLog('[mcp] Per-project MCP config saved — takes effect on next session launch');
+  }
+  window.saveProjectMcp = saveProjectMcp;
 
   // ── SPACE Productivity ────────────────────────────────────────────────────────
   function openSpace(projectName) {
