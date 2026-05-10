@@ -6520,6 +6520,26 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'launch-factory') {
+    const FACTORY_URL = 'http://localhost:40100';
+    const FACTORY_DIR_SRC = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'aifactory');
+    http.get(`${FACTORY_URL}/health`, (res) => {
+      if (res.statusCode === 200) {
+        exec(`start "" "${FACTORY_URL}"`);
+      }
+    }).on('error', () => {
+      const child = spawn('cmd', ['/c', 'npm start'], {
+        cwd: FACTORY_DIR_SRC,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '' }
+      });
+      child.unref();
+      setTimeout(() => exec(`start "" "${FACTORY_URL}"`), 3000);
+    });
+    return;
+  }
+
   if (type === 'start-live-server') {
     const { projectDir } = msg;
     if (!projectDir) return sendTo(ws, { type: 'live-server-error', projectDir, error: 'Missing projectDir' });

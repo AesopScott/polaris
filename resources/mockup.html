@@ -751,25 +751,6 @@
   #pending-builds-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.55); cursor: pointer; }
   #pending-builds-backdrop.hidden { display: none; }
 
-  /* Factory Coming Soon Popup */
-  #factory-coming-soon-popup {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    z-index: 10000; display: flex; flex-direction: column; align-items: center;
-    width: 380px; padding: 36px 32px 28px;
-    background: var(--card-bg); color: var(--text);
-    border-radius: 14px; border: 1px solid rgba(212,175,55,0.4);
-    box-shadow: 0 8px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(212,175,55,0.15);
-    text-align: center;
-  }
-  #factory-coming-soon-popup.hidden { display: none; }
-  #factory-coming-soon-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.55); cursor: pointer; }
-  #factory-coming-soon-backdrop.hidden { display: none; }
-  .factory-cs-icon { font-size: 40px; margin-bottom: 12px; line-height: 1; }
-  .factory-cs-title { font-size: 20px; font-weight: 800; letter-spacing: 0.02em; margin-bottom: 4px; background: linear-gradient(135deg, #d4af37, #f5e07a, #d4af37); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .factory-cs-badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; background: rgba(212,175,55,0.15); border: 1px solid rgba(212,175,55,0.35); color: #d4af37; margin-bottom: 16px; }
-  .factory-cs-desc { font-size: 13px; line-height: 1.6; opacity: 0.75; margin-bottom: 24px; }
-  .factory-cs-close { padding: 8px 28px; border-radius: 8px; border: 1px solid rgba(212,175,55,0.4); background: rgba(212,175,55,0.1); color: #d4af37; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
-  .factory-cs-close:hover { background: rgba(212,175,55,0.2); border-color: rgba(212,175,55,0.7); }
   .routine-notif-bullet { color: #4ade80; font-size: 10px; flex-shrink: 0; }
 
   /* Close All dialog */
@@ -1282,7 +1263,7 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
-        <button id="btn-factory" class="hbtn btn-gold" onclick="openFactoryComingSoon()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
+        <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button id="btn-reload" class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
@@ -2347,17 +2328,6 @@
     </div>
   </div>
 
-  <!-- Factory Coming Soon Popup -->
-  <div id="factory-coming-soon-backdrop" class="hidden" onclick="closeFactoryComingSoon()"></div>
-  <div id="factory-coming-soon-popup" class="hidden">
-    <div class="factory-cs-icon">⚙️</div>
-    <div class="factory-cs-title">AI Factory</div>
-    <div class="factory-cs-badge">Coming in v2.0</div>
-    <div class="factory-cs-desc">
-      AI Factory is an autonomous build pipeline that turns a prompt into a fully built, tested, and deployed application — end to end.
-    </div>
-    <button class="factory-cs-close" onclick="closeFactoryComingSoon()">Got it</button>
-  </div>
 
   <!-- Code Health Panel -->
   <div class="preview-panel hidden palette" id="code-health-panel" style="width:860px;height:560px;top:80px;left:40px;">
@@ -8252,16 +8222,10 @@
   window.showChangelogPopup  = showChangelogPopup;
   window.closeChangelogPopup = closeChangelogPopup;
 
-  function openFactoryComingSoon() {
-    document.getElementById('factory-coming-soon-popup')?.classList.remove('hidden');
-    document.getElementById('factory-coming-soon-backdrop')?.classList.remove('hidden');
+  function launchFactory() {
+    wsSend({ type: 'launch-factory' });
   }
-  function closeFactoryComingSoon() {
-    document.getElementById('factory-coming-soon-popup')?.classList.add('hidden');
-    document.getElementById('factory-coming-soon-backdrop')?.classList.add('hidden');
-  }
-  window.openFactoryComingSoon  = openFactoryComingSoon;
-  window.closeFactoryComingSoon = closeFactoryComingSoon;
+  window.launchFactory = launchFactory;
 
   function openCourseCreator() {
     document.getElementById('course-creator-panel')?.classList.remove('hidden');
@@ -12168,7 +12132,7 @@
     'Files':       { id: 'file-manager-panel',        o: () => _onbOpen('file-manager-panel', toggleFileManager),             c: () => closeFileManager() },
     'Routines':    { id: 'routines-panel',            o: () => openRoutines(),                                                c: () => closeRoutines() },
     'Settings':    { id: 'settings-panel',            o: () => openSettings(),                                                c: () => closeSettings() },
-    'Factory':     { id: 'factory-coming-soon-popup', o: () => openFactoryComingSoon(),                                       c: () => closeFactoryComingSoon() },
+    'Factory':     { id: null,                         o: () => launchFactory(),                                              c: () => {} },
     'Cross-Check': { id: 'cross-check-panel',         o: () => _onbOpen('cross-check-panel', toggleCrossCheckPanel),          c: () => closeCrossCheckPanel() },
     'Archive':     { id: 'archive-panel',             o: () => _onbOpen('archive-panel', toggleArchivePanel),                 c: () => _onbClose('archive-panel', toggleArchivePanel) },
     'Projects':    { id: 'projects-panel',            o: () => _onbOpen('projects-panel', toggleProjects),                    c: () => closeProjects() },
