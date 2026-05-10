@@ -72,7 +72,7 @@
   #filter-waiting-label:hover, #filter-running-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
-  .btn-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; position: relative; }
+  .btn-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; position: relative; }
   #nav-divider-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
@@ -286,15 +286,6 @@
       0 16px 48px rgba(0,0,0,0.4),
       0 24px 80px rgba(0,0,0,0.3);
   }
-  /* Hidden cards collapse to a slim header stub */
-  .card.card--hidden {
-    height: 36px !important;
-    min-height: 36px !important;
-    overflow: hidden;
-    opacity: 0.55;
-  }
-  .card.card--hidden .card-corner-btn:not([data-action="unhide"]) { display: none !important; }
-  .card.card--hidden [data-action="unhide"] { display: flex !important; }
   /* Running cards pulse a soft blue aura */
   .card.status-running-card {
     animation: cardRunningPulse 3s ease-in-out infinite;
@@ -502,6 +493,7 @@
   /* Minimized row */
   .minimized-row { padding: 4px 16px; display: flex; gap: 6px; border-bottom: 1px solid #333; }
   .mini-card { padding: 3px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .mini-card.mini-card--hidden { border: 1px dashed currentColor; opacity: 0.7; padding: 2px 11px; }
 
   /* Palette definitions */
   .p1 { --bg: #0a0e1a; --card-bg: #111827; --header-bg: #0d1117; --launch-bg: #0f1520; --text: #e2e8f0; --text-muted: #64748b; --border: #1e293b; --input-bg: #1e293b; --tag-bg: #1e3a5f; --tag-text: #60a5fa; --terminal-bg: #060d18; --footer-bg: #0d1528; --fbtn-bg: #1e293b; --fbtn-text: #94a3b8; --card-btn-bg: #1e293b; --debug-bg: #060d18; --notif-bg: #1e3a5f; }
@@ -1276,6 +1268,7 @@
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
+        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button id="btn-reload" class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
@@ -1283,6 +1276,7 @@
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
         <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
+        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
         <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Version</span></button>
         <button id="btn-reset" class="hbtn btn-interface" data-tooltip="Repack all cards into a clean masonry grid, clearing custom heights and column positions"><span class="lbl">Reset</span></button>
@@ -1290,6 +1284,7 @@
         <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
         <!-- Row 4 -->
         <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
+        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
         <button id="btn-monaco" class="hbtn btn-tracking" onclick="toggleMonacoPanel()" data-tooltip="Open the Monaco code editor: project switcher, file tree, multi-file tabs"><span class="lbl">Monaco</span></button>
         <button id="btn-obsidian" class="hbtn btn-danger" onclick="obsidianUp()" data-tooltip="Push the selected session's terminal output to your Obsidian vault as a markdown note" style="padding-left: 4px; padding-right: 4px;"><span class="lbl">Obsidian</span></button>
         <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
@@ -5433,7 +5428,6 @@
           </div>
         </div>
         <div class="card-corner-btns">
-          <button class="card-corner-btn" title="Unhide session" data-action="unhide" style="display:none">↩</button>
           <button class="card-corner-btn" title="Minimize to status bar" data-action="minimize">—</button>
           <button class="card-corner-btn" title="Close" data-action="close">✕</button>
         </div>
@@ -5833,7 +5827,6 @@
     switch (action) {
       case 'stop':       wsSend({ type: 'stop', sessionId }); break;
       case 'hide-card':  hideCard(sessionId); break;
-      case 'unhide':     unhideCard(sessionId); break;
       case 'close':      wsSend({ type: 'close-session', sessionId }); break;
       case 'toggle-locks': {
         const drawer = cardEl.querySelector('[data-locks-drawer]');
@@ -6359,16 +6352,18 @@
   function hideCard(sid) {
     hiddenCards.add(sid);
     const card = document.querySelector(`.card[data-sid="${sid}"]`);
-    if (card) card.classList.add('card--hidden');
+    if (card) card.style.display = 'none';
     updateHiddenCount();
+    updateMiniCards();
     saveHiddenCards();
   }
 
   function unhideCard(sid) {
     hiddenCards.delete(sid);
     const card = document.querySelector(`.card[data-sid="${sid}"]`);
-    if (card) card.classList.remove('card--hidden');
+    if (card) card.style.display = '';
     updateHiddenCount();
+    updateMiniCards();
     applySessionFilter();
     saveHiddenCards();
   }
@@ -6376,9 +6371,10 @@
   window.unhideAll = function() {
     hiddenCards.forEach(sid => {
       const card = document.querySelector(`.card[data-sid="${sid}"]`);
-      if (card) card.classList.remove('card--hidden');
+      if (card) card.style.display = '';
     });
     hiddenCards.clear();
+    updateMiniCards();
     updateHiddenCount();
     applySessionFilter();
     saveHiddenCards();
@@ -6424,8 +6420,7 @@
     if (!grid) return;
     grid.querySelectorAll('.card').forEach(card => {
       const sid = card.dataset.sid;
-      if (hiddenCards.has(sid)) { card.classList.add('card--hidden'); return; }
-      card.classList.remove('card--hidden');
+      if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       const s = sessionStore[sid];
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
@@ -6435,7 +6430,8 @@
   }
 
   function updateMiniCards() {
-    const minimized = Object.values(sessionStore).filter(s => s.minimized);
+    const minimized = Object.values(sessionStore).filter(s => s.minimized && !hiddenCards.has(s.id));
+    const hidden = Object.values(sessionStore).filter(s => hiddenCards.has(s.id));
     document.querySelectorAll('.minimized-row').forEach(row => {
       const chips = row.querySelector('div:first-child');
       if (!chips) return;
