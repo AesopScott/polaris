@@ -7233,6 +7233,26 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'launch-diamond') {
+    const DIAMOND_DIR = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'diamond');
+    try {
+      const env = { ...process.env };
+      delete env.ELECTRON_RUN_AS_NODE;
+      const child = spawn('npm start', [], {
+        cwd: DIAMOND_DIR,
+        env,
+        detached: true,
+        stdio: 'ignore',
+        shell: true,
+      });
+      child.unref();
+      sendTo(ws, { type: 'diamond-status', launching: true });
+    } catch (e) {
+      sendTo(ws, { type: 'diamond-status', launching: false, error: e.message });
+    }
+    return;
+  }
+
   if (type === 'launch-factory') {
     const FACTORY_DIR_SRC = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'aifactory');
     const req = http.get('http://127.0.0.1:40100/health', (res) => {

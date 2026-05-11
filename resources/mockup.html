@@ -1268,7 +1268,7 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
-        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-diamond" class="hbtn btn-gold" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
@@ -4024,6 +4024,8 @@
         if (window.isPublicBuild) {
           const ccBtn = document.getElementById('btn-course-creator');
           if (ccBtn) ccBtn.style.display = 'none';
+          const diamondBtn = document.getElementById('btn-diamond');
+          if (diamondBtn) diamondBtn.style.display = 'none';
           const mBtn = document.getElementById('btn-manifest');
           if (mBtn) mBtn.style.display = 'none';
         }
@@ -8478,6 +8480,12 @@
   }
   window.openTheCard = openTheCard;
 
+  function openDiamond() {
+    pushDebugLog('[diamond] launching Diamond...');
+    wsSend({ type: 'launch-diamond' });
+  }
+  window.openDiamond = openDiamond;
+
   function launchFactory() {
     pushDebugLog('[factory] checking AI Factory status...');
     wsSend({ type: 'launch-factory' });
@@ -12431,6 +12439,7 @@
 
   const ONB_PANEL_MAP = {
     'The Card':    { id: null,                         o: () => openTheCard(),                                                c: () => {} },
+    'Diamond':     { id: null,                         o: () => openDiamond(),                                                c: () => {} },
     'Courses':     { id: 'course-creator-panel',      o: () => openCourseCreator(),                                           c: () => closeCourseCreator() },
     'Files':       { id: 'file-manager-panel',        o: () => _onbOpen('file-manager-panel', toggleFileManager),             c: () => closeFileManager() },
     'Routines':    { id: 'routines-panel',            o: () => openRoutines(),                                                c: () => closeRoutines() },
