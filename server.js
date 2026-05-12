@@ -8743,7 +8743,8 @@ Return ONLY a JSON array. Example:
   // Accumulate results — merge new domains into persistent store
   const scannedAt = new Date().toISOString();
   const newEntries = available.map(e => ({ ...e, scannedAt }));
-  const allResults = readJSON(DOMAIN_SCOUT_RESULTS_PATH, []);
+  const allResultsRaw = readJSON(DOMAIN_SCOUT_RESULTS_PATH, []);
+  const allResults = Array.isArray(allResultsRaw) ? allResultsRaw : [];
   const existingDomains = new Set(allResults.map(r => r.domain));
   const trulyNew = newEntries.filter(e => !existingDomains.has(e.domain));
   const merged = [...allResults, ...trulyNew];
@@ -8794,7 +8795,8 @@ Return ONLY a JSON array. Example:
     dismissed: false,
   };
 
-  const existing = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+  const existingRaw = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+  const existing = Array.isArray(existingRaw) ? existingRaw : [];
   writeJSON(ROUTINE_NOTIFICATIONS_PATH, [...existing.filter(n => n.routineName !== 'Domain Scout'), notif]);
 
   return { success: true, count: trulyNew.length, total: merged.length };
