@@ -612,6 +612,7 @@ function serializeSession(s) {
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
     claudeSessionId: s.claudeSessionId || null,
+    codexThreadId: s.codexThreadId || null,
     lastPrompt: s.lastPrompt || null,
     height: s.height || null,
     column: s.column != null ? s.column : null,
@@ -4725,6 +4726,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
       if (t === 'thread.started' && evt.thread_id) {
         session.codexThreadId = evt.thread_id;
         dlog('THREAD_ID', evt.thread_id);
+        saveSessions();
       } else if (t === 'item.created') {
         // Show tool calls as they start (local shell, MCP, function calls).
         const item = evt.item;
@@ -4767,7 +4769,11 @@ async function spawnCodexSession(sessionId, prompt, config) {
   proc.stderr.on('data', chunk => {
     const text = chunk.toString();
     dlog('STDERR', text.slice(0, 400));
-    if (/error|fail|invalid|unauthor|rate.?limit/i.test(text) && !/reading.*stdin|reading.*prompt/i.test(text)) {
+    const benignNoise =
+      /reading.*(stdin|prompt)/i.test(text) ||
+      /rmcp::transport::worker: worker quit with fatal: Deserialize error: EOF while parsing a value .* initialized notification/i.test(text) ||
+      /^ERROR:\s+The process "\d+" not found\.\s*$/i.test(text.trim());
+    if (!benignNoise && /error|fail|invalid|unauthor|rate.?limit/i.test(text)) {
       broadcast({ type: 'line', sessionId, text: `[codex] ${text.slice(0, 600)}`, role: 'error' });
     }
   });
@@ -4823,7 +4829,9 @@ async function spawnCodexSession(sessionId, prompt, config) {
       } catch {}
     }
 
-    try { fs.rmSync(codexSessionDir, { recursive: true, force: true }); } catch {}
+    // Keep the session-scoped CODEX_HOME on disk. Codex stores its resumable
+    // thread history under CODEX_HOME, so deleting this directory after turn 1
+    // leaves Polaris with a thread id that the CLI can no longer resume.
   });
 
   proc.on('error', err => {
@@ -8914,7 +8922,7 @@ wss.on('connection', (ws) => {
         id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
         model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
         status: s.status, startAt: s.startAt, endAt: s.endAt || null,
-        resumeId: s.claudeSessionId || null,
+        resumeId: s.isCodex ? (s.codexThreadId || null) : (s.claudeSessionId || null),
         lastPrompt: s.lastPrompt || null,
         height: s.height || null,
         column: s.column != null ? s.column : null,
