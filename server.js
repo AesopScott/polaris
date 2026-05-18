@@ -1855,6 +1855,16 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
     );
   }
 
+  layers.push(
+    '--- Polaris Navigation Pane ---\n' +
+    'You have four built-in tools to explore and reason about the Polaris UI navigation pane:\n' +
+    '- GetNavigationSchema() — returns all buttons and panel IDs in the nav grid\n' +
+    '- GetButton(buttonId) — returns label, tooltip, handler, and CSS classes for a specific button (e.g. "btn-build")\n' +
+    '- GetPanel(panelId) — returns the full HTML content of a panel (e.g. "cross-check-panel")\n' +
+    '- FindButtonByLabel(label) — case-insensitive search for buttons by display label\n' +
+    'Use these whenever the user asks about a panel, button, or UI feature — do not guess at IDs or structure.'
+  );
+
   return layers.join('\n\n');
 }
 
@@ -2048,7 +2058,7 @@ function parseNavigationStructure() {
     return navigationCache;
   }
 
-  const mockupPath = path.join(SOURCE_PATH, 'mockup.html');
+  const mockupPath = path.join(RESOURCES_PATH, 'mockup.html');
   const html = fs.readFileSync(mockupPath, 'utf8');
 
   const buttons = [];
@@ -4643,6 +4653,10 @@ function toolDisplayLabel(name, input = {}) {
     case 'WebSearch':  return `Search  ${truncate(input.query || '')}`;
     case 'TodoWrite':  return `Todo  (${(input.todos || []).length} items)`;
     case 'Skill':      return `Skill  /${input.skill || ''}`;
+    case 'GetNavigationSchema': return 'Nav  schema';
+    case 'GetButton':  return `Nav  btn:${input.buttonId || ''}`;
+    case 'GetPanel':   return `Nav  panel:${input.panelId || ''}`;
+    case 'FindButtonByLabel': return `Nav  find:"${input.label || ''}"`;
     default:           return name;
   }
 }
