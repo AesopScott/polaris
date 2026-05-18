@@ -9010,24 +9010,23 @@
   function confirmTaskSessionType(sessionType) {
     if (!_pendingTaskLaunch) return;
     const { prompt, displayPrompt, workDir, projectName } = _pendingTaskLaunch;
+    const tier = document.querySelector('.model-select')?.value || 'balanced';
     let msg = {
       prompt: prompt,
       displayPrompt: displayPrompt,
       workDir: workDir,
       projectName: projectName,
+      tier: tier,
     };
     switch (sessionType) {
       case 'max':
         msg.type = 'launch-chat';
-        msg.tier = 'balanced';
         break;
       case 'codex':
         msg.type = 'launch-codex';
-        msg.tier = 'balanced';
         break;
       case 'openrouter':
         msg.type = 'launch';
-        msg.tier = 'balanced';
         break;
       default:
         return;
