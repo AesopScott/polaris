@@ -3866,24 +3866,16 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       return;
     }
 
-    // Inject steering inputs by prepending them to the current user message content
-    // so the model encounters them in the active turn, not buried in a long system prompt.
-    const steeringItems = Array.isArray(session.steeringQueue) ? session.steeringQueue : [];
+    // Inject pending steering inputs as a fresh user message at the END of the conversation
+    // so the agent sees them as new input right now, not buried under prior turns.
+    // Clear the queue immediately so each batch is injected exactly once.
+    const steeringItems = Array.isArray(session.steeringQueue) ? session.steeringQueue.splice(0) : [];
     let callMessages = session.messages;
     if (steeringItems.length > 0) {
-      const steeringBlock = '--- Steering Inputs (read; incorporate if relevant) ---\n' +
-        steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n') +
-        '\n--- end steering ---\n\n';
-      const lastUserIdx = session.messages.reduce((acc, m, i) => m.role === 'user' ? i : acc, -1);
-      if (lastUserIdx >= 0) {
-        callMessages = session.messages.map((m, i) => {
-          if (i !== lastUserIdx) return m;
-          const c = m.content;
-          if (typeof c === 'string') return { ...m, content: steeringBlock + c };
-          if (Array.isArray(c)) return { ...m, content: [{ type: 'text', text: steeringBlock }, ...c] };
-          return m;
-        });
-      }
+      const steeringContent = '[Steering — read and adjust your current task if relevant; if unrelated, acknowledge and continue your current work:]\n' +
+        steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n');
+      callMessages = [...session.messages, { role: 'user', content: steeringContent }];
+      broadcast({ type: 'line', sessionId, role: 'system', text: `[steering injected: ${steeringItems.length} input${steeringItems.length === 1 ? '' : 's'}]` });
     }
     const _promptK = Math.round((systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000);
     broadcast({ type: 'line', sessionId, text: `(${_promptK}k)`, role: 'system' });
