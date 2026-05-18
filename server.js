@@ -2044,6 +2044,9 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
 
 function toolQueryMemory({ filename } = {}, sessionId) {
   const session = sessions.get(sessionId);
+  if (session && (!session.projectMemory || Object.keys(session.projectMemory).length === 0)) {
+    try { buildProjectKnowledgeBlock(readConfig(), session); } catch {}
+  }
   const mem = session?.projectMemory;
   if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
   if (filename) {
@@ -5108,9 +5111,12 @@ async function spawnMaxChat(sessionId, prompt, config) {
 
   // On turn 2+, the CLI already has the conversation history stored on disk
   // under session.claudeSessionId — just send the new user message.
-  // On turn 1, send full Polaris context + history as before.
+  // On turn 1, send only visible conversation history + the user's prompt.
+  // Host/project context is appended as a system prompt so it does not appear
+  // as a user-visible transcript line in Claude Code.
   const isResume = !!session.claudeSessionId;
   let fullPrompt;
+  let hiddenSystemPrompt = '';
   if (isResume) {
     fullPrompt = prompt;
   } else {
@@ -5118,13 +5124,12 @@ async function spawnMaxChat(sessionId, prompt, config) {
       .filter(l => l.role === 'user' || l.role === 'assistant')
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
-    const polarisContext = buildPolarisContextBlock(config, session);
-    const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
-    fullPrompt = polarisContext + knowledgeBlock + '\n\n' + (history || prompt);
+    hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
+    fullPrompt = history || prompt;
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} knowledgeFiles=${Object.keys(session.projectMemory||{}).length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
-  const _chatPromptK = Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000;
+  const _chatPromptK = (Buffer.byteLength(fullPrompt, 'utf8') + Buffer.byteLength(hiddenSystemPrompt, 'utf8')) / 4 / 1000;
   broadcast({ type: 'line', sessionId, text: _chatPromptK >= 20 ? `(${_chatPromptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
@@ -5141,6 +5146,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   // to connect to all of them on every spawn, adding ~6s cold-start latency.
   // The local .mcp.json (Polaris endpoint only) is still loaded via cwd discovery.
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel, '--strict-mcp-config'];
+  if (hiddenSystemPrompt) args.push('--append-system-prompt', hiddenSystemPrompt);
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
   const chatDocs   = session.pendingDocs   || [];
@@ -5500,7 +5506,11 @@ async function spawnCodexSession(sessionId, prompt, config) {
     ? ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', 'resume', session.codexThreadId, '-']
     : ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'];
 
-  // Turn 1: prepend Polaris context + history. Turn 2+: just the new message.
+  // Turn 1: send only visible conversation history + the user's prompt.
+  // Codex CLI does not expose a hidden system-prompt channel here; injecting
+  // Polaris/backlog context into stdin makes it part of the visible transcript.
+  // The per-session MCP endpoint exposes project/status/memory tools without
+  // requiring a visible session-id block.
   let fullPrompt;
   if (isResume) {
     fullPrompt = prompt;
@@ -5509,9 +5519,8 @@ async function spawnCodexSession(sessionId, prompt, config) {
       .filter(l => l.role === 'user' || l.role === 'assistant')
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
-    const polarisContext = buildPolarisContextBlock(config, session);
-    const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
-    fullPrompt = polarisContext + knowledgeBlock + '\n\n' + (history || prompt);
+    buildProjectKnowledgeBlock(config, session);
+    fullPrompt = history || prompt;
   }
 
   // Extract text from DOCX/PDF attachments and prepend to prompt (Codex stdin is text-only).
@@ -6341,9 +6350,11 @@ const httpServer = http.createServer((req, res) => {
         }}));
       }
       if (method === 'tools/list') {
+        const projectNames = (readConfig().projects || []).map(p => p.name).filter(Boolean).join(', ');
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [
-          { name: 'SetProject', description: 'Set the active project for this session. Call immediately after the user names their project.', inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit for no project (scratch).' } }, required: [] } },
+          { name: 'SetProject', description: `Set the active project for this session. Known projects: ${projectNames || '(none configured)'}.`, inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name, or omit for no project (scratch).' } }, required: [] } },
           { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
+          { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Omit filename to get all project context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' } }, required: [] } },
         ]}}));
       }
       if (method === 'tools/call') {
@@ -6351,6 +6362,7 @@ const httpServer = http.createServer((req, res) => {
         let result;
         if (name === 'SetProject') result = toolSetProject(args || {}, sessionId);
         else if (name === 'SetStatus') result = toolSetStatus(args || {}, sessionId);
+        else if (name === 'QueryMemory') result = toolQueryMemory(args || {}, sessionId);
         else return res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown tool: ${name}` } }));
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(result) }] } }));
       }
