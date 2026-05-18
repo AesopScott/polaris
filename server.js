@@ -6877,13 +6877,13 @@ function drainPendingTurns(sessionId) {
   if (pending.length === 0) return;
 
   if (session.status === 'running') {
-    broadcast({ type: 'queue-status', sessionId, pending: pending.length });
+    broadcast({ type: 'queue-status', sessionId, pending: pending.length, turns: pending.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
     return;
   }
 
   const nextTurn = pending.shift();
   session.pendingTurns = pending;
-  broadcast({ type: 'queue-status', sessionId, pending: pending.length });
+  broadcast({ type: 'queue-status', sessionId, pending: pending.length, turns: pending.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
   saveSessions();
   setImmediate(() => executeResumeTurn(sessionId, nextTurn));
 }
@@ -7178,7 +7178,7 @@ async function handleMessage(ws, raw) {
       session.pendingTurns = [];
       if (cleared > 0) {
         broadcast({ type: 'line', sessionId: msg.sessionId, role: 'system', text: `[stop - cleared ${cleared} queued turn${cleared === 1 ? '' : 's'}]` });
-        broadcast({ type: 'queue-status', sessionId: msg.sessionId, pending: 0 });
+        broadcast({ type: 'queue-status', sessionId: msg.sessionId, pending: 0, turns: [] });
       }
       if (Array.isArray(session.steeringQueue) && session.steeringQueue.length > 0) {
         session.steeringQueue = [];
@@ -7203,7 +7203,7 @@ async function handleMessage(ws, raw) {
     } else if (queueType === 'pending') {
       if (Array.isArray(session.pendingTurns) && index >= 0 && index < session.pendingTurns.length) {
         session.pendingTurns.splice(index, 1);
-        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length, turns: session.pendingTurns.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
         saveSessions();
       }
     }
@@ -7232,7 +7232,7 @@ async function handleMessage(ws, raw) {
           prompt: prompt || session.pendingTurns[index].prompt,
           displayPrompt: displayPrompt || prompt || session.pendingTurns[index].displayPrompt,
         };
-        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length, turns: session.pendingTurns.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
         saveSessions();
       }
     }
