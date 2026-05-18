@@ -1749,13 +1749,12 @@ function buildProjectKnowledgeBlock(config, session) {
   ].filter(Boolean).join('\n');
   if (configLines) parts.push(`--- Project Configuration ---\n${configLines}`);
 
-  // Full Obsidian knowledge base
-  const mem = session.projectMemory;
-  if (mem && Object.keys(mem).length > 0) {
-    const obsContent = Object.entries(mem)
-      .map(([k, v]) => `=== ${k} ===\n${v}`)
-      .join('\n\n');
-    parts.push(`--- Project Knowledge Base (Obsidian) ---\n${obsContent}`);
+  // Project memory directive — files loaded in memory but not injected into prompt
+  if (matched.obsidianDir) {
+    parts.push(
+      `--- Project Knowledge Base (Obsidian) ---\n` +
+      `Your project knowledge base is loaded in memory. Call QueryMemory with no arguments to retrieve your full project context, or pass a filename to retrieve a specific file.`
+    );
   }
 
   return parts.length ? '\n\n' + parts.join('\n\n') : '';
