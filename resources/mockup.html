@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -5445,7 +5445,7 @@
     const colHeights = [0, 0, 0];
     normalCards.forEach(s => {
       let idx = s.column;
-      if (idx == null) {
+      if (idx == null || idx < 0 || idx >= cols.length) {
         idx = colHeights.indexOf(Math.min(...colHeights));
         s.column = idx;
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
@@ -5968,7 +5968,7 @@
         cardEl.style.height = ''; if (sessionStore[sessionId]) sessionStore[sessionId].height = null; wsSend({ type: 'session-height', sessionId, height: null }); break;
       case 'minimize': {
         if (!s) break;
-        s.minimized = true;
+        s.minimized = true; s.column = null;
         cardEl.style.display = 'none';
         updateMiniCards();
         pushDebugLog(`[card] Minimized: ${s.name || sessionId}`);
