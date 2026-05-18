@@ -1178,6 +1178,34 @@ function watchSessionFiles(sessionId, workDir) {
   return watcher;
 }
 
+// Write a session note file and run git push. Shared by obsidian-up and obsidian-commit-analysis.
+async function pushSessionNoteToObsidian(sessionName, content, projectName, ws) {
+  const config = readConfig();
+  const vaultPath = config.obsidianVaultPath;
+  if (!vaultPath) {
+    sendTo(ws, { type: 'error', text: 'No Obsidian vault path configured. Open Settings to set one.' });
+    return;
+  }
+  const proj = (config.projects || []).find(p => p.name === projectName);
+  const buildPath = proj?.obsidianDir && path.isAbsolute(path.normalize(proj.obsidianDir))
+    ? path.normalize(proj.obsidianDir)
+    : path.join(vaultPath, proj?.obsidianDir || '');
+  const vaultRoot = proj?.obsidianDir ? path.dirname(buildPath) : vaultPath;
+  const sessionsDir = proj?.obsidianSessionsDir && path.isAbsolute(path.normalize(proj.obsidianSessionsDir))
+    ? path.normalize(proj.obsidianSessionsDir)
+    : path.join(vaultRoot, proj?.obsidianSessionsDir || `${projectName || 'Polaris'}_Sessions`);
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
+  const filePath = path.join(sessionsDir, `${safeName}.md`);
+  fs.writeFileSync(filePath, content || '', 'utf8');
+  sendTo(ws, { type: 'obsidian-progress', step: 'file-written', filePath });
+  const codeGit = proj && proj.workDir
+    ? runGit(['push'], proj.workDir).then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
+    : Promise.resolve();
+  pendingGitPushes++;
+  Promise.all([codeGit]).finally(() => { sendTo(ws, { type: 'obsidian-up-done', filePath }); onGitPushComplete(); });
+}
+
 // Auto-fire Obsidian Up when a session completes with file modifications
 function autoObsidianForSession(sessionId) {
   const s = sessions.get(sessionId);
@@ -1450,6 +1478,105 @@ ${transcript}`;
 
   console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
   broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] Session notes written to ${projectName} knowledge base.`, role: 'system' });
+}
+
+// Analyze a session transcript and return a structured knowledge preview (no writes).
+async function analyzeSessionForKnowledgePreview(content, projectName) {
+  const config = readConfig();
+  const vaultPath = config.obsidianVaultPath;
+  if (!vaultPath || !config.deepSeekApiKey) return null;
+
+  const proj = (config.projects || []).find(p => p.name === projectName);
+  const obsDir = proj?.obsidianDir
+    ? (path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir))
+    : null;
+
+  const safeRead = fp => { try { return fs.readFileSync(fp, 'utf8'); } catch { return ''; } };
+  const lastNoteIn = dir => {
+    try {
+      const files = fs.readdirSync(dir).filter(f => /^\d{4}\.md$/.test(f)).sort();
+      return files.length ? safeRead(path.join(dir, files[files.length - 1])).slice(0, 800) : '';
+    } catch { return ''; }
+  };
+  const nextNumIn = dir => {
+    try {
+      const files = fs.readdirSync(dir).filter(f => /^\d{4}\.md$/.test(f)).sort();
+      if (!files.length) return '0001';
+      return String(parseInt(files[files.length - 1], 10) + 1).padStart(4, '0');
+    } catch { return '0001'; }
+  };
+
+  const arch      = obsDir ? safeRead(path.join(obsDir, '2-Architecture.md')).slice(-2000) : '';
+  const buildPlan = obsDir ? safeRead(path.join(obsDir, '3-Build-Plan.md')).slice(-2000) : '';
+  const projBacklog = proj?.workDir ? safeRead(path.join(proj.workDir, 'docs', 'backlog.json')).slice(0, 1500) : '';
+
+  const decisionsDir = path.join(vaultPath, 'Decisions');
+  const patternsDir  = path.join(vaultPath, 'Patterns');
+  const lessonsDir   = path.join(vaultPath, 'Lessons');
+  const backlogDir   = path.join(vaultPath, 'Backlog');
+
+  const today = new Date().toISOString().slice(0, 10);
+  const transcript = content.length > 8000 ? content.slice(0, 8000) + '\n...[truncated]' : content;
+
+  const prompt = `You are a knowledge extractor for a software project called "${projectName || 'Project'}". Today is ${today}.
+
+Analyze this session transcript and determine what knowledge should be updated or created. Return ONLY valid JSON with these exact keys (set a key to null if nothing relevant):
+
+{
+  "architecture": "new architectural decisions or patterns to append to the Architecture doc, or null",
+  "buildPlan": "roadmap changes, shipped items, or open questions to append to the Build Plan, or null",
+  "backlog": "complete content for a new global Backlog note, or null if no new global backlog items arise",
+  "decision": "complete content for a new Decision note (a concrete architectural or technical choice made this session), or null",
+  "pattern": "complete content for a new Pattern note (a reusable approach or technique identified), or null",
+  "lesson": "complete content for a new Lesson note (something that went wrong, an insight, or an unexpected finding), or null"
+}
+
+For any non-null field, write complete standalone content useful without the session context.
+
+--- EXISTING ARCHITECTURE (tail) ---
+${arch || '(empty)'}
+
+--- EXISTING BUILD PLAN (tail) ---
+${buildPlan || '(empty)'}
+
+--- PROJECT BACKLOG ---
+${projBacklog || '(empty)'}
+
+--- LAST DECISION NOTE ---
+${lastNoteIn(decisionsDir) || '(none yet)'}
+
+--- LAST PATTERN NOTE ---
+${lastNoteIn(patternsDir) || '(none yet)'}
+
+--- LAST LESSON NOTE ---
+${lastNoteIn(lessonsDir) || '(none yet)'}
+
+--- SESSION TRANSCRIPT ---
+${transcript}`;
+
+  try {
+    const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.deepSeekApiKey}` },
+      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1500 })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.error?.message || `HTTP ${resp.status}`);
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const result = JSON.parse(jsonMatch[0]);
+    return {
+      ...result,
+      _nextDecision: nextNumIn(decisionsDir),
+      _nextPattern:  nextNumIn(patternsDir),
+      _nextLesson:   nextNumIn(lessonsDir),
+      _nextBacklog:  nextNumIn(backlogDir),
+    };
+  } catch (e) {
+    console.error('[obsidian-analyze]', e.message);
+    return null;
+  }
 }
 
 //─── Lock enforcement ─────────────────────────────────────────────────────────
@@ -8724,36 +8851,63 @@ async function handleMessage(ws, raw) {
 
   if (type === 'obsidian-up') {
     const { sessionName, content, projectName } = msg;
-    const config = readConfig();
-    const vaultPath = config.obsidianVaultPath;
-    if (!vaultPath) {
-      sendTo(ws, { type: 'error', text: 'No Obsidian vault path configured. Open Settings to set one.' });
-      return;
-    }
     try {
-      const proj = (config.projects || []).find(p => p.name === projectName);
-      // Derive vault root from the project's absolute obsidianDir, same logic as scaffoldObsidianProject
-      const buildPath = proj?.obsidianDir && path.isAbsolute(path.normalize(proj.obsidianDir))
-        ? path.normalize(proj.obsidianDir)
-        : path.join(vaultPath, proj?.obsidianDir || '');
-      const vaultRoot = proj?.obsidianDir ? path.dirname(buildPath) : vaultPath;
-      const sessionsDir = proj?.obsidianSessionsDir && path.isAbsolute(path.normalize(proj.obsidianSessionsDir))
-        ? path.normalize(proj.obsidianSessionsDir)
-        : path.join(vaultRoot, proj?.obsidianSessionsDir || `${projectName || 'Polaris'}_Sessions`);
-      fs.mkdirSync(sessionsDir, { recursive: true });
-      const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
-      const filePath = path.join(sessionsDir, `${safeName}.md`);
-      fs.writeFileSync(filePath, content || '', 'utf8');
-      sendTo(ws, { type: 'obsidian-progress', step: 'file-written', filePath });
-      const codeGit = proj && proj.workDir
-        ? runGit(['push'], proj.workDir)
-            .then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
-        : Promise.resolve();
-      pendingGitPushes++;
-      Promise.all([codeGit])
-        .finally(() => { sendTo(ws, { type: 'obsidian-up-done', filePath }); onGitPushComplete(); });
+      await pushSessionNoteToObsidian(sessionName, content, projectName, ws);
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian Up failed: ${e.message}` });
+    }
+    return;
+  }
+
+  if (type === 'obsidian-analyze') {
+    const { sessionName, content, projectName } = msg;
+    sendTo(ws, { type: 'obsidian-analysis-loading' });
+    try {
+      const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName);
+      sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName });
+    } catch (e) {
+      sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e.message}` });
+    }
+    return;
+  }
+
+  if (type === 'obsidian-commit-analysis') {
+    const { analysis, sessionName, content, projectName } = msg;
+    const config = readConfig();
+    const vaultPath = config.obsidianVaultPath;
+    const today = new Date().toISOString().slice(0, 10);
+    if (vaultPath && analysis) {
+      const proj = (config.projects || []).find(p => p.name === projectName);
+      if (proj?.obsidianDir) {
+        const obsDir = path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir);
+        const appendBlock = (fileName, blockContent) => {
+          if (!blockContent) return;
+          const fp = path.join(obsDir, fileName);
+          try { fs.appendFileSync(fp, `\n\n## Session Update (${today})\n\n${blockContent}\n`, 'utf8'); } catch {}
+        };
+        appendBlock('2-Architecture.md', analysis.architecture);
+        appendBlock('3-Build-Plan.md', analysis.buildPlan);
+      }
+      const writeNote = (dir, nextNum, noteContent, label) => {
+        if (!noteContent || !nextNum) return;
+        try {
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(
+            path.join(dir, `${nextNum}.md`),
+            `# ${label} ${nextNum}\n\n**Date:** ${today}\n**Project:** ${projectName || '—'}\n\n${noteContent}\n`,
+            'utf8'
+          );
+        } catch (e) { console.error(`[obsidian-commit] ${label} write failed:`, e.message); }
+      };
+      writeNote(path.join(vaultPath, 'Decisions'), analysis._nextDecision, analysis.decision,  'Decision');
+      writeNote(path.join(vaultPath, 'Patterns'),  analysis._nextPattern,  analysis.pattern,   'Pattern');
+      writeNote(path.join(vaultPath, 'Lessons'),   analysis._nextLesson,   analysis.lesson,    'Lesson');
+      writeNote(path.join(vaultPath, 'Backlog'),   analysis._nextBacklog,  analysis.backlog,   'Backlog');
+    }
+    try {
+      await pushSessionNoteToObsidian(sessionName, content, projectName, ws);
+    } catch (e) {
+      sendTo(ws, { type: 'error', text: `Obsidian commit failed: ${e.message}` });
     }
     return;
   }
