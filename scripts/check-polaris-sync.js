@@ -38,16 +38,18 @@ check(
   'server.js should call drainPendingTurns from terminal session paths, not only define it.'
 );
 check(
-  /if\s*\(\s*session\.status\s*===\s*['"]running['"]\s*\)\s*{[\s\S]{0,700}session\.pendingTurns\.push\s*\(\s*turn\s*\)/.test(server),
-  'resume handler is missing the running-session guard that queues follow-up turns.'
+  /if\s*\(\s*session\.status\s*===\s*['"]running['"]\s*\)\s*{[\s\S]{0,900}session\.steeringQueue\.push\s*\(\s*\{[\s\S]{0,250}text:\s*prompt/.test(server)
+    && /broadcast\s*\(\s*\{[\s\S]{0,150}type:\s*['"]steering-update['"]/.test(server),
+  'resume handler is missing the running-session guard that records steering inputs.'
 );
 check(
-  /function\s+drainPendingTurns\s*\(\s*sessionId\s*\)\s*{[\s\S]{0,900}setImmediate\s*\(\s*\(\s*\)\s*=>\s*executeResumeTurn\s*\(\s*sessionId\s*,\s*nextTurn\s*\)\s*\)/.test(server),
-  'drainPendingTurns no longer schedules queued turns through executeResumeTurn.'
+  /function\s+drainPendingTurns\s*\(\s*sessionId\s*\)\s*{[\s\S]{0,900}session\.steeringQueue\.forEach\s*\([\s\S]{0,250}session\.pendingTurns\.push/.test(server)
+    && /function\s+drainPendingTurns\s*\(\s*sessionId\s*\)\s*{[\s\S]{0,1600}setImmediate\s*\(\s*\(\s*\)\s*=>\s*executeResumeTurn\s*\(\s*sessionId\s*,\s*nextTurn\s*\)\s*\)/.test(server),
+  'drainPendingTurns should convert steering inputs to queued turns and schedule them through executeResumeTurn.'
 );
 check(
-  /if\s*\(\s*type\s*===\s*['"]stop['"]\s*\)\s*{[\s\S]{0,1200}session\.pendingTurns\s*=\s*\[\s*\]/.test(server),
-  'Stop handler should clear session.pendingTurns so canceled sessions do not replay queued prompts.'
+  /if\s*\(\s*type\s*===\s*['"]stop['"]\s*\)\s*{[\s\S]{0,1600}session\.pendingTurns\s*=\s*\[\s*\][\s\S]{0,600}session\.steeringQueue\s*=\s*\[\s*\]/.test(server),
+  'Stop handler should clear pendingTurns and steeringQueue so canceled sessions do not replay queued prompts.'
 );
 check(
   /function\s+broadcastInitialUserPrompt\s*\(\s*sessionId\s*,\s*prompt\s*,\s*displayPrompt\s*\)/.test(server),

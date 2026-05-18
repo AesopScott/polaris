@@ -1295,18 +1295,30 @@ function scaffoldObsidianProject(project, vaultPath) {
 // /start-build, /finish-build, /promote-stage, /promote-to-prod, and
 // /mark-tasks-complete. New projects start with an empty `tasks` array so
 // /plan-task can add the first entry. Idempotent — never overwrites.
+function ensureProjectBacklogFile(project, opts = {}) {
+  const { name, workDir } = project || {};
+  if (!workDir) return null;
+  const docsDir = path.join(workDir, 'docs');
+  const backlogPath = path.join(docsDir, 'backlog.json');
+  if (fs.existsSync(backlogPath)) return backlogPath;
+
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(backlogPath, JSON.stringify({ tasks: [] }, null, 2) + '\n', 'utf8');
+  console.log(`[scaffold-backlog] wrote ${backlogPath} for ${name || workDir}`);
+  if (opts.broadcast) broadcast({ type: 'backlog-scaffolded', project: name, path: backlogPath });
+  if (opts.commit) {
+    try {
+      _autoCommitBacklog(workDir, null, 'scaffold empty backlog');
+    } catch (e) {
+      console.error('[backlog] scaffold auto-commit failed in ' + workDir + ':', e.message);
+    }
+  }
+  return backlogPath;
+}
+
 function scaffoldBacklog(project) {
-  const { name, workDir } = project;
-  if (!workDir) return;
   try {
-    const docsDir = path.join(workDir, 'docs');
-    const backlogPath = path.join(docsDir, 'backlog.json');
-    if (fs.existsSync(backlogPath)) return; // never clobber existing
-    fs.mkdirSync(docsDir, { recursive: true });
-    const initial = { tasks: [] };
-    fs.writeFileSync(backlogPath, JSON.stringify(initial, null, 2) + '\n', 'utf8');
-    console.log(`[scaffold-backlog] wrote ${backlogPath} for ${name}`);
-    broadcast({ type: 'backlog-scaffolded', project: name, path: backlogPath });
+    ensureProjectBacklogFile(project, { broadcast: true });
   } catch (e) {
     console.error('[scaffold-backlog] failed:', e.message);
   }
@@ -1884,6 +1896,9 @@ function buildProjectKnowledgeBlock(config, session) {
   ].filter(Boolean).join('\n');
   if (configLines) parts.push(`--- Project Configuration ---\n${configLines}`);
 
+  const backlogBlock = session.isCodex ? buildBacklogContextBlock(config, matched) : '';
+  if (backlogBlock) parts.push(backlogBlock);
+
   // Project memory directive — files loaded in memory but not injected into prompt
   if (matched.obsidianDir) {
     parts.push(
@@ -1893,6 +1908,63 @@ function buildProjectKnowledgeBlock(config, session) {
   }
 
   return parts.length ? '\n\n' + parts.join('\n\n') : '';
+}
+
+function _backlogOpenTasks(backlog) {
+  const done = new Set(['production', 'cancelled']);
+  return Array.isArray(backlog?.tasks)
+    ? backlog.tasks.filter(t => !done.has(String(t.status || 'backlog')))
+    : [];
+}
+
+function _formatBacklogTaskBrief(task) {
+  const status = task.status || 'backlog';
+  const priority = task.priority === undefined || task.priority === null ? '?' : task.priority;
+  return `#${task.number || '?'} [${status}, p${priority}] ${task.title || '(untitled)'}`;
+}
+
+function _formatBacklogSummary(backlog, limit = 5) {
+  if (!backlog || !Array.isArray(backlog.tasks)) return 'missing or unreadable';
+  const tasks = backlog.tasks;
+  const open = _backlogOpenTasks(backlog);
+  const top = open
+    .slice()
+    .sort((a, b) => (Number(b.priority || 0) - Number(a.priority || 0)) || ((a.number || 0) - (b.number || 0)))
+    .slice(0, limit)
+    .map(_formatBacklogTaskBrief);
+  return `${tasks.length} task${tasks.length === 1 ? '' : 's'}, ${open.length} open${top.length ? `; top open: ${top.join(' | ')}` : ''}`;
+}
+
+function buildBacklogContextBlock(config, matchedProject) {
+  const lines = [];
+  const vaultPath = config.obsidianVaultPath;
+  const globalPath = vaultPath ? path.join(vaultPath, 'Backlog', 'backlog.json') : null;
+  let data = { global: null, projects: [] };
+
+  try { data = loadAllBacklogs(); } catch (e) {
+    lines.push(`Backlog load warning: ${e.message}`);
+  }
+
+  lines.push('Global backlog: ' + (globalPath || '(Obsidian vault path not configured)'));
+  if (globalPath) lines.push('Global backlog summary: ' + _formatBacklogSummary(data.global, 8));
+
+  const projects = data.projects || [];
+  const active = projects.find(p => matchedProject && p.name === matchedProject.name);
+  if (matchedProject?.workDir) {
+    lines.push('Active project backlog: ' + path.join(matchedProject.workDir, 'docs', 'backlog.json'));
+    lines.push('Active project backlog summary: ' + _formatBacklogSummary(active?.backlog, 8));
+  }
+
+  if (projects.length) {
+    lines.push('All project backlog files:');
+    for (const proj of projects) {
+      const backlogPath = path.join(proj.workDir, 'docs', 'backlog.json');
+      lines.push(`- ${proj.name}: ${backlogPath} (${_formatBacklogSummary(proj.backlog, 0)})`);
+    }
+  }
+
+  lines.push('Before selecting, starting, editing, or completing backlog work, read the relevant backlog JSON file(s) directly. Treat global backlog items as cross-project context and the active project backlog as the repo-local source of truth.');
+  return `--- Backlog Context ---\n${lines.join('\n')}`;
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
@@ -2385,7 +2457,7 @@ function loadAllBacklogs() {
   // file is created on first task add via addBacklogTask().
   const projects = (cfg.projects || []).filter(p => p.workDir && p.name);
   for (const proj of projects) {
-    const backlogPath = path.join(proj.workDir, 'docs', 'backlog.json');
+    const backlogPath = ensureProjectBacklogFile(proj, { commit: true }) || path.join(proj.workDir, 'docs', 'backlog.json');
     let backlog = null;
     try {
       const text = fs.readFileSync(backlogPath, 'utf8');
@@ -4960,6 +5032,26 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
+function filterCliStderrForDisplay(text, extraBenignPattern = null) {
+  const cleaned = String(text || '')
+    .replace(/SUCCESS:\s+The process with PID \d+ \(child process of PID \d+\) has been terminated\.?/gi, '')
+    .replace(/ERROR:\s+The process "\d+" not found\.?/gi, '');
+  const lines = cleaned.split(/\r?\n/);
+  const visible = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const isTaskkillNoise =
+      /^SUCCESS:\s+The process with PID \d+ \(child process of PID \d+\) has been terminated\.?$/i.test(line) ||
+      /^ERROR:\s+The process "\d+" not found\.?$/i.test(line);
+    const isPromptNoise = /reading.*(stdin|prompt)/i.test(line);
+    const isExtraBenign = extraBenignPattern && extraBenignPattern.test(line);
+    if (isTaskkillNoise || isPromptNoise || isExtraBenign) continue;
+    visible.push(rawLine);
+  }
+  return visible.join('\n').trim();
+}
+
 // spawnMaxChat — chat-mode backend that spawns the Claude Code CLI and bills
 // against the user's Max plan instead of OpenRouter API. Conversation history
 // is rebuilt into the prompt each turn (no CLI session-id tracking needed —
@@ -5234,8 +5326,9 @@ async function spawnMaxChat(sessionId, prompt, config) {
   proc.stderr.on('data', chunk => {
     const text = chunk.toString();
     dlog('STDERR', text.slice(0, 400));
-    if (/error|fail|invalid|unauthor|rate.?limit|login|claude login/i.test(text)) {
-      broadcast({ type: 'line', sessionId, text: `[claude] ${text.slice(0, 800)}`, role: 'error' });
+    const displayText = filterCliStderrForDisplay(text);
+    if (displayText && /error|fail|invalid|unauthor|rate.?limit|login|claude login/i.test(displayText)) {
+      broadcast({ type: 'line', sessionId, text: `[claude] ${displayText.slice(0, 800)}`, role: 'error' });
     }
   });
 
@@ -5558,12 +5651,12 @@ async function spawnCodexSession(sessionId, prompt, config) {
   proc.stderr.on('data', chunk => {
     const text = chunk.toString();
     dlog('STDERR', text.slice(0, 400));
-    const benignNoise =
-      /reading.*(stdin|prompt)/i.test(text) ||
-      /rmcp::transport::worker: worker quit with fatal: Deserialize error: EOF while parsing a value .* initialized notification/i.test(text) ||
-      /^ERROR:\s+The process "\d+" not found\.\s*$/i.test(text.trim());
-    if (!benignNoise && /error|fail|invalid|unauthor|rate.?limit/i.test(text)) {
-      broadcast({ type: 'line', sessionId, text: `[codex] ${text.slice(0, 600)}`, role: 'error' });
+    const displayText = filterCliStderrForDisplay(
+      text,
+      /rmcp::transport::worker: worker quit with fatal: Deserialize error: EOF while parsing a value .* initialized notification/i
+    );
+    if (displayText && /error|fail|invalid|unauthor|rate.?limit/i.test(displayText)) {
+      broadcast({ type: 'line', sessionId, text: `[codex] ${displayText.slice(0, 600)}`, role: 'error' });
     }
   });
 
