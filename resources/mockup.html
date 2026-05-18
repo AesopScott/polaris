@@ -13740,10 +13740,10 @@
 
   function getGaps() {
     var grid    = canvas.parentElement;
-    var buttons = Array.from(grid.querySelectorAll('button')).slice(0, 6);
-    if (buttons.length < 6) return [];
+    var buttons = Array.from(grid.querySelectorAll('button')).slice(0, 7);
+    if (buttons.length < 7) return [];
     var rect = grid.getBoundingClientRect();
-    return buttons.slice(0, 5).map(function (btn, i) {
+    return buttons.slice(0, 6).map(function (btn, i) {
       var r = btn.getBoundingClientRect().right  - rect.left;
       var l = buttons[i + 1].getBoundingClientRect().left - rect.left;
       return (r + l) / 2;
