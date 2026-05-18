@@ -5615,13 +5615,13 @@
     normalCards.forEach(s => {
       let idx = s.column;
       if (idx == null || idx < 0 || idx >= cols.length) {
-        idx = colHeights.indexOf(Math.min(...colHeights)); console.log("[grid] Auto-assigning", s.name || s.id, "to column", idx);
+        idx = colHeights.indexOf(Math.min(...colHeights));
         s.column = idx;
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
       const card = buildCard(s);
       if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
-      cols[idx].appendChild(card); if (!s.minimized && !hiddenCards.has(s.id)) { console.log("[grid] col", idx, "height growing from", colHeights[idx], "by", ((parseInt(s.height) || 260) + 12)); }
+      cols[idx].appendChild(card);
       colHeights[idx] += (s.minimized || hiddenCards.has(s.id)) ? 0 : (parseInt(s.height) || 260) + 12;
     });
     grid.appendChild(colsRow);
@@ -6669,7 +6669,7 @@
     const s = sessionStore[sid];
     if (s) {
       s.column = null;
-      sessionOrder = [sid, ...sessionOrder.filter(id => id !== sid)];
+      sessionOrder = [...sessionOrder.filter(id => id !== sid), sid];
       renderGrid();
     } else {
       const card = document.querySelector(`.card[data-sid="${sid}"]`);
@@ -6819,7 +6819,7 @@
     if (!s) return;
     s.minimized = false;
     s.column = null;
-    sessionOrder = [sessionId, ...sessionOrder.filter(id => id !== sessionId)];
+    sessionOrder = [...sessionOrder.filter(id => id !== sessionId), sessionId];
     renderGrid();
     pushDebugLog(`[card] Restored: ${s.name || sessionId}`);
   }
