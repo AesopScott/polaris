@@ -1610,7 +1610,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
 ];
 
-function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = true, continuationContext = null) {
+function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = false, continuationContext = null) {
   const layers = [BASE_SYSTEM_PROMPT];
 
   if (continuationContext) {
@@ -1634,13 +1634,7 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
     );
   }
 
-  // Layer 2: Project CLAUDE.md ({workDir}/CLAUDE.md)
-  if (workDir) {
-    const projectClaudeMd = path.join(workDir, 'CLAUDE.md');
-    try { layers.push('--- Project Rules ---\n' + fs.readFileSync(projectClaudeMd, 'utf8')); } catch {}
-  }
-
-  // Layer 3: Project config identity and paths
+  // Project config identity and key paths (small — no CLAUDE.md or file map bulk injection)
   if (workDir) {
     const matched = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
     if (matched) {
@@ -1656,7 +1650,6 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
       ].filter(Boolean).join('\n');
       layers.push('--- Project Configuration ---\n' + configLines);
 
-      // Project memory directive
       if (matched.obsidianDir) {
         layers.push(
           `--- Project Memory (MANDATORY) ---\n` +
@@ -1664,35 +1657,7 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
         );
       }
 
-      // Obsidian sync is automatic — make this explicit so agents don't try to
-      // duplicate the work (and don't ignore it because the previous mandate
-      // sounded contradictory). The server's extractSessionToKnowledge runs
-      // when the session ends and writes to numbered Obsidian files.
-      if (matched.obsidianSessionsDir) {
-        layers.push(
-          `--- Obsidian Sync (automatic — no agent action required) ---\n` +
-          `When this session ends, Polaris runs extractSessionToKnowledge server-side. It calls DeepSeek to summarize what happened, then writes:\n` +
-          `  - architectural changes → 2-Architecture.md\n` +
-          `  - roadmap / build-plan updates → 3-Build-Plan.md\n` +
-          `  - external API / tool / config changes → 7-Integrations.md\n` +
-          `  - changelog row → 4-Changelog.md (only if package.json was bumped)\n` +
-          `Sessions folder for transcripts: ${matched.obsidianSessionsDir}\n` +
-          `Knowledge base folder: ${matched.obsidianDir}\n` +
-          `You do NOT need to manually write to any of these files. To trigger a changelog row at session end, just make sure to bump the version in package.json before stopping work.`
-        );
-      }
-
-      // Custom instructions from Projects panel
       if (matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
-
-      // Auto-inject file map from project memory — bypasses QueryMemory so any
-      // model (including weaker eval models) gets critical file paths up front.
-      if (injectFileMap || isRoutine) {
-        const fileMapKey = Object.keys(projectMemory).find(k => k.toLowerCase().includes('file-map'));
-        if (fileMapKey) {
-          layers.push(`--- Project File Map ---\n${projectMemory[fileMapKey]}`);
-        }
-      }
     }
   }
 
@@ -3718,13 +3683,11 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   if (!session.resolvedModel) session.resolvedModel = model;
   session.aborted = false;
 
-  const isTurn1 = !session.messages || session.messages.filter(m => m.role === 'user').length === 0;
-  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, isTurn1, session.continuationContext || null);
+  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
-  const _hasFileMap = _memKeys.some(k => k.toLowerCase().includes('file-map'));
-  broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded${_hasFileMap ? (isTurn1 ? ' — file-map injected' : ' — file-map skipped (turn 2+)') : ' — no file-map found'}`, role: 'system' });
+  broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded`, role: 'system' });
 
   // Diag log
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
@@ -5974,8 +5937,10 @@ function executeResumeTurn(sessionId, turn) {
 function drainPendingTurns(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
-  // Clear steering inputs when the session ends — they've already been visible to the agent
+  // Convert steering queue → pending turns so they execute after this session ends
   if (Array.isArray(session.steeringQueue) && session.steeringQueue.length > 0) {
+    if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
+    session.steeringQueue.forEach(s => session.pendingTurns.push({ prompt: s.text, displayPrompt: s.displayText }));
     session.steeringQueue = [];
     broadcast({ type: 'steering-update', sessionId, queue: [] });
   }
