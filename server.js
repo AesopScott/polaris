@@ -3799,6 +3799,8 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
         });
       }
     }
+    const _promptK = Math.round((systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000);
+    broadcast({ type: 'line', sessionId, text: `(${_promptK}k)`, role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
