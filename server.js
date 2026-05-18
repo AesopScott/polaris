@@ -10205,14 +10205,9 @@ setInterval(() => {
         session.lastKeepAliveAt = Date.now();
         broadcast({ type: 'line', sessionId, text: '⚙ Session idle for 45s — requesting continuation', role: 'system' });
       } else {
-        session.aborted = true;
-        if (session.req)  { try { session.req.destroy();          } catch (_) {} }
-        if (session.proc) { try { session.proc.kill('SIGTERM');   } catch (_) {} }
-        broadcast({ type: 'session-kick',    sessionId, idleSec });
-        broadcast({ type: 'line', sessionId, text: `Session unresponsive for ${idleSec}s — killed automatically.`, role: 'error' });
-        broadcast({ type: 'session-status',  sessionId, status: 'error' });
-        session.status = 'error';
-        session.endAt  = Date.now();
+        // Max/Codex/chat sessions can be legitimately silent for long periods during
+        // tool execution — do not kill them. Just keep the stall badge visible.
+        broadcast({ type: 'session-stalled', sessionId, idleSec, stallCount: session.stallCount || 0 });
       }
     } else {
       const idleSec = Math.floor(idleMs / 1000);
