@@ -47,6 +47,17 @@
       "plan": null,
       "branch": null,
       "pr_url": null
+    },
+    {
+      "number": 5,
+      "title": "Video analysis.",
+      "description": "Have the ability for sessions to analyze video content?",
+      "category": "feature",
+      "priority": 50,
+      "status": "backlog",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
