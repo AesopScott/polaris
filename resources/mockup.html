@@ -3387,6 +3387,7 @@
   function closeProjects() {
     document.getElementById('projects-panel').classList.add('hidden');
     document.getElementById('overlay-bg').classList.add('hidden');
+    savePanelState();
   }
 
   function captureProjectInputs() {
