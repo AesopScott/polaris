@@ -4629,7 +4629,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
           content: '[Steering — adjust current task if relevant; otherwise acknowledge and continue:]\n' +
             steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n'),
         });
-        broadcast({ type: 'line', sessionId, role: 'system', text: `[steering injected: ${steeringItems.length} input${steeringItems.length === 1 ? '' : 's'}]` });
+        // No broadcast needed — these were already shown in the transcript when the user typed them.
       } else {
         // Defer — put items back and try again next iteration
         session.steeringQueue.unshift(...steeringItems);
@@ -6824,7 +6824,7 @@ function executeResumeTurn(sessionId, turn) {
   session.lastActivityAt = Date.now();
   session.stallCount = 0;
   session.lastPrompt = prompt;
-  broadcast({ type: 'line', sessionId, role: 'user', text: turn.displayPrompt || prompt });
+  if (!turn.displayed) broadcast({ type: 'line', sessionId, role: 'user', text: turn.displayPrompt || prompt });
   if (projectName !== undefined) {
     const newProject = projectName || null;
     if (newProject !== session.projectName) {
@@ -6869,7 +6869,7 @@ function drainPendingTurns(sessionId) {
   // Convert steering queue → pending turns so they execute after this session ends
   if (Array.isArray(session.steeringQueue) && session.steeringQueue.length > 0) {
     if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
-    session.steeringQueue.forEach(s => session.pendingTurns.push({ prompt: s.text, displayPrompt: s.displayText }));
+    session.steeringQueue.forEach(s => session.pendingTurns.push({ prompt: s.text, displayPrompt: s.displayText, displayed: s.displayed || false }));
     session.steeringQueue = [];
     broadcast({ type: 'steering-update', sessionId, queue: [] });
   }
@@ -7103,13 +7103,22 @@ async function handleMessage(ws, raw) {
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio };
-    // If the session is running, add as a steering input instead of a blocking queued turn.
-    // Steering prompts are injected into the agent's system context on each iteration so the
-    // agent can read and incorporate them without being interrupted.
+    // If the session is running, show the prompt in the transcript immediately and queue it
+    // for immediate execution once the current task finishes — never kill the active task.
+    // CLI sessions (chat/codex/gpt) can't receive mid-task injections, so go straight to
+    // pendingTurns. Direct Agent sessions also get steeringQueue so the loop can inject
+    // the prompt between API iterations without waiting for the current task to fully end.
     if (session.status === 'running') {
-      if (!Array.isArray(session.steeringQueue)) session.steeringQueue = [];
-      session.steeringQueue.push({ text: prompt, displayText: displayPrompt || prompt, ts: Date.now() });
-      broadcast({ type: 'steering-update', sessionId, queue: session.steeringQueue.map(s => ({ text: s.displayText, ts: s.ts })) });
+      const displayText = displayPrompt || prompt;
+      broadcast({ type: 'line', sessionId, role: 'user', text: displayText });
+      if (session.isChat || session.isCodex || session.isGpt) {
+        if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
+        session.pendingTurns.push({ prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, displayed: true });
+        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length, turns: session.pendingTurns.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
+      } else {
+        if (!Array.isArray(session.steeringQueue)) session.steeringQueue = [];
+        session.steeringQueue.push({ text: prompt, displayText, ts: Date.now(), displayed: true });
+      }
       saveSessions();
       return;
     }
