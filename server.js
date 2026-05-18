@@ -4557,7 +4557,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     }
     const callMessages = session.messages;
     const _promptK = (systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000;
-    broadcast({ type: 'line', sessionId, text: _promptK >= 20 ? `(${_promptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
+    broadcast({ type: 'line', sessionId, text: _promptK >= 1 ? `(${_promptK.toFixed(1)}k)` : '(under 1k)', role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
