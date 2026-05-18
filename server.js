@@ -7183,6 +7183,56 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'delete-queue-message') {
+    const { sessionId, queueType, index } = msg;
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    if (queueType === 'steering') {
+      if (Array.isArray(session.steeringQueue) && index >= 0 && index < session.steeringQueue.length) {
+        session.steeringQueue.splice(index, 1);
+        broadcast({ type: 'steering-update', sessionId, queue: session.steeringQueue.map(s => ({ text: s.displayText, ts: s.ts })) });
+        saveSessions();
+      }
+    } else if (queueType === 'pending') {
+      if (Array.isArray(session.pendingTurns) && index >= 0 && index < session.pendingTurns.length) {
+        session.pendingTurns.splice(index, 1);
+        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+        saveSessions();
+      }
+    }
+    return;
+  }
+
+  if (type === 'edit-queue-message') {
+    const { sessionId, queueType, index, prompt, displayPrompt } = msg;
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    if (queueType === 'steering') {
+      if (Array.isArray(session.steeringQueue) && index >= 0 && index < session.steeringQueue.length) {
+        session.steeringQueue[index] = {
+          ...session.steeringQueue[index],
+          text: prompt || session.steeringQueue[index].text,
+          displayText: displayPrompt || prompt || session.steeringQueue[index].displayText,
+        };
+        broadcast({ type: 'steering-update', sessionId, queue: session.steeringQueue.map(s => ({ text: s.displayText, ts: s.ts })) });
+        saveSessions();
+      }
+    } else if (queueType === 'pending') {
+      if (Array.isArray(session.pendingTurns) && index >= 0 && index < session.pendingTurns.length) {
+        session.pendingTurns[index] = {
+          ...session.pendingTurns[index],
+          prompt: prompt || session.pendingTurns[index].prompt,
+          displayPrompt: displayPrompt || prompt || session.pendingTurns[index].displayPrompt,
+        };
+        broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+        saveSessions();
+      }
+    }
+    return;
+  }
+
   if (type === 'session-height') {
     const s = sessions.get(msg.sessionId);
     if (s) { s.height = msg.height || null; saveSessions(); }
