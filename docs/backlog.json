@@ -80,6 +80,17 @@
       "created_at": "2026-05-18",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 8,
+      "title": "Backlog sort order",
+      "description": "Backlog items should automatically be sorted by priority.",
+      "category": "feature",
+      "priority": 75,
+      "status": "backlog",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
