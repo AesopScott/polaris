@@ -11844,7 +11844,7 @@
     } else if (s.minimized) {
       restoreCard(sid);
     }
-    enterResumeMode(sid, s.model || null);
+    requestAnimationFrame(() => enterResumeMode(sid, s.model || null));
   }
 
   function camMarkDone(sid, label, color, alreadyClosed = false) {
