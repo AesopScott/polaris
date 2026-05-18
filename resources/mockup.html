@@ -1279,7 +1279,7 @@
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
-        <div class="hbtn" style="visibility:hidden;pointer-events:none;"></div>
+        <button id="btn-skills" class="hbtn btn-systems" onclick="toggleSkillsPanel()" data-tooltip="Browse all installed Claude Code skills (~/.claude/skills/). Click a skill to send /name to the currently focused session."><span class="lbl">Skills</span></button>
         <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
         <button id="btn-versions" class="hbtn btn-danger" onclick="openVersions()" data-tooltip="Browse file change history across all sessions, grouped by session"><span class="lbl">Version</span></button>
@@ -1806,6 +1806,35 @@
       <button class="launch-btn" style="width:auto;padding:7px 20px;color:#fff;" onclick="saveRoutines()">💾 Save Routines</button>
       <button class="fbtn" id="domain-scout-btn" style="background:#7c3aed;color:#fff;font-weight:700;margin-left:auto;" onclick="fireDomainScout()">🔍 Domain Scout</button>
       <button class="fbtn" style="background:#374151;color:#9ca3af;" onclick="clearDomainScout()" title="Clear all accumulated Domain Scout results">✕ Clear Scout</button>
+    </div>
+  </div>
+
+  <!-- Skills Panel — lists all user-global Claude Code skills from ~/.claude/skills/ -->
+  <div class="projects-panel hidden palette" id="skills-panel" style="width:880px;max-height:680px;">
+    <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar">
+      <span class="preview-drag-handle">⠿⠿</span>
+      <span style="flex:1;font-size:13px;font-weight:800;">Skills</span>
+      <span id="skills-panel-count" style="font-size:11px;opacity:0.5;margin-right:8px;"></span>
+      <button class="preview-close-btn" onclick="closeSkillsPanel()">✕</button>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--header-bg);font-size:11px;opacity:0.7;line-height:1.5;">
+      Click a skill to send <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:3px;">/name</code> as a prompt to the currently focused session. If no session is focused, click a session card first to focus it, then pick a skill.
+    </div>
+    <div class="projects-panel-body" style="padding:0;">
+      <table class="projects-table" style="font-size:12px;">
+        <thead>
+          <tr>
+            <th style="width:22%">SKILL</th>
+            <th style="width:78%">DESCRIPTION</th>
+          </tr>
+        </thead>
+        <tbody id="skills-panel-tbody"><tr><td colspan="2" style="padding:20px;text-align:center;opacity:0.5;">Loading skills…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="projects-footer">
+      <button class="fbtn" onclick="refreshSkillsPanel()" title="Re-scan ~/.claude/skills/ for changes">🔄 Refresh</button>
+      <span style="margin-left:auto;font-size:11px;opacity:0.5;">Source: <code style="opacity:0.8;">~/.claude/skills/</code></span>
     </div>
   </div>
 
@@ -4329,6 +4358,11 @@
         promptHistoryStore = msg.history || [];
         break;
 
+      case 'skills-list':
+        _skillsList = msg.skills || [];
+        if (typeof renderSkillsList === 'function') renderSkillsList(_skillsList);
+        break;
+
       case 'connections':
         renderConnections(msg.data);
         break;
@@ -5446,13 +5480,13 @@
     normalCards.forEach(s => {
       let idx = s.column;
       if (idx == null || idx < 0 || idx >= cols.length) {
-        idx = colHeights.indexOf(Math.min(...colHeights));
+        idx = colHeights.indexOf(Math.min(...colHeights)); console.log("[grid] Auto-assigning", s.name || s.id, "to column", idx);
         s.column = idx;
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
       const card = buildCard(s);
       if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
-      cols[idx].appendChild(card);
+      cols[idx].appendChild(card); if (!s.minimized && !hiddenCards.has(s.id)) { console.log("[grid] col", idx, "height growing from", colHeights[idx], "by", ((parseInt(s.height) || 260) + 12)); }
       colHeights[idx] += (s.minimized || hiddenCards.has(s.id)) ? 0 : (parseInt(s.height) || 260) + 12;
     });
     grid.appendChild(colsRow);
@@ -8297,6 +8331,82 @@
     document.getElementById('routines-panel').classList.add('hidden');
     document.getElementById('overlay-bg').classList.add('hidden');
   }
+
+  // ── Skills panel ──────────────────────────────────────────────────────────
+  // Lists user-global Claude Code skills (~/.claude/skills/). Server scans and
+  // returns name+description per skill; clicking a row submits /<name> to the
+  // currently focused session (resumeTarget). Mirrors how slash commands work
+  // when typed directly into a session prompt.
+  let _skillsList = [];
+
+  function openSkillsPanel() {
+    document.getElementById('skills-panel').classList.remove('hidden');
+    document.getElementById('overlay-bg').classList.remove('hidden');
+    // Request fresh data from server every time the panel opens so newly
+    // added/edited skills appear without a Polaris restart.
+    wsSend({ type: 'list-skills' });
+  }
+  function closeSkillsPanel() {
+    document.getElementById('skills-panel').classList.add('hidden');
+    document.getElementById('overlay-bg').classList.add('hidden');
+  }
+  function toggleSkillsPanel() {
+    const panel = document.getElementById('skills-panel');
+    if (panel.classList.contains('hidden')) openSkillsPanel();
+    else closeSkillsPanel();
+  }
+  function refreshSkillsPanel() {
+    wsSend({ type: 'list-skills' });
+  }
+  function renderSkillsList(skills) {
+    const tbody = document.getElementById('skills-panel-tbody');
+    const count = document.getElementById('skills-panel-count');
+    if (!tbody) return;
+    if (count) count.textContent = `${skills.length} skill${skills.length === 1 ? '' : 's'}`;
+    if (!skills.length) {
+      tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;text-align:center;opacity:0.5;">No skills found in ~/.claude/skills/.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = skills.map(s => `
+      <tr class="skill-row" data-skill="${escHtmlAttr(s.name)}" style="cursor:pointer;" title="Click to send /${escHtmlAttr(s.name)} to the focused session">
+        <td style="padding:10px 16px;font-family:monospace;font-weight:600;color:var(--accent);">/${escHtml(s.name)}</td>
+        <td style="padding:10px 16px;line-height:1.45;">${escHtml(s.description)}</td>
+      </tr>
+    `).join('');
+    // Wire row clicks
+    tbody.querySelectorAll('.skill-row').forEach(row => {
+      row.addEventListener('click', () => invokeSkill(row.dataset.skill));
+    });
+  }
+  function invokeSkill(skillName) {
+    if (!skillName) return;
+    if (!resumeTarget || !resumeTarget.sessionId) {
+      // No focused session — show an unobtrusive note instead of silently failing.
+      const tbody = document.getElementById('skills-panel-tbody');
+      if (tbody) {
+        const banner = document.createElement('tr');
+        banner.innerHTML = `<td colspan="2" style="padding:10px 16px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:11px;">No session is focused. Click a session card first to focus it, then pick a skill.</td>`;
+        tbody.insertBefore(banner, tbody.firstChild);
+        setTimeout(() => { try { banner.remove(); } catch {} }, 4000);
+      }
+      return;
+    }
+    const prompt = '/' + skillName;
+    wsSend({
+      type: 'resume',
+      sessionId: resumeTarget.sessionId,
+      prompt,
+      displayPrompt: prompt,
+      resumeId: resumeTarget.resumeId,
+      model: resumeTarget.model || null,
+    });
+    closeSkillsPanel();
+  }
+  window.openSkillsPanel    = openSkillsPanel;
+  window.closeSkillsPanel   = closeSkillsPanel;
+  window.toggleSkillsPanel  = toggleSkillsPanel;
+  window.refreshSkillsPanel = refreshSkillsPanel;
+  window.invokeSkill        = invokeSkill;
   let routinesFilterProject = '__all__'; // '__all__', '__none__', or a project name
 
   function populateRoutinesFilter() {
@@ -12484,6 +12594,7 @@
     'Courses':     { id: 'course-creator-panel',      o: () => openCourseCreator(),                                           c: () => closeCourseCreator() },
     'Files':       { id: 'file-manager-panel',        o: () => _onbOpen('file-manager-panel', toggleFileManager),             c: () => closeFileManager() },
     'Routines':    { id: 'routines-panel',            o: () => openRoutines(),                                                c: () => closeRoutines() },
+    'Skills':      { id: 'skills-panel',              o: () => openSkillsPanel(),                                             c: () => closeSkillsPanel() },
     'Settings':    { id: 'settings-panel',            o: () => openSettings(),                                                c: () => closeSettings() },
     'Factory':     { id: null,                         o: () => launchFactory(),                                              c: () => {} },
     'Cross-Check': { id: 'cross-check-panel',         o: () => _onbOpen('cross-check-panel', toggleCrossCheckPanel),          c: () => closeCrossCheckPanel() },

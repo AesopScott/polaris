@@ -6453,6 +6453,15 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'list-skills') {
+    const skills = discoverSkills();
+    sendTo(ws, {
+      type: 'skills-list',
+      skills: skills.map(s => ({ name: s.name, description: s.description })),
+    });
+    return;
+  }
+
   if (type === 'dismiss-routine-notification') {
     const { id } = msg;
     const notifs = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
