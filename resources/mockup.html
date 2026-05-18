@@ -1821,22 +1821,91 @@
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--header-bg);font-size:11px;opacity:0.7;line-height:1.5;">
       Click a skill to send <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:3px;">/name</code> as a prompt to the currently focused session. If no session is focused, click a session card first to focus it, then pick a skill.
     </div>
-    <div class="projects-panel-body" style="padding:0;">
-      <table class="projects-table" style="font-size:12px;">
-        <thead>
-          <tr>
-            <th style="width:22%">SKILL</th>
-            <th style="width:78%">DESCRIPTION</th>
-          </tr>
-        </thead>
-        <tbody id="skills-panel-tbody"><tr><td colspan="2" style="padding:20px;text-align:center;opacity:0.5;">Loading skills…</td></tr></tbody>
-      </table>
+    <div class="projects-panel-body" style="padding:0;" id="skills-panel-body">
+      <div style="padding:20px;text-align:center;opacity:0.5;">Loading skills…</div>
     </div>
     <div class="projects-footer">
-      <button class="fbtn" onclick="refreshSkillsPanel()" title="Re-scan ~/.claude/skills/ for changes">🔄 Refresh</button>
-      <span style="margin-left:auto;font-size:11px;opacity:0.5;">Source: <code style="opacity:0.8;">~/.claude/skills/</code></span>
+      <button class="fbtn" onclick="refreshSkillsPanel()" title="Re-scan ~/.claude/skills/ and plugin sources for changes">🔄 Refresh</button>
+      <span style="margin-left:auto;font-size:11px;opacity:0.5;">Sources: <code style="opacity:0.8;">~/.claude/skills/</code>, <code style="opacity:0.8;">~/.claude/commands/</code>, plugins, project-local</span>
     </div>
   </div>
+
+  <style>
+    /* Skills panel tree styling */
+    #skills-panel .skills-group-header {
+      padding: 10px 16px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      opacity: 0.65;
+      border-bottom: 1px solid var(--border);
+      background: var(--header-bg);
+    }
+    #skills-panel .skills-category {
+      border-bottom: 1px solid var(--border);
+    }
+    #skills-panel .skills-category > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    #skills-panel .skills-category > summary::-webkit-details-marker { display: none; }
+    #skills-panel .skills-category > summary::before {
+      content: '▸';
+      font-size: 10px;
+      opacity: 0.55;
+      transition: transform 0.12s;
+      width: 10px;
+      display: inline-block;
+    }
+    #skills-panel .skills-category[open] > summary::before { transform: rotate(90deg); }
+    #skills-panel .skills-category > summary:hover { background: rgba(255,255,255,0.04); }
+    #skills-panel .skills-category .skill-count {
+      margin-left: auto;
+      font-size: 10px;
+      opacity: 0.5;
+      font-weight: 500;
+    }
+    #skills-panel .skill-row {
+      padding: 8px 16px 8px 38px;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 12px;
+      cursor: pointer;
+      font-size: 12px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+      align-items: baseline;
+    }
+    #skills-panel .skill-row:hover { background: rgba(255,255,255,0.06); }
+    #skills-panel .skill-name {
+      font-family: monospace;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #skills-panel .skill-desc {
+      color: var(--text);
+      opacity: 0.85;
+      line-height: 1.45;
+    }
+    #skills-panel .skills-empty {
+      padding: 20px 16px;
+      text-align: center;
+      opacity: 0.5;
+      font-size: 12px;
+    }
+  </style>
 
   <!-- Backlog Panel — lists global cross-project backlog + each project's docs/backlog.json -->
   <div class="projects-panel hidden palette" id="backlog-panel" style="width:1080px;max-height:720px;">
@@ -4414,8 +4483,10 @@
         break;
 
       case 'skills-list':
-        _skillsList = msg.skills || [];
-        if (typeof renderSkillsList === 'function') renderSkillsList(_skillsList);
+        _skillsTree = msg.tree || { global: {}, project: {} };
+        _skillsCategoryOrder = msg.categoryOrder || [];
+        _skillsTotal = msg.total || 0;
+        if (typeof renderSkillsTree === 'function') renderSkillsTree(_skillsTree, _skillsCategoryOrder, _skillsTotal);
         break;
 
       case 'backlogs-data':
@@ -8397,18 +8468,27 @@
   }
 
   // ── Skills panel ──────────────────────────────────────────────────────────
-  // Lists user-global Claude Code skills (~/.claude/skills/). Server scans and
-  // returns name+description per skill; clicking a row submits /<name> to the
-  // currently focused session (resumeTarget). Mirrors how slash commands work
-  // when typed directly into a session prompt.
-  let _skillsList = [];
+  // Renders all discovered skills/commands/agents as a tree:
+  //   Global (always)
+  //     ▼ Project workflow ... rows
+  //     ▼ Project initiation ... rows
+  //     ... 7 categories total
+  //   {Project Name} (only if project-local skills exist)
+  //     ▼ {applicable categories}
+  // Server scans ~/.claude/skills/ (incl. symlinks), ~/.claude/commands/,
+  // codex plugin sub-dirs, and project-local .claude/ paths. Clicking a row
+  // submits /<name> to the currently focused session (resumeTarget).
+  let _skillsTree = { global: {}, project: {} };
+  let _skillsCategoryOrder = [];
+  let _skillsTotal = 0;
 
   function openSkillsPanel() {
     document.getElementById('skills-panel').classList.remove('hidden');
     document.getElementById('overlay-bg').classList.remove('hidden');
-    // Request fresh data from server every time the panel opens so newly
-    // added/edited skills appear without a Polaris restart.
-    wsSend({ type: 'list-skills' });
+    // Pass the active session's workDir (if any) so the server includes
+    // project-local skills under that project's group.
+    const workDir = (resumeTarget && sessionStore[resumeTarget.sessionId]?.workDir) || null;
+    wsSend({ type: 'list-skills', workDir });
   }
   function closeSkillsPanel() {
     document.getElementById('skills-panel').classList.add('hidden');
@@ -8420,37 +8500,66 @@
     else closeSkillsPanel();
   }
   function refreshSkillsPanel() {
-    wsSend({ type: 'list-skills' });
+    const workDir = (resumeTarget && sessionStore[resumeTarget.sessionId]?.workDir) || null;
+    wsSend({ type: 'list-skills', workDir });
   }
-  function renderSkillsList(skills) {
-    const tbody = document.getElementById('skills-panel-tbody');
+
+  function _renderSkillCategory(catName, items, expanded) {
+    if (!items || !items.length) return '';
+    const rows = items.map(s => `
+      <div class="skill-row" data-skill="${escHtmlAttr(s.name)}" title="Click to send /${escHtmlAttr(s.name)} to the focused session">
+        <span class="skill-name">/${escHtml(s.name)}</span>
+        <span class="skill-desc">${escHtml(s.description)}</span>
+      </div>
+    `).join('');
+    return `
+      <details class="skills-category"${expanded ? ' open' : ''}>
+        <summary>${escHtml(catName)}<span class="skill-count">${items.length}</span></summary>
+        ${rows}
+      </details>
+    `;
+  }
+  function _renderSkillGroup(label, categoryMap, categoryOrder, expandFirst) {
+    const nonEmpty = categoryOrder.filter(cat => (categoryMap[cat] || []).length > 0);
+    if (!nonEmpty.length) return '';
+    const totalInGroup = nonEmpty.reduce((sum, cat) => sum + categoryMap[cat].length, 0);
+    const header = `<div class="skills-group-header">${escHtml(label)} <span style="opacity:0.5;font-weight:500;letter-spacing:0;text-transform:none;margin-left:6px;">(${totalInGroup})</span></div>`;
+    const body = nonEmpty.map((cat, i) => _renderSkillCategory(cat, categoryMap[cat], expandFirst && i === 0)).join('');
+    return header + body;
+  }
+  function renderSkillsTree(tree, categoryOrder, total) {
+    const body = document.getElementById('skills-panel-body');
     const count = document.getElementById('skills-panel-count');
-    if (!tbody) return;
-    if (count) count.textContent = `${skills.length} skill${skills.length === 1 ? '' : 's'}`;
-    if (!skills.length) {
-      tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;text-align:center;opacity:0.5;">No skills found in ~/.claude/skills/.</td></tr>';
+    if (!body) return;
+    if (count) count.textContent = `${total} skill${total === 1 ? '' : 's'}`;
+    if (!total) {
+      body.innerHTML = '<div class="skills-empty">No skills discovered.</div>';
       return;
     }
-    tbody.innerHTML = skills.map(s => `
-      <tr class="skill-row" data-skill="${escHtmlAttr(s.name)}" style="cursor:pointer;" title="Click to send /${escHtmlAttr(s.name)} to the focused session">
-        <td style="padding:10px 16px;font-family:monospace;font-weight:600;color:var(--accent);">/${escHtml(s.name)}</td>
-        <td style="padding:10px 16px;line-height:1.45;">${escHtml(s.description)}</td>
-      </tr>
-    `).join('');
+    let projectLabel = 'Project';
+    if (resumeTarget && sessionStore[resumeTarget.sessionId]?.projectName) {
+      projectLabel = sessionStore[resumeTarget.sessionId].projectName;
+    }
+    let html = '';
+    html += _renderSkillGroup('Global', tree.global || {}, categoryOrder, true);
+    const projHtml = _renderSkillGroup(projectLabel, tree.project || {}, categoryOrder, false);
+    if (projHtml) html += projHtml;
+    body.innerHTML = html;
     // Wire row clicks
-    tbody.querySelectorAll('.skill-row').forEach(row => {
+    body.querySelectorAll('.skill-row').forEach(row => {
       row.addEventListener('click', () => invokeSkill(row.dataset.skill));
     });
   }
+
   function invokeSkill(skillName) {
     if (!skillName) return;
     if (!resumeTarget || !resumeTarget.sessionId) {
-      // No focused session — show an unobtrusive note instead of silently failing.
-      const tbody = document.getElementById('skills-panel-tbody');
-      if (tbody) {
-        const banner = document.createElement('tr');
-        banner.innerHTML = `<td colspan="2" style="padding:10px 16px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:11px;">No session is focused. Click a session card first to focus it, then pick a skill.</td>`;
-        tbody.insertBefore(banner, tbody.firstChild);
+      const body = document.getElementById('skills-panel-body');
+      if (body) {
+        const banner = document.createElement('div');
+        banner.style.cssText = 'padding:10px 16px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:11px;';
+        banner.textContent = 'No session is focused. Click a session card first to focus it, then pick a skill.';
+        body.insertBefore(banner, body.firstChild);
         setTimeout(() => { try { banner.remove(); } catch {} }, 4000);
       }
       return;
@@ -8466,6 +8575,7 @@
     });
     closeSkillsPanel();
   }
+
   window.openSkillsPanel    = openSkillsPanel;
   window.closeSkillsPanel   = closeSkillsPanel;
   window.toggleSkillsPanel  = toggleSkillsPanel;

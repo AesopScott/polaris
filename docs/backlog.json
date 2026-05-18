@@ -1,0 +1,16 @@
+{
+  "tasks": [
+    {
+      "number": 1,
+      "title": "Skills Nav Pane — hierarchical tree with Global / Project sections + 7 categories",
+      "category": "feature",
+      "priority": 1,
+      "status": "in-progress",
+      "dependencies": [],
+      "description": "Rework the Skills panel landed in v1.0.429 from a flat alphabetical list into a hierarchical tree. Top-level groups: Global (always shown) and {Project Name} (only when the active project has its own skills/commands/agents). Under each group, 7 collapsible category sections in this order: Project workflow, Project initiation, Code quality, Research, Codex integration, Tooling / config, Utilities. Server-side: expand discoverSkills() to scan all sources — user-global skills (~/.claude/skills/*/SKILL.md, currently 12), user-global commands (~/.claude/commands/*.md, currently 11), codex plugin (skills + commands + agents under ~/.claude/plugins/cache/openai-codex/codex/<ver>/, currently 11), and project-local .claude/skills/ + .claude/commands/ when a project is active. Each discovered item gets a hardcoded category mapping based on its name (kept in a const map at the top of server.js so additions are one-line edits). Discovery is memoized by directory mtime. Client-side: replace the existing flat <table> render with a tree of <details> elements (one per category, collapsed by default except first-render expansion of Project workflow). Each leaf row carries the same click-to-invoke behavior as today — sends /<name> to resumeTarget. Empty categories are hidden. Expected on-disk total: 34 (12 + 11 + 3 + 7 + 1). Bundled-but-not-on-disk skills like anthropic-skills:* and the built-in /init, /review, /security-review, /simplify, /update-config, /keybindings-help, /fewer-permission-prompts, /loop, /schedule, /claude-api should be added as a hardcoded supplement list once their source location is confirmed (bringing the total closer to Scott's stated 41 custom-created skills). Categorization decisions: evaluate-repo and find-skill → new 'Research' category (pre-decision discovery, not code QA); flow-audit → Project workflow (its output is backlog tasks); cross-boundary-audit → Code quality (operates on existing code). Built this session alongside Polaris's new docs/backlog.json scaffolding flow.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    }
+  ]
+}
