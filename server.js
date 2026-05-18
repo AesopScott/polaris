@@ -6900,7 +6900,9 @@ function executeResumeTurn(sessionId, turn) {
     ];
   }
   broadcast({ type: 'session-status', sessionId, status: 'running' });
-  if (session.isCodex) {
+  if (session.isCodex && session.codexDirectAgent) {
+    runDirectAgent(sessionId, prompt, session.workDir).catch(err => console.error('[codex-agent] unhandled error:', err.stack || err.message));
+  } else if (session.isCodex) {
     spawnCodexSession(sessionId, prompt, readConfig());
   } else if (session.isGpt) {
     spawnGptChat(sessionId, prompt, session.tier);
@@ -7064,18 +7066,21 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
+    const codexCfg = readConfig();
+    const directModel = codexCfg.codexDirectModel || 'openai/gpt-4o';
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
-      isChat: true, isCodex: true, model: 'openai/codex-1 (Codex CLI)', tier: codexTier,
+      isChat: false, isCodex: true, codexDirectAgent: true, model: directModel, tier: codexTier,
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
+      keepAliveInjected: false, lastKeepAliveAt: null,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, codexThreadId: null,
       pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio,
     });
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: directModel, isChat: false, isCodex: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
-    spawnCodexSession(id, prompt, readConfig());
+    runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[codex-agent] unhandled error:', err.stack || err.message));
     return;
   }
 
@@ -7168,11 +7173,12 @@ async function handleMessage(ws, raw) {
     if (session.status === 'running') {
       const displayText = displayPrompt || prompt;
       broadcast({ type: 'line', sessionId, role: 'user', text: displayText });
-      if (session.isChat || session.isCodex || session.isGpt) {
+      if ((session.isChat || session.isGpt) || (session.isCodex && !session.codexDirectAgent)) {
         if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
         session.pendingTurns.push({ prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, displayed: true });
         broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length, turns: session.pendingTurns.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
       } else {
+        // Direct Agent and codexDirectAgent sessions: inject between API iterations.
         if (!Array.isArray(session.steeringQueue)) session.steeringQueue = [];
         session.steeringQueue.push({ text: prompt, displayText, ts: Date.now(), displayed: true });
       }
