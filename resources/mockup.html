@@ -8919,6 +8919,12 @@
     const body  = document.getElementById('backlog-panel-body');
     const count = document.getElementById('backlog-panel-count');
     if (!body) return;
+    // Save collapsed state of existing sections before re-rendering
+    const collapsedState = new Map();
+    body.querySelectorAll('.backlog-section').forEach(section => {
+      const scope = section.dataset.scope;
+      collapsedState.set(scope, section.classList.contains('collapsed'));
+    });
     const sections = [];
     let totalTasks = 0;
     // Global section — always shown (even with zero tasks)
@@ -8934,6 +8940,24 @@
     }
     if (count) count.textContent = totalTasks + ' task' + (totalTasks === 1 ? '' : 's');
     body.innerHTML = sections.join('');
+    // Restore collapsed state for each section
+    body.querySelectorAll('.backlog-section').forEach(section => {
+      const scope = section.dataset.scope;
+      const wasCollapsed = collapsedState.get(scope);
+      if (wasCollapsed !== undefined) {
+        const sectionBody = section.querySelector('.backlog-section-body');
+        const chev = section.querySelector('.backlog-chevron');
+        if (wasCollapsed) {
+          section.classList.add('collapsed');
+          if (sectionBody) sectionBody.style.display = 'none';
+          if (chev) chev.textContent = '▶';
+        } else {
+          section.classList.remove('collapsed');
+          if (sectionBody) sectionBody.style.display = 'block';
+          if (chev) chev.textContent = '▼';
+        }
+      }
+    });
     // Section header → toggle collapse (unless clicking + Add)
     body.querySelectorAll('.backlog-section-header').forEach(h => {
       h.addEventListener('click', (e) => {
