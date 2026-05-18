@@ -4766,6 +4766,8 @@ async function spawnCodexSession(sessionId, prompt, config) {
     }
   }
   if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
+  const _codexPromptK = Math.round(Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000);
+  broadcast({ type: 'line', sessionId, text: `(${_codexPromptK}k)`, role: 'system' });
 
   try {
     fs.appendFileSync(diagPath,
@@ -5177,6 +5179,8 @@ async function spawnGptChat(sessionId, prompt, tier) {
       'utf8');
   } catch {}
 
+  const _gptPromptK = Math.round(Buffer.byteLength(prompt, 'utf8') / 4 / 1000);
+  broadcast({ type: 'line', sessionId, text: `(${_gptPromptK}k)`, role: 'system' });
   broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.display}`, role: 'system' });
 
   let cdpConn = null;
