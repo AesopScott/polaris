@@ -7745,6 +7745,8 @@
   let _showingGraph = false;
   let _balancePeriodMs = 86400000; // 24h default; persisted in config
   let _serverTokenEntries = [];    // last fetched token-log entries (up to 30d)
+  let _balanceSortCol = 'model';   // 'model' | 'input' | 'output'
+  let _balanceSortDir = 1;         // 1 = asc, -1 = desc
 
   function accumulateUsage(model, usage) {
     if (!model || !usage) return;
@@ -10211,10 +10213,27 @@
                cursor:pointer;font-weight:${active ? '700' : '400'};">${p.label}</button>`;
     }).join('');
 
+    // Sort models
+    const sortedModels = periodModels.slice().sort((a, b) => {
+      if (_balanceSortCol === 'input')  return (periodAccum[b].input  - periodAccum[a].input)  * _balanceSortDir;
+      if (_balanceSortCol === 'output') return (periodAccum[b].output - periodAccum[a].output) * _balanceSortDir;
+      return a.localeCompare(b) * _balanceSortDir;
+    });
+
+    const thStyle = (col) => {
+      const active = _balanceSortCol === col;
+      return `padding:4px 10px;font-size:10px;font-weight:700;text-align:left;cursor:pointer;
+              opacity:${active ? '1' : '0.5'};color:${active ? '#60a5fa' : 'inherit'};user-select:none;`;
+    };
+    const arrow = (col) => {
+      if (_balanceSortCol !== col) return ' ↕';
+      return _balanceSortDir === 1 ? ' ▲' : ' ▼';
+    };
+
     let usageHtml = '';
-    if (periodModels.length) {
+    if (sortedModels.length) {
       let totalIn = 0, totalOut = 0;
-      const rows = periodModels.map(m => {
+      const rows = sortedModels.map(m => {
         const d = periodAccum[m];
         totalIn  += d.input;
         totalOut += d.output;
@@ -10231,9 +10250,9 @@
         </div>
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="border-bottom:1px solid var(--border);">
-            <th style="padding:4px 10px;font-size:10px;font-weight:700;opacity:0.5;text-align:left;">MODEL</th>
-            <th style="padding:4px 10px;font-size:10px;font-weight:700;opacity:0.5;text-align:left;">IN</th>
-            <th style="padding:4px 10px;font-size:10px;font-weight:700;opacity:0.5;text-align:left;">OUT</th>
+            <th onclick="setBalanceSort('model')"  style="${thStyle('model')}">MODEL${arrow('model')}</th>
+            <th onclick="setBalanceSort('input')"  style="${thStyle('input')}">IN${arrow('input')}</th>
+            <th onclick="setBalanceSort('output')" style="${thStyle('output')}">OUT${arrow('output')}</th>
           </tr></thead>
           <tbody>${rows}</tbody>
           <tfoot><tr style="border-top:1px solid var(--border);">
@@ -10316,8 +10335,18 @@
     currentConfig.balancePeriodMs = ms;
     renderApiBalance();
   }
+  function setBalanceSort(col) {
+    if (_balanceSortCol === col) {
+      _balanceSortDir = _balanceSortDir === 1 ? -1 : 1;
+    } else {
+      _balanceSortCol = col;
+      _balanceSortDir = col === 'model' ? 1 : -1; // alpha asc for model, high→low for token cols
+    }
+    renderApiBalance();
+  }
   window.openApiBalance  = openApiBalance;
   window.setBalancePeriod = setBalancePeriod;
+  window.setBalanceSort   = setBalanceSort;
 
   // ── Diag log viewer ───────────────────────────────────────────────────────
   let _diagSessionId = null;
