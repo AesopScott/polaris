@@ -118,6 +118,7 @@ const BASE_SYSTEM_PROMPT = [
   "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away — generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
   "Source files inside the project workDir are auto-backed-up to %APPDATA%\\.claude\\polaris\\source-backups\\<projectName>\\ before every Edit, Write, or shell-tool write (Set-Content, Out-File, > redirection, etc.). To restore a corrupted file, find the most recent backup at that path (filename: <sanitizedRelPath>.<ISO>.<ext>) and copy it back to the source. Do not assume backups are absent without checking.",
   "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these — consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The propose-before-act rule, approval gate, and Phase 0 backup all apply. After a code change, bump `package.json` and tell Scott to reinstall.",
+  'If a "Steering Inputs" section appears in your system prompt, those are non-blocking prompts the user submitted while you were mid-task. Read them; incorporate anything relevant to your current work. No explicit response or acknowledgment required.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -1269,6 +1270,13 @@ async function scaffoldGitRepo(project) {
     if (!isRepo) {
       await run('git init');
       await run('git checkout -b main').catch(() => run('git branch -m main'));
+    }
+    const claudeDir = path.join(workDir, '.claude');
+    const claudeSettingsPath = path.join(claudeDir, 'settings.json');
+    if (!fs.existsSync(claudeSettingsPath)) {
+      fs.mkdirSync(claudeDir, { recursive: true });
+      fs.writeFileSync(claudeSettingsPath, JSON.stringify({ permissions: { defaultMode: 'bypassPermissions' } }, null, 2), 'utf8');
+      console.log(`[scaffold-git] wrote .claude/settings.json for ${name}`);
     }
     const readmePath = path.join(workDir, 'README.md');
     if (!fs.existsSync(readmePath)) {
@@ -3773,7 +3781,13 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       return;
     }
 
-    const result = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
+    const steeringItems = Array.isArray(session.steeringQueue) ? session.steeringQueue : [];
+    const effectiveSystemPrompt = steeringItems.length > 0
+      ? systemPrompt + '\n\n--- Steering Inputs (read; incorporate if relevant) ---\n' +
+        steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n') +
+        '\n--- end steering ---'
+      : systemPrompt;
+    const result = await callOpenRouterStream(sessionId, session.messages, effectiveSystemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
       if (session.aborted) return; // kicked externally — status already set
@@ -5946,6 +5960,11 @@ function executeResumeTurn(sessionId, turn) {
 function drainPendingTurns(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  // Clear steering inputs when the session ends — they've already been visible to the agent
+  if (Array.isArray(session.steeringQueue) && session.steeringQueue.length > 0) {
+    session.steeringQueue = [];
+    broadcast({ type: 'steering-update', sessionId, queue: [] });
+  }
   const pending = Array.isArray(session.pendingTurns) ? session.pendingTurns : [];
   if (pending.length === 0) return;
 
@@ -6176,15 +6195,13 @@ async function handleMessage(ws, raw) {
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio };
-    // Re-entrancy guard: if a prior turn is still running, queue this one and
-    // drain it from the prior turn's terminal close handler. Prevents two
-    // `claude --resume <session_id>` processes from racing the same on-disk
-    // session-history file (root cause of orphaned-zombie hangs).
+    // If the session is running, add as a steering input instead of a blocking queued turn.
+    // Steering prompts are injected into the agent's system context on each iteration so the
+    // agent can read and incorporate them without being interrupted.
     if (session.status === 'running') {
-      if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
-      session.pendingTurns.push(turn);
-      broadcast({ type: 'line', sessionId, role: 'system', text: `[queued - runs after current turn (${session.pendingTurns.length} ahead)]` });
-      broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length });
+      if (!Array.isArray(session.steeringQueue)) session.steeringQueue = [];
+      session.steeringQueue.push({ text: prompt, displayText: displayPrompt || prompt, ts: Date.now() });
+      broadcast({ type: 'steering-update', sessionId, queue: session.steeringQueue.map(s => ({ text: s.displayText, ts: s.ts })) });
       saveSessions();
       return;
     }
@@ -6254,6 +6271,10 @@ async function handleMessage(ws, raw) {
       if (cleared > 0) {
         broadcast({ type: 'line', sessionId: msg.sessionId, role: 'system', text: `[stop - cleared ${cleared} queued turn${cleared === 1 ? '' : 's'}]` });
         broadcast({ type: 'queue-status', sessionId: msg.sessionId, pending: 0 });
+      }
+      if (Array.isArray(session.steeringQueue) && session.steeringQueue.length > 0) {
+        session.steeringQueue = [];
+        broadcast({ type: 'steering-update', sessionId: msg.sessionId, queue: [] });
       }
       session.status = 'done';
       session.endAt  = session.endAt || Date.now();

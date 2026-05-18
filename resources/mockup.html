@@ -229,6 +229,9 @@
   }
   #float-launcher.visible { display: flex; }
   #float-launcher .float-row { display: flex; gap: 8px; align-items: flex-end; }
+  #steering-stack { display: flex; flex-direction: column; gap: 3px; padding: 6px 4px 4px; max-height: 110px; overflow-y: auto; }
+  #steering-stack.hidden { display: none; }
+  .steering-item { font-size: 11px; color: #a5b4fc; padding: 3px 7px; background: rgba(99,102,241,0.10); border-left: 2px solid #6366f1; border-radius: 3px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 
   /* Launch button row — left-aligned under prompt */
   .launch-action-row { display: flex; align-items: center; gap: 10px; }
@@ -4194,6 +4197,17 @@
         break;
       }
 
+      case 'steering-update': {
+        const s = sessionStore[msg.sessionId];
+        if (s) {
+          s.steeringQueue = msg.queue || [];
+          if (resumeTarget && resumeTarget.sessionId === msg.sessionId) {
+            renderSteeringStack(s.steeringQueue);
+          }
+        }
+        break;
+      }
+
       case 'streaming-rate': {
         const card = document.querySelector(`[data-sid="${msg.sessionId}"]`);
         if (!card) break;
@@ -6820,6 +6834,21 @@
     for (const file of files) attachFile(file, sourceEl);
   }
 
+  function renderSteeringStack(queue) {
+    const el = document.getElementById('steering-stack');
+    if (!el) return;
+    if (!queue || queue.length === 0) {
+      el.classList.add('hidden');
+      el.innerHTML = '';
+      return;
+    }
+    el.classList.remove('hidden');
+    el.innerHTML = queue.map(item => {
+      const text = item.text.length > 140 ? item.text.slice(0, 140) + '…' : item.text;
+      return `<div class="steering-item">${escHtml(text)}</div>`;
+    }).join('');
+  }
+
   function openFilePicker(sourceEl) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -6856,6 +6885,7 @@
       return;
     }
     resumeTarget = { sessionId, name: s.name, resumeId: s.resumeId, model: model || null };
+    renderSteeringStack(s.steeringQueue || []);
     const _lb = document.querySelector('.launch-bar');
     const _lbBtn = _lb?.querySelector('.launch-minimize-btn');
     if (_lb && !_lb.classList.contains('minimized')) {
@@ -6965,6 +6995,7 @@
       const fpa = document.getElementById('float-prompt-area');
       if (fpa) fpa.style.height = '';
     }
+    renderSteeringStack([]);
   };
 
   let mouseDownInFloat = false;
@@ -12919,6 +12950,7 @@
 
 <!-- Floating prompt launcher — positions above the selected session card -->
 <div id="float-launcher">
+  <div id="steering-stack" class="hidden"></div>
   <div class="float-row">
     <div class="prompt-wrap prompt-style-2" id="float-prompt-wrap" style="flex:1;min-width:0;">
       <div class="file-chips"></div>
