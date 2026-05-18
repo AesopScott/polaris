@@ -55,6 +55,12 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
+// User-global Claude Code skills (~/.claude/skills/). Each subdirectory is a
+// skill with a SKILL.md file. Discovered at session start, exposed to the
+// Direct agent loop via the Skill tool and an "Available skills" section in
+// the system prompt. Mirrors how Claude Code itself surfaces skills.
+const SKILLS_DIR = process.env.POLARIS_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills');
+
 // ─── App-level secrets (gitignored, baked into build) ────────────────────────
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
@@ -1608,6 +1614,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Call with no arguments at session start to load all project context. Pass filename to retrieve a specific file.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Omit to get all project memory.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
+  { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions — follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = false, continuationContext = null) {
@@ -1659,6 +1666,20 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
 
       if (matched.instructions) layers.push('--- Project Instructions ---\n' + matched.instructions);
     }
+  }
+
+  // Available skills from ~/.claude/skills/. Name + description only; the
+  // model invokes the Skill tool to load the full body when triggered.
+  const skills = discoverSkills();
+  if (skills.length) {
+    const lines = skills.map(s => `- \`${s.name}\` — ${s.description}`).join('\n');
+    layers.push(
+      '--- Available Skills ---\n' +
+      'These user-global Claude Code skills are installed. When a user request matches a skill\'s ' +
+      'description, or when the user types a slash command matching a skill name, invoke the ' +
+      'Skill tool with the skill name to load its full instructions, then follow them.\n\n' +
+      lines
+    );
   }
 
   return layers.join('\n\n');
@@ -1809,6 +1830,106 @@ function toolQueryMemory({ filename } = {}, sessionId) {
     return key ? `=== ${key} ===\n${mem[key]}` : `File not found in project memory: ${filename}`;
   }
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
+}
+
+// ── User-global skill discovery ─────────────────────────────────────────────
+// Scans SKILLS_DIR for subdirectories containing a SKILL.md file. Parses each
+// SKILL.md's YAML frontmatter to extract `name` and `description`. The result
+// is cached per-process and only re-scanned when the skills directory mtime
+// changes — cheap enough to call at every session start.
+
+let _skillsCache = null;     // [{ name, description, dirPath, mtime }]
+let _skillsCacheMtime = 0;
+
+function _parseSkillFrontmatter(text) {
+  // Frontmatter is between two `---` lines at the very top of the file.
+  if (!text.startsWith('---')) return null;
+  const end = text.indexOf('\n---', 3);
+  if (end < 0) return null;
+  const block = text.slice(3, end).trim();
+  const out = {};
+  let currentKey = null;
+  for (const rawLine of block.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    // Continuation of a multiline value (line starts with whitespace and a
+    // non-key character). Treat as part of the previous value.
+    if (currentKey && /^\s/.test(line) && !/^\s*[A-Za-z0-9_-]+\s*:/.test(line)) {
+      out[currentKey] = (out[currentKey] + ' ' + line.trim()).trim();
+      continue;
+    }
+    const m = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+    if (!m) continue;
+    currentKey = m[1];
+    // Strip surrounding quotes if present.
+    let val = m[2].trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    out[currentKey] = val;
+  }
+  return out;
+}
+
+function discoverSkills() {
+  let dirMtime = 0;
+  try { dirMtime = fs.statSync(SKILLS_DIR).mtimeMs; } catch { return []; }
+  if (_skillsCache && dirMtime === _skillsCacheMtime) return _skillsCache;
+
+  const skills = [];
+  let entries = [];
+  try { entries = fs.readdirSync(SKILLS_DIR, { withFileTypes: true }); } catch { return []; }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const skillPath = path.join(SKILLS_DIR, entry.name);
+    const skillFile = path.join(skillPath, 'SKILL.md');
+    let stat;
+    try { stat = fs.statSync(skillFile); } catch { continue; }  // no SKILL.md → skip
+    let text = '';
+    try { text = fs.readFileSync(skillFile, 'utf8'); } catch { continue; }
+    const fm = _parseSkillFrontmatter(text);
+    if (!fm || !fm.name || !fm.description) continue;
+    skills.push({
+      name: fm.name,
+      description: fm.description,
+      dirPath: skillPath,
+      mtime: stat.mtimeMs,
+    });
+  }
+  skills.sort((a, b) => a.name.localeCompare(b.name));
+  _skillsCache = skills;
+  _skillsCacheMtime = dirMtime;
+  return skills;
+}
+
+// Returns the full SKILL.md body (everything after the closing frontmatter
+// `---`) for the named skill. The model reads this body and follows its
+// instructions. Progressive disclosure: only loaded when the model actively
+// invokes the Skill tool, so 100k-token skill bodies don't bloat every
+// system prompt.
+function toolSkill({ skill, args } = {}, sessionId) {
+  if (!skill || typeof skill !== 'string') return 'Skill tool requires a "skill" string parameter.';
+  const skills = discoverSkills();
+  const match = skills.find(s => s.name === skill)
+             || skills.find(s => s.name.toLowerCase() === skill.toLowerCase());
+  if (!match) {
+    const names = skills.map(s => s.name).join(', ');
+    return `Skill not found: "${skill}". Available skills: ${names || '(none)'}`;
+  }
+  let text = '';
+  try { text = fs.readFileSync(path.join(match.dirPath, 'SKILL.md'), 'utf8'); }
+  catch (e) { return `Failed to read SKILL.md for "${skill}": ${e.message}`; }
+  // Strip frontmatter — the model has already seen name+description in the
+  // system prompt; the body is what guides execution.
+  let body = text;
+  if (text.startsWith('---')) {
+    const end = text.indexOf('\n---', 3);
+    if (end >= 0) body = text.slice(end + 4).replace(/^\s*\n/, '');
+  }
+  const argsBlock = (args && String(args).trim())
+    ? `\n\n--- Args from invoker ---\n${String(args).trim()}\n`
+    : '';
+  return `Base directory for this skill: ${match.dirPath}${argsBlock}\n\n${body}`;
 }
 
 function toolSetProject({ projectName } = {}, sessionId) {
@@ -3400,6 +3521,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'QueryMemory': return toolQueryMemory(input, sessionId);
     case 'SetProject':  return toolSetProject(input, sessionId);
     case 'SetStatus':   return toolSetStatus(input, sessionId);
+    case 'Skill':       return toolSkill(input, sessionId);
     default:           return `Unknown tool: ${name}`;
   }
 }
@@ -3539,6 +3661,7 @@ function toolDisplayLabel(name, input = {}) {
     case 'WebFetch':   return `Fetch  ${truncate(input.url || '')}`;
     case 'WebSearch':  return `Search  ${truncate(input.query || '')}`;
     case 'TodoWrite':  return `Todo  (${(input.todos || []).length} items)`;
+    case 'Skill':      return `Skill  /${input.skill || ''}`;
     default:           return name;
   }
 }
