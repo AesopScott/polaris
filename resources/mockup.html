@@ -1966,7 +1966,7 @@
   </div>
 
   <!-- Add Backlog Task Modal -->
-  <div id="backlog-add-modal" class="hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;">
+  <div id="backlog-add-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
     <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:560px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
       <h3 style="margin:0 0 16px 0;font-size:15px;">Add Backlog Task</h3>
       <div style="margin-bottom:14px;">
@@ -8764,10 +8764,10 @@
     document.getElementById('backlog-add-category').value = 'feature';
     const err = document.getElementById('backlog-add-error');
     if (err) err.style.display = 'none';
-    document.getElementById('backlog-add-modal').classList.remove('hidden');
+    document.getElementById('backlog-add-modal').style.display = 'flex';
   }
   function closeBacklogAddModal() {
-    document.getElementById('backlog-add-modal').classList.add('hidden');
+    document.getElementById('backlog-add-modal').style.display = 'none';
   }
   function submitBacklogAdd() {
     const scope = document.getElementById('backlog-add-scope').value;
