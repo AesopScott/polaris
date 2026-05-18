@@ -2033,6 +2033,31 @@
     </div>
   </div>
 
+  <!-- Session Type Picker Modal (for launching backlog tasks) -->
+  <div id="task-session-picker" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
+    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:500px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
+      <h3 style="margin:0 0 8px 0;font-size:15px;">Open With</h3>
+      <p style="margin:0 0 20px 0;font-size:12px;opacity:0.7;">Select which session type to use for this task:</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="fbtn" style="padding:12px;text-align:left;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.2s;" onclick="confirmTaskSessionType('max')" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+          <div style="font-weight:600;font-size:13px;">Max (Claude)</div>
+          <div style="font-size:11px;opacity:0.6;margin-top:4px;">Claude Max via Claude CLI</div>
+        </button>
+        <button class="fbtn" style="padding:12px;text-align:left;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.2s;" onclick="confirmTaskSessionType('codex')" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+          <div style="font-weight:600;font-size:13px;">Codex</div>
+          <div style="font-size:11px;opacity:0.6;margin-top:4px;">GPT-5.4 code review via Codex CLI</div>
+        </button>
+        <button class="fbtn" style="padding:12px;text-align:left;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.2s;" onclick="confirmTaskSessionType('openrouter')" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+          <div style="font-weight:600;font-size:13px;">OpenRouter</div>
+          <div style="font-size:11px;opacity:0.6;margin-top:4px;">Agent session via OpenRouter API</div>
+        </button>
+      </div>
+      <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+        <button class="fbtn" onclick="cancelTaskSessionPicker()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Project Status Panel -->
   <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:640px;">
     <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
@@ -8938,6 +8963,8 @@
     + '</div>';
   }
 
+  let _pendingTaskLaunch = null;
+
   function launchTaskSession(scope, taskNumber) {
     let task = null;
     let workDir = '';
@@ -8966,14 +8993,48 @@
       prompt += '**Depends on:** ' + task.dependencies.map(d => '#' + d).join(', ') + '\n\n';
     }
     prompt += '**Status:** ' + (task.status || 'backlog') + ' · **Priority:** ' + (task.priority || '?');
-    wsSend({
-      type: 'launch',
+    _pendingTaskLaunch = {
       prompt: prompt,
       displayPrompt: prompt,
       workDir: workDir,
       projectName: projectName,
-      tier: 'balanced',
-    });
+    };
+    document.getElementById('task-session-picker').style.display = 'flex';
+  }
+
+  function cancelTaskSessionPicker() {
+    _pendingTaskLaunch = null;
+    document.getElementById('task-session-picker').style.display = 'none';
+  }
+
+  function confirmTaskSessionType(sessionType) {
+    if (!_pendingTaskLaunch) return;
+    const { prompt, displayPrompt, workDir, projectName } = _pendingTaskLaunch;
+    let msg = {
+      prompt: prompt,
+      displayPrompt: displayPrompt,
+      workDir: workDir,
+      projectName: projectName,
+    };
+    switch (sessionType) {
+      case 'max':
+        msg.type = 'launch-chat';
+        msg.tier = 'balanced';
+        break;
+      case 'codex':
+        msg.type = 'launch-codex';
+        msg.tier = 'balanced';
+        break;
+      case 'openrouter':
+        msg.type = 'launch';
+        msg.tier = 'balanced';
+        break;
+      default:
+        return;
+    }
+    wsSend(msg);
+    _pendingTaskLaunch = null;
+    document.getElementById('task-session-picker').style.display = 'none';
     closeBacklogPanel();
   }
 
