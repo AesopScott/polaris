@@ -1975,6 +1975,57 @@ function _categoryFor(name) {
   return CATEGORIES.UTILITIES;
 }
 
+// Provenance classifies WHO authored the skill, so the panel can visually
+// distinguish Scott's custom work from third-party plugins from Claude Code
+// internals. Used purely for UI styling — does not affect invocation.
+//
+//   custom  — authored by the user (lives under ~/.claude/skills/ or ~/.claude/commands/
+//             or a project's own .claude/ folder)
+//   vendor  — third-party plugin (codex:*, anthropic-skills:*)
+//   builtin — Claude Code internals or bundled skills with no on-disk source
+function _provenanceFor(name, source) {
+  if (name.startsWith('codex:') || name.startsWith('anthropic-skills:')) return 'vendor';
+  if (source === 'supplement') return 'builtin';
+  return 'custom';
+}
+
+// Supplement: skills that surface in Claude Code's available-skills list but
+// don't have an on-disk SKILL.md / .md file in any source we scan. These come
+// from the Claude Code binary itself or from plugins that don't expose files
+// in the standard cache layout. We surface them in the Skills panel for
+// completeness (so users see every skill the harness knows about). The Skill
+// tool won't be able to load a body for these — clicking them sends /<name>
+// to the focused session, and Claude Code's own slash-command handler picks
+// them up in Max chat sessions. In Direct sessions, the Skill tool returns a
+// friendly "this is a Claude Code built-in" note.
+//
+// Descriptions are paraphrased from the harness's available-skills system
+// prompt as observed 2026-05-18.
+const SUPPLEMENT_SKILLS = [
+  // anthropic-skills: namespace — bundled plugin
+  { name: 'anthropic-skills:consolidate-memory',  description: 'Reflective pass over your memory files — merge duplicates, fix stale facts, prune the index.', category: CATEGORIES.TOOLING },
+  { name: 'anthropic-skills:docx',                description: 'Create, read, edit, or manipulate Word documents (.docx files) with formatting, tables of contents, headings, page numbers, letterheads.', category: CATEGORIES.UTILITIES },
+  { name: 'anthropic-skills:humanize-writing',    description: 'Bundled humanize-writing variant — rewrite text to sound more human, less AI-generated.', category: CATEGORIES.UTILITIES },
+  { name: 'anthropic-skills:pdf',                 description: 'Read, extract, merge, split, rotate, watermark, OCR, fill forms, or create PDF files.', category: CATEGORIES.UTILITIES },
+  { name: 'anthropic-skills:pptx',                description: 'Create, read, edit, or manipulate PowerPoint slide decks (.pptx) — slides, layouts, speaker notes.', category: CATEGORIES.UTILITIES },
+  { name: 'anthropic-skills:process-interviewer', description: 'Relentless process interviewer — extracts a complete unambiguous plan from the user before any building begins.', category: CATEGORIES.INITIATION },
+  { name: 'anthropic-skills:setup-cowork',        description: 'Guided Cowork setup — install role-matched plugins, connect tools, try a skill.', category: CATEGORIES.TOOLING },
+  { name: 'anthropic-skills:skill-creator',       description: 'Create new skills from scratch, edit existing ones, run evals, or optimize skill descriptions.', category: CATEGORIES.TOOLING },
+  { name: 'anthropic-skills:xlsx',                description: 'Open, read, edit, or create spreadsheet files (.xlsx, .xlsm, .csv, .tsv) — add columns, formulas, charts, clean messy data.', category: CATEGORIES.UTILITIES },
+  { name: 'anthropic-skills:youtube-transcribe',  description: 'Transcribe a YouTube video to plain text and save it to Obsidian.', category: CATEGORIES.UTILITIES },
+  // Built-in / harness-bundled (no plugin prefix, source unclear)
+  { name: 'update-config',             description: 'Configure the Claude Code harness via settings.json — permissions, env vars, hooks, automated behaviors.', category: CATEGORIES.TOOLING },
+  { name: 'keybindings-help',          description: 'Customize keyboard shortcuts, rebind keys, add chord bindings via ~/.claude/keybindings.json.', category: CATEGORIES.TOOLING },
+  { name: 'simplify',                  description: 'Review changed code for reuse, quality, and efficiency; fix any issues found.', category: CATEGORIES.QUALITY },
+  { name: 'fewer-permission-prompts',  description: 'Scan transcripts for common read-only Bash and MCP tool calls; add a prioritized allowlist to settings.json.', category: CATEGORIES.TOOLING },
+  { name: 'loop',                      description: 'Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo) for polling, status checks, or recurring tasks.', category: CATEGORIES.TOOLING },
+  { name: 'schedule',                  description: 'Create, update, list, or run scheduled remote agents (routines) that execute on a cron schedule.', category: CATEGORIES.TOOLING },
+  { name: 'claude-api',                description: 'Build, debug, and optimize Claude API / Anthropic SDK apps — caching, thinking, compaction, model migrations.', category: CATEGORIES.UTILITIES },
+  { name: 'init',                      description: 'Initialize a new CLAUDE.md file with codebase documentation.', category: CATEGORIES.TOOLING },
+  { name: 'review',                    description: 'Review a pull request — Claude Code built-in, lighter than the Polaris /review-pr workflow.', category: CATEGORIES.QUALITY },
+  { name: 'security-review',           description: 'Built-in security review of the pending changes on the current branch.', category: CATEGORIES.QUALITY },
+];
+
 let _skillsCache = null;
 let _skillsCacheKey = '';  // hash of mtimes across all source dirs
 
@@ -2058,6 +2109,7 @@ function _scanSkillDir(rootDir, sourceLabel, group, namePrefix = '') {
       source: sourceLabel,
       group,
       category: _categoryFor(name),
+      provenance: _provenanceFor(name, sourceLabel),
       filePath: skillFile,
     });
   }
@@ -2083,6 +2135,7 @@ function _scanCommandDir(rootDir, sourceLabel, group, namePrefix = '') {
       source: sourceLabel,
       group,
       category: _categoryFor(name),
+      provenance: _provenanceFor(name, sourceLabel),
       filePath,
     });
   }
@@ -2150,6 +2203,20 @@ function discoverAllSkills(workDir = null) {
     if (!prev || (prev.group === 'global' && s.group === 'project')) {
       seen.set(s.name, s);
     }
+  }
+  // Layer the hardcoded supplement on top — only adds entries we haven't
+  // already discovered on disk (so on-disk wins if a name overlaps).
+  for (const sup of SUPPLEMENT_SKILLS) {
+    if (seen.has(sup.name)) continue;
+    seen.set(sup.name, {
+      name: sup.name,
+      description: sup.description,
+      source: 'supplement',
+      group: 'global',
+      category: sup.category,
+      provenance: _provenanceFor(sup.name, 'supplement'),
+      filePath: null,
+    });
   }
   const result = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   _skillsCache = result;
@@ -2283,7 +2350,11 @@ function groupedSkills(workDir = null) {
   for (const s of all) {
     const bucket = tree[s.group] || tree.global;
     if (!bucket[s.category]) bucket[s.category] = [];
-    bucket[s.category].push({ name: s.name, description: s.description });
+    bucket[s.category].push({
+      name: s.name,
+      description: s.description,
+      provenance: s.provenance || 'custom',
+    });
   }
   return tree;
 }
@@ -2306,6 +2377,14 @@ function toolSkill({ skill, args } = {}, sessionId) {
     const names = skills.map(s => s.name).join(', ');
     return `Skill not found: "${skill}". Available skills: ${names || '(none)'}`;
   }
+  // Supplement entries (anthropic-skills:*, built-ins like /init, /review)
+  // have no on-disk SKILL.md — they're Claude Code internals or bundled
+  // plugins. They surface in the Skills panel for completeness but aren't
+  // directly invokable through Polaris's Direct agent loop. In Max chat
+  // sessions, the slash command works because Claude Code handles it.
+  if (!match.filePath) {
+    return `"${match.name}" is a Claude Code built-in / bundled skill. It runs natively in Max chat sessions (just type the slash command). The Direct agent loop in Polaris doesn't load this skill's body — only on-disk skills under ~/.claude/skills/, ~/.claude/commands/, or the codex plugin are loadable here.\n\nDescription:\n${match.description}`;
+  }
   let text = '';
   try { text = fs.readFileSync(match.filePath, 'utf8'); }
   catch (e) { return `Failed to read skill definition for "${skill}": ${e.message}`; }
@@ -2322,7 +2401,7 @@ function toolSkill({ skill, args } = {}, sessionId) {
     : '';
   // For SKILL.md sources, "base directory" is the parent dir; for command/agent
   // .md files, give the model the file's parent dir so it can find sibling resources.
-  const baseDir = path.dirname(match.filePath);
+  const baseDir = match.filePath ? path.dirname(match.filePath) : '(supplement)';
   return `Base directory for this skill: ${baseDir}${argsBlock}\n\n${body}`;
 }
 

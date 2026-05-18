@@ -1899,6 +1899,28 @@
       opacity: 0.85;
       line-height: 1.45;
     }
+    /* Provenance color-coding: custom = green (yours), vendor = amber for
+       third-party plugins, builtin = muted grey for Claude Code internals
+       that don't load through Polaris's Skill tool. */
+    #skills-panel .skill-row.provenance-custom  .skill-name { color: #22c55e; }
+    #skills-panel .skill-row.provenance-vendor  .skill-name { color: #f59e0b; }
+    #skills-panel .skill-row.provenance-builtin .skill-name { color: #94a3b8; font-style: italic; }
+    #skills-panel .skill-row.provenance-builtin .skill-desc { opacity: 0.6; font-style: italic; }
+    #skills-panel .skill-row.provenance-builtin:hover { background: rgba(148,163,184,0.06); }
+    #skills-panel .skills-legend {
+      padding: 8px 16px;
+      font-size: 10px;
+      display: flex;
+      gap: 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--header-bg);
+      opacity: 0.9;
+    }
+    #skills-panel .skills-legend .legend-item { display: flex; align-items: center; gap: 6px; }
+    #skills-panel .skills-legend .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+    #skills-panel .skills-legend .dot-custom  { background: #22c55e; }
+    #skills-panel .skills-legend .dot-vendor  { background: #f59e0b; }
+    #skills-panel .skills-legend .dot-builtin { background: #94a3b8; }
     #skills-panel .skills-empty {
       padding: 20px 16px;
       text-align: center;
@@ -8506,12 +8528,20 @@
 
   function _renderSkillCategory(catName, items, expanded) {
     if (!items || !items.length) return '';
-    const rows = items.map(s => `
-      <div class="skill-row" data-skill="${escHtmlAttr(s.name)}" title="Click to send /${escHtmlAttr(s.name)} to the focused session">
-        <span class="skill-name">/${escHtml(s.name)}</span>
-        <span class="skill-desc">${escHtml(s.description)}</span>
-      </div>
-    `).join('');
+    const rows = items.map(s => {
+      const prov = s.provenance || 'custom';
+      const tip = prov === 'builtin'
+        ? `Claude Code built-in — runs natively in Max chat sessions. Click to send /${s.name} to the focused session.`
+        : prov === 'vendor'
+          ? `Third-party plugin skill. Click to send /${s.name} to the focused session.`
+          : `Click to send /${s.name} to the focused session.`;
+      return `
+        <div class="skill-row provenance-${prov}" data-skill="${escHtmlAttr(s.name)}" title="${escHtmlAttr(tip)}">
+          <span class="skill-name">/${escHtml(s.name)}</span>
+          <span class="skill-desc">${escHtml(s.description)}</span>
+        </div>
+      `;
+    }).join('');
     return `
       <details class="skills-category"${expanded ? ' open' : ''}>
         <summary>${escHtml(catName)}<span class="skill-count">${items.length}</span></summary>
@@ -8540,7 +8570,13 @@
     if (resumeTarget && sessionStore[resumeTarget.sessionId]?.projectName) {
       projectLabel = sessionStore[resumeTarget.sessionId].projectName;
     }
-    let html = '';
+    let html = `
+      <div class="skills-legend">
+        <span class="legend-item"><span class="legend-dot dot-custom"></span>Custom (yours)</span>
+        <span class="legend-item"><span class="legend-dot dot-vendor"></span>Vendor (plugin)</span>
+        <span class="legend-item"><span class="legend-dot dot-builtin"></span>Built-in (Claude Code)</span>
+      </div>
+    `;
     html += _renderSkillGroup('Global', tree.global || {}, categoryOrder, true);
     const projHtml = _renderSkillGroup(projectLabel, tree.project || {}, categoryOrder, false);
     if (projHtml) html += projHtml;
