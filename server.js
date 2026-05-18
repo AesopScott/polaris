@@ -4486,17 +4486,26 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       return;
     }
 
-    // Inject pending steering inputs as a fresh user message at the END of the conversation
-    // so the agent sees them as new input right now, not buried under prior turns.
-    // Clear the queue immediately so each batch is injected exactly once.
+    // Inject pending steering inputs as a proper user message in session.messages so the
+    // conversation structure stays intact (assistant response will correctly follow it).
+    // Only inject when last message is not already 'user' — defer if so to avoid consecutive
+    // user messages which some models reject.
     const steeringItems = Array.isArray(session.steeringQueue) ? session.steeringQueue.splice(0) : [];
-    let callMessages = session.messages;
     if (steeringItems.length > 0) {
-      const steeringContent = '[Steering — read and adjust your current task if relevant; if unrelated, acknowledge and continue your current work:]\n' +
-        steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n');
-      callMessages = [...session.messages, { role: 'user', content: steeringContent }];
-      broadcast({ type: 'line', sessionId, role: 'system', text: `[steering injected: ${steeringItems.length} input${steeringItems.length === 1 ? '' : 's'}]` });
+      const lastRole = session.messages.length > 0 ? session.messages[session.messages.length - 1].role : null;
+      if (lastRole !== 'user') {
+        session.messages.push({
+          role: 'user',
+          content: '[Steering — adjust current task if relevant; otherwise acknowledge and continue:]\n' +
+            steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n'),
+        });
+        broadcast({ type: 'line', sessionId, role: 'system', text: `[steering injected: ${steeringItems.length} input${steeringItems.length === 1 ? '' : 's'}]` });
+      } else {
+        // Defer — put items back and try again next iteration
+        session.steeringQueue.unshift(...steeringItems);
+      }
     }
+    const callMessages = session.messages;
     const _promptK = Math.round((systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000);
     broadcast({ type: 'line', sessionId, text: `(${_promptK}k)`, role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
