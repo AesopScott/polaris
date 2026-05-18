@@ -4864,7 +4864,9 @@
         break;
 
       case 'token-log':
-        renderTokenGraph(msg.entries || []);
+        _serverTokenEntries = msg.entries || [];
+        if (_showingGraph) renderTokenGraph(_serverTokenEntries);
+        else if (!document.getElementById('api-balance-panel').classList.contains('hidden')) renderApiBalance();
         break;
 
       case 'diag-content': {
@@ -7525,6 +7527,7 @@
 
   function applyConfig(cfg) {
     currentConfig = cfg;
+    if (cfg.balancePeriodMs) _balancePeriodMs = cfg.balancePeriodMs;
 
     // Load projects list
     if (cfg.projects && cfg.projects.length) {
@@ -7703,6 +7706,8 @@
   let _orBalance = null;
   let _dsBalance = null;
   let _showingGraph = false;
+  let _balancePeriodMs = 86400000; // 24h default; persisted in config
+  let _serverTokenEntries = [];    // last fetched token-log entries (up to 30d)
 
   function accumulateUsage(model, usage) {
     if (!model || !usage) return;
@@ -10052,6 +10057,7 @@
     renderApiBalance();
     checkOpenRouterBalance();
     checkDeepSeekBalance();
+    wsSend({ type: 'get-token-log', since: Date.now() - 2592000000 }); // fetch 30d for period table
   }
   function closeApiBalance() {
     document.getElementById('api-balance-panel').classList.add('hidden');
@@ -10088,13 +10094,37 @@
       }
     }
 
-    // Session token usage table
-    const models = Object.keys(tokenAccum);
+    // Token usage table — filtered by selected period
+    const now = Date.now();
+    const cutoff = now - _balancePeriodMs;
+    const periodAccum = {};
+    const allEntries = [..._serverTokenEntries, ...tokenHistory];
+    for (const e of allEntries) {
+      if (!e || !e.ts || e.ts < cutoff) continue;
+      const m = e.model || 'unknown';
+      if (!periodAccum[m]) periodAccum[m] = { input: 0, output: 0 };
+      periodAccum[m].input  += (e.input  || 0);
+      periodAccum[m].output += (e.output || 0);
+    }
+    const periodModels = Object.keys(periodAccum);
+
+    const periodBtns = [
+      { label: '24h', ms: 86400000 },
+      { label: '7d',  ms: 604800000 },
+      { label: '30d', ms: 2592000000 },
+    ].map(p => {
+      const active = _balancePeriodMs === p.ms;
+      return `<button class="balance-period-btn" onclick="setBalancePeriod(${p.ms})"
+        style="padding:3px 10px;font-size:11px;border-radius:4px;border:1px solid ${active ? '#3b82f6' : '#444'};
+               background:${active ? '#1e3a5f' : 'var(--card-btn-bg)'};color:${active ? '#60a5fa' : 'var(--text)'};
+               cursor:pointer;font-weight:${active ? '700' : '400'};">${p.label}</button>`;
+    }).join('');
+
     let usageHtml = '';
-    if (models.length) {
+    if (periodModels.length) {
       let totalIn = 0, totalOut = 0;
-      const rows = models.map(m => {
-        const d = tokenAccum[m];
+      const rows = periodModels.map(m => {
+        const d = periodAccum[m];
         totalIn  += d.input;
         totalOut += d.output;
         return `<tr>
@@ -10104,7 +10134,10 @@
         </tr>`;
       }).join('');
       usageHtml = `
-        <div style="margin-top:20px;font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.4;text-transform:uppercase;margin-bottom:6px;">Session Token Usage</div>
+        <div style="margin-top:20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.4;text-transform:uppercase;">Token Usage</div>
+          <div style="display:flex;gap:4px;">${periodBtns}</div>
+        </div>
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="border-bottom:1px solid var(--border);">
             <th style="padding:4px 10px;font-size:10px;font-weight:700;opacity:0.5;text-align:left;">MODEL</th>
@@ -10118,6 +10151,13 @@
             <td style="padding:6px 10px;font-size:12px;font-weight:800;color:var(--tag-text);">${(totalOut / 1000).toFixed(1)}k</td>
           </tr></tfoot>
         </table>`;
+    } else {
+      usageHtml = `
+        <div style="margin-top:20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.05em;opacity:0.4;text-transform:uppercase;">Token Usage</div>
+          <div style="display:flex;gap:4px;">${periodBtns}</div>
+        </div>
+        <div style="font-size:12px;opacity:0.4;padding:10px 10px;">No token data for this period.</div>`;
     }
 
     // DeepSeek live balance
@@ -10179,7 +10219,14 @@
       </table>
       ${usageHtml}`;
   }
+  function setBalancePeriod(ms) {
+    _balancePeriodMs = ms;
+    wsSend({ type: 'save-config', config: { balancePeriodMs: ms } });
+    currentConfig.balancePeriodMs = ms;
+    renderApiBalance();
+  }
   window.openApiBalance  = openApiBalance;
+  window.setBalancePeriod = setBalancePeriod;
 
   // ── Diag log viewer ───────────────────────────────────────────────────────
   let _diagSessionId = null;
