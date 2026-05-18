@@ -5146,7 +5146,13 @@ async function spawnMaxChat(sessionId, prompt, config) {
   // to connect to all of them on every spawn, adding ~6s cold-start latency.
   // The local .mcp.json (Polaris endpoint only) is still loaded via cwd discovery.
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', cliModel, '--strict-mcp-config'];
-  if (hiddenSystemPrompt) args.push('--append-system-prompt', hiddenSystemPrompt);
+  // Write system prompt to a temp file to avoid Windows ~8KB command-line arg limit.
+  let syspromptFile = null;
+  if (hiddenSystemPrompt) {
+    syspromptFile = path.join(require('os').tmpdir(), `polaris-sp-${sessionId}.txt`);
+    try { fs.writeFileSync(syspromptFile, hiddenSystemPrompt, 'utf8'); } catch (e) { syspromptFile = null; dlog('SYSPROMPT_FILE_ERR', e.message); }
+    if (syspromptFile) args.push('--append-system-prompt-file', syspromptFile);
+  }
   if (isResume) args.push('--resume', session.claudeSessionId);
   const chatImages = session.pendingImages || [];
   const chatDocs   = session.pendingDocs   || [];
@@ -5363,6 +5369,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
     session.status = termStatus;
     session.endAt = Date.now();
     broadcast({ type: 'session-status', sessionId, status: session.status });
+    if (syspromptFile) { try { fs.unlinkSync(syspromptFile); } catch {} }
     // Drain queued turns before the post-hoc cross-check kicks off so a user
     // who fires a follow-up isn't blocked behind a reviewer modal.
     drainPendingTurns(sessionId);
