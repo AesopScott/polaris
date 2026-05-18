@@ -3488,8 +3488,6 @@
     const color = projectName ? getProjectColorByName(projectName) : null;
     const star = document.querySelector('.app-icon svg path');
     const pill = document.getElementById('active-project-pill');
-    const btnProjects = document.getElementById('btn-projects');
-    const btnLabel = btnProjects ? btnProjects.querySelector('.lbl') : null;
     const header = document.querySelector('.header');
     if (projectName && color) {
       if (star) star.setAttribute('fill', color);
@@ -3500,21 +3498,10 @@
         pill.style.background = color + '1a';
         pill.textContent = projectName;
       }
-      if (btnProjects) {
-        btnProjects.style.borderColor = color + 'aa';
-        btnProjects.style.color = color;
-        btnProjects.style.boxShadow = `0 0 8px ${color}44`;
-      }
       if (header) header.style.borderBottom = `1px solid ${color}55`;
     } else {
       if (star) star.setAttribute('fill', '#60a5fa');
       if (pill) pill.style.display = 'none';
-      if (btnLabel) btnLabel.textContent = 'Projects';
-      if (btnProjects) {
-        btnProjects.style.borderColor = '';
-        btnProjects.style.color = '';
-        btnProjects.style.boxShadow = '';
-      }
       if (header) header.style.borderBottom = '';
     }
   }

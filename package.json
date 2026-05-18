@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.455",
+  "version": "1.0.456",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
