@@ -4506,8 +4506,8 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       }
     }
     const callMessages = session.messages;
-    const _promptK = ((systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000).toFixed(1);
-    broadcast({ type: 'line', sessionId, text: `(${_promptK}k)`, role: 'system' });
+    const _promptK = (systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000;
+    broadcast({ type: 'line', sessionId, text: _promptK >= 20 ? `(${_promptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
     if (result.error) {
@@ -4982,8 +4982,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} knowledgeFiles=${Object.keys(session.projectMemory||{}).length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
-  const _chatPromptK = (Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000).toFixed(1);
-  broadcast({ type: 'line', sessionId, text: `(${_chatPromptK}k)`, role: 'system' });
+  const _chatPromptK = Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000;
+  broadcast({ type: 'line', sessionId, text: _chatPromptK >= 20 ? `(${_chatPromptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
   // Translate session tier → Claude Code --model flag.
@@ -5387,8 +5387,8 @@ async function spawnCodexSession(sessionId, prompt, config) {
     }
   }
   if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
-  const _codexPromptK = (Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000).toFixed(1);
-  broadcast({ type: 'line', sessionId, text: `(${_codexPromptK}k)`, role: 'system' });
+  const _codexPromptK = Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000;
+  broadcast({ type: 'line', sessionId, text: _codexPromptK >= 20 ? `(${_codexPromptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
 
   try {
     fs.appendFileSync(diagPath,
@@ -5800,8 +5800,8 @@ async function spawnGptChat(sessionId, prompt, tier) {
       'utf8');
   } catch {}
 
-  const _gptPromptK = (Buffer.byteLength(prompt, 'utf8') / 4 / 1000).toFixed(1);
-  broadcast({ type: 'line', sessionId, text: `(${_gptPromptK}k)`, role: 'system' });
+  const _gptPromptK = Buffer.byteLength(prompt, 'utf8') / 4 / 1000;
+  broadcast({ type: 'line', sessionId, text: _gptPromptK >= 20 ? `(${_gptPromptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
   broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.display}`, role: 'system' });
 
   let cdpConn = null;
