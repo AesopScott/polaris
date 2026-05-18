@@ -2019,11 +2019,11 @@ function buildPolarisContextBlock(config, session) {
 
   lines.push(
     '',
-    'Session card status: Polaris auto-detects your intent from your final response and updates the session card.',
-    '  - Committed code or delivered work that needs testing → end your response with "Please test this" or "Try it out" — card goes purple (test).',
-    '  - Asking the user a question or waiting for their input → end your response with a "?" — card goes amber (waiting).',
-    '  - Task fully done, no action needed → finish normally — card goes green (done).',
-    'You do not call any tool for this. The server reads your last message and sets the card automatically.',
+    'Session card status: use the SetStatus tool explicitly; do not rely on text auto-detection except as a fallback.',
+    '  - After code changes, commits, builds, UI fixes, or any handoff where Scott must rebuild/install or verify behavior, call mcp__polaris__SetStatus with status "test".',
+    '  - If you ask Scott a question or need input before proceeding, call mcp__polaris__SetStatus with status "waiting".',
+    '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
+    'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
   );
 
   lines.push('=== END POLARIS CONTEXT ===');
