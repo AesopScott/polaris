@@ -1909,7 +1909,8 @@
       padding: 8px 16px 8px 38px;
       display: grid;
       grid-template-columns: 200px 1fr;
-      gap: 12px;
+      grid-template-rows: auto auto;
+      gap: 2px 12px;
       cursor: pointer;
       font-size: 12px;
       border-top: 1px solid rgba(255,255,255,0.04);
@@ -1923,11 +1924,26 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      grid-column: 1;
+      grid-row: 1;
     }
     #skills-panel .skill-desc {
       color: var(--text);
       opacity: 0.85;
       line-height: 1.45;
+      grid-column: 2;
+      grid-row: 1;
+    }
+    #skills-panel .skill-path {
+      grid-column: 2;
+      grid-row: 2;
+      font-family: monospace;
+      font-size: 10px;
+      opacity: 0.5;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     /* Provenance color-coding: custom = green (yours), vendor = amber for
        third-party plugins, builtin = muted grey for Claude Code internals
@@ -8789,9 +8805,10 @@
           ? `Third-party plugin skill. Click to send /${s.name} to the focused session.`
           : `Click to send /${s.name} to the focused session.`;
       return `
-        <div class="skill-row provenance-${prov}" data-skill="${escHtmlAttr(s.name)}" title="${escHtmlAttr(tip)}">
+        <div class="skill-row provenance-${prov}" data-skill="${escHtmlAttr(s.name)}" title="${escHtmlAttr(tip + (s.displayPath ? '\n\nPath: ' + s.displayPath : ''))}">
           <span class="skill-name">/${escHtml(s.name)}</span>
           <span class="skill-desc">${escHtml(s.description)}</span>
+          ${s.displayPath ? `<span class="skill-path">${escHtml(s.displayPath)}</span>` : ''}
         </div>
       `;
     }).join('');

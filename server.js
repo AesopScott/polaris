@@ -134,7 +134,10 @@ function buildSystemPrompt(config) {
   const mcpLine = mcpServers.length > 0
     ? `You have the following MCP servers connected and their tools are available to you: ${mcpServers.join(', ')}. Use them proactively when relevant.`
     : '';
-  return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '');
+  const navigationLine = mcpServers.includes('polaris-navigation')
+    ? '\nPolaris Navigation Structure: The polaris-navigation MCP provides methods to explore the Polaris UI navigation pane. Use getNavigationSchema() to understand available buttons and panels, getButton(id) to find button details, getPanel(id) to access panel contents and controls, and findButtonByLabel(label) to search buttons by label.'
+    : '';
+  return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '') + navigationLine;
 }
 
 // ─── Secret encryption (AES-256-GCM, stable file key) ────────────────────────
@@ -1781,6 +1784,10 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
   { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions — follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
+  { type: 'function', function: { name: 'GetNavigationSchema', description: 'Get the complete Polaris navigation pane structure — all buttons, labels, tooltips, handlers, and available panel IDs.', parameters: { type: 'object', properties: {}, required: [] } } },
+  { type: 'function', function: { name: 'GetButton', description: 'Get details about a specific navigation button by ID (e.g., "btn-status", "btn-build").', parameters: { type: 'object', properties: { buttonId: { type: 'string', description: 'Button ID to look up' } }, required: ['buttonId'] } } },
+  { type: 'function', function: { name: 'GetPanel', description: 'Get the full HTML content of a specific panel (e.g., "cross-check-panel", "archive-panel").', parameters: { type: 'object', properties: { panelId: { type: 'string', description: 'Panel ID to retrieve' } }, required: ['panelId'] } } },
+  { type: 'function', function: { name: 'FindButtonByLabel', description: 'Search for buttons by label text using case-insensitive partial matching.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Label text to search for' } }, required: ['label'] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = false, continuationContext = null) {
@@ -2028,6 +2035,152 @@ function buildPolarisContextBlock(config, session) {
 
   lines.push('=== END POLARIS CONTEXT ===');
   return lines.join('\n');
+}
+
+// ─── Navigation Pane Tools ──────────────────────────────────────────────────
+
+let navigationCache = null;
+let navigationCacheTime = 0;
+const NAVIGATION_CACHE_TTL = 5000;
+
+function parseNavigationStructure() {
+  if (navigationCache && Date.now() - navigationCacheTime < NAVIGATION_CACHE_TTL) {
+    return navigationCache;
+  }
+
+  const mockupPath = path.join(SOURCE_PATH, 'mockup.html');
+  const html = fs.readFileSync(mockupPath, 'utf8');
+
+  const buttons = [];
+  const panels = {};
+
+  // Extract buttons from button grid
+  const buttonRegex = /<button\s+id=["']([^"']+)["']\s+class=["']([^"']+)["'][^>]*data-tooltip=["']([^"']+)["'][^>]*onclick=["']([^"']+)\(\)[^>]*>\s*<span[^>]*class=["']lbl["'][^>]*>([^<]+)<\/span>/g;
+
+  let match;
+  while ((match = buttonRegex.exec(html)) !== null) {
+    const [, buttonId, classes, tooltip, handler, label] = match;
+    buttons.push({
+      id: buttonId,
+      label: label.trim(),
+      tooltip: tooltip.trim(),
+      handler,
+      classes: classes.split(' ')
+    });
+  }
+
+  // Extract panel IDs and content
+  const panelRegex = /<div\s+id=["']([^"']+panel[^"']*)["'][^>]*>/g;
+  let panelMatch;
+  const panelIds = new Set();
+
+  while ((panelMatch = panelRegex.exec(html)) !== null) {
+    panelIds.add(panelMatch[1]);
+  }
+
+  // Extract full panel content
+  for (const panelId of panelIds) {
+    const panelStartRegex = new RegExp(`<div\\s+id=["']${panelId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'i');
+    const startMatch = panelStartRegex.exec(html);
+
+    if (startMatch) {
+      // Find matching closing div
+      let depth = 1;
+      let pos = startMatch.index + startMatch[0].length;
+      let content = startMatch[0];
+
+      while (depth > 0 && pos < html.length) {
+        const openDiv = html.indexOf('<div', pos);
+        const closeDiv = html.indexOf('</div>', pos);
+
+        if (closeDiv === -1) break;
+
+        if (openDiv !== -1 && openDiv < closeDiv) {
+          depth++;
+          content += html.substring(pos, openDiv + 4);
+          pos = openDiv + 4;
+        } else {
+          depth--;
+          content += html.substring(pos, closeDiv + 6);
+          pos = closeDiv + 6;
+          if (depth === 0) {
+            panels[panelId] = {
+              id: panelId,
+              content: content,
+              contentLength: content.length
+            };
+          }
+        }
+      }
+    }
+  }
+
+  navigationCache = { buttons, panels };
+  navigationCacheTime = Date.now();
+  return navigationCache;
+}
+
+function toolGetNavigationSchema() {
+  const { buttons, panels } = parseNavigationStructure();
+  return {
+    buttons: buttons.map(b => ({
+      id: b.id,
+      label: b.label,
+      tooltip: b.tooltip,
+      handler: b.handler,
+      classes: b.classes
+    })),
+    panelIds: Object.keys(panels)
+  };
+}
+
+function toolGetButton({ buttonId }) {
+  const { buttons } = parseNavigationStructure();
+  const button = buttons.find(b => b.id === buttonId);
+
+  if (!button) {
+    return { error: `Button "${buttonId}" not found` };
+  }
+
+  return {
+    id: button.id,
+    label: button.label,
+    tooltip: button.tooltip,
+    handler: button.handler,
+    classes: button.classes
+  };
+}
+
+function toolGetPanel({ panelId }) {
+  const { panels } = parseNavigationStructure();
+  const panel = panels[panelId];
+
+  if (!panel) {
+    return { error: `Panel "${panelId}" not found` };
+  }
+
+  return panel;
+}
+
+function toolFindButtonByLabel({ label }) {
+  const { buttons } = parseNavigationStructure();
+  const matches = buttons.filter(b =>
+    b.label.toLowerCase().includes(label.toLowerCase())
+  );
+
+  if (matches.length === 0) {
+    return { results: [], message: `No buttons found matching "${label}"` };
+  }
+
+  return {
+    results: matches.map(b => ({
+      id: b.id,
+      label: b.label,
+      tooltip: b.tooltip,
+      handler: b.handler
+    })),
+    count: matches.length
+  };
 }
 
 function toolRead({ file_path, offset, limit }, sessionId, workDir) {
@@ -2670,6 +2823,26 @@ function discoverSkills() {
 
 // Group discovered skills by `{group, category}` for the nav panel tree.
 // Returns: { global: { 'Project workflow': [...], ... }, project: {...} }
+// Build a user-friendly display path for a discovered skill. On-disk entries
+// get a path shortened with `~` for the user's home directory. Supplement
+// entries (no filePath) get a label that explains where they actually live so
+// the user knows it isn't a missing file.
+function _displayPathFor(entry) {
+  if (entry.filePath) {
+    const home = os.homedir();
+    let p = entry.filePath;
+    if (p.toLowerCase().startsWith(home.toLowerCase())) {
+      p = '~' + p.slice(home.length);
+    }
+    return p.replace(/\\/g, '/');
+  }
+  // No filePath → bundled/built-in supplement entry. Map by namespace.
+  if (entry.name.startsWith('anthropic-skills:')) {
+    return '(anthropic-skills plugin — bundled, no on-disk source)';
+  }
+  return '(Claude Code built-in — no on-disk source)';
+}
+
 function groupedSkills(workDir = null) {
   const all = discoverAllSkills(workDir);
   const tree = { global: {}, project: {} };
@@ -2684,6 +2857,7 @@ function groupedSkills(workDir = null) {
       name: s.name,
       description: s.description,
       provenance: s.provenance || 'custom',
+      displayPath: _displayPathFor(s),
     });
   }
   return tree;
@@ -4325,6 +4499,10 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'SetProject':  return toolSetProject(input, sessionId);
     case 'SetStatus':   return toolSetStatus(input, sessionId);
     case 'Skill':       return toolSkill(input, sessionId);
+    case 'GetNavigationSchema': return toolGetNavigationSchema();
+    case 'GetButton':   return toolGetButton(input);
+    case 'GetPanel':    return toolGetPanel(input);
+    case 'FindButtonByLabel': return toolFindButtonByLabel(input);
     default:           return `Unknown tool: ${name}`;
   }
 }
