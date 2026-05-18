@@ -5528,8 +5528,11 @@ async function spawnMaxChat(sessionId, prompt, config) {
   let lastAssistantText = '';
   let committedDuringRun = false;
   let firstTokenMs = null, totalChars = 0, rateInterval = null;
+  let watchdogKilled = false;
+  let startupWatchdog = null;
 
   proc.stdout.on('data', chunk => {
+    if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     totalOutBytes += chunk.length;
     lineBuf += chunk.toString('utf8');
     const lines = lineBuf.split(/\r?\n/);
@@ -5605,6 +5608,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
   });
 
   proc.on('close', async code => {
+    if (watchdogKilled) return;
+    if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
     if (rateInterval) clearInterval(rateInterval);
     const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
@@ -5660,6 +5665,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   });
 
   proc.on('error', err => {
+    if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     dlog('ERROR', err.code === 'ENOENT' ? 'CLI_NOT_FOUND (claude binary missing on PATH)' : `${err.code || ''} ${err.message}`);
     if (err.code === 'ENOENT') {
       broadcast({
@@ -5680,6 +5686,14 @@ async function spawnMaxChat(sessionId, prompt, config) {
     proc.stdin.write(stdinPayload);
     proc.stdin.end();
     dlog('STDIN_SENT', `bytes=${Buffer.byteLength(stdinPayload,'utf8')}`);
+    startupWatchdog = setTimeout(() => {
+      if (watchdogKilled || session.endAt || totalOutBytes > 0) return;
+      watchdogKilled = true;
+      dlog('STARTUP_WATCHDOG', 'No stdout in 30s — killing and retrying');
+      broadcast({ type: 'line', sessionId, text: '[watchdog] Claude CLI unresponsive — retrying...', role: 'system' });
+      proc.kill();
+      spawnMaxChat(sessionId, prompt, config);
+    }, 30000);
   } catch (e) {
     dlog('STDIN_ERR', e.message);
     broadcast({ type: 'line', sessionId, text: `Failed to send prompt to Claude CLI: ${e.message}`, role: 'error' });
