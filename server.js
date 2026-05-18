@@ -2469,11 +2469,61 @@ function addBacklogTask(scope, taskInput) {
   return baseTask;
 }
 
-function _autoCommitBacklog(repoDir, taskNumber) {
+function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
   const { execSync } = require('child_process');
   const opts = { cwd: repoDir, stdio: ['ignore', 'pipe', 'pipe'] };
+  const verb = verbOverride || ('add task #' + taskNumber);
   execSync('git add docs/backlog.json', opts);
-  execSync('git commit -m "chore(backlog): add task #' + taskNumber + ' from Polaris"', opts);
+  execSync('git commit -m "chore(backlog): ' + verb + ' from Polaris"', opts);
+}
+
+const VALID_BACKLOG_STATUSES = new Set([
+  'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
+  'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
+  'blocked', 'on-hold', 'cancelled'
+]);
+
+function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
+  if (!VALID_BACKLOG_STATUSES.has(newStatus)) {
+    throw new Error('Invalid status "' + newStatus + '". Valid: ' + [...VALID_BACKLOG_STATUSES].join(', '));
+  }
+  const cfg = readConfig();
+  const taskNum = parseInt(taskNumber, 10);
+  if (!taskNum) throw new Error('Invalid task number: ' + taskNumber);
+
+  if (scope === 'global') {
+    if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
+    const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const task = (data.tasks || []).find(t => t.number === taskNum);
+    if (!task) throw new Error('Task #' + taskNum + ' not found in global backlog.');
+    task.status = newStatus;
+    task.completed_at = (newStatus === 'production' || newStatus === 'cancelled')
+      ? new Date().toISOString().split('T')[0]
+      : null;
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+    return task;
+  }
+
+  // Per-project scope
+  const project = (cfg.projects || []).find(p => p.name === scope);
+  if (!project) throw new Error('Project not found: ' + scope);
+  if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
+  const filePath = path.join(project.workDir, 'docs', 'backlog.json');
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const task = (data.tasks || []).find(t => t.number === taskNum);
+  if (!task) throw new Error('Task #' + taskNum + ' not found in ' + scope + ' backlog.');
+  task.status = newStatus;
+  if (newStatus === 'production' || newStatus === 'cancelled') {
+    task.completed_at = new Date().toISOString().split('T')[0];
+  }
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  try {
+    _autoCommitBacklog(project.workDir, taskNum, 'set task #' + taskNum + ' status to ' + newStatus);
+  } catch (e) {
+    console.error('[backlog] auto-commit failed in ' + project.workDir + ':', e.message);
+  }
+  return task;
 }
 
 // Backward-compat shim — the old discoverSkills() signature returned items
@@ -7116,6 +7166,18 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'update-backlog-task-status') {
+    try {
+      const { scope, taskNumber, status: newStatus } = msg;
+      updateBacklogTaskStatus(scope, taskNumber, newStatus);
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
+    return;
+  }
+
   if (type === 'dismiss-routine-notification') {
     const { id } = msg;
     const notifs = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
@@ -8951,7 +9013,7 @@ async function handleMessage(ws, raw) {
     const statuses = {};
     try {
       if (fs.existsSync(statusDir)) {
-        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md') && !f.includes('.'));
+        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md'));
         for (const f of files) {
           const projectName = f.replace(/\.md$/, '');
           let content = fs.readFileSync(path.join(statusDir, f), 'utf8');
