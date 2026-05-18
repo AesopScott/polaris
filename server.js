@@ -2606,6 +2606,59 @@ function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
   return task;
 }
 
+function updateBacklogTask(scope, taskNumber, updates) {
+  const cfg = readConfig();
+  const taskNum = parseInt(taskNumber, 10);
+  if (!taskNum) throw new Error('Invalid task number: ' + taskNumber);
+  if (!updates || typeof updates !== 'object') throw new Error('No updates provided.');
+
+  const allowedFields = ['title', 'description', 'category', 'priority'];
+  const filtered = {};
+  for (const field of allowedFields) {
+    if (field in updates) {
+      filtered[field] = updates[field];
+    }
+  }
+
+  if (scope === 'global') {
+    if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
+    const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const task = (data.tasks || []).find(t => t.number === taskNum);
+    if (!task) throw new Error('Task #' + taskNum + ' not found in global backlog.');
+
+    if ('title' in filtered) task.title = String(filtered.title).trim();
+    if ('description' in filtered) task.description = String(filtered.description).trim();
+    if ('category' in filtered) task.category = String(filtered.category).trim();
+    if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
+
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+    return task;
+  }
+
+  // Per-project scope
+  const project = (cfg.projects || []).find(p => p.name === scope);
+  if (!project) throw new Error('Project not found: ' + scope);
+  if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
+  const filePath = path.join(project.workDir, 'docs', 'backlog.json');
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const task = (data.tasks || []).find(t => t.number === taskNum);
+  if (!task) throw new Error('Task #' + taskNum + ' not found in ' + scope + ' backlog.');
+
+  if ('title' in filtered) task.title = String(filtered.title).trim();
+  if ('description' in filtered) task.description = String(filtered.description).trim();
+  if ('category' in filtered) task.category = String(filtered.category).trim();
+  if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
+
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  try {
+    _autoCommitBacklog(project.workDir, taskNum, 'update task #' + taskNum);
+  } catch (e) {
+    console.error('[backlog] auto-commit failed in ' + project.workDir + ':', e.message);
+  }
+  return task;
+}
+
 // Backward-compat shim — the old discoverSkills() signature returned items
 // with `dirPath`. Some callers (buildDirectSystemPrompt) only need name +
 // description, which the new shape still provides.
@@ -5603,6 +5656,10 @@ async function spawnCodexSession(sessionId, prompt, config) {
   } catch (e) { dlog('CODEX_HOME_ERR', e.message); }
 
   const spawnEnv = { ...process.env, CODEX_HOME: codexSessionDir };
+  // Codex must authenticate via ~/.codex/auth.json (ChatGPT account) only.
+  // Remove any API key from the environment so Codex cannot fall back to
+  // direct API billing, which is far more expensive than the subscription.
+  delete spawnEnv.OPENAI_API_KEY;
   dlog('SPAWN', `bin=${codexBin} args=${args.join(' ')} cwd=${cwd}`);
   let proc;
   try {
@@ -7358,6 +7415,18 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, status: newStatus } = msg;
       updateBacklogTaskStatus(scope, taskNumber, newStatus);
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
+    return;
+  }
+
+  if (type === 'update-backlog-task') {
+    try {
+      const { scope, taskNumber, updates } = msg;
+      updateBacklogTask(scope, taskNumber, updates);
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
     } catch (e) {
