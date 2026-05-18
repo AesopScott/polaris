@@ -91,6 +91,17 @@
       "created_at": "2026-05-18",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 9,
+      "title": "Fix the ability to edit backlog items",
+      "description": "I edit a backlog item. It doesn't allow me to save, and it hangs the whole program, and I can no longer use anything.",
+      "category": "fix",
+      "priority": 100,
+      "status": "backlog",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
