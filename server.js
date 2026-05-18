@@ -872,6 +872,11 @@ function buildModelCostsDict() {
 }
 
 function broadcast(data) {
+  if (data && data.type === 'line' && typeof data.text === 'string') {
+    const cleanedText = stripProcessCleanupNoise(data.text);
+    if (!cleanedText && cleanedText !== data.text) return;
+    if (cleanedText !== data.text) data = { ...data, text: cleanedText };
+  }
   // Track lines and status changes in the in-memory session for persistence
   if (data.type === 'line' && data.sessionId) {
     const s = sessions.get(data.sessionId);
@@ -5035,10 +5040,16 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
+function stripProcessCleanupNoise(text) {
+  return String(text || '')
+    .replace(/SUCCESS:\s*The process with PID \d+(?:\s*\(child process of PID \d+\))?\s*has been terminated\.?/gi, '')
+    .replace(/ERROR:\s*The process "\d+"\s*not found\.?/gi, '')
+    .replace(/[ \t]+\r?\n/g, '\n')
+    .trim();
+}
+
 function filterCliStderrForDisplay(text, extraBenignPattern = null) {
-  const cleaned = String(text || '')
-    .replace(/SUCCESS:\s+The process with PID \d+ \(child process of PID \d+\) has been terminated\.?/gi, '')
-    .replace(/ERROR:\s+The process "\d+" not found\.?/gi, '');
+  const cleaned = stripProcessCleanupNoise(text);
   const lines = cleaned.split(/\r?\n/);
   const visible = [];
   for (const rawLine of lines) {
