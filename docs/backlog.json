@@ -41,7 +41,7 @@
       "title": "Status button not updating from text entered after session close",
       "category": "fix",
       "priority": 1,
-      "status": "backlog",
+      "status": "on-hold",
       "dependencies": [],
       "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
       "plan": null,
