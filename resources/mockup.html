@@ -4856,7 +4856,6 @@
       case 'obsidian-analysis-result':
         if (obsidianPendingSession) obsidianPendingSession._analysis = msg.analysis;
         showObsidianAnalysisModal(msg.analysis, msg.sessionName, msg.content, msg.projectName);
-        { const btn = document.getElementById('btn-obsidian'); if (btn) { btn.disabled = false; btn.querySelector('.lbl').textContent = 'Obsidian'; } }
         if (camCurrentPushSid) {
           const sp = document.getElementById('cam-pushing-' + camCurrentPushSid);
           if (sp) sp.textContent = 'Review pending…';
@@ -8696,26 +8695,44 @@
     if (!body) return;
     const sections = [];
     let totalTasks = 0;
-    if (data.global && Array.isArray(data.global.tasks)) {
-      totalTasks += data.global.tasks.length;
-      sections.push(renderBacklogSection('global', '🌐 Global (cross-project)', data.global.tasks));
-    }
+    // Global section — always shown (even with zero tasks)
+    const globalTasks = (data.global && Array.isArray(data.global.tasks)) ? data.global.tasks : [];
+    totalTasks += globalTasks.length;
+    sections.push(renderBacklogSection('global', '🌐 Global (cross-project)', globalTasks));
+    // Per-project sections — always shown for every configured project
+    // (docs/backlog.json auto-creates on first task add)
     for (const proj of (data.projects || [])) {
-      if (proj.backlog && Array.isArray(proj.backlog.tasks)) {
-        totalTasks += proj.backlog.tasks.length;
-        sections.push(renderBacklogSection(proj.name, '📦 ' + proj.name, proj.backlog.tasks));
-      }
+      const tasks = (proj.backlog && Array.isArray(proj.backlog.tasks)) ? proj.backlog.tasks : [];
+      totalTasks += tasks.length;
+      sections.push(renderBacklogSection(proj.name, '📦 ' + proj.name, tasks));
     }
     if (count) count.textContent = totalTasks + ' task' + (totalTasks === 1 ? '' : 's');
-    if (!sections.length) {
-      body.innerHTML = '<div style="padding:30px;text-align:center;opacity:0.5;">No backlogs found. Set your Obsidian vault path in Settings and ensure projects have docs/backlog.json files.</div>';
-      return;
-    }
     body.innerHTML = sections.join('');
+    // Section header → toggle collapse (unless clicking + Add)
+    body.querySelectorAll('.backlog-section-header').forEach(h => {
+      h.addEventListener('click', (e) => {
+        if (e.target.closest('.backlog-add-btn')) return;
+        const section = h.closest('.backlog-section');
+        const sectionBody = section.querySelector('.backlog-section-body');
+        const chev = section.querySelector('.backlog-chevron');
+        const collapsed = section.classList.toggle('collapsed');
+        if (sectionBody) sectionBody.style.display = collapsed ? 'none' : 'block';
+        if (chev) chev.textContent = collapsed ? '▶' : '▼';
+      });
+    });
+    // + Add task → open modal
     body.querySelectorAll('.backlog-add-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         openBacklogAddModal(btn.dataset.scope);
+      });
+    });
+    // Task row → launch a new session to work on it
+    body.querySelectorAll('.backlog-task-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const scope = row.dataset.scope;
+        const num = parseInt(row.dataset.taskNumber, 10);
+        launchTaskSession(scope, num);
       });
     });
   }
@@ -8736,29 +8753,79 @@
       'on-hold':           'background:rgba(250,204,21,0.25);color:#fde047;',
       'cancelled':         'background:rgba(120,120,120,0.25);color:#888;text-decoration:line-through;',
     };
+    const headRow = '<tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid var(--border);">'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">#</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">TITLE</th>'
+      + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">STATUS</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">DEPS</th>'
+      + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">PRI</th>'
+    + '</tr>';
     const rows = tasks.length === 0
-      ? '<tr><td colspan="4" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet.</td></tr>'
+      ? '<tr><td colspan="5" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
       : tasks.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0)).map(t => {
           const statusStyle = colors[t.status] || colors['backlog'];
-          return '<tr>'
+          const depsArr = Array.isArray(t.dependencies) ? t.dependencies : [];
+          const depsStr = depsArr.length ? depsArr.map(d => '#' + d).join(', ') : '—';
+          return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
             + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
               + '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;' + statusStyle + '">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
+            + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
           + '</tr>';
         }).join('');
     return '<div class="backlog-section" data-scope="' + escHtmlAttr(scopeKey) + '" style="border-bottom:1px solid var(--border);">'
-      + '<div class="backlog-section-header" style="padding:10px 16px;background:var(--header-bg);display:flex;align-items:center;gap:10px;user-select:none;">'
+      + '<div class="backlog-section-header" style="padding:10px 16px;background:var(--header-bg);display:flex;align-items:center;gap:10px;user-select:none;cursor:pointer;">'
+        + '<span class="backlog-chevron" style="font-size:10px;width:12px;opacity:0.7;">▼</span>'
         + '<span style="font-size:12px;font-weight:700;flex:1;">' + escHtml(title) + '</span>'
         + '<span style="font-size:10px;opacity:0.5;">' + tasks.length + ' task' + (tasks.length === 1 ? '' : 's') + '</span>'
         + '<button class="backlog-add-btn fbtn" data-scope="' + escHtmlAttr(scopeKey) + '" style="padding:4px 10px;font-size:11px;">+ Add task</button>'
       + '</div>'
-      + '<div class="backlog-section-body">'
-        + '<table class="projects-table" style="font-size:12px;width:100%;"><tbody>' + rows + '</tbody></table>'
+      + '<div class="backlog-section-body" style="display:block;">'
+        + '<table class="projects-table" style="font-size:12px;width:100%;"><thead>' + headRow + '</thead><tbody>' + rows + '</tbody></table>'
       + '</div>'
     + '</div>';
+  }
+
+  function launchTaskSession(scope, taskNumber) {
+    let task = null;
+    let workDir = '';
+    let projectName = '';
+    if (scope === 'global') {
+      task = ((_backlogData.global && _backlogData.global.tasks) || []).find(t => t.number === taskNumber);
+      // workDir/projectName intentionally empty — server / launch bar
+      // current project (if any) will fill in.
+    } else {
+      const proj = (_backlogData.projects || []).find(p => p.name === scope);
+      if (proj) {
+        task = ((proj.backlog && proj.backlog.tasks) || []).find(t => t.number === taskNumber);
+        workDir = proj.workDir || '';
+        projectName = proj.name;
+      }
+    }
+    if (!task) {
+      console.warn('[backlog] task not found for launch:', scope, taskNumber);
+      return;
+    }
+    const scopeLabel = scope === 'global' ? 'global backlog' : scope + ' (per-project backlog)';
+    let prompt = 'Work on backlog task #' + taskNumber + ' from ' + scopeLabel + '.\n\n';
+    prompt += '**Title:** ' + (task.title || '(untitled)') + '\n\n';
+    if (task.description) prompt += '**Description:**\n' + task.description + '\n\n';
+    if (Array.isArray(task.dependencies) && task.dependencies.length) {
+      prompt += '**Depends on:** ' + task.dependencies.map(d => '#' + d).join(', ') + '\n\n';
+    }
+    prompt += '**Status:** ' + (task.status || 'backlog') + ' · **Priority:** ' + (task.priority || '?');
+    wsSend({
+      type: 'launch',
+      prompt: prompt,
+      displayPrompt: prompt,
+      workDir: workDir,
+      projectName: projectName,
+      tier: 'balanced',
+    });
+    closeBacklogPanel();
   }
 
   function openBacklogAddModal(scope) {
@@ -8804,6 +8871,7 @@
   window.closeBacklogAddModal = closeBacklogAddModal;
   window.submitBacklogAdd     = submitBacklogAdd;
   window.showBacklogError     = showBacklogError;
+  window.launchTaskSession    = launchTaskSession;
 
   let routinesFilterProject = '__all__'; // '__all__', '__none__', or a project name
 
@@ -10759,13 +10827,10 @@
     const sid = document.querySelector('.card.selected')?.dataset.sid;
     const s = sid ? sessionStore[sid] : null;
     if (!s) { alert('Select a session card first, then click Obsidian.'); return; }
-    const content = sessionToMarkdown(s);
-    obsidianPendingSession = { sessionName: s.name, content, projectName: s.projectName || null, fromCam: false, _analysis: null };
+
+    wsSend({ type: 'obsidian-up', sessionId: s.id, sessionName: s.name, projectName: s.projectName || null, content: sessionToMarkdown(s) });
+    pushDebugLog(`[obsidian] Exporting session: ${s.name}`);
     pendingStatusProject = s.projectName || null;
-    const btn = document.getElementById('btn-obsidian');
-    if (btn) { btn.disabled = true; btn.querySelector('.lbl').textContent = 'Analyzing…'; }
-    wsSend({ type: 'obsidian-analyze', sessionName: s.name, content, projectName: s.projectName || null });
-    pushDebugLog(`[obsidian] Analyzing session: ${s.name}`);
   }
   window.obsidianUp = obsidianUp;
   // ── Project Status Panel ──────────────────────────────────────────────────────

@@ -2380,14 +2380,18 @@ function loadAllBacklogs() {
     } catch {}
   }
 
+  // Always include every project so the Backlog panel and Add Task scope
+  // dropdown list them all, even ones that don't have docs/backlog.json yet —
+  // file is created on first task add via addBacklogTask().
   const projects = (cfg.projects || []).filter(p => p.workDir && p.name);
   for (const proj of projects) {
     const backlogPath = path.join(proj.workDir, 'docs', 'backlog.json');
+    let backlog = null;
     try {
       const text = fs.readFileSync(backlogPath, 'utf8');
-      const backlog = JSON.parse(text);
-      result.projects.push({ name: proj.name, workDir: proj.workDir, backlog });
+      backlog = JSON.parse(text);
     } catch {}
+    result.projects.push({ name: proj.name, workDir: proj.workDir, backlog });
   }
 
   return result;
@@ -2442,7 +2446,13 @@ function addBacklogTask(scope, taskInput) {
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (e) {
-    throw new Error('Could not read ' + filePath + ': ' + e.message + '. Ensure docs/backlog.json exists in this project.');
+    if (e.code === 'ENOENT') {
+      // First task in this project — create docs/ and start an empty backlog
+      try { fs.mkdirSync(path.dirname(filePath), { recursive: true }); } catch {}
+      data = { tasks: [] };
+    } else {
+      throw new Error('Could not read ' + filePath + ': ' + e.message);
+    }
   }
   if (!Array.isArray(data.tasks)) data.tasks = [];
   baseTask.number = _nextBacklogTaskNumber(data.tasks);
@@ -6986,10 +6996,7 @@ async function handleMessage(ws, raw) {
         session.steeringQueue = [];
         broadcast({ type: 'steering-update', sessionId: msg.sessionId, queue: [] });
       }
-      session.status = 'done';
-      session.endAt  = session.endAt || Date.now();
       saveSessions();
-      broadcast({ type: 'session-status', sessionId: msg.sessionId, status: 'done' });
     }
     return;
   }
