@@ -2012,23 +2012,29 @@ const PLUGINS_CACHE_DIR = path.join(os.homedir(), '.claude', 'plugins', 'cache')
 const USER_COMMANDS_DIR = path.join(os.homedir(), '.claude', 'commands');
 
 // Categories shown in the Skills nav panel. Order here = display order.
+// Vendor-namespaced categories (Codex, Anthropic) sit at the bottom — they're
+// contextually tied to their plugins and shouldn't be split across the
+// functional categories above just because some happen to do file editing
+// or scheduling. Keep all `codex:*` together, all `anthropic-skills:*` together.
 const CATEGORIES = {
   WORKFLOW:   'Project workflow',
   INITIATION: 'Project initiation',
   QUALITY:    'Code quality',
   RESEARCH:   'Research',
-  CODEX:      'Codex integration',
   TOOLING:    'Tooling / config',
   UTILITIES:  'Utilities',
+  CODEX:      'Codex integration',
+  ANTHROPIC:  'Anthropic skills',
 };
 const CATEGORY_ORDER = [
   CATEGORIES.WORKFLOW,
   CATEGORIES.INITIATION,
   CATEGORIES.QUALITY,
   CATEGORIES.RESEARCH,
-  CATEGORIES.CODEX,
   CATEGORIES.TOOLING,
   CATEGORIES.UTILITIES,
+  CATEGORIES.CODEX,
+  CATEGORIES.ANTHROPIC,
 ];
 
 // Hardcoded name → category. Names not in the map fall back to UTILITIES.
@@ -2096,9 +2102,12 @@ const SKILL_CATEGORY_MAP = {
 };
 
 function _categoryFor(name) {
-  if (SKILL_CATEGORY_MAP[name]) return SKILL_CATEGORY_MAP[name];
+  // Vendor-namespaced names go to their dedicated category regardless of what
+  // they do internally — keeps plugin skills grouped together so users can
+  // find them by their plugin context rather than hunting functional buckets.
   if (name.startsWith('codex:')) return CATEGORIES.CODEX;
-  if (name.startsWith('anthropic-skills:')) return CATEGORIES.UTILITIES;
+  if (name.startsWith('anthropic-skills:')) return CATEGORIES.ANTHROPIC;
+  if (SKILL_CATEGORY_MAP[name]) return SKILL_CATEGORY_MAP[name];
   return CATEGORIES.UTILITIES;
 }
 
@@ -2129,17 +2138,18 @@ function _provenanceFor(name, source) {
 // Descriptions are paraphrased from the harness's available-skills system
 // prompt as observed 2026-05-18.
 const SUPPLEMENT_SKILLS = [
-  // anthropic-skills: namespace — bundled plugin
-  { name: 'anthropic-skills:consolidate-memory',  description: 'Reflective pass over your memory files — merge duplicates, fix stale facts, prune the index.', category: CATEGORIES.TOOLING },
-  { name: 'anthropic-skills:docx',                description: 'Create, read, edit, or manipulate Word documents (.docx files) with formatting, tables of contents, headings, page numbers, letterheads.', category: CATEGORIES.UTILITIES },
-  { name: 'anthropic-skills:humanize-writing',    description: 'Bundled humanize-writing variant — rewrite text to sound more human, less AI-generated.', category: CATEGORIES.UTILITIES },
-  { name: 'anthropic-skills:pdf',                 description: 'Read, extract, merge, split, rotate, watermark, OCR, fill forms, or create PDF files.', category: CATEGORIES.UTILITIES },
-  { name: 'anthropic-skills:pptx',                description: 'Create, read, edit, or manipulate PowerPoint slide decks (.pptx) — slides, layouts, speaker notes.', category: CATEGORIES.UTILITIES },
-  { name: 'anthropic-skills:process-interviewer', description: 'Relentless process interviewer — extracts a complete unambiguous plan from the user before any building begins.', category: CATEGORIES.INITIATION },
-  { name: 'anthropic-skills:setup-cowork',        description: 'Guided Cowork setup — install role-matched plugins, connect tools, try a skill.', category: CATEGORIES.TOOLING },
-  { name: 'anthropic-skills:skill-creator',       description: 'Create new skills from scratch, edit existing ones, run evals, or optimize skill descriptions.', category: CATEGORIES.TOOLING },
-  { name: 'anthropic-skills:xlsx',                description: 'Open, read, edit, or create spreadsheet files (.xlsx, .xlsm, .csv, .tsv) — add columns, formulas, charts, clean messy data.', category: CATEGORIES.UTILITIES },
-  { name: 'anthropic-skills:youtube-transcribe',  description: 'Transcribe a YouTube video to plain text and save it to Obsidian.', category: CATEGORIES.UTILITIES },
+  // anthropic-skills: namespace — bundled plugin. All under ANTHROPIC so the
+  // plugin's skills stay together regardless of what each one does.
+  { name: 'anthropic-skills:consolidate-memory',  description: 'Reflective pass over your memory files — merge duplicates, fix stale facts, prune the index.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:docx',                description: 'Create, read, edit, or manipulate Word documents (.docx files) with formatting, tables of contents, headings, page numbers, letterheads.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:humanize-writing',    description: 'Bundled humanize-writing variant — rewrite text to sound more human, less AI-generated.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:pdf',                 description: 'Read, extract, merge, split, rotate, watermark, OCR, fill forms, or create PDF files.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:pptx',                description: 'Create, read, edit, or manipulate PowerPoint slide decks (.pptx) — slides, layouts, speaker notes.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:process-interviewer', description: 'Relentless process interviewer — extracts a complete unambiguous plan from the user before any building begins.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:setup-cowork',        description: 'Guided Cowork setup — install role-matched plugins, connect tools, try a skill.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:skill-creator',       description: 'Create new skills from scratch, edit existing ones, run evals, or optimize skill descriptions.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:xlsx',                description: 'Open, read, edit, or create spreadsheet files (.xlsx, .xlsm, .csv, .tsv) — add columns, formulas, charts, clean messy data.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:youtube-transcribe',  description: 'Transcribe a YouTube video to plain text and save it to Obsidian.', category: CATEGORIES.ANTHROPIC },
   // Built-in / harness-bundled (no plugin prefix, source unclear)
   { name: 'update-config',             description: 'Configure the Claude Code harness via settings.json — permissions, env vars, hooks, automated behaviors.', category: CATEGORIES.TOOLING },
   { name: 'keybindings-help',          description: 'Customize keyboard shortcuts, rebind keys, add chord bindings via ~/.claude/keybindings.json.', category: CATEGORIES.TOOLING },
