@@ -4361,6 +4361,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} knowledgeFiles=${Object.keys(session.projectMemory||{}).length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
+  const _chatPromptK = Math.round(Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000);
+  broadcast({ type: 'line', sessionId, text: `(${_chatPromptK}k)`, role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
   // Translate session tier → Claude Code --model flag.
