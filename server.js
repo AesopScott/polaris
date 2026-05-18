@@ -5524,11 +5524,10 @@ async function spawnCodexSession(sessionId, prompt, config) {
     ? ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', 'resume', session.codexThreadId, '-']
     : ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'];
 
-  // Turn 1: send only visible conversation history + the user's prompt.
-  // Codex CLI does not expose a hidden system-prompt channel here; injecting
-  // Polaris/backlog context into stdin makes it part of the visible transcript.
-  // The per-session MCP endpoint exposes project/status/memory tools without
-  // requiring a visible session-id block.
+  // Turn 1: prepend Polaris/project/backlog context. Codex CLI does not expose
+  // a hidden system-prompt channel in this path, so this context goes through
+  // stdin intentionally; it gives Codex the global and project backlog map at
+  // session start.
   let fullPrompt;
   if (isResume) {
     fullPrompt = prompt;
@@ -5537,8 +5536,9 @@ async function spawnCodexSession(sessionId, prompt, config) {
       .filter(l => l.role === 'user' || l.role === 'assistant')
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
-    buildProjectKnowledgeBlock(config, session);
-    fullPrompt = history || prompt;
+    const polarisContext = buildPolarisContextBlock(config, session);
+    const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
+    fullPrompt = polarisContext + knowledgeBlock + '\n\n' + (history || prompt);
   }
 
   // Extract text from DOCX/PDF attachments and prepend to prompt (Codex stdin is text-only).
