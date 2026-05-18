@@ -5066,6 +5066,10 @@ function filterCliStderrForDisplay(text, extraBenignPattern = null) {
   return visible.join('\n').trim();
 }
 
+function isCodexToolRouterFailure(text) {
+  return /codex_core::tools::router:\s+error=/i.test(String(text || ''));
+}
+
 // spawnMaxChat — chat-mode backend that spawns the Claude Code CLI and bills
 // against the user's Max plan instead of OpenRouter API. Conversation history
 // is rebuilt into the prompt each turn (no CLI session-id tracking needed —
@@ -5536,9 +5540,12 @@ async function spawnCodexSession(sessionId, prompt, config) {
       .filter(l => l.role === 'user' || l.role === 'assistant')
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
+    const codexWindowsRule =
+      '--- Codex Shell Rule ---\n' +
+      'This Codex session runs shell commands through Windows PowerShell. Use PowerShell syntax only: no bash heredocs, no `&&` command chaining, no Unix-only redirection forms, and no POSIX shell assumptions.';
     const polarisContext = buildPolarisContextBlock(config, session);
     const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
-    fullPrompt = polarisContext + knowledgeBlock + '\n\n' + (history || prompt);
+    fullPrompt = polarisContext + '\n\n' + codexWindowsRule + knowledgeBlock + '\n\n' + (history || prompt);
   }
 
   // Extract text from DOCX/PDF attachments and prepend to prompt (Codex stdin is text-only).
@@ -5580,20 +5587,19 @@ async function spawnCodexSession(sessionId, prompt, config) {
     // Copy auth.json from real CODEX_HOME so the CLI can authenticate.
     const realCodexHome = path.join(os.homedir(), '.codex');
     try { fs.copyFileSync(path.join(realCodexHome, 'auth.json'), path.join(codexSessionDir, 'auth.json')); } catch {}
-    // Merge global MCP servers + Polaris session endpoint into config.toml.
-    // If the project workDir contains .polaris-mcp.json (a name-allowlist),
-    // filter the global server map down to that list to avoid spawning every
-    // MCP server in every Codex session. Single source of truth stays global.
+    // Keep Codex MCP startup quiet by default: every session gets the Polaris
+    // endpoint, and projects can opt into extra global MCP servers with a
+    // .polaris-mcp.json file containing { "servers": ["github", ...] }.
     const globalServers = readJSON(path.join(os.homedir(), '.mcp.json'), {}).mcpServers || {};
     const allowPath = session.workDir ? path.join(session.workDir, '.polaris-mcp.json') : null;
     const allowFile = (allowPath && fs.existsSync(allowPath)) ? readJSON(allowPath, {}) : null;
     const allowList = allowFile && Array.isArray(allowFile.servers) ? allowFile.servers : null;
     const sourceMcp = allowList
       ? Object.fromEntries(Object.entries(globalServers).filter(([k]) => allowList.includes(k)))
-      : globalServers;
+      : {};
     const allMcp = { ...sourceMcp, polaris: { url: `http://127.0.0.1:${PORT}/mcp/${sessionId}` } };
     fs.writeFileSync(path.join(codexSessionDir, 'config.toml'), buildCodexConfigToml(allMcp), 'utf8');
-    dlog('CODEX_HOME', `${codexSessionDir} servers=${Object.keys(allMcp).join(',')} scope=${allowList ? 'project' : 'global'}`);
+    dlog('CODEX_HOME', `${codexSessionDir} servers=${Object.keys(allMcp).join(',')} scope=${allowList ? 'project' : 'polaris-only'}`);
   } catch (e) { dlog('CODEX_HOME_ERR', e.message); }
 
   const spawnEnv = { ...process.env, CODEX_HOME: codexSessionDir };
@@ -5682,7 +5688,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
       text,
       /rmcp::transport::worker: worker quit with fatal: Deserialize error: EOF while parsing a value .* initialized notification/i
     );
-    if (displayText && /error|fail|invalid|unauthor|rate.?limit/i.test(displayText)) {
+    if (displayText && !isCodexToolRouterFailure(displayText) && /error|fail|invalid|unauthor|rate.?limit/i.test(displayText)) {
       broadcast({ type: 'line', sessionId, text: `[codex] ${displayText.slice(0, 600)}`, role: 'error' });
     }
   });
