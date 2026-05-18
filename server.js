@@ -2715,11 +2715,19 @@ function addBacklogTask(scope, taskInput) {
 }
 
 function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
-  const { execSync } = require('child_process');
-  const opts = { cwd: repoDir, stdio: ['ignore', 'pipe', 'pipe'] };
+  const { exec } = require('child_process');
   const verb = verbOverride || ('add task #' + taskNumber);
-  execSync('git add docs/backlog.json', opts);
-  execSync('git commit -m "chore(backlog): ' + verb + ' from Polaris"', opts);
+
+  // Run git commit asynchronously (non-blocking) with a 5-second timeout
+  exec('git add docs/backlog.json && git commit -m "chore(backlog): ' + verb + ' from Polaris"',
+    { cwd: repoDir, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] },
+    (err, stdout, stderr) => {
+      // Silently log errors instead of throwing — don't block the UI
+      if (err) {
+        console.error('[backlog] auto-commit failed:', err.message);
+      }
+    }
+  );
 }
 
 const VALID_BACKLOG_STATUSES = new Set([
