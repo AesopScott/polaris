@@ -23,6 +23,18 @@
       "plan": null,
       "branch": null,
       "pr_url": null
+    },
+    {
+      "number": 3,
+      "title": "Codex apply_patch failures when server.js context drifts",
+      "category": "fix",
+      "priority": 1,
+      "status": "backlog",
+      "dependencies": [],
+      "description": "Capture and fix the 2026-05-18 Codex apply_patch failure mode where patch verification failed because expected anchors in server.js were no longer present. Observed failures were around the spawnMaxChat insertion point and the postJsonViaHttps function signature, which means Codex generated patches against stale or mismatched file context. The fix should make patching/resume flows resilient when server.js changes under a session, likely by refreshing context, falling back to targeted search, or regenerating patches around moved functions before giving up.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
     }
   ]
 }
