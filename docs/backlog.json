@@ -11,6 +11,18 @@
       "plan": null,
       "branch": null,
       "pr_url": null
+    },
+    {
+      "number": 2,
+      "title": "Build project status + task/issue tracking pipeline (prereq for 'always commit to main' rule)",
+      "category": "feature",
+      "priority": 2,
+      "status": "backlog",
+      "dependencies": [],
+      "description": "Build first-class pipelines into Polaris for (a) project status tracking and (b) task/issue tracking, so backlog management becomes the canonical way to capture and update work across projects. Once those pipelines exist, modify the Polaris CLAUDE.md spec to enforce 'All updates to backlog.json are automatically committed to main' — a rule Scott articulated 2026-05-18 but deferred because the pipeline isn't built yet. The v1 Backlog navigation pane shipped in v1.0.433 (global backlog task #12) auto-commits on the CURRENT branch, NOT main, as the safer interim behavior. The full 'always to main' enforcement requires a stash/checkout/push/restore dance (or git-worktree equivalent) that risks losing WIP if anything fails mid-flight; safer to ship after the pipeline + UX for surfacing commit failures clearly exists. Sequence: ship status/task pipeline first → modify CLAUDE.md rule → upgrade _autoCommitBacklog() in server.js to do the full 'always main' dance.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
     }
   ]
 }
