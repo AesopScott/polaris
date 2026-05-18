@@ -1956,6 +1956,10 @@
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--header-bg);font-size:11px;opacity:0.7;line-height:1.5;">
       Global cross-cutting tasks live in the Obsidian vault at <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:3px;">Backlog/backlog.json</code>. Per-project tasks live in each project's <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:3px;">docs/backlog.json</code>. Click <strong>+ Add task</strong> to create a new entry — per-project writes auto-commit on the current branch.
     </div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.15);display:flex;align-items:center;gap:8px;">
+      <input type="text" id="backlog-search-input" placeholder="🔍 Filter tasks as you type — searches title, status, deps, priority…" style="flex:1;padding:6px 10px;background:var(--input-bg);color:var(--text);border:1px solid #444;border-radius:4px;font-size:12px;" oninput="filterBacklogTasks(this.value)" />
+      <button class="fbtn" onclick="document.getElementById('backlog-search-input').value=''; filterBacklogTasks('');" title="Clear search" style="padding:4px 10px;font-size:11px;">Clear</button>
+    </div>
     <div class="projects-panel-body" id="backlog-panel-body" style="padding:0;max-height:540px;overflow-y:auto;">
       <div style="padding:20px;text-align:center;opacity:0.5;">Loading backlogs…</div>
     </div>
@@ -1966,6 +1970,9 @@
   </div>
 
   <!-- Add Backlog Task Modal -->
+  <!-- Backlog Status Picker (popover anchored under a clicked status badge) -->
+  <div id="backlog-status-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:170px;"></div>
+
   <div id="backlog-add-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
     <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:560px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
       <h3 style="margin:0 0 16px 0;font-size:15px;">Add Backlog Task</h3>
@@ -8727,14 +8734,26 @@
         openBacklogAddModal(btn.dataset.scope);
       });
     });
-    // Task row → launch a new session to work on it
+    // Task row → launch a new session to work on it (skip if clicking
+    // the status badge — that opens the status picker instead)
     body.querySelectorAll('.backlog-task-row').forEach(row => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.backlog-status-badge')) return;
         const scope = row.dataset.scope;
         const num = parseInt(row.dataset.taskNumber, 10);
         launchTaskSession(scope, num);
       });
     });
+    // Status badge → open status picker popover
+    body.querySelectorAll('.backlog-status-badge').forEach(badge => {
+      badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showStatusPicker(badge, badge.dataset.scope, parseInt(badge.dataset.taskNumber, 10), badge.dataset.status);
+      });
+    });
+    // Re-apply current search filter so it survives re-renders
+    const searchInput = document.getElementById('backlog-search-input');
+    if (searchInput && searchInput.value) filterBacklogTasks(searchInput.value);
   }
 
   function renderBacklogSection(scopeKey, title, tasks) {
@@ -8770,7 +8789,7 @@
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
             + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
-              + '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;' + statusStyle + '">' + escHtml(t.status || 'backlog') + '</span>'
+              + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
@@ -8863,6 +8882,96 @@
     closeBacklogAddModal();
   }
 
+  // Dynamic search — hides rows that don't match query as user types
+  function filterBacklogTasks(query) {
+    const q = (query || '').toLowerCase().trim();
+    const body = document.getElementById('backlog-panel-body');
+    if (!body) return;
+    body.querySelectorAll('.backlog-section').forEach(section => {
+      let visibleCount = 0;
+      section.querySelectorAll('.backlog-task-row').forEach(row => {
+        if (!q) {
+          row.style.display = '';
+          visibleCount++;
+          return;
+        }
+        const text = row.textContent.toLowerCase();
+        if (text.includes(q)) {
+          row.style.display = '';
+          visibleCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+      // Hide whole sections that match nothing while a query is active
+      section.style.display = (q && visibleCount === 0) ? 'none' : '';
+    });
+  }
+
+  // Status picker popover — anchored under a clicked status badge
+  const BACKLOG_STATUS_OPTIONS = [
+    'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
+    'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
+    'blocked', 'on-hold', 'cancelled'
+  ];
+  const BACKLOG_STATUS_COLORS = {
+    'backlog':           'background:rgba(120,120,120,0.25);color:#aaa;',
+    'planned':           'background:rgba(96,165,250,0.25);color:#93c5fd;',
+    'build-started':     'background:rgba(96,165,250,0.25);color:#93c5fd;',
+    'cba-complete':      'background:rgba(96,165,250,0.25);color:#93c5fd;',
+    'cba-half-complete': 'background:rgba(251,146,60,0.25);color:#fdba74;',
+    'build-finished':    'background:rgba(96,165,250,0.25);color:#93c5fd;',
+    'pr-reviewed':       'background:rgba(74,222,128,0.25);color:#86efac;',
+    'staged':            'background:rgba(74,222,128,0.25);color:#86efac;',
+    'smoke-tested':      'background:rgba(74,222,128,0.25);color:#86efac;',
+    'production':        'background:rgba(34,197,94,0.35);color:#bbf7d0;',
+    'blocked':           'background:rgba(239,68,68,0.25);color:#fca5a5;',
+    'on-hold':           'background:rgba(250,204,21,0.25);color:#fde047;',
+    'cancelled':         'background:rgba(120,120,120,0.25);color:#888;',
+  };
+
+  function showStatusPicker(badgeEl, scope, taskNumber, currentStatus) {
+    const picker = document.getElementById('backlog-status-picker');
+    if (!picker) return;
+    const rect = badgeEl.getBoundingClientRect();
+    // Position below the badge; flip above if it would overflow
+    const pickerHeight = 320;
+    let top = rect.bottom + 4;
+    if (top + pickerHeight > window.innerHeight) top = Math.max(8, rect.top - pickerHeight - 4);
+    picker.style.left = Math.max(8, Math.min(window.innerWidth - 200, rect.left)) + 'px';
+    picker.style.top = top + 'px';
+    picker.innerHTML = BACKLOG_STATUS_OPTIONS.map(s => {
+      const style = BACKLOG_STATUS_COLORS[s] || BACKLOG_STATUS_COLORS['backlog'];
+      const selectedRing = s === currentStatus ? 'box-shadow:inset 0 0 0 1px var(--accent);' : '';
+      return '<button data-status="' + s + '" style="text-align:left;padding:5px 12px;border:none;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + style + selectedRing + '">' + s + '</button>';
+    }).join('');
+    picker.style.display = 'flex';
+    picker.dataset.scope = scope;
+    picker.dataset.taskNumber = String(taskNumber);
+    picker.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const newStatus = btn.dataset.status;
+        wsSend({ type: 'update-backlog-task-status', scope: scope, taskNumber: taskNumber, status: newStatus });
+        hideStatusPicker();
+      });
+    });
+  }
+
+  function hideStatusPicker() {
+    const picker = document.getElementById('backlog-status-picker');
+    if (picker) picker.style.display = 'none';
+  }
+
+  // Hide status picker on outside click
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('backlog-status-picker');
+    if (!picker || picker.style.display === 'none') return;
+    if (e.target.closest('#backlog-status-picker')) return;
+    if (e.target.classList && e.target.classList.contains('backlog-status-badge')) return;
+    hideStatusPicker();
+  });
+
   window.openBacklogPanel     = openBacklogPanel;
   window.closeBacklogPanel    = closeBacklogPanel;
   window.toggleBacklogPanel   = toggleBacklogPanel;
@@ -8872,6 +8981,9 @@
   window.submitBacklogAdd     = submitBacklogAdd;
   window.showBacklogError     = showBacklogError;
   window.launchTaskSession    = launchTaskSession;
+  window.filterBacklogTasks   = filterBacklogTasks;
+  window.showStatusPicker     = showStatusPicker;
+  window.hideStatusPicker     = hideStatusPicker;
 
   let routinesFilterProject = '__all__'; // '__all__', '__none__', or a project name
 
