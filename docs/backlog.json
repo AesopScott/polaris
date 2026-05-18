@@ -69,6 +69,17 @@
       "created_at": "2026-05-18",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 7,
+      "title": "Obsidian write issues.",
+      "description": "Sometimes when I write to Obsidian using the close button, it just shows block block",
+      "category": "feature",
+      "priority": 75,
+      "status": "backlog",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
