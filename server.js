@@ -1369,6 +1369,8 @@ async function scaffoldGitRepo(project) {
       : `AesopScott/${(name || 'project').toLowerCase().replace(/\s+/g, '-')}`;
     // Create public GitHub repo, add remote, and push
     await run(`gh repo create ${repoName} --public --source=. --remote=origin --push`);
+    // Create backlog file after git repo is set up
+    scaffoldBacklog(project);
     broadcast({ type: 'scaffold-git-done', project: name, repo: repoName });
     console.log(`[scaffold-git] ${repoName} created and pushed`);
   } catch (e) {
