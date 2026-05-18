@@ -231,7 +231,13 @@
   #float-launcher .float-row { display: flex; gap: 8px; align-items: flex-end; }
   #steering-stack { display: flex; flex-direction: column; gap: 3px; padding: 6px 4px 4px; max-height: 110px; overflow-y: auto; }
   #steering-stack.hidden { display: none; }
-  .steering-item { font-size: 11px; color: #a5b4fc; padding: 3px 7px; background: rgba(99,102,241,0.10); border-left: 2px solid #6366f1; border-radius: 3px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+  .steering-item { display: flex; align-items: flex-start; gap: 4px; font-size: 11px; color: #a5b4fc; padding: 3px 7px; background: rgba(99,102,241,0.10); border-left: 2px solid #6366f1; border-radius: 3px; line-height: 1.4; }
+  .steering-item-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
+  .steering-item textarea { flex: 1; font-size: 11px; color: #a5b4fc; background: rgba(99,102,241,0.18); border: 1px solid #6366f1; border-radius: 3px; padding: 2px 4px; resize: vertical; min-height: 38px; outline: none; font-family: inherit; line-height: 1.4; width: 100%; }
+  .steering-item-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+  .steering-item:hover .steering-item-actions { opacity: 1; }
+  .steering-action-btn { background: none; border: none; cursor: pointer; font-size: 11px; padding: 0 2px; line-height: 1; color: #a5b4fc; opacity: 0.6; }
+  .steering-action-btn:hover { opacity: 1; }
 
   /* Launch button row — left-aligned under prompt */
   .launch-action-row { display: flex; align-items: center; gap: 10px; }
@@ -7088,10 +7094,56 @@
       return;
     }
     el.classList.remove('hidden');
-    el.innerHTML = queue.map(item => {
+    el.innerHTML = queue.map((item, idx) => {
       const text = item.text.length > 140 ? item.text.slice(0, 140) + '…' : item.text;
-      return `<div class="steering-item">${escHtml(text)}</div>`;
+      return `<div class="steering-item" data-steering-idx="${idx}">
+        <span class="steering-item-text">${escHtml(text)}</span>
+        <span class="steering-item-actions">
+          <button class="steering-action-btn" title="Edit" onclick="steeringEditItem(${idx})">✎</button>
+          <button class="steering-action-btn" title="Delete" onclick="steeringDeleteItem(${idx})">✕</button>
+        </span>
+      </div>`;
     }).join('');
+  }
+
+  function steeringDeleteItem(idx) {
+    if (!resumeTarget) return;
+    wsSend({ type: 'delete-queue-message', sessionId: resumeTarget.sessionId, queueType: 'steering', index: idx });
+  }
+
+  function steeringEditItem(idx) {
+    if (!resumeTarget) return;
+    const el = document.querySelector(`#steering-stack [data-steering-idx="${idx}"]`);
+    if (!el) return;
+    const textEl = el.querySelector('.steering-item-text');
+    const currentText = textEl ? textEl.textContent : '';
+    el.querySelector('.steering-item-actions').style.opacity = '0';
+    const ta = document.createElement('textarea');
+    ta.value = currentText;
+    ta.rows = 2;
+    el.replaceChild(ta, textEl);
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+
+    const save = () => {
+      const newText = ta.value.trim();
+      if (newText && newText !== currentText) {
+        wsSend({ type: 'edit-queue-message', sessionId: resumeTarget.sessionId, queueType: 'steering', index: idx, prompt: newText, displayPrompt: newText });
+      } else {
+        // Restore without sending if unchanged or empty
+        const span = document.createElement('span');
+        span.className = 'steering-item-text';
+        span.textContent = currentText;
+        el.replaceChild(span, ta);
+        el.querySelector('.steering-item-actions').style.opacity = '';
+      }
+    };
+
+    ta.addEventListener('blur', save, { once: true });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); }
+      if (e.key === 'Escape') { ta.value = currentText; ta.blur(); }
+    });
   }
 
   function openFilePicker(sourceEl) {
