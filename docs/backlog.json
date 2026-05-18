@@ -58,6 +58,17 @@
       "created_at": "2026-05-18",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 6,
+      "title": "Project initiation button",
+      "description": "I want to add a project initiation button next to the projects inside the project panel, which automatically kicks off the skill /project-initiation.",
+      "category": "feature",
+      "priority": 70,
+      "status": "backlog",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
