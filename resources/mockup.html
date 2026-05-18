@@ -11765,7 +11765,7 @@
         <span class="cam-name">${escHtml(s.name || 'Untitled Session')}</span>
         <button onclick="camRowPush('${s.id}')" style="background:#3b82f6;color:#fff;">Push to Obsidian and Git</button>
         <button onclick="camRowArchive('${s.id}')" style="background:#78350f;color:#fcd34d;">Archive</button>
-        <button onclick="camRowSkip('${s.id}')" style="background:#374151;color:#d1d5db;">Skip</button>
+        <button onclick="camRowTarget('${s.id}')" style="background:#374151;color:#d1d5db;">Target</button>
       </div>`;
     }).join('');
 
@@ -11804,8 +11804,16 @@
     camMarkDone(sid, '📦 Archived', '#fbbf24', true);
   }
 
-  function camRowSkip(sid) {
-    camMarkDone(sid, 'Skipped', '#6b7280');
+  function camRowTarget(sid) {
+    camCancel();
+    const s = sessionStore[sid];
+    if (!s) return;
+    if (hiddenCards.has(sid)) {
+      unhideCard(sid);
+    } else if (s.minimized) {
+      restoreCard(sid);
+    }
+    enterResumeMode(sid, s.model || null);
   }
 
   function camMarkDone(sid, label, color, alreadyClosed = false) {
@@ -11845,7 +11853,7 @@
   window.closeAllSessions = closeAllSessions;
   window.camRowPush       = camRowPush;
   window.camRowArchive    = camRowArchive;
-  window.camRowSkip       = camRowSkip;
+  window.camRowTarget     = camRowTarget;
   window.camCancel        = camCancel;
 
   // ── Header live clock ────────────────────────────────────────────────────────
