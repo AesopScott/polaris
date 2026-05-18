@@ -8829,6 +8829,13 @@ async function handleMessage(ws, raw) {
     try {
       if (!fs.existsSync(espansoDir)) fs.mkdirSync(espansoDir, { recursive: true });
       fs.writeFileSync(espansoPath, buildEspansoYaml(msg.rules || []), 'utf8');
+      try {
+        const { execSync } = require('child_process');
+        execSync('espanso restart', { stdio: 'ignore' });
+      } catch (restartErr) {
+        // espanso may not be installed or reachable; that's ok, just log it
+        console.log('Note: Could not restart espanso:', restartErr.message);
+      }
       sendTo(ws, { type: 'espanso-saved', ok: true, rules: msg.rules || [] });
     } catch (e) {
       sendTo(ws, { type: 'espanso-saved', ok: false, error: e.message });
