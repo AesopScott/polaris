@@ -1262,6 +1262,28 @@ function scaffoldObsidianProject(project, vaultPath) {
 }
 
 
+// Creates `<workDir>/docs/backlog.json` if it doesn't already exist. The
+// backlog format mirrors the CareGuide-style task tracker used by /plan-task,
+// /start-build, /finish-build, /promote-stage, /promote-to-prod, and
+// /mark-tasks-complete. New projects start with an empty `tasks` array so
+// /plan-task can add the first entry. Idempotent — never overwrites.
+function scaffoldBacklog(project) {
+  const { name, workDir } = project;
+  if (!workDir) return;
+  try {
+    const docsDir = path.join(workDir, 'docs');
+    const backlogPath = path.join(docsDir, 'backlog.json');
+    if (fs.existsSync(backlogPath)) return; // never clobber existing
+    fs.mkdirSync(docsDir, { recursive: true });
+    const initial = { tasks: [] };
+    fs.writeFileSync(backlogPath, JSON.stringify(initial, null, 2) + '\n', 'utf8');
+    console.log(`[scaffold-backlog] wrote ${backlogPath} for ${name}`);
+    broadcast({ type: 'backlog-scaffolded', project: name, path: backlogPath });
+  } catch (e) {
+    console.error('[scaffold-backlog] failed:', e.message);
+  }
+}
+
 async function scaffoldGitRepo(project) {
   const { name, workDir, repo } = project;
   if (!workDir) return;
@@ -1832,14 +1854,129 @@ function toolQueryMemory({ filename } = {}, sessionId) {
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
-// ── User-global skill discovery ─────────────────────────────────────────────
-// Scans SKILLS_DIR for subdirectories containing a SKILL.md file. Parses each
-// SKILL.md's YAML frontmatter to extract `name` and `description`. The result
-// is cached per-process and only re-scanned when the skills directory mtime
-// changes — cheap enough to call at every session start.
+// ── Skill discovery (all sources) ───────────────────────────────────────────
+// Scans every place skills + commands + agents live, parses each one, returns
+// a flat array of entries that the system-prompt injector, the Skill tool, and
+// the Skills nav panel all consume.
+//
+// Sources scanned:
+//   1. User-global SKILL.md files:  ~/.claude/skills/<name>/SKILL.md
+//   2. User-global commands:        ~/.claude/commands/<name>.md
+//   3. Codex plugin skills:         ~/.claude/plugins/cache/openai-codex/codex/<ver>/skills/<name>/SKILL.md
+//   4. Codex plugin commands:       ~/.claude/plugins/cache/openai-codex/codex/<ver>/commands/<name>.md
+//   5. Codex plugin agents:         ~/.claude/plugins/cache/openai-codex/codex/<ver>/agents/<name>.md
+//   6. Project-local skills:        <workDir>/.claude/skills/<name>/SKILL.md
+//   7. Project-local commands:      <workDir>/.claude/commands/<name>.md
+//
+// Each entry shape:
+//   { name, description, source, group, category, filePath }
+//     name       — canonical name (e.g. "ship-task", "codex:rescue")
+//     description — one-line summary shown in system prompt and Skills panel
+//     source     — internal label: "user-skill" | "user-command" | "codex-skill" | etc.
+//     group      — "global" | "project"  (top-level panel section)
+//     category   — one of CATEGORIES values
+//     filePath   — absolute path to the .md file the Skill tool reads on invocation
+//
+// Result is memoized per-process; the cache is keyed by a snapshot of mtimes
+// across every source dir so newly added or edited skills appear after a
+// "Refresh" click without a Polaris restart.
 
-let _skillsCache = null;     // [{ name, description, dirPath, mtime }]
-let _skillsCacheMtime = 0;
+const PLUGINS_CACHE_DIR = path.join(os.homedir(), '.claude', 'plugins', 'cache');
+const USER_COMMANDS_DIR = path.join(os.homedir(), '.claude', 'commands');
+
+// Categories shown in the Skills nav panel. Order here = display order.
+const CATEGORIES = {
+  WORKFLOW:   'Project workflow',
+  INITIATION: 'Project initiation',
+  QUALITY:    'Code quality',
+  RESEARCH:   'Research',
+  CODEX:      'Codex integration',
+  TOOLING:    'Tooling / config',
+  UTILITIES:  'Utilities',
+};
+const CATEGORY_ORDER = [
+  CATEGORIES.WORKFLOW,
+  CATEGORIES.INITIATION,
+  CATEGORIES.QUALITY,
+  CATEGORIES.RESEARCH,
+  CATEGORIES.CODEX,
+  CATEGORIES.TOOLING,
+  CATEGORIES.UTILITIES,
+];
+
+// Hardcoded name → category. Names not in the map fall back to UTILITIES.
+// To add a new skill: drop it under ~/.claude/skills/ (or wherever) and add
+// one line here. The discovery picks it up on the next mtime change.
+const SKILL_CATEGORY_MAP = {
+  // Project workflow — task lifecycle, backlog, promotion
+  'ship-task':              CATEGORIES.WORKFLOW,
+  'plan-task':              CATEGORIES.WORKFLOW,
+  'start-build':            CATEGORIES.WORKFLOW,
+  'finish-build':           CATEGORIES.WORKFLOW,
+  'review-pr':              CATEGORIES.WORKFLOW,
+  'codex-review':           CATEGORIES.WORKFLOW,
+  'promote-stage':          CATEGORIES.WORKFLOW,
+  'promote-to-prod':        CATEGORIES.WORKFLOW,
+  'mark-tasks-complete':    CATEGORIES.WORKFLOW,
+  'flow-audit':             CATEGORIES.WORKFLOW,
+
+  // Project initiation — bootstrapping a new project
+  'project-initiation':     CATEGORIES.INITIATION,
+  'soul':                   CATEGORIES.INITIATION,
+  'architecture':           CATEGORIES.INITIATION,
+  'feature-contracts':      CATEGORIES.INITIATION,
+  'buildplan':              CATEGORIES.INITIATION,
+  'grill-with-docs':        CATEGORIES.INITIATION,
+
+  // Code quality — analysis and improvement of existing code
+  'refactor':               CATEGORIES.QUALITY,
+  'cross-boundary-audit':   CATEGORIES.QUALITY,
+  'review':                 CATEGORIES.QUALITY,
+  'security-review':        CATEGORIES.QUALITY,
+  'simplify':               CATEGORIES.QUALITY,
+
+  // Research — pre-decision discovery (find/evaluate before adopting)
+  'evaluate-repo':          CATEGORIES.RESEARCH,
+  'find-skill':             CATEGORIES.RESEARCH,
+
+  // Codex integration — codex plugin (skills, commands, agents)
+  'codex:rescue':                CATEGORIES.CODEX,
+  'codex:setup':                 CATEGORIES.CODEX,
+  'codex:codex-cli-runtime':     CATEGORIES.CODEX,
+  'codex:codex-result-handling': CATEGORIES.CODEX,
+  'codex:gpt-5-4-prompting':     CATEGORIES.CODEX,
+  'codex:adversarial-review':    CATEGORIES.CODEX,
+  'codex:cancel':                CATEGORIES.CODEX,
+  'codex:result':                CATEGORIES.CODEX,
+  'codex:review':                CATEGORIES.CODEX,
+  'codex:status':                CATEGORIES.CODEX,
+  'codex:codex-rescue':          CATEGORIES.CODEX,  // agent
+
+  // Tooling / config — harness configuration
+  'update-config':           CATEGORIES.TOOLING,
+  'keybindings-help':        CATEGORIES.TOOLING,
+  'fewer-permission-prompts': CATEGORIES.TOOLING,
+  'mcp':                     CATEGORIES.TOOLING,
+
+  // Utilities — general-purpose / domain-specific helpers
+  'humanize-writing':        CATEGORIES.UTILITIES,
+  'aesop-course-builder':    CATEGORIES.UTILITIES,
+  'aifactory':               CATEGORIES.UTILITIES,
+  'loop':                    CATEGORIES.UTILITIES,
+  'schedule':                CATEGORIES.UTILITIES,
+  'claude-api':              CATEGORIES.UTILITIES,
+  'init':                    CATEGORIES.UTILITIES,
+};
+
+function _categoryFor(name) {
+  if (SKILL_CATEGORY_MAP[name]) return SKILL_CATEGORY_MAP[name];
+  if (name.startsWith('codex:')) return CATEGORIES.CODEX;
+  if (name.startsWith('anthropic-skills:')) return CATEGORIES.UTILITIES;
+  return CATEGORIES.UTILITIES;
+}
+
+let _skillsCache = null;
+let _skillsCacheKey = '';  // hash of mtimes across all source dirs
 
 function _parseSkillFrontmatter(text) {
   // Frontmatter is between two `---` lines at the very top of the file.
@@ -1870,36 +2007,285 @@ function _parseSkillFrontmatter(text) {
   return out;
 }
 
-function discoverSkills() {
-  let dirMtime = 0;
-  try { dirMtime = fs.statSync(SKILLS_DIR).mtimeMs; } catch { return []; }
-  if (_skillsCache && dirMtime === _skillsCacheMtime) return _skillsCache;
+// Extract a one-line description from a command/agent .md file. Looks first
+// for a YAML frontmatter `description:` field; falls back to the first
+// non-blank, non-heading line of the body. If neither exists, returns a
+// placeholder so the skill still appears in the panel.
+function _describeCommandFile(text) {
+  const fm = _parseSkillFrontmatter(text);
+  if (fm && fm.description) return fm.description;
+  // Strip frontmatter if present, then scan body
+  let body = text;
+  if (text.startsWith('---')) {
+    const end = text.indexOf('\n---', 3);
+    if (end >= 0) body = text.slice(end + 4);
+  }
+  for (const rawLine of body.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) continue;
+    if (line.startsWith('---')) continue;
+    return line.slice(0, 200);
+  }
+  return '(no description)';
+}
 
-  const skills = [];
+// Scan a directory of SKILL.md-bearing subdirectories (e.g. ~/.claude/skills).
+// Returns entries shaped like the main result. Follows symbolic links — many
+// skills in ~/.claude/skills are symlinks to skill repos elsewhere, and
+// `Dirent.isDirectory()` returns false on a symlink even when it points at a
+// directory. Resolve via `fs.statSync` (follow) to catch those.
+function _scanSkillDir(rootDir, sourceLabel, group, namePrefix = '') {
+  const out = [];
   let entries = [];
-  try { entries = fs.readdirSync(SKILLS_DIR, { withFileTypes: true }); } catch { return []; }
-
+  try { entries = fs.readdirSync(rootDir, { withFileTypes: true }); } catch { return out; }
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const skillPath = path.join(SKILLS_DIR, entry.name);
-    const skillFile = path.join(skillPath, 'SKILL.md');
-    let stat;
-    try { stat = fs.statSync(skillFile); } catch { continue; }  // no SKILL.md → skip
+    const entryPath = path.join(rootDir, entry.name);
+    let isDir = entry.isDirectory();
+    if (!isDir && entry.isSymbolicLink()) {
+      try { isDir = fs.statSync(entryPath).isDirectory(); } catch { isDir = false; }
+    }
+    if (!isDir) continue;
+    const skillFile = path.join(entryPath, 'SKILL.md');
     let text = '';
     try { text = fs.readFileSync(skillFile, 'utf8'); } catch { continue; }
     const fm = _parseSkillFrontmatter(text);
     if (!fm || !fm.name || !fm.description) continue;
-    skills.push({
-      name: fm.name,
+    const name = namePrefix + fm.name;
+    out.push({
+      name,
       description: fm.description,
-      dirPath: skillPath,
-      mtime: stat.mtimeMs,
+      source: sourceLabel,
+      group,
+      category: _categoryFor(name),
+      filePath: skillFile,
     });
   }
-  skills.sort((a, b) => a.name.localeCompare(b.name));
-  _skillsCache = skills;
-  _skillsCacheMtime = dirMtime;
-  return skills;
+  return out;
+}
+
+// Scan a directory of flat command/agent .md files (e.g. ~/.claude/commands).
+// File basename (sans .md) becomes the skill name; description is derived.
+function _scanCommandDir(rootDir, sourceLabel, group, namePrefix = '') {
+  const out = [];
+  let entries = [];
+  try { entries = fs.readdirSync(rootDir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+    const filePath = path.join(rootDir, entry.name);
+    let text = '';
+    try { text = fs.readFileSync(filePath, 'utf8'); } catch { continue; }
+    const baseName = entry.name.replace(/\.md$/, '');
+    const name = namePrefix + baseName;
+    out.push({
+      name,
+      description: _describeCommandFile(text),
+      source: sourceLabel,
+      group,
+      category: _categoryFor(name),
+      filePath,
+    });
+  }
+  return out;
+}
+
+// Locate the installed codex plugin directory (versioned subdir of cache dir).
+function _findCodexPluginDir() {
+  const root = path.join(PLUGINS_CACHE_DIR, 'openai-codex', 'codex');
+  let versions = [];
+  try { versions = fs.readdirSync(root, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name); } catch { return null; }
+  if (!versions.length) return null;
+  // Pick the newest version (lexicographic on semver-ish names works for x.y.z)
+  versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  return path.join(root, versions[0]);
+}
+
+// Build a stable cache key from the mtimes of every source directory we scan.
+function _skillsCacheSignature(workDir) {
+  const sources = [SKILLS_DIR, USER_COMMANDS_DIR];
+  const codexDir = _findCodexPluginDir();
+  if (codexDir) {
+    sources.push(path.join(codexDir, 'skills'));
+    sources.push(path.join(codexDir, 'commands'));
+    sources.push(path.join(codexDir, 'agents'));
+  }
+  if (workDir) {
+    sources.push(path.join(workDir, '.claude', 'skills'));
+    sources.push(path.join(workDir, '.claude', 'commands'));
+  }
+  const parts = sources.map(p => {
+    try { return `${p}:${fs.statSync(p).mtimeMs}`; } catch { return `${p}:_`; }
+  });
+  return parts.join('|');
+}
+
+// Main entry — returns a flat array of all discovered skills/commands/agents.
+// Pass `workDir` to include project-local sources for the active session.
+function discoverAllSkills(workDir = null) {
+  const key = _skillsCacheSignature(workDir);
+  if (_skillsCache && key === _skillsCacheKey) return _skillsCache;
+
+  const all = [];
+  // Global skills + commands
+  all.push(..._scanSkillDir(SKILLS_DIR, 'user-skill', 'global'));
+  all.push(..._scanCommandDir(USER_COMMANDS_DIR, 'user-command', 'global'));
+  // Codex plugin
+  const codexDir = _findCodexPluginDir();
+  if (codexDir) {
+    all.push(..._scanSkillDir(path.join(codexDir, 'skills'), 'codex-skill', 'global', 'codex:'));
+    all.push(..._scanCommandDir(path.join(codexDir, 'commands'), 'codex-command', 'global', 'codex:'));
+    all.push(..._scanCommandDir(path.join(codexDir, 'agents'), 'codex-agent', 'global', 'codex:'));
+  }
+  // Project-local (only when a workDir is passed)
+  if (workDir) {
+    all.push(..._scanSkillDir(path.join(workDir, '.claude', 'skills'), 'project-skill', 'project'));
+    all.push(..._scanCommandDir(path.join(workDir, '.claude', 'commands'), 'project-command', 'project'));
+  }
+
+  // De-dup by name, preferring project-local over global (lets a project
+  // override a user-global skill with a same-named local one).
+  const seen = new Map();
+  for (const s of all) {
+    const prev = seen.get(s.name);
+    if (!prev || (prev.group === 'global' && s.group === 'project')) {
+      seen.set(s.name, s);
+    }
+  }
+  const result = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  _skillsCache = result;
+  _skillsCacheKey = key;
+  return result;
+}
+
+// ============================================================
+// BACKLOG (task #12) — global cross-project backlog + per-project backlogs
+// Global lives in the Obsidian vault at Backlog/backlog.json (no git — synced via Drive).
+// Per-project lives at {workDir}/docs/backlog.json (auto-commits on the current branch
+// per Scott's rule: "All updates to backlog.json are automatically committed."
+// v1 commits on current branch; full "always to main" with stash/checkout dance is deferred.
+// ============================================================
+function loadAllBacklogs() {
+  const cfg = readConfig();
+  const result = { global: null, projects: [] };
+
+  if (cfg.obsidianVaultPath) {
+    const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    try {
+      const text = fs.readFileSync(globalPath, 'utf8');
+      result.global = JSON.parse(text);
+    } catch {}
+  }
+
+  const projects = (cfg.projects || []).filter(p => p.workDir && p.name);
+  for (const proj of projects) {
+    const backlogPath = path.join(proj.workDir, 'docs', 'backlog.json');
+    try {
+      const text = fs.readFileSync(backlogPath, 'utf8');
+      const backlog = JSON.parse(text);
+      result.projects.push({ name: proj.name, workDir: proj.workDir, backlog });
+    } catch {}
+  }
+
+  return result;
+}
+
+function _nextBacklogTaskNumber(tasks) {
+  if (!Array.isArray(tasks) || tasks.length === 0) return 1;
+  return tasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
+}
+
+function addBacklogTask(scope, taskInput) {
+  const cfg = readConfig();
+  if (!taskInput || !taskInput.title || !String(taskInput.title).trim()) {
+    throw new Error('Task title is required.');
+  }
+  const baseTask = {
+    number: 0,
+    title: String(taskInput.title).trim(),
+    description: String(taskInput.description || '').trim(),
+    category: String(taskInput.category || 'feature').trim(),
+    priority: parseInt(taskInput.priority, 10) || 50,
+    status: 'backlog',
+    created_at: new Date().toISOString().split('T')[0],
+    completed_at: null,
+    dependencies: [],
+  };
+
+  if (scope === 'global') {
+    if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured in Polaris settings.');
+    const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    let data;
+    try {
+      data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (e) {
+      throw new Error('Could not read global backlog at ' + filePath + ': ' + e.message);
+    }
+    if (!Array.isArray(data.tasks)) data.tasks = [];
+    baseTask.number = _nextBacklogTaskNumber(data.tasks);
+    baseTask.scope = 'global';
+    data.tasks.push(baseTask);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+    // Vault is Drive-synced, not a git repo — no commit needed
+    return baseTask;
+  }
+
+  // Per-project scope
+  const project = (cfg.projects || []).find(p => p.name === scope);
+  if (!project) throw new Error('Project not found in config: ' + scope);
+  if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir configured.');
+  const filePath = path.join(project.workDir, 'docs', 'backlog.json');
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    throw new Error('Could not read ' + filePath + ': ' + e.message + '. Ensure docs/backlog.json exists in this project.');
+  }
+  if (!Array.isArray(data.tasks)) data.tasks = [];
+  baseTask.number = _nextBacklogTaskNumber(data.tasks);
+  data.tasks.push(baseTask);
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+
+  // Auto-commit per Scott's rule (v1: current branch only)
+  try {
+    _autoCommitBacklog(project.workDir, baseTask.number);
+  } catch (e) {
+    console.error('[backlog] auto-commit failed in ' + project.workDir + ':', e.message);
+    // File is written; commit failure is non-fatal for the UX
+  }
+  return baseTask;
+}
+
+function _autoCommitBacklog(repoDir, taskNumber) {
+  const { execSync } = require('child_process');
+  const opts = { cwd: repoDir, stdio: ['ignore', 'pipe', 'pipe'] };
+  execSync('git add docs/backlog.json', opts);
+  execSync('git commit -m "chore(backlog): add task #' + taskNumber + ' from Polaris"', opts);
+}
+
+// Backward-compat shim — the old discoverSkills() signature returned items
+// with `dirPath`. Some callers (buildDirectSystemPrompt) only need name +
+// description, which the new shape still provides.
+function discoverSkills() {
+  // Returned shape matches the new shape; only name + description are used
+  // by buildDirectSystemPrompt at call sites.
+  return discoverAllSkills();
+}
+
+// Group discovered skills by `{group, category}` for the nav panel tree.
+// Returns: { global: { 'Project workflow': [...], ... }, project: {...} }
+function groupedSkills(workDir = null) {
+  const all = discoverAllSkills(workDir);
+  const tree = { global: {}, project: {} };
+  for (const cat of CATEGORY_ORDER) {
+    tree.global[cat] = [];
+    tree.project[cat] = [];
+  }
+  for (const s of all) {
+    const bucket = tree[s.group] || tree.global;
+    if (!bucket[s.category]) bucket[s.category] = [];
+    bucket[s.category].push({ name: s.name, description: s.description });
+  }
+  return tree;
 }
 
 // Returns the full SKILL.md body (everything after the closing frontmatter
@@ -1909,7 +2295,11 @@ function discoverSkills() {
 // system prompt.
 function toolSkill({ skill, args } = {}, sessionId) {
   if (!skill || typeof skill !== 'string') return 'Skill tool requires a "skill" string parameter.';
-  const skills = discoverSkills();
+  // Look up across every source (user-global, user-commands, codex plugin,
+  // project-local) so any name surfaced in the system prompt is invokable.
+  const session = sessions.get(sessionId);
+  const workDir = session?.workDir || null;
+  const skills = discoverAllSkills(workDir);
   const match = skills.find(s => s.name === skill)
              || skills.find(s => s.name.toLowerCase() === skill.toLowerCase());
   if (!match) {
@@ -1917,10 +2307,11 @@ function toolSkill({ skill, args } = {}, sessionId) {
     return `Skill not found: "${skill}". Available skills: ${names || '(none)'}`;
   }
   let text = '';
-  try { text = fs.readFileSync(path.join(match.dirPath, 'SKILL.md'), 'utf8'); }
-  catch (e) { return `Failed to read SKILL.md for "${skill}": ${e.message}`; }
-  // Strip frontmatter — the model has already seen name+description in the
-  // system prompt; the body is what guides execution.
+  try { text = fs.readFileSync(match.filePath, 'utf8'); }
+  catch (e) { return `Failed to read skill definition for "${skill}": ${e.message}`; }
+  // Strip frontmatter if present — the model has already seen name+description
+  // in the system prompt; the body is what guides execution. Commands without
+  // frontmatter pass through unchanged.
   let body = text;
   if (text.startsWith('---')) {
     const end = text.indexOf('\n---', 3);
@@ -1929,7 +2320,10 @@ function toolSkill({ skill, args } = {}, sessionId) {
   const argsBlock = (args && String(args).trim())
     ? `\n\n--- Args from invoker ---\n${String(args).trim()}\n`
     : '';
-  return `Base directory for this skill: ${match.dirPath}${argsBlock}\n\n${body}`;
+  // For SKILL.md sources, "base directory" is the parent dir; for command/agent
+  // .md files, give the model the file's parent dir so it can find sibling resources.
+  const baseDir = path.dirname(match.filePath);
+  return `Base directory for this skill: ${baseDir}${argsBlock}\n\n${body}`;
 }
 
 function toolSetProject({ projectName } = {}, sessionId) {
@@ -6452,11 +6846,41 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'list-skills') {
-    const skills = discoverSkills();
+    // workDir is sent from the client for project-local skill discovery; it
+    // defaults to the currently focused session's workDir if the renderer
+    // can't resolve a clearer source.
+    const workDir = msg.workDir || null;
+    const tree = groupedSkills(workDir);
+    const flat = discoverAllSkills(workDir);
     sendTo(ws, {
       type: 'skills-list',
-      skills: skills.map(s => ({ name: s.name, description: s.description })),
+      tree,                       // { global: { category: [...] }, project: {...} }
+      categoryOrder: CATEGORY_ORDER,
+      flat: flat.map(s => ({ name: s.name, description: s.description, category: s.category, group: s.group })),
+      total: flat.length,
     });
+    return;
+  }
+
+  if (type === 'list-backlogs') {
+    try {
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
+    return;
+  }
+
+  if (type === 'add-backlog-task') {
+    try {
+      const { scope, task } = msg;
+      addBacklogTask(scope, task);
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
     return;
   }
 
@@ -7503,6 +7927,7 @@ async function handleMessage(ws, raw) {
     cfg.projects = projects;
     writeJSON(CONFIG_PATH, cfg);
     if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
+    if (idx < 0) scaffoldBacklog(proj);
     sendTo(ws, { type: 'config-saved' });
     return;
   }
