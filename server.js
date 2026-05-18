@@ -4506,7 +4506,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       }
     }
     const callMessages = session.messages;
-    const _promptK = Math.round((systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000);
+    const _promptK = ((systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000).toFixed(1);
     broadcast({ type: 'line', sessionId, text: `(${_promptK}k)`, role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
 
@@ -4982,7 +4982,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} knowledgeFiles=${Object.keys(session.projectMemory||{}).length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
-  const _chatPromptK = Math.round(Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000);
+  const _chatPromptK = (Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000).toFixed(1);
   broadcast({ type: 'line', sessionId, text: `(${_chatPromptK}k)`, role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
@@ -5387,7 +5387,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
     }
   }
   if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
-  const _codexPromptK = Math.round(Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000);
+  const _codexPromptK = (Buffer.byteLength(fullPrompt, 'utf8') / 4 / 1000).toFixed(1);
   broadcast({ type: 'line', sessionId, text: `(${_codexPromptK}k)`, role: 'system' });
 
   try {
@@ -5800,7 +5800,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
       'utf8');
   } catch {}
 
-  const _gptPromptK = Math.round(Buffer.byteLength(prompt, 'utf8') / 4 / 1000);
+  const _gptPromptK = (Buffer.byteLength(prompt, 'utf8') / 4 / 1000).toFixed(1);
   broadcast({ type: 'line', sessionId, text: `(${_gptPromptK}k)`, role: 'system' });
   broadcast({ type: 'line', sessionId, text: `[gpt] connecting | model=${model.display}`, role: 'system' });
 
