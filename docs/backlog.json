@@ -193,13 +193,115 @@
       "description": "Add a three-level impact classification (minor, standard, major) to backlog tasks. This field affects workflow: minor items can skip /plan-task, major items trigger /plan-task to break work into subtasks.\n\n## Scope\n\n### Schema changes\n- Add `impact` field to each task in docs/backlog.json with enum values: \"minor\", \"standard\" (default), \"major\"\n- Field is optional on existing tasks; defaults to \"standard\" when not present\n\n### Dashboard UI (resources/mockup.html)\n- Add IMPACT column to backlog table, positioned between CATEGORY and DEPS columns\n- Display impact value with visual styling (e.g., color-coding: green for minor, gray for standard, red/orange for major)\n- Add impact field to both Add Task and Edit Task modals as a dropdown/select with three options\n- Update edit button data attributes to pass impact value: `data-impact=\"{value}\"`\n- Update openBacklogEditModal() to accept impact parameter\n- Update submitBacklogAdd() and submitBacklogEdit() to include impact in WebSocket messages\n\n### Server (server.js)\n- Update add-backlog-task message handler to include impact field when saving\n- Update update-backlog-task message handler to accept and persist impact changes\n\n### Workflow integration (future, documented only)\n- **Minor items:** /plan-task documentation should note these can be skipped; users proceed directly to /start-build if preferred\n- **Major items:** /plan-task guidance should instruct users to break the work into multiple subtasks, add each to backlog separately, then mark the parent major task as \"production\" and archive it\n\n## Key findings from exploration\n\n### Current backlog structure\n- backlog.json tasks currently have: number, title, category, priority, status, description, plan, branch, pr_url, dependencies, proofUnits\n- Status options: backlog, planned, build-started, cba-complete, cba-half-complete, build-finished, pr-reviewed, staged, smoke-tested, production, blocked, on-hold, cancelled\n\n### UI architecture\n- Backlog rendering via renderBacklogSection() at mockup.html:9086 generates table rows\n- Each row has clickable status badge, edit button, and task cells for #, title, status, category, deps, priority\n- Edit modal functions: openBacklogEditModal() (line 9301) accepts scope, taskNumber, title, description, priority, category\n- Add modal: openBacklogAddModal() (line 9264); submitBacklogAdd() (line 9284) sends add-backlog-task WebSocket message\n- Edit submit: submitBacklogEdit() (line 9314) sends update-backlog-task WebSocket message\n\n### Styling considerations\n- Existing categories use color coding: feature (green), fix/emergency fix (red), update (yellow)\n- Impact can follow similar pattern or use different visual treatment (badges, icons, etc.)\n- Table header styling at mockup.html:9109-9117\n\n## Testability\n\n1. Can add a new backlog task with impact=\"major\"\n2. Can edit existing task to set impact\n3. Backlog panel displays impact value correctly for all three values\n4. Add/edit modals include impact dropdown and accept all three values\n5. WebSocket messages (add-backlog-task, update-backlog-task) include impact field\n6. New tasks default to impact=\"standard\" if not specified\n\n## Dependencies\n\nNone. This is a purely additive feature with no blocking dependencies.",
       "category": "feature",
       "priority": 45,
-      "status": "backlog",
+      "status": "ready",
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": [],
-      "plan": null,
+      "plan": "## Design Discussion\n\nCurrent workflow forces small tasks through an unnecessarily cumbersome planning process (/plan-task), creating friction and slowing delivery. Conversely, large tasks skip planning/breakdown entirely, leading to unfocused, noisy code that's error-prone and hard to manage. The impact field enables right-sizing the process to match task complexity: lightweight tasks get a fast path, complex tasks get decomposition guidance upfront.\n\n## Outline Plan\n\nFive phases: (1) Schema & Server Foundation — update backlog.json and server.js handlers to accept impact. (2) Backlog UI — Modals — add impact dropdown to Add and Edit modals. (3) Backlog UI — Table Display — add IMPACT column with color coding. (4) Integration & Refresh — ensure refresh preserves impact state. (5) Verification & Testing — end-to-end manual smoke test.\n\nPhase 1 must complete before Phases 2–3 (UI depends on server). Phases 2–3 can run in parallel. Phase 4 depends on 2–3. Phase 5 is the final gate.\n\nEstimated effort: ~7.5 hours solo (3–4 hours with parallelization). Estimated complexity: Low — additive changes, no refactoring.",
       "branch": null,
-      "pr_url": null
+      "pr_url": null,
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Schema change — impact field documented",
+          "expectedBehavior": "docs/backlog.json includes documentation or schema comment explaining the impact field (enum: minor/standard/major, optional, defaults to standard).",
+          "proofType": "registry-diff",
+          "exactCommand": "git diff docs/backlog.json | grep -A3 -B3 impact",
+          "expectedInitialFailure": "docs/backlog.json has no mention of 'impact' field",
+          "expectedPassingEvidence": "Diff shows impact field with enum values and default documented. Example: '\"impact\": \"string, enum: [minor, standard, major], optional, defaults to standard\"'",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "Server — addBacklogTask() accepts and persists impact",
+          "expectedBehavior": "When a new task is added via WebSocket with impact field, the server persists it to backlog.json. The task object in the file includes the impact field with the value that was sent.",
+          "proofType": "manual-script",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click '+ Add task'. (3) Fill in title, set impact='major'. (4) Click 'Add Task'. (5) Check docs/backlog.json and verify the new task has '\"impact\": \"major\"' field. (6) Refresh the backlog panel and verify the impact value displays.",
+          "expectedInitialFailure": "New task created without impact field in backlog.json (field is missing or empty).",
+          "expectedPassingEvidence": "New task entry in docs/backlog.json includes '\"impact\": \"major\"' (or whichever value was set). Task is visible in UI with correct impact display.",
+          "waiverGuidance": "Manual test steps above are sufficient. Sign-off: Scott confirms via Polaris UI."
+        },
+        {
+          "number": 3,
+          "title": "Server — updateBacklogTask() accepts impact updates",
+          "expectedBehavior": "When an existing task is updated via WebSocket with a new impact value, the server persists it. The task's impact field in backlog.json changes to the new value.",
+          "proofType": "manual-script",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click the ✎ (edit) button on an existing task. (3) Change the impact dropdown from 'standard' to 'minor'. (4) Click 'Save Changes'. (5) Check docs/backlog.json and verify the task's impact field is now '\"minor\"'. (6) Close and reopen the backlog panel, verify the impact value persists.",
+          "expectedInitialFailure": "Task's impact field in backlog.json does not change, or field is not included in the update.",
+          "expectedPassingEvidence": "After saving, task's '\"impact\"' field in backlog.json has the new value. Refresh reflects the change.",
+          "waiverGuidance": "Manual test as described; no automated test suite exists for WebSocket handlers."
+        },
+        {
+          "number": 4,
+          "title": "UI — Add Task modal includes impact dropdown",
+          "expectedBehavior": "Opening the 'Add Task' modal displays an impact dropdown with three options (minor, standard, major), positioned in the spacious center area of the form.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click '+ Add task'. (3) Inspect the modal: verify a <select> element labeled 'IMPACT' with three option values: minor, standard, major. (4) Verify positioning: dropdown is in the middle/spacious area, not squeezed between other fields.",
+          "expectedInitialFailure": "Modal has no impact field or dropdown. Form shows only title, description, priority, category.",
+          "expectedPassingEvidence": "Modal visibly shows an impact dropdown with all three options selectable. Dropdown can be focused and changed without errors.",
+          "waiverGuidance": "Manual UI inspection in Polaris; Scott confirms via browser."
+        },
+        {
+          "number": 5,
+          "title": "UI — submitBacklogAdd() includes impact in WebSocket message",
+          "expectedBehavior": "When 'Add Task' is submitted, the WebSocket message to server includes the impact field with the selected value.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Open browser DevTools Network tab. (3) Click '+ Add task', fill in title='test impact', set impact='major', click 'Add Task'. (4) In Network tab, find the WebSocket message (type: add-backlog-task). (5) Inspect the message payload: verify it includes '\"impact\": \"major\"'.",
+          "expectedInitialFailure": "WebSocket message does not include impact field. Task is created but impact is missing or null.",
+          "expectedPassingEvidence": "WebSocket payload shows '\"impact\": \"major\"' (or selected value). Task is created with that impact in backlog.json.",
+          "waiverGuidance": "Network inspection via DevTools; Scott confirms the message structure."
+        },
+        {
+          "number": 6,
+          "title": "UI — Edit Task modal displays and updates impact",
+          "expectedBehavior": "Opening the 'Edit Task' modal displays the current task's impact value in the dropdown. Changing the dropdown and saving persists the new value.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Find an existing task and click ✎ (edit). (3) Inspect modal: verify impact dropdown shows the task's current impact value (e.g., 'standard' is selected). (4) Change dropdown to 'minor'. (5) Click 'Save Changes'. (6) Re-open edit modal: verify impact now shows 'minor'.",
+          "expectedInitialFailure": "Edit modal has no impact field. Changing impact has no effect on save.",
+          "expectedPassingEvidence": "Modal displays current impact value pre-selected. After changing and saving, the new value persists and is visible in subsequent edits.",
+          "waiverGuidance": "Manual UI inspection and round-trip test in Polaris; Scott confirms."
+        },
+        {
+          "number": 7,
+          "title": "UI — Table displays IMPACT column with color coding",
+          "expectedBehavior": "The backlog table includes an IMPACT column (positioned between CATEGORY and DEPS) displaying each task's impact value. Values are color-coded: green for minor, gray for standard, red/orange for major.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Inspect the backlog table: verify column headers include 'IMPACT' between 'CATEGORY' and 'DEPS'. (3) For each task, verify the impact value is displayed. (4) Verify color coding: find a task with impact='minor' (should be green), impact='standard' (gray), impact='major' (red/orange).",
+          "expectedInitialFailure": "Table has no IMPACT column. Impact values are not displayed.",
+          "expectedPassingEvidence": "IMPACT column is visible in correct position. All three impact values are displayed with correct colors for at least one task of each type.",
+          "waiverGuidance": "Manual visual inspection in browser; Scott confirms layout and colors match the design."
+        },
+        {
+          "number": 8,
+          "title": "UI — Edit button passes impact value",
+          "expectedBehavior": "When the edit button (✎) is clicked, the modal opens and the impact dropdown is pre-populated with the task's current impact value.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) For each backlog task, click the ✎ edit button. (3) Verify the impact dropdown in the modal shows the task's current impact value (not blank, not defaulted to 'standard'). (4) Close modal and click edit on a different task; verify the impact value matches that task's value.",
+          "expectedInitialFailure": "Edit button click opens modal but impact dropdown is blank or always shows 'standard' regardless of task's actual impact.",
+          "expectedPassingEvidence": "Edit modal always shows the correct impact value for the task being edited. Different tasks show different values when edited.",
+          "waiverGuidance": "Manual test as described; Scott confirms."
+        },
+        {
+          "number": 9,
+          "title": "Refresh — impact values persist after backlog reload",
+          "expectedBehavior": "After clicking the Refresh button in the Backlog panel, the impact field display is updated correctly and impact values persist (don't revert to a default).",
+          "proofType": "manual-script",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Add or edit a task to set impact='major'. (3) Verify it displays in the table with correct color. (4) Click the Refresh button (🔄 button in footer). (5) Wait for backlog to reload. (6) Verify the task still shows impact='major' and color-coding is correct.",
+          "expectedInitialFailure": "After refresh, impact column is not displayed or impact values revert to default/blank.",
+          "expectedPassingEvidence": "After refresh, impact values are displayed and match the values in backlog.json. No loss of data.",
+          "waiverGuidance": "Manual test in Polaris UI; Scott confirms persistent display."
+        },
+        {
+          "number": 10,
+          "title": "End-to-end — all three impact values work through full cycle",
+          "expectedBehavior": "A user can add three tasks (one each with impact=minor/standard/major), edit any of them to change impact values, and all operations persist through UI refresh and display correctly.",
+          "proofType": "manual-script",
+          "exactCommand": "Manual (full smoke test): (1) Open Polaris UI, Backlog panel (2) Add task 'Minor Task' with impact='minor' → verify displays in table with green color (3) Add task 'Standard Task' with impact='standard' → verify displays with gray color (4) Add task 'Major Task' with impact='major' → verify displays with red/orange color (5) Edit 'Minor Task': change impact to 'major' → verify table updates to red/orange color (6) Edit 'Standard Task': change impact to 'minor' → verify table updates to green color (7) Click Refresh button → verify all three tasks still display with correct colors (8) Close and reopen Backlog panel → verify tasks still show correct impact values (9) Close and reopen Polaris app → verify impact values survive app restart (persisted to backlog.json)",
+          "expectedInitialFailure": "Any operation fails: add with impact doesn't persist, edit doesn't update, refresh loses data, or colors are incorrect.",
+          "expectedPassingEvidence": "All 9 steps complete without errors. Tasks display correct impact values and colors throughout. Data survives refresh and app restart.",
+          "waiverGuidance": "Full manual smoke test; Scott signs off that all three impact levels work end-to-end."
+        }
+      ]
     },
     {
       "number": 20,
