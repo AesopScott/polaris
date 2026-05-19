@@ -9117,7 +9117,8 @@
           btn.dataset.title,
           btn.dataset.description,
           parseInt(btn.dataset.priority, 10),
-          btn.dataset.category
+          btn.dataset.category,
+          btn.dataset.impact
         );
       });
     });
@@ -9154,12 +9155,13 @@
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">TITLE</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">STATUS</th>'
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">CATEGORY</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">IMPACT</th>'
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">DEPS</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">PRI</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;width:40px;"></th>'
     + '</tr>';
     const rows = tasks.length === 0
-      ? '<tr><td colspan="7" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
+      ? '<tr><td colspan="8" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
       : tasks.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0)).map(t => {
           const statusStyle = colors[t.status] || colors['backlog'];
           const depsArr = Array.isArray(t.dependencies) ? t.dependencies : [];
@@ -9169,6 +9171,11 @@
           if (cat === 'feature') categoryStyle = 'color:#86efac;';
           else if (cat === 'fix' || cat === 'emergency fix') categoryStyle = 'color:#fca5a5;';
           else if (cat === 'update') categoryStyle = 'color:#fde047;';
+          const impact = t.impact || 'standard';
+          let impactStyle = '';
+          if (impact === 'minor') impactStyle = 'color:#86efac;';
+          else if (impact === 'standard') impactStyle = 'color:#aaa;';
+          else if (impact === 'major') impactStyle = 'color:#f97316;';
           return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
             + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
@@ -9176,10 +9183,11 @@
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
             + '<td style="padding:8px 12px;font-size:11px;' + categoryStyle + '">' + escHtml(t.category || 'feature') + '</td>'
+            + '<td style="padding:8px 12px;font-size:11px;' + impactStyle + '">' + escHtml(impact) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:40px;">'
-              + '<button class="backlog-edit-btn fbtn" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-title="' + escHtmlAttr(t.title || '') + '" data-description="' + escHtmlAttr(t.description || '') + '" data-priority="' + (t.priority || 50) + '" data-category="' + escHtmlAttr(t.category || 'feature') + '" style="padding:2px 6px;font-size:10px;background:rgba(255,255,255,0.08);border:1px solid var(--border);border-radius:3px;cursor:pointer;" title="Edit this task">✎</button>'
+              + '<button class="backlog-edit-btn fbtn" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-title="' + escHtmlAttr(t.title || '') + '" data-description="' + escHtmlAttr(t.description || '') + '" data-priority="' + (t.priority || 50) + '" data-category="' + escHtmlAttr(t.category || 'feature') + '" data-impact="' + escHtmlAttr(impact) + '" style="padding:2px 6px;font-size:10px;background:rgba(255,255,255,0.08);border:1px solid var(--border);border-radius:3px;cursor:pointer;" title="Edit this task">✎</button>'
             + '</td>'
           + '</tr>';
         }).join('');
@@ -9317,6 +9325,7 @@
     document.getElementById('backlog-add-description').value = '';
     document.getElementById('backlog-add-priority').value = '50';
     document.getElementById('backlog-add-category').value = 'feature';
+    document.getElementById('backlog-add-impact').value = 'standard';
     const err = document.getElementById('backlog-add-error');
     if (err) err.style.display = 'none';
     document.getElementById('backlog-add-modal').style.display = 'flex';
@@ -9330,23 +9339,25 @@
     const description = document.getElementById('backlog-add-description').value.trim();
     const priority = parseInt(document.getElementById('backlog-add-priority').value, 10) || 50;
     const category = document.getElementById('backlog-add-category').value.trim() || 'feature';
+    const impact = document.getElementById('backlog-add-impact').value.trim() || 'standard';
     if (!title) {
       const err = document.getElementById('backlog-add-error');
       if (err) { err.style.display = 'block'; err.textContent = 'Title is required.'; }
       return;
     }
-    wsSend({ type: 'add-backlog-task', scope, task: { title, description, priority, category } });
+    wsSend({ type: 'add-backlog-task', scope, task: { title, description, priority, category, impact } });
     closeBacklogAddModal();
   }
 
   let _backlogEditState = { scope: null, taskNumber: null };
 
-  function openBacklogEditModal(scope, taskNumber, title, description, priority, category) {
+  function openBacklogEditModal(scope, taskNumber, title, description, priority, category, impact) {
     _backlogEditState = { scope, taskNumber };
     document.getElementById('backlog-edit-title').value = title || '';
     document.getElementById('backlog-edit-description').value = description || '';
     document.getElementById('backlog-edit-priority').value = priority || 50;
     document.getElementById('backlog-edit-category').value = category || 'feature';
+    document.getElementById('backlog-edit-impact').value = impact || 'standard';
     const err = document.getElementById('backlog-edit-error');
     if (err) err.style.display = 'none';
     document.getElementById('backlog-edit-modal').style.display = 'flex';
@@ -9359,13 +9370,14 @@
     const description = document.getElementById('backlog-edit-description').value.trim();
     const priority = parseInt(document.getElementById('backlog-edit-priority').value, 10) || 50;
     const category = document.getElementById('backlog-edit-category').value.trim() || 'feature';
+    const impact = document.getElementById('backlog-edit-impact').value.trim() || 'standard';
     if (!title) {
       const err = document.getElementById('backlog-edit-error');
       if (err) { err.style.display = 'block'; err.textContent = 'Title is required.'; }
       return;
     }
     const { scope, taskNumber } = _backlogEditState;
-    wsSend({ type: 'update-backlog-task', scope, taskNumber, updates: { title, description, priority, category } });
+    wsSend({ type: 'update-backlog-task', scope, taskNumber, updates: { title, description, priority, category, impact } });
     closeBacklogEditModal();
   }
 
