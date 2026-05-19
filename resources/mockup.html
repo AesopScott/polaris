@@ -8899,6 +8899,10 @@
     wsSend({ type: 'list-backlogs' });
   }
   function closeBacklogPanel() {
+    closeBacklogAddModal();
+    closeBacklogEditModal();
+    cancelTaskSessionPicker();
+    hideStatusPicker();
     document.getElementById('backlog-panel').classList.add('hidden');
     document.getElementById('overlay-bg').classList.add('hidden');
   }
@@ -8909,7 +8913,13 @@
   }
   function refreshBacklogPanel() { wsSend({ type: 'list-backlogs' }); }
   function showBacklogError(msg) {
-    const err = document.getElementById('backlog-add-error');
+    const editModal = document.getElementById('backlog-edit-modal');
+    const addModal = document.getElementById('backlog-add-modal');
+    const err = editModal && editModal.style.display !== 'none'
+      ? document.getElementById('backlog-edit-error')
+      : addModal && addModal.style.display !== 'none'
+        ? document.getElementById('backlog-add-error')
+        : document.getElementById('backlog-add-error');
     if (err) { err.style.display = 'block'; err.textContent = msg; setTimeout(() => { err.style.display = 'none'; }, 5000); }
     console.error('[backlog]', msg);
   }
@@ -9307,6 +9317,9 @@
   window.openBacklogAddModal  = openBacklogAddModal;
   window.closeBacklogAddModal = closeBacklogAddModal;
   window.submitBacklogAdd     = submitBacklogAdd;
+  window.openBacklogEditModal  = openBacklogEditModal;
+  window.closeBacklogEditModal = closeBacklogEditModal;
+  window.submitBacklogEdit     = submitBacklogEdit;
   window.showBacklogError     = showBacklogError;
   window.launchTaskSession    = launchTaskSession;
   window.filterBacklogTasks   = filterBacklogTasks;
@@ -13144,6 +13157,7 @@
     closeCrossCheckPanel();
     closeManifest();
     closeStatusPanel();
+    closeBacklogPanel();
   }
   window.closeActivePanel = closeActivePanel;
 
