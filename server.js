@@ -125,6 +125,7 @@ const BASE_SYSTEM_PROMPT = [
   "Source files inside the project workDir are auto-backed-up to %APPDATA%\\.claude\\polaris\\source-backups\\<projectName>\\ before every Edit, Write, or shell-tool write (Set-Content, Out-File, > redirection, etc.). To restore a corrupted file, find the most recent backup at that path (filename: <sanitizedRelPath>.<ISO>.<ext>) and copy it back to the source. Do not assume backups are absent without checking.",
   "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these — consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The propose-before-act rule, approval gate, and Phase 0 backup all apply. After a code change, bump `package.json` and tell Scott to reinstall.",
   'If a "Steering Inputs" section appears in your system prompt, those are non-blocking prompts the user submitted while you were mid-task. Read them; incorporate anything relevant to your current work. No explicit response or acknowledgment required.',
+  'Error reporting for generated code: When writing new functions or features that may encounter errors at runtime, include error handling with pushDebugLog() calls so failures are visible in the Polaris debug panel. Import with: const { pushDebugLog } = require("./lib/debugUtil.js"); Call pushDebugLog(message, true) in catch blocks with descriptive error details. For remote contexts where Node.js imports fail, send emit-debug-log WebSocket messages with {type: "emit-debug-log", message, isError}. This allows Scott to diagnose failures without manual log inspection. See docs/error-reporting-pattern.md for comprehensive guidance.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -1590,7 +1591,7 @@ ${transcript}`;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const result = JSON.parse(jsonMatch[0]);
-    const sanitizeField = v => (v == null) ? null : typeof v === 'string' ? v : JSON.stringify(v);
+    const sanitizeField = v => (v === null || v === undefined) ? null : typeof v === 'string' ? v : JSON.stringify(v);
     return {
       architecture: sanitizeField(result.architecture),
       buildPlan:    sanitizeField(result.buildPlan),
@@ -1875,6 +1876,15 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
     'Use these whenever the user asks about a panel, button, or UI feature — do not guess at IDs or structure.'
   );
 
+  layers.push(
+    '--- Error Reporting for Generated Code ---\n' +
+    'When writing new functions or features that may encounter errors at runtime, include error-reporting code so failures are visible in the debug panel.\n' +
+    'The utility function pushDebugLog(message, isError=false) is available from lib/debugUtil.js. Import it with: const { pushDebugLog } = require("./lib/debugUtil.js");\n' +
+    'Then call pushDebugLog("error message", true) in catch blocks to report errors.\n' +
+    'For remote server contexts where importing Node.js modules is not possible, use the WebSocket fallback: send an emit-debug-log message with {type: "emit-debug-log", message, isError}.\n' +
+    'This allows Scott to diagnose failures without manual log inspection.'
+  );
+
   return layers.join('\n\n');
 }
 
@@ -2051,6 +2061,14 @@ function buildPolarisContextBlock(config, session) {
     '  - If you ask Scott a question or need input before proceeding, call mcp__polaris__SetStatus with status "waiting".',
     '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
     'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
+  );
+
+  lines.push(
+    '',
+    'Error reporting for newly-written code:',
+    'When writing new functions or features that may encounter errors at runtime, include error-reporting code so failures are visible in the debug panel.',
+    'Use: const { pushDebugLog } = require("./lib/debugUtil.js"); then call pushDebugLog("error message", true) in catch blocks.',
+    'This allows Scott to diagnose failures without manual log inspection.',
   );
 
   lines.push('=== END POLARIS CONTEXT ===');
@@ -7826,6 +7844,23 @@ async function handleMessage(ws, raw) {
   if (type === 'get-routine-notifications') {
     const notifications = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
     sendTo(ws, { type: 'event-routine-notifications', notifications });
+    return;
+  }
+
+  if (type === 'emit-debug-log') {
+    // Fallback message from agents/generated code unable to call pushDebugLog() directly
+    // when the utility module is not importable. Rebroadcast to all UI clients as debug-log.
+    const { message, isError } = msg;
+    if (message && typeof message === 'string') {
+      const debugMsg = {
+        type: 'debug-log',
+        message: message,
+        isError: Boolean(isError)
+      };
+      broadcast(debugMsg);
+      // Optionally log to server console for audit trail (comment out if too noisy)
+      // console.log(`[DEBUG${isError ? ' ERROR' : ''}] ${message}`);
+    }
     return;
   }
 

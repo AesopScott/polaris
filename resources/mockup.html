@@ -4066,6 +4066,14 @@
         window.serverTzOffsetMin = msg.tzOffsetMin;
         break;
 
+      case 'debug-log': {
+        // Broadcast from server of debug logs emitted by agents/generated code
+        // via the emit-debug-log WebSocket fallback or internal server events.
+        // Render directly in debug panel with appropriate styling (error vs info).
+        pushDebugLog(msg.message || '(no message)', Boolean(msg.isError));
+        break;
+      }
+
       case 'model-costs': {
         window._modelCosts = msg.costs || {};
         const count = Object.keys(window._modelCosts).length;
