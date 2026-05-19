@@ -205,6 +205,17 @@
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 17,
+      "title": "Add the category type to the dashboard in the backlog.",
+      "description": "The title says it all.",
+      "category": "Update",
+      "priority": 50,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
