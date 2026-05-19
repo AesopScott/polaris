@@ -47,7 +47,9 @@ The audit is read-only — it does not modify code, only registries (to update t
 
 ## Registry kinds in this project
 
-- **websocket-events.md** — Messages sent between Polaris client (UI) and server. Scope: client-to-server requests and server responses for backlog, skills, projects, and other features.
+- **websocket-events.md** — Messages sent between Polaris client (UI) and server. Scope: client-to-server requests (list-backlogs, add-backlog-task, update-backlog-task, update-backlog-task-status) and server responses (backlogs-data, backlog-error).
+
+- **backlog-task-fields.md** — Fields on backlog task objects stored in docs/backlog.json. Scope: task schema (number, title, description, category, priority, status, created_at, completed_at, dependencies, plan, proofUnits, branch, pr_url, impact), their producers (create, update), and consumers (UI display, skill-side reads, server-side validation).
 
 ---
 

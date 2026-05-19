@@ -76,6 +76,89 @@ Error response from server when backlog loading fails.
 
 ---
 
+## `add-backlog-task`
+
+Request from client to server to add a new backlog task.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'add-backlog-task',
+  scope: String,                    // 'global' or project name
+  task: {
+    title: String,                  // Task title (required)
+    description: String,            // Task description (optional)
+    priority: Number,               // Priority 1-200 (optional, defaults to 50)
+    category: String,               // Category name (optional, defaults to 'feature')
+    impact: String                  // Impact level: 'minor' | 'standard' | 'major' (optional, defaults to 'standard')
+  }
+}
+```
+
+**Producers (Client sends)**
+- `resources/mockup.html:9334` — `submitBacklogAdd()` sends new task data from Add Task modal
+
+**Consumers (Server receives)**
+- `server.js:7769` — Handler receives and calls `addBacklogTask(scope, task)`
+
+**Status:** ✓ Balanced producer/consumer (impact field added by task #19)
+
+---
+
+## `update-backlog-task`
+
+Request from client to server to update an existing backlog task's fields.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'update-backlog-task',
+  scope: String,                    // 'global' or project name
+  taskNumber: Number,               // Task number to update
+  updates: {
+    title: String,                  // New title (optional)
+    description: String,            // New description (optional)
+    priority: Number,               // New priority (optional)
+    category: String,               // New category (optional)
+    impact: String                  // New impact level (optional)
+  }
+}
+```
+
+**Producers (Client sends)**
+- `resources/mockup.html:9364` — `submitBacklogEdit()` sends updated task data from Edit Task modal
+
+**Consumers (Server receives)**
+- `server.js:7800` — Handler receives and calls `updateBacklogTask(scope, taskNumber, updates)`
+
+**Status:** ✓ Balanced producer/consumer (impact field added by task #19)
+
+---
+
+## `update-backlog-task-status`
+
+Request from client to server to change a backlog task's status.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'update-backlog-task-status',
+  scope: String,                    // 'global' or project name
+  taskNumber: Number,               // Task number to update
+  status: String                    // New status value
+}
+```
+
+**Producers (Client sends)**
+- `resources/mockup.html:9438` — Status picker sends status change request
+
+**Consumers (Server receives)**
+- `server.js:7781` — Handler receives and calls `updateBacklogTaskStatus(scope, taskNumber, status)`
+
+**Status:** ✓ Balanced producer/consumer
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -83,22 +166,25 @@ Error response from server when backlog loading fails.
 | `list-backlogs` | 1 (client) | 1 (server) | ✓ |
 | `backlogs-data` | 5 (server) | 1 (client) | ✓ |
 | `backlog-error` | 4 (server) | 1 (client) | ✓ |
+| `add-backlog-task` | 1 (client) | 1 (server) | ✓ |
+| `update-backlog-task` | 1 (client) | 1 (server) | ✓ |
+| `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T05:15:00Z (by /cross-boundary-audit)
+**Last audit:** 2026-05-19T14:30:00Z (by /cross-boundary-audit for task #19)
 
-**Boundaries checked:** WebSocket events (backlog feature)
+**Boundaries checked:** WebSocket events (backlog feature, including add/update/status mutations)
 
 **Evidence recorded:**
-- 3 entries with complete producer/consumer pairs ✓
+- 6 entries with complete producer/consumer pairs ✓
 - 0 entries with gaps ✓
 - 0 entries with shape mismatches ✓
-- New identifiers introduced on this task: none (task #16 is UI-only, no new messages)
-- Registries match current code diff: yes
+- New identifiers introduced on this task: `impact` field in add-backlog-task and update-backlog-task payloads
+- Registries match current code diff: pending (task #19 implementation will add impact field)
 
-**Gaps identified:** None
+**Gaps identified:** None (task #19 implementation will complete the impact field wiring)
 
-**Status:** Audit complete
+**Status:** Audit complete, ready for implementation
