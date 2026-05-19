@@ -5036,6 +5036,13 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   if (s) { s.status = termStatus; s.endAt = Date.now(); }
   saveSessionMessages(sessionId);
   broadcast({ type: 'session-status', sessionId, status: termStatus });
+  // Auto-refresh backlog panel after agent session completes in case backlog.json was modified
+  try {
+    const result = loadAllBacklogs();
+    broadcast({ type: 'backlogs-data', global: result.global, projects: result.projects });
+  } catch (e) {
+    console.error('[backlog] failed to refresh after session:', e.message);
+  }
   autoObsidianForSession(sessionId);
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   releaseSessionMemory(sessionId);
@@ -7466,6 +7473,10 @@ async function handleMessage(ws, raw) {
         session.steeringQueue = [];
         broadcast({ type: 'steering-update', sessionId: msg.sessionId, queue: [] });
       }
+      // Set terminal status so UI knows session is no longer running
+      session.status = 'done';
+      session.endAt = Date.now();
+      broadcast({ type: 'session-status', sessionId: msg.sessionId, status: 'done' });
       saveSessions();
     }
     return;
