@@ -9116,6 +9116,8 @@
       displayPrompt: prompt,
       workDir: workDir,
       projectName: projectName,
+      taskNumber: taskNumber,
+      taskTitle: task.title || '(untitled)',
     };
     document.getElementById('task-session-picker').style.display = 'flex';
   }
@@ -9127,7 +9129,7 @@
 
   function confirmTaskSessionType(sessionType) {
     if (!_pendingTaskLaunch) return;
-    const { prompt, displayPrompt, workDir, projectName } = _pendingTaskLaunch;
+    const { prompt, displayPrompt, workDir, projectName, taskNumber, taskTitle } = _pendingTaskLaunch;
     const tier = document.querySelector('.model-select')?.value || 'balanced';
     let msg = {
       prompt: prompt,
@@ -9135,6 +9137,8 @@
       workDir: workDir,
       projectName: projectName,
       tier: tier,
+      taskNumber: taskNumber,
+      taskTitle: taskTitle,
     };
     switch (sessionType) {
       case 'max':

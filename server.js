@@ -7188,7 +7188,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id   = `chat_${Date.now()}`;
-    const name = generateSessionName(prompt);
+    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
     const config = readConfig();
     const chatTier = (tier || 'balanced').toLowerCase();
     // If overrideModel is provided (e.g. cross-check model), use it directly.
@@ -7275,7 +7275,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id = `codex_${Date.now()}`;
-    const name = generateSessionName(prompt);
+    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
     const codexTier = (tier || 'balanced').toLowerCase();
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
@@ -7313,7 +7313,7 @@ async function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = generateSessionName(prompt || 'Image');
+    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Image');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
