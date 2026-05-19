@@ -1588,8 +1588,14 @@ ${transcript}`;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const result = JSON.parse(jsonMatch[0]);
+    const sanitizeField = v => (v === null || v === undefined) ? null : typeof v === 'string' ? v : JSON.stringify(v);
     return {
-      ...result,
+      architecture: sanitizeField(result.architecture),
+      buildPlan:    sanitizeField(result.buildPlan),
+      backlog:      sanitizeField(result.backlog),
+      decision:     sanitizeField(result.decision),
+      pattern:      sanitizeField(result.pattern),
+      lesson:       sanitizeField(result.lesson),
       _nextDecision: nextNumIn(decisionsDir),
       _nextPattern:  nextNumIn(patternsDir),
       _nextLesson:   nextNumIn(lessonsDir),
@@ -9454,8 +9460,9 @@ async function handleMessage(ws, raw) {
         const obsDir = path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir);
         const appendBlock = (fileName, blockContent) => {
           if (!blockContent) return;
+          const safeContent = typeof blockContent === 'string' ? blockContent : JSON.stringify(blockContent);
           const fp = path.join(obsDir, fileName);
-          try { fs.appendFileSync(fp, `\n\n## Session Update (${today})\n\n${blockContent}\n`, 'utf8'); } catch {}
+          try { fs.appendFileSync(fp, `\n\n## Session Update (${today})\n\n${safeContent}\n`, 'utf8'); } catch {}
         };
         appendBlock('2-Architecture.md', analysis.architecture);
         appendBlock('3-Build-Plan.md', analysis.buildPlan);
