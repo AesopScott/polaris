@@ -7613,10 +7613,9 @@ async function handleMessage(ws, raw) {
         session.steeringQueue = [];
         broadcast({ type: 'steering-update', sessionId: msg.sessionId, queue: [] });
       }
-      // Set terminal status so UI knows session is no longer running
-      session.status = 'done';
-      session.endAt = Date.now();
-      broadcast({ type: 'session-status', sessionId: msg.sessionId, status: 'done' });
+      // Reset to waiting so session can continue — don't mark as done until it actually ends
+      session.status = 'waiting';
+      broadcast({ type: 'session-status', sessionId: msg.sessionId, status: 'waiting' });
       saveSessions();
     }
     return;
