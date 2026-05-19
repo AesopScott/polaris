@@ -4,7 +4,7 @@ Scott's personal AI command center - parallel agent sessions, real API control, 
 
 ## Critical rules
 1. **Propose before writing.** For file edits and writes, state the planned change and wait for explicit yes. Reads, searches, and tool calls proceed without asking.
-2. **Three zones:** Source (`C:\Users\scott\Code\Polaris`) - edit only here. Installed app (`C:\Users\scott\AppData\Local\Programs\Polaris\resources`) - only touch with explicit approval. Runtime data (`C:\Users\scott\AppData\Roaming\.claude\polaris\`, the user's `Downloads` folder, and `G:\*`) - only places for runtime reads/writes.
+2. **Three zones:** Source (`C:\Users\scott\Code\Polaris`) - edit only here. Installed app (`C:\Users\scott\AppData\Local\Programs\Polaris\resources`) - only touch with explicit approval. Runtime writes are limited to `%APPDATA%\.claude\polaris\`, listed Polaris Obsidian/backlog files, and user-requested exports in `Downloads`; other `G:\*` writes need explicit approval.
 3. **Versioning:** before editing and before delivery, follow `docs/agent-rules/versioning.md`.
 4. **Locks:** check `%APPDATA%\.claude\polaris\locks.json` before any write; locked files need explicit approval.
 5. **Server restarts:** never from code - tell Scott.
@@ -21,9 +21,10 @@ Scott's personal AI command center - parallel agent sessions, real API control, 
 Before `/start-build`, `/finish-build`, review, audit, or promotion work, read and follow `docs/agent-rules/workflow.md`.
 
 ## Architecture
-- **Agent sessions** -> Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. Tool schemas executed natively in server.js: Read, Write, Edit, Glob, Grep, PowerShell, WebFetch, WebSearch, AskUserQuestion, TodoWrite, QueryMemory, SetProject, **SetStatus**. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
-- **Chat sessions** -> Claude Max plan via Claude CLI (`spawnMaxChat`). Uses Claude Code's native tool set only. Use **SetStatus** when the current session exposes it. Claude CLI chat sessions do not expose SetStatus, so Polaris auto-detects session card state from the final message as a fallback: end with "Please test this" or "Try it out" -> purple test card; end with "?" -> amber waiting card; otherwise -> green done.
+- **Agent sessions** -> Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Polaris direct agents expose native tools such as Read, Write, Edit, Glob, Grep, PowerShell, WebFetch, WebSearch, AskUserQuestion, TodoWrite, QueryMemory, SetProject, and **SetStatus**. Other session hosts may expose only a subset; if a tool is missing, use the permitted fallback path instead of treating it as impossible.
+- **Chat sessions** -> Claude Max plan via Claude CLI (`spawnMaxChat`). Uses Claude Code's native tool set only.
 - **Routine sessions** -> DeepSeek direct API (`api.deepseek.com`) via `spawnDeepSeekRoutine()`. Single-turn, no tools.
+- **Status handling** -> Use **SetStatus** when the current session exposes it. Claude CLI chat sessions do not expose SetStatus, so Polaris auto-detects session card state from the final message as a fallback: end with "Please test this" or "Try it out" -> purple test card; end with "?" -> amber waiting card; otherwise -> green done.
 - Never mix routing. The old Claude CLI path (`spawnClaude`) is retained in server.js but no longer called.
 
 ## Key files
@@ -49,7 +50,7 @@ Polaris backlog: `docs/backlog.json` - prioritized list of scheduled work
 
 ## Planning
 
-Plan before building: define success criteria, scope boundaries, dependencies, and risks. For guidance on planning triggers, artifacts, and validation gates, see [planning.md](planning.md).
+Plan before building: define success criteria, scope boundaries, dependencies, and risks. When any planning trigger applies, read [planning.md](planning.md) before proposing or implementing.
 
 ## Coding discipline
 General behavior rules, subordinate to the Polaris-specific rules above. Adapted from `multica-ai/andrej-karpathy-skills` `CLAUDE.md`:

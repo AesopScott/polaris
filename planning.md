@@ -17,6 +17,12 @@
 - `/plan-task` skill output (before formal build sessions)
 - Brief notes in session logs (exploratory decisions)
 
+## Where The Plan Goes
+- Backlog work: write the structured plan to `docs/backlog.json` through the task's planning fields before `/start-build`.
+- Formal `/plan-task` work: save the `/plan-task` output in the task record and include a concise summary in the session handoff.
+- Direct non-backlog work: keep the plan in the session response unless Scott asks for a file-backed artifact.
+- Review or promotion work: include the plan/checklist in the review or promotion handoff.
+
 ## Plan Validation (Before `/start-build`)
 - [ ] Success criteria are verifiable
 - [ ] Scope fits a single task
