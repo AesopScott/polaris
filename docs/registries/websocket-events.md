@@ -222,19 +222,20 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T22:45:00Z (by /cross-boundary-audit for task #20)
+**Last audit:** 2026-05-19T23:43:00Z (by /finish-build for task #19)
 
-**Boundaries checked:** WebSocket events (all event types including new debug logging fallback routes)
+**Boundaries checked:** WebSocket events (all event types including task #19 impact field in backlog messages)
 
 **Evidence recorded:**
-- 6 entries with complete producer/consumer pairs ✓ (existing backlog events)
+- 8 entries documented
+- 6 entries with complete producer/consumer pairs ✓ (backlog events verified with task #19 impact field)
 - 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, task #20 C.1/C.2/C.3)
 - 0 entries with shape mismatches ✓
-- New identifiers introduced on this task: `emit-debug-log` (agent→server fallback) and `debug-log` (server→client broadcast)
-- Registries match current code diff: yes (registry entries reference planned task phases C.1/C.2/C.3)
+- New identifiers verified on task #19: impact field in add-backlog-task and update-backlog-task schemas
+- Registries match current code diff: yes (task #19 impact field in both client→server messages verified)
 
 **Gaps identified:** 
 - ⚠ emit-debug-log: orphan producer (agent code C.2 after server handler C.1). Intentional — fallback infrastructure must be ready first.
 - ⚠ debug-log: orphan consumer (UI handler C.3 after server broadcast C.1). Intentional — broadcast before UI adds the handler.
 
-**Status:** Audit complete, gaps documented and intentional
+**Status:** Audit complete, task #19 verified in WebSocket events
