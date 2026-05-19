@@ -14,6 +14,21 @@ Scott's personal AI command center — parallel agent sessions, real API control
 9. **Config archives.** Every write to `%APPDATA%\.claude\polaris\config.json` auto-copies the prior content to `%APPDATA%\.claude\polaris\config-archive\config.<ISO>.json`. Append-only, capped at 200 files / 10 MB total — oldest pruned first. If a save corrupts or wipes config (the 2026-05-05 incident wiped `obsidianDir`, MCP servers, and routines from every project), restore from the most recent pre-incident archive. Do not trust `config.backup.json` alone — single-level, gets rotated past loss points.
 10. **Never run the installer without explicit approval.** Running `build-install.ps1` or any `dist` build launches an NSIS installer that can trigger a Windows reboot. Always ask Scott before running any build+install command. Building with `npm start` or `npm run pack` is safe (no installer, no reboot risk).
 
+## Backlog Workflow Governance
+
+**Branch topology:** `main` (source) → `stage` (integration) → `prod` (production). Work flows forward; nothing merges back to main.
+
+**Worktree isolation:** Each `/start-build` session must create a unique git worktree + feature branch. Branches follow pattern: `task/{number}-{description}`. Rationale: prevents git state interference between parallel sessions, enables clean rollback.
+
+**PR targeting:** `/finish-build` opens PRs targeting `stage` (not main). Code review happens on stage PRs before merge.
+
+**Stage branch lock:** Only `/promote-stage` can write to `stage`. Enforced by:
+1. **GitHub branch protection:** `stage` requires status checks + 1 approval before merge
+2. **Code-level guard:** Skills check git state; block any attempt to push directly to `stage`
+3. **Auto-merge gate:** Only `/promote-stage` has GitHub API token to merge PRs to `stage`
+
+**Main branch protection:** `main` accepts merges only from `/promote-stage` (via stage → main promotion). Direct pushes to main are blocked.
+
 ## Architecture
 - **Agent sessions** → Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. Tool schemas executed natively in server.js: Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, WebSearch, AskUserQuestion, TodoWrite, QueryMemory, SetProject, **SetStatus**. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
 - **Chat sessions** → Claude Max plan via Claude CLI (`spawnMaxChat`). Uses Claude Code's native tool set only. **SetStatus is NOT a Claude Code tool — do not attempt to call it in chat sessions.** Polaris auto-detects session card state from your final message: end with "Please test this" or "Try it out" → purple test card; end with "?" → amber waiting card; otherwise → green done.
