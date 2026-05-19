@@ -147,12 +147,13 @@
                       "title":  "Add proof planning to /plan-task",
                       "category":  "feature",
                       "priority":  36,
-                      "status":  "ready",
+                      "status":  "in-progress",
                       "created_at":  "2026-05-19",
                       "completed_at":  null,
                       "dependencies":  [
                                            10
                                        ],
+                      "branch":  "task/11-add-proof-planning",
                       "plan":  "## Implementation Summary\n\nTask #11 updates ~/.claude/commands/plan-task.md to include proof-unit planning at every step before any build session touches code.\n\n### Changes Made\n\n**Step 3b** â€” Expanded to include \"First Proof Unit\" identification (section 5) as entry gate confirmation.\n\n**Step 6** â€” Refactored to break implementations into proof units with 6 required fields: expected behavior, preferred proof type, exact command/check/manual path, expected initial failure (RED), expected passing evidence (GREEN), and waiver guidance.\n\n**Step 8** â€” Updated to save structured `proofUnits` array to docs/backlog.json alongside narrative plan.\n\n**Step 9** â€” Added Proof Units section appending unit summaries to Obsidian task tracker.\n\n**Verification** â€” Created docs/proof-unit-verification.md with example task #18 showing 5 proof units and all proof types.\n\n## First Proof Unit\n\nWhen /start-build runs on a task with proof units defined, the first proof unit should be loadable from docs/backlog.json with the `proofUnits` array present and non-empty.",
                       "proofUnits":  [
                                          {
@@ -315,7 +316,7 @@
                       "dependencies":  [
 
                                        ],
-                      "plan":  "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from \u0027?? Refresh\u0027 to \u0027? Loading…\u0027\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html — Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** — this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loading…\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
+                      "plan":  "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from \u0027?? Refresh\u0027 to \u0027? Loadingï¿½\u0027\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html ï¿½ Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** ï¿½ this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loadingï¿½\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
                       "proofUnits":  [
                                          {
                                              "expectedPassingEvidence":  "diff shows +function _onBacklogDataReceived() and two new calls in case \u0027backlogs-data\u0027 and case \u0027backlog-error\u0027",
@@ -329,12 +330,12 @@
                                          },
                                          {
                                              "expectedPassingEvidence":  "Button visibly disables and shows \u0027Loading\u0027, then returns to normal after response arrives. Network tab shows list-backlogs message sent and backlogs-data response received.",
-                                             "exactCommand":  "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent=\u0027? Loading…\u0027, wait for server response, verify button.disabled=false and textContent=\u0027?? Refresh\u0027",
+                                             "exactCommand":  "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent=\u0027? Loadingï¿½\u0027, wait for server response, verify button.disabled=false and textContent=\u0027?? Refresh\u0027",
                                              "title":  "UI behavior - refresh button shows loading state",
                                              "proofType":  "ui-check",
                                              "expectedInitialFailure":  "Clicking refresh shows no visual feedback; button remains enabled and text unchanged",
                                              "number":  2,
-                                             "expectedBehavior":  "Clicking the ?? Refresh button disables it and changes its text to \u0027? Loading…\u0027. After the server responds, the button re-enables and text returns to \u0027?? Refresh\u0027.",
+                                             "expectedBehavior":  "Clicking the ?? Refresh button disables it and changes its text to \u0027? Loadingï¿½\u0027. After the server responds, the button re-enables and text returns to \u0027?? Refresh\u0027.",
                                              "waiverGuidance":  "If Polaris app won\u0027t start due to Electron error, manual code review: confirm function exists, confirm message handlers call it, confirm button query selector is correct"
                                          },
                                          {
@@ -349,7 +350,7 @@
                                          },
                                          {
                                              "expectedPassingEvidence":  "Complete refresh cycle works; button feedback is consistent on every refresh. No errors in console.",
-                                             "exactCommand":  "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show \u0027Loading\u0027. (5) Wait for list to re-render. (6) Confirm button returns to \u0027Refresh\u0027 and list still shows all tasks. (7) Try clicking Refresh again — button feedback should repeat.",
+                                             "exactCommand":  "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show \u0027Loading\u0027. (5) Wait for list to re-render. (6) Confirm button returns to \u0027Refresh\u0027 and list still shows all tasks. (7) Try clicking Refresh again ï¿½ button feedback should repeat.",
                                              "title":  "End-to-end smoke test - full refresh cycle",
                                              "proofType":  "manual-script",
                                              "expectedInitialFailure":  "Button has no feedback or gets stuck showing \u0027Loading\u0027",
