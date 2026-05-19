@@ -1,379 +1,363 @@
 {
-    "tasks":  [
-                  {
-                      "number":  1,
-                      "title":  "Skills Nav Pane — hierarchical tree with Global / Project sections + 7 categories",
-                      "category":  "feature",
-                      "priority":  1,
-                      "status":  "in-progress",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "Rework the Skills panel landed in v1.0.429 from a flat alphabetical list into a hierarchical tree. Top-level groups: Global (always shown) and {Project Name} (only when the active project has its own skills/commands/agents). Under each group, 7 collapsible category sections in this order: Project workflow, Project initiation, Code quality, Research, Codex integration, Tooling / config, Utilities. Server-side: expand discoverSkills() to scan all sources — user-global skills (~/.claude/skills/*/SKILL.md, currently 12), user-global commands (~/.claude/commands/*.md, currently 11), codex plugin (skills + commands + agents under ~/.claude/plugins/cache/openai-codex/codex/\u003cver\u003e/, currently 11), and project-local .claude/skills/ + .claude/commands/ when a project is active. Each discovered item gets a hardcoded category mapping based on its name (kept in a const map at the top of server.js so additions are one-line edits). Discovery is memoized by directory mtime. Client-side: replace the existing flat \u003ctable\u003e render with a tree of \u003cdetails\u003e elements (one per category, collapsed by default except first-render expansion of Project workflow). Each leaf row carries the same click-to-invoke behavior as today — sends /\u003cname\u003e to resumeTarget. Empty categories are hidden. Expected on-disk total: 34 (12 + 11 + 3 + 7 + 1). Bundled-but-not-on-disk skills like anthropic-skills:* and the built-in /init, /review, /security-review, /simplify, /update-config, /keybindings-help, /fewer-permission-prompts, /loop, /schedule, /claude-api should be added as a hardcoded supplement list once their source location is confirmed (bringing the total closer to Scott\u0027s stated 41 custom-created skills). Categorization decisions: evaluate-repo and find-skill → new \u0027Research\u0027 category (pre-decision discovery, not code QA); flow-audit → Project workflow (its output is backlog tasks); cross-boundary-audit → Code quality (operates on existing code). Built this session alongside Polaris\u0027s new docs/backlog.json scaffolding flow.",
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null
-                  },
-                  {
-                      "number":  2,
-                      "title":  "Build project status + task/issue tracking pipeline (prereq for \u0027always commit to main\u0027 rule)",
-                      "category":  "feature",
-                      "priority":  2,
-                      "status":  "backlog",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "Build first-class pipelines into Polaris for (a) project status tracking and (b) task/issue tracking, so backlog management becomes the canonical way to capture and update work across projects. Once those pipelines exist, modify the Polaris CLAUDE.md spec to enforce \u0027All updates to backlog.json are automatically committed to main\u0027 — a rule Scott articulated 2026-05-18 but deferred because the pipeline isn\u0027t built yet. The v1 Backlog navigation pane shipped in v1.0.433 (global backlog task #12) auto-commits on the CURRENT branch, NOT main, as the safer interim behavior. The full \u0027always to main\u0027 enforcement requires a stash/checkout/push/restore dance (or git-worktree equivalent) that risks losing WIP if anything fails mid-flight; safer to ship after the pipeline + UX for surfacing commit failures clearly exists. Sequence: ship status/task pipeline first → modify CLAUDE.md rule → upgrade _autoCommitBacklog() in server.js to do the full \u0027always main\u0027 dance.",
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null
-                  },
-                  {
-                      "number":  3,
-                      "title":  "Codex apply_patch failures when server.js context drifts",
-                      "category":  "fix",
-                      "priority":  1,
-                      "status":  "backlog",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "Capture and fix the 2026-05-18 Codex apply_patch failure mode where patch verification failed because expected anchors in server.js were no longer present. Observed failures were around the spawnMaxChat insertion point and the postJsonViaHttps function signature, which means Codex generated patches against stale or mismatched file context. The fix should make patching/resume flows resilient when server.js changes under a session, likely by refreshing context, falling back to targeted search, or regenerating patches around moved functions before giving up.",
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null
-                  },
-                  {
-                      "number":  4,
-                      "title":  "Status button not updating from text entered after session close",
-                      "category":  "fix",
-                      "priority":  1,
-                      "status":  "on-hold",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it\u0027s submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null
-                  },
-                  {
-                      "number":  5,
-                      "title":  "Video analysis.",
-                      "description":  "Have the ability for sessions to analyze video content?",
-                      "category":  "feature",
-                      "priority":  50,
-                      "status":  "backlog",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  6,
-                      "title":  "Project initiation button",
-                      "description":  "I want to add a project initiation button next to the projects inside the project panel, which automatically kicks off the skill /project-initiation.",
-                      "category":  "feature",
-                      "priority":  70,
-                      "status":  "in-progress",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  "## Testability prerequisites\n\nNo prerequisite task is required. The Projects panel is already reachable from the top navigation, and configured projects already provide the `name` and `workDir` needed to launch a project-scoped session. Manual smoke testing is required after rebuild/install because the interaction is in the Electron UI.\n\n## Implementation plan\n\n1. Update `resources/mockup.html` in `renderProjectsPanel()` to add a compact project initiation button in each project row\u0027s action cluster, next to the existing Productivity, build-script, and delete controls.\n\n2. Add a renderer helper such as `launchProjectInitiation(idx)` that calls `captureProjectInputs()` so unsaved row edits are respected, validates that the selected project has a name, sends a `launch-chat` WebSocket message with `prompt: \u0027/project-initiation\u0027`, `displayPrompt: \u0027/project-initiation\u0027`, the row\u0027s `workDir`, the row\u0027s `projectName`, and the current selected tier, then closes the Projects panel after launch.\n\n3. Keep the change client-side unless the existing launch handler needs a small naming hint. The existing `launch-chat` path in `server.js` already accepts `workDir`, `projectName`, and `tier`, validates `workDir`, creates a Max chat session, and broadcasts the project metadata.\n\n4. Verification: run a lightweight syntax check over `resources/mockup.html` JavaScript if practical. Do not run the installer or `build-install.ps1` without explicit approval. Manual smoke test: open Projects, click the new initiation button for Polaris or another configured project, and confirm a new Max session starts in that project with `/project-initiation`.\n\n## Boundary changes\n\nNo Firestore collections, custom claims, backend API endpoints, or registry files are introduced. The only boundary touched is the existing client-to-server WebSocket message type `launch-chat`, reused with existing fields.\n\n## Dependencies\n\nNone.",
-                      "branch":  "task/6-project-initiation-button"
-                  },
-                  {
-                      "number":  7,
-                      "title":  "Obsidian write issues.",
-                      "description":  "Sometimes when I write to Obsidian using the close button, it just shows block block",
-                      "category":  "fix",
-                      "priority":  75,
-                      "status":  "production",
-                      "pr_url":  "https://github.com/AesopScott/polaris/pull/1",
-                      "branch":  "task/7-obsidian-write-issues",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  "2026-05-19",
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  "## Root cause\n\nWhen the user clicks Close → Push to Obsidian and Git, `camRowPush` sends the session content to `obsidian-analyze`, DeepSeek extracts structured knowledge, and the result is written to Obsidian via `appendBlock` in the `obsidian-commit-analysis` handler (server.js ~line 9458). `appendBlock` uses a template literal: `\\n\\n## Session Update (${today})\\n\\n${blockContent}\\n`. If DeepSeek returns a nested object or array for `architecture` or `buildPlan` instead of a plain string, JavaScript coerces it to `[object Object]` in the template literal. This is confirmed by `[object Object]` entries in `3-Build-Plan.md` and `2-Architecture.md`. Secondary issue: `camRowPush` builds the content string with `(s.lines || []).map(l =\u003e l.text).join(\u0027\\n\u0027)` — if any `l.text` is not a string, it also coerces to `[object Object]` in the transcript sent to DeepSeek.\n\n## Testability prerequisites\n\nNone — the Close button and Obsidian push flow work today. The test is: use Close → Push to Obsidian → Accept analysis → verify no `[object Object]` in the written Obsidian files.\n\n## Steps\n\n1. **server.js — sanitize `analyzeSessionForKnowledgePreview` response (~line 1590):** After `JSON.parse(jsonMatch[0])`, add a `sanitizeField` helper that returns `null` if the value is null/undefined, the value as-is if it\u0027s a string, or `JSON.stringify(value)` otherwise. Apply it to all six extracted fields (`architecture`, `buildPlan`, `backlog`, `decision`, `pattern`, `lesson`).\n\n2. **server.js — guard `appendBlock` defensively (~line 9455):** Before writing, convert blockContent to string: `const safeContent = typeof blockContent === \u0027string\u0027 ? blockContent : JSON.stringify(blockContent);`. Use `safeContent` in the `appendFileSync` call.\n\n3. **mockup.html — fix `camRowPush` content builder (~line 12915):** Change `(s.lines || []).map(l =\u003e l.text).join(\u0027\\n\u0027)` to `(s.lines || []).map(l =\u003e String(l.text ?? \u0027\u0027)).join(\u0027\\n\u0027)` to prevent non-string text coercing to `[object Object]` in the transcript.\n\n4. **Bump `package.json`** patch version at delivery time.\n\n5. **Update `4-Changelog.md`** in Obsidian with the fix details.\n\n## Verification\n\nManual smoke test: launch a session, run a quick task, click Close, click Push to Obsidian and Git on that session, accept the analysis, then open the relevant Obsidian file (2-Architecture.md or 3-Build-Plan.md) and confirm the new Session Update block contains readable text — not `[object Object]`."
-                  },
-                  {
-                      "number":  8,
-                      "title":  "Backlog sort order",
-                      "description":  "Backlog items should automatically be sorted by priority.",
-                      "category":  "feature",
-                      "priority":  75,
-                      "status":  "production",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  "2026-05-19",
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  9,
-                      "title":  "Fix the ability to edit backlog items",
-                      "description":  "I edit a backlog item. It doesn\u0027t allow me to save, and it hangs the whole program, and I can no longer use anything.",
-                      "category":  "fix",
-                      "priority":  100,
-                      "status":  "production",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  "2026-05-19",
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  10,
-                      "title":  "Define task-tree TDD/proof gate model",
-                      "category":  "feature",
-                      "priority":  35,
-                      "status":  "backlog",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null,
-                      "description":  "Define the shared task-tree proof model that all Polaris workflow skills will use before any implementation-bearing step runs. The goal is broader than adding TDD to /start-build and /ship-task: every workflow step must require appropriate proof, while only implementation steps require the full red/green/refactor TDD loop.\n\nCore model:\n- Workflow entry gate before the task tree starts: task has a plan, dependencies are checked, testability path is known, and the first proof unit is identified.\n- Proof unit shape: expected behavior -\u003e proof before implementation -\u003e observe failure or record explicit waiver -\u003e implement smallest change -\u003e observe passing proof -\u003e proceed.\n- Proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, review evidence, or explicit waiver that says no automated proof is possible and why.\n- State behavior: if proof is missing or fails, stop the workflow and keep/revert the task to the previous valid lifecycle state instead of proceeding on inherited authority.\n- Distinguish step roles: planning skills define proof; build skills execute proof; audit/review/promotion skills verify the proof trail.\n\nImplementation notes:\n1. Write the canonical definitions directly into the relevant command docs, starting with /plan-task, /start-build, /ship-task, /finish-build, /cross-boundary-audit, /review-pr, /codex-review, and /promote-stage.\n2. Use consistent vocabulary: proof unit, entry evidence, exit evidence, waiver, proof trail, previous valid lifecycle state.\n3. Decide where the proof trail is persisted: task plan in docs/backlog.json, Obsidian task tracker, PR body, or a combination. Prefer keeping summary evidence in backlog/Obsidian and detailed evidence in PR/session output.\n4. Verification: run a dry task-tree walkthrough and confirm every step can say what proof it expects, where proof is recorded, and what happens when proof is missing."
-                  },
-                  {
-                      "number":  11,
-                      "title":  "Add proof planning to /plan-task",
-                      "category":  "feature",
-                      "priority":  36,
-                      "status":  "complete",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  "2026-05-18",
-                      "dependencies":  [
-                                           10
-                                       ],
-                      "branch":  "task/11-add-proof-planning",
-                      "plan":  "## Implementation Summary\n\nTask #11 updates ~/.claude/commands/plan-task.md to include proof-unit planning at every step before any build session touches code.\n\n### Changes Made\n\n**Step 3b** — Expanded to include \"First Proof Unit\" identification (section 5) as entry gate confirmation.\n\n**Step 6** — Refactored to break implementations into proof units with 6 required fields: expected behavior, preferred proof type, exact command/check/manual path, expected initial failure (RED), expected passing evidence (GREEN), and waiver guidance.\n\n**Step 8** — Updated to save structured `proofUnits` array to docs/backlog.json alongside narrative plan.\n\n**Step 9** — Added Proof Units section appending unit summaries to Obsidian task tracker.\n\n**Verification** — Created docs/proof-unit-verification.md with example task #18 showing 5 proof units and all proof types.\n\n## First Proof Unit\n\nWhen /start-build runs on a task with proof units defined, the first proof unit should be loadable from docs/backlog.json with the `proofUnits` array present and non-empty.",
-                      "proofUnits":  [
-                                         {
-                                             "number":  1,
-                                             "title":  "plan-task.md Step 3b includes first proof unit identification",
-                                             "expectedBehavior":  "Step 3b section 5 defines first proof unit shape and entry gate confirmation.",
-                                             "proofType":  "registry-diff",
-                                             "exactCommand":  "grep -c \u0027first proof unit\u0027 ~/.claude/commands/plan-task.md",
-                                             "expectedInitialFailure":  "Pattern not found",
-                                             "expectedPassingEvidence":  "Count \u003e= 1",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  2,
-                                             "title":  "plan-task.md Step 6 produces proof units with required fields",
-                                             "expectedBehavior":  "Step 6 defines proof unit structure with all required fields.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "grep -c \u0027expectedBehavior\\|expectedInitialFailure\\|expectedPassingEvidence\u0027 ~/.claude/commands/plan-task.md",
-                                             "expectedInitialFailure":  "Fields not found",
-                                             "expectedPassingEvidence":  "Count \u003e= 3",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  3,
-                                             "title":  "plan-task.md Step 8 documents proofUnits JSON structure",
-                                             "expectedBehavior":  "Step 8 section 2 shows proofUnits array format with 8 required fields.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Read ~/.claude/commands/plan-task.md and verify Step 8 section 2 exists with JSON example",
-                                             "expectedInitialFailure":  "Section not found or example incomplete",
-                                             "expectedPassingEvidence":  "Section present with complete JSON structure",
-                                             "waiverGuidance":  "Manual check: read Step 8"
-                                         },
-                                         {
-                                             "number":  4,
-                                             "title":  "plan-task.md Step 9 appends Proof Units to Obsidian",
-                                             "expectedBehavior":  "Step 9 section 5 shows appending Proof Units section to task tracker.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "grep -c \u0027Append the Proof Units section\u0027 ~/.claude/commands/plan-task.md",
-                                             "expectedInitialFailure":  "Pattern not found",
-                                             "expectedPassingEvidence":  "Count \u003e= 1",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  5,
-                                             "title":  "docs/proof-unit-verification.md demonstrates all proof types",
-                                             "expectedBehavior":  "Verification document exists with example task #18 showing 5 proof units and all types.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "File exists at C:\\Users\\scott\\Code\\Polaris\\docs\\proof-unit-verification.md",
-                                             "expectedInitialFailure":  "File missing",
-                                             "expectedPassingEvidence":  "File exists with Task #18 example",
-                                             "waiverGuidance":  "Manual: verify file exists"
-                                         }
-                                     ],
-                      "branch":  null,
-                      "pr_url":  null,
-                      "description":  "Update /plan-task so every task plan breaks implementation into proof units before any build session touches code. This is the planning side of the TDD/proof model: /plan-task does not execute TDD, but it must define the expected proof for each implementation-bearing step.\n\nImplementation notes:\n1. Update ~/.claude/commands/plan-task.md so Step 6 produces implementation steps as proof units, not plain build instructions.\n2. For each unit, require: expected behavior, preferred proof type, exact command/check/manual path when known, expected initial failure, expected passing evidence, and waiver guidance if automated proof is not possible.\n3. Expand the existing reachability/testability check so it becomes the task-tree entry gate: persona, entry path, required state, environment, dependencies, and first proof unit all confirmed before status flips to ready.\n4. Save the proof-unit plan in docs/backlog.json and log it to the Obsidian task tracker so /start-build and /finish-build can verify against the same trail.\n5. Verification: plan a dummy backlog task and confirm the saved plan contains proof units with entry/exit evidence expectations, not just implementation bullets."
-                  },
-                  {
-                      "number":  12,
-                      "title":  "Enforce proof gates in /ship-task, /start-build, and /finish-build",
-                      "category":  "feature",
-                      "priority":  37,
-                      "status":  "backlog",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-                                           11
-                                       ],
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null,
-                      "description":  "Enforce the proof model in the implementation-bearing workflow commands. /ship-task should orchestrate the gates, /start-build should block production code until the first proof unit is ready, and /finish-build should refuse to open or auto-merge a stage PR unless every proof unit has exit evidence or an explicit waiver.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require the current proof unit: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n2. Update ~/.claude/commands/start-build.md Step 8/10 so it loads the proof units from the plan, names the first unit, and blocks code-writing until entry evidence exists.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add Step 2a with a pre-finish self-review checklist: spec compliance, out-of-scope diff scan, registry freshness, test evidence for each proof unit, known risks/waivers, files changed summary.\n4. Failure behavior: missing proof, stale registries, unexplained out-of-scope changes, or missing waiver keeps the task in in-progress and stops before gh pr create / gh pr merge.\n5. Preserve pragmatic escape hatches: if no automated test is possible, require a written waiver plus a manual verification path rather than pretending automation exists.\n6. Verification: create a controlled task branch with missing proof evidence and confirm /finish-build refuses before PR creation; then add evidence/waiver and confirm the workflow can proceed."
-                  },
-                  {
-                      "number":  13,
-                      "title":  "Add proof-trail checks to audit, review, and promotion skills",
-                      "category":  "feature",
-                      "priority":  38,
-                      "status":  "in-progress",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-                                           12
-                                       ],
-                      "plan":  "## Implementation Complete\n\n### Files Updated (in ~/.claude/)\n\n1. **commands/review-pr.md**: Added Step 4a (Verify proof trail integrity) checking proof units, build evidence, registry audit. Review output includes Proof Trail Integrity section.\n\n2. **commands/codex-review.md**: Added Step 5a (proof trail verification) with Codex prompt update to include Proof Trail Integrity. Comparison section includes proof trail alignment.\n\n3. **commands/promote-stage.md**: Added Step 1b-proof (check proof-trail status) and updated Step 1c decision logic. Hard-fail for high-risk tasks missing proof; soft-flag for standard tasks. PR body includes proof-trail status table and override block.\n\n4. **commands/promote-to-prod.md**: Same as promote-stage but stricter (hard-fail on missing reviews/proof for high-risk). Override logic captures risk details for human accountability.\n\n5. **skills/cross-boundary-audit/SKILL.md**: Updated registry template to include Audit Trail section (timestamp, boundaries checked, entry counts, new identifiers, audit status). PHASE 4 ensures audit trail recorded in each registry.\n\n### Key Features\n\n- Proof units loaded from task plan (docs/backlog.json)\n- Build evidence checked in PR diff (failing-before/passing-after or waivers)\n- Registry audit verified via docs/registries/*.md commits and content\n- Risk categorization: high-risk (security/auth/payments/migration) hard-fail on missing proof; standard tasks soft-flag\n- Override mechanism with PR body stamps for human accountability\n- All checks output structured checklists and gap summaries\n\n### Next Steps\n\nVerify by running a task with incomplete proof trail and confirming review/promotion surfaces exact missing evidence.",
-                      "branch":  null,
-                      "pr_url":  null,
-                      "description":  "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
-                  },
-                  {
-                      "number":  14,
-                      "title":  "Move merge-to-stage responsibility from /finish-build to /promote-stage",
-                      "category":  "feature",
-                      "priority":  39,
-                      "status":  "backlog",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-                                           13
-                                       ],
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null,
-                      "description":  "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -\u003e main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
-                  },
-                  {
-                      "number":  15,
-                      "title":  "Remove build in main requirement from Claude.md",
-                      "description":  "The title says it all.",
-                      "category":  "Change",
-                      "priority":  60,
-                      "status":  "in-progress",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ],
-                      "branch":  "task/15-remove-build-in-main",
-                      "plan":  "## Summary\n\nRemove the phrase \u0027requires `npm run dist` rebuild\u0027 from rule 2 of CLAUDE.md (Polaris-specific rules). This requirement currently states that editing source code in the Polaris directory obligates a rebuild before commits, but the workflow should not mandate this — rebuilds are needed for the installed app distribution but not for all source edits (e.g., editing documentation, comments, or tests does not require a rebuild).\n\n## Targeted change\n\nRule 2, first sentence, currently reads:\n\n\u003e **Three zones:** Source (`C:\\Users\\scott\\Code\\Polaris`) — edit only here, requires `npm run dist` rebuild. Installed app...\n\nShould become:\n\n\u003e **Three zones:** Source (`C:\\Users\\scott\\Code\\Polaris`) — edit only here. Installed app...\n\nThe phrase \u0027requires `npm run dist` rebuild\u0027 is removed. The sentence continues naturally to distinguish the three zones. Context around this requirement remains intact (the distinction between source editing, installed app, and runtime data is unchanged).\n\n## Testability\n\nNo prerequisites. This is a documentation-only change to an existing project rule. Proof is simple: verify the phrase is removed and the rule still reads coherently.\n\n## First Proof Unit\n\n**Expected behavior:** The phrase \u0027requires `npm run dist` rebuild\u0027 is removed from rule 2 of CLAUDE.md, and the rule still reads naturally.\n\n**Proof type:** manual-script (file inspection via git diff and direct read).\n\n**How to verify:** After the edit, run `git diff` to confirm the line change, then read rule 2 to confirm the sentence structure is intact.",
-                      "proofUnits":  [
-                                         {
-                                             "number":  1,
-                                             "title":  "Locate the requirement phrase in rule 2",
-                                             "expectedBehavior":  "The phrase \u0027requires `npm run dist` rebuild\u0027 is found in rule 2 of CLAUDE.md",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "grep -n \u0027requires.*npm run dist\u0027 C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md",
-                                             "expectedInitialFailure":  "Grep locates the phrase in rule 2, line ~7",
-                                             "expectedPassingEvidence":  "Grep output shows the exact line and context",
-                                             "waiverGuidance":  "N/A — direct text match, always automatable"
-                                         },
-                                         {
-                                             "number":  2,
-                                             "title":  "Remove the phrase from rule 2",
-                                             "expectedBehavior":  "The phrase \u0027requires `npm run dist` rebuild\u0027 is removed; rule 2 reads: \u0027Source (...) — edit only here. Installed app...\u0027",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Open C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md, read rule 2 (lines 6–8), verify sentence structure is intact without the phrase",
-                                             "expectedInitialFailure":  "Phrase is present before edit",
-                                             "expectedPassingEvidence":  "Rule 2 reads naturally without the phrase; no dangling punctuation or awkward grammar",
-                                             "waiverGuidance":  "N/A — direct file inspection"
-                                         },
-                                         {
-                                             "number":  3,
-                                             "title":  "Verify file integrity and git diff",
-                                             "expectedBehavior":  "CLAUDE.md is valid markdown with no syntax errors; git diff shows only the one-line removal",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "git diff C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md — confirm diff shows removal of \u0027requires `npm run dist` rebuild\u0027 and nothing else",
-                                             "expectedInitialFailure":  "File shows the phrase before edit",
-                                             "expectedPassingEvidence":  "git diff shows exactly one line removed (the phrase); no other changes to the file",
-                                             "waiverGuidance":  "N/A — diff inspection is deterministic"
-                                         }
-                                     ]
-                  },
-                  {
-                      "number":  16,
-                      "title":  "Fix the refresh button in the backlog.",
-                      "description":  "The title says it all.",
-                      "category":  "fix",
-                      "priority":  50,
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from \u0027?? Refresh\u0027 to \u0027? Loading�\u0027\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html � Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** � this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loading�\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
-                      "proofUnits":  [
-                                         {
-                                             "expectedPassingEvidence":  "diff shows +function _onBacklogDataReceived() and two new calls in case \u0027backlogs-data\u0027 and case \u0027backlog-error\u0027",
-                                             "exactCommand":  "git diff resources/mockup.html | grep -A5 -B5 \u0027_onBacklogDataReceived\\|backlogs-data\u0027",
-                                             "title":  "Code change - add loading feedback to refresh button",
-                                             "proofType":  "registry-diff",
-                                             "expectedInitialFailure":  "diff shows no _onBacklogDataReceived function and no calls to it in message handlers",
-                                             "number":  1,
-                                             "expectedBehavior":  "mockup.html contains a _onBacklogDataReceived() function that resets the refresh button\u0027s disabled state and text, and the backlogs-data and backlog-error message handlers call this function.",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "expectedPassingEvidence":  "Button visibly disables and shows \u0027Loading\u0027, then returns to normal after response arrives. Network tab shows list-backlogs message sent and backlogs-data response received.",
-                                             "exactCommand":  "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent=\u0027? Loading�\u0027, wait for server response, verify button.disabled=false and textContent=\u0027?? Refresh\u0027",
-                                             "title":  "UI behavior - refresh button shows loading state",
-                                             "proofType":  "ui-check",
-                                             "expectedInitialFailure":  "Clicking refresh shows no visual feedback; button remains enabled and text unchanged",
-                                             "number":  2,
-                                             "expectedBehavior":  "Clicking the ?? Refresh button disables it and changes its text to \u0027? Loading�\u0027. After the server responds, the button re-enables and text returns to \u0027?? Refresh\u0027.",
-                                             "waiverGuidance":  "If Polaris app won\u0027t start due to Electron error, manual code review: confirm function exists, confirm message handlers call it, confirm button query selector is correct"
-                                         },
-                                         {
-                                             "expectedPassingEvidence":  "Button returns to \u0027Refresh\u0027 and enabled state after any response (success or error). No console errors.",
-                                             "exactCommand":  "Steps: (1) Open Polaris and Backlog panel. (2) Simulate an error by checking browser Network tab or server logs to confirm an error response. (3) Observe that the button returns to normal state. OR (4) Manually inspect code: confirm backlog-error case in message handler calls _onBacklogDataReceived().",
-                                             "title":  "Error handling - button resets on error response",
-                                             "proofType":  "manual-script",
-                                             "expectedInitialFailure":  "Error response does not reset button state; button stuck showing \u0027Loading\u0027",
-                                             "number":  3,
-                                             "expectedBehavior":  "If the server responds with backlog-error, the button still resets to enabled and shows \u0027?? Refresh\u0027 (not stuck in loading state).",
-                                             "waiverGuidance":  "If app unavailable: code review confirms backlog-error case calls _onBacklogDataReceived() at line ~4647, same as backlogs-data case"
-                                         },
-                                         {
-                                             "expectedPassingEvidence":  "Complete refresh cycle works; button feedback is consistent on every refresh. No errors in console.",
-                                             "exactCommand":  "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show \u0027Loading\u0027. (5) Wait for list to re-render. (6) Confirm button returns to \u0027Refresh\u0027 and list still shows all tasks. (7) Try clicking Refresh again � button feedback should repeat.",
-                                             "title":  "End-to-end smoke test - full refresh cycle",
-                                             "proofType":  "manual-script",
-                                             "expectedInitialFailure":  "Button has no feedback or gets stuck showing \u0027Loading\u0027",
-                                             "number":  4,
-                                             "expectedBehavior":  "User can click Refresh in the Backlog panel, see loading feedback, and watch the backlog data re-render after the response arrives.",
-                                             "waiverGuidance":  "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
-                                         }
-                                     ],
-                      "status":  "ready"
-                  },
-                  {
-                      "number":  17,
-                      "title":  "Add the category type to the dashboard in the backlog.",
-                      "description":  "The title says it all.",
-                      "category":  "Update",
-                      "priority":  50,
-                      "status":  "backlog",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  }
-              ]
+  "tasks": [
+    {
+      "number": 1,
+      "title": "Skills Nav Pane — hierarchical tree with Global / Project sections + 7 categories",
+      "category": "feature",
+      "priority": 1,
+      "status": "in-progress",
+      "dependencies": [],
+      "description": "Rework the Skills panel landed in v1.0.429 from a flat alphabetical list into a hierarchical tree. Top-level groups: Global (always shown) and {Project Name} (only when the active project has its own skills/commands/agents). Under each group, 7 collapsible category sections in this order: Project workflow, Project initiation, Code quality, Research, Codex integration, Tooling / config, Utilities. Server-side: expand discoverSkills() to scan all sources — user-global skills (~/.claude/skills/*/SKILL.md, currently 12), user-global commands (~/.claude/commands/*.md, currently 11), codex plugin (skills + commands + agents under ~/.claude/plugins/cache/openai-codex/codex/<ver>/, currently 11), and project-local .claude/skills/ + .claude/commands/ when a project is active. Each discovered item gets a hardcoded category mapping based on its name (kept in a const map at the top of server.js so additions are one-line edits). Discovery is memoized by directory mtime. Client-side: replace the existing flat <table> render with a tree of <details> elements (one per category, collapsed by default except first-render expansion of Project workflow). Each leaf row carries the same click-to-invoke behavior as today — sends /<name> to resumeTarget. Empty categories are hidden. Expected on-disk total: 34 (12 + 11 + 3 + 7 + 1). Bundled-but-not-on-disk skills like anthropic-skills:* and the built-in /init, /review, /security-review, /simplify, /update-config, /keybindings-help, /fewer-permission-prompts, /loop, /schedule, /claude-api should be added as a hardcoded supplement list once their source location is confirmed (bringing the total closer to Scott's stated 41 custom-created skills). Categorization decisions: evaluate-repo and find-skill → new 'Research' category (pre-decision discovery, not code QA); flow-audit → Project workflow (its output is backlog tasks); cross-boundary-audit → Code quality (operates on existing code). Built this session alongside Polaris's new docs/backlog.json scaffolding flow.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 2,
+      "title": "Build project status + task/issue tracking pipeline (prereq for 'always commit to main' rule)",
+      "category": "feature",
+      "priority": 2,
+      "status": "backlog",
+      "dependencies": [],
+      "description": "Build first-class pipelines into Polaris for (a) project status tracking and (b) task/issue tracking, so backlog management becomes the canonical way to capture and update work across projects. Once those pipelines exist, modify the Polaris CLAUDE.md spec to enforce 'All updates to backlog.json are automatically committed to main' — a rule Scott articulated 2026-05-18 but deferred because the pipeline isn't built yet. The v1 Backlog navigation pane shipped in v1.0.433 (global backlog task #12) auto-commits on the CURRENT branch, NOT main, as the safer interim behavior. The full 'always to main' enforcement requires a stash/checkout/push/restore dance (or git-worktree equivalent) that risks losing WIP if anything fails mid-flight; safer to ship after the pipeline + UX for surfacing commit failures clearly exists. Sequence: ship status/task pipeline first → modify CLAUDE.md rule → upgrade _autoCommitBacklog() in server.js to do the full 'always main' dance.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 3,
+      "title": "Codex apply_patch failures when server.js context drifts",
+      "category": "fix",
+      "priority": 1,
+      "status": "backlog",
+      "dependencies": [],
+      "description": "Capture and fix the 2026-05-18 Codex apply_patch failure mode where patch verification failed because expected anchors in server.js were no longer present. Observed failures were around the spawnMaxChat insertion point and the postJsonViaHttps function signature, which means Codex generated patches against stale or mismatched file context. The fix should make patching/resume flows resilient when server.js changes under a session, likely by refreshing context, falling back to targeted search, or regenerating patches around moved functions before giving up.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 4,
+      "title": "Status button not updating from text entered after session close",
+      "category": "fix",
+      "priority": 1,
+      "status": "on-hold",
+      "dependencies": [],
+      "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 5,
+      "title": "Video analysis.",
+      "description": "Have the ability for sessions to analyze video content?",
+      "category": "feature",
+      "priority": 50,
+      "status": "backlog",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 6,
+      "title": "Project initiation button",
+      "description": "I want to add a project initiation button next to the projects inside the project panel, which automatically kicks off the skill /project-initiation.",
+      "category": "feature",
+      "priority": 70,
+      "status": "in-progress",
+      "created_at": "2026-05-18",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": "## Testability prerequisites\n\nNo prerequisite task is required. The Projects panel is already reachable from the top navigation, and configured projects already provide the `name` and `workDir` needed to launch a project-scoped session. Manual smoke testing is required after rebuild/install because the interaction is in the Electron UI.\n\n## Implementation plan\n\n1. Update `resources/mockup.html` in `renderProjectsPanel()` to add a compact project initiation button in each project row's action cluster, next to the existing Productivity, build-script, and delete controls.\n\n2. Add a renderer helper such as `launchProjectInitiation(idx)` that calls `captureProjectInputs()` so unsaved row edits are respected, validates that the selected project has a name, sends a `launch-chat` WebSocket message with `prompt: '/project-initiation'`, `displayPrompt: '/project-initiation'`, the row's `workDir`, the row's `projectName`, and the current selected tier, then closes the Projects panel after launch.\n\n3. Keep the change client-side unless the existing launch handler needs a small naming hint. The existing `launch-chat` path in `server.js` already accepts `workDir`, `projectName`, and `tier`, validates `workDir`, creates a Max chat session, and broadcasts the project metadata.\n\n4. Verification: run a lightweight syntax check over `resources/mockup.html` JavaScript if practical. Do not run the installer or `build-install.ps1` without explicit approval. Manual smoke test: open Projects, click the new initiation button for Polaris or another configured project, and confirm a new Max session starts in that project with `/project-initiation`.\n\n## Boundary changes\n\nNo Firestore collections, custom claims, backend API endpoints, or registry files are introduced. The only boundary touched is the existing client-to-server WebSocket message type `launch-chat`, reused with existing fields.\n\n## Dependencies\n\nNone.",
+      "branch": "task/6-project-initiation-button"
+    },
+    {
+      "number": 7,
+      "title": "Obsidian write issues.",
+      "description": "Sometimes when I write to Obsidian using the close button, it just shows block block",
+      "category": "fix",
+      "priority": 75,
+      "status": "production",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/1",
+      "branch": "task/7-obsidian-write-issues",
+      "created_at": "2026-05-18",
+      "completed_at": "2026-05-19",
+      "dependencies": [],
+      "plan": "## Root cause\n\nWhen the user clicks Close → Push to Obsidian and Git, `camRowPush` sends the session content to `obsidian-analyze`, DeepSeek extracts structured knowledge, and the result is written to Obsidian via `appendBlock` in the `obsidian-commit-analysis` handler (server.js ~line 9458). `appendBlock` uses a template literal: `\\n\\n## Session Update (${today})\\n\\n${blockContent}\\n`. If DeepSeek returns a nested object or array for `architecture` or `buildPlan` instead of a plain string, JavaScript coerces it to `[object Object]` in the template literal. This is confirmed by `[object Object]` entries in `3-Build-Plan.md` and `2-Architecture.md`. Secondary issue: `camRowPush` builds the content string with `(s.lines || []).map(l => l.text).join('\\n')` — if any `l.text` is not a string, it also coerces to `[object Object]` in the transcript sent to DeepSeek.\n\n## Testability prerequisites\n\nNone — the Close button and Obsidian push flow work today. The test is: use Close → Push to Obsidian → Accept analysis → verify no `[object Object]` in the written Obsidian files.\n\n## Steps\n\n1. **server.js — sanitize `analyzeSessionForKnowledgePreview` response (~line 1590):** After `JSON.parse(jsonMatch[0])`, add a `sanitizeField` helper that returns `null` if the value is null/undefined, the value as-is if it's a string, or `JSON.stringify(value)` otherwise. Apply it to all six extracted fields (`architecture`, `buildPlan`, `backlog`, `decision`, `pattern`, `lesson`).\n\n2. **server.js — guard `appendBlock` defensively (~line 9455):** Before writing, convert blockContent to string: `const safeContent = typeof blockContent === 'string' ? blockContent : JSON.stringify(blockContent);`. Use `safeContent` in the `appendFileSync` call.\n\n3. **mockup.html — fix `camRowPush` content builder (~line 12915):** Change `(s.lines || []).map(l => l.text).join('\\n')` to `(s.lines || []).map(l => String(l.text ?? '')).join('\\n')` to prevent non-string text coercing to `[object Object]` in the transcript.\n\n4. **Bump `package.json`** patch version at delivery time.\n\n5. **Update `4-Changelog.md`** in Obsidian with the fix details.\n\n## Verification\n\nManual smoke test: launch a session, run a quick task, click Close, click Push to Obsidian and Git on that session, accept the analysis, then open the relevant Obsidian file (2-Architecture.md or 3-Build-Plan.md) and confirm the new Session Update block contains readable text — not `[object Object]`."
+    },
+    {
+      "number": 8,
+      "title": "Backlog sort order",
+      "description": "Backlog items should automatically be sorted by priority.",
+      "category": "feature",
+      "priority": 75,
+      "status": "production",
+      "created_at": "2026-05-18",
+      "completed_at": "2026-05-19",
+      "dependencies": []
+    },
+    {
+      "number": 9,
+      "title": "Fix the ability to edit backlog items",
+      "description": "I edit a backlog item. It doesn't allow me to save, and it hangs the whole program, and I can no longer use anything.",
+      "category": "fix",
+      "priority": 100,
+      "status": "production",
+      "created_at": "2026-05-18",
+      "completed_at": "2026-05-19",
+      "dependencies": []
+    },
+    {
+      "number": 10,
+      "title": "Define task-tree TDD/proof gate model",
+      "category": "feature",
+      "priority": 35,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "description": "Define the shared task-tree proof model that all Polaris workflow skills will use before any implementation-bearing step runs. The goal is broader than adding TDD to /start-build and /ship-task: every workflow step must require appropriate proof, while only implementation steps require the full red/green/refactor TDD loop.\n\nCore model:\n- Workflow entry gate before the task tree starts: task has a plan, dependencies are checked, testability path is known, and the first proof unit is identified.\n- Proof unit shape: expected behavior -> proof before implementation -> observe failure or record explicit waiver -> implement smallest change -> observe passing proof -> proceed.\n- Proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, review evidence, or explicit waiver that says no automated proof is possible and why.\n- State behavior: if proof is missing or fails, stop the workflow and keep/revert the task to the previous valid lifecycle state instead of proceeding on inherited authority.\n- Distinguish step roles: planning skills define proof; build skills execute proof; audit/review/promotion skills verify the proof trail.\n\nImplementation notes:\n1. Write the canonical definitions directly into the relevant command docs, starting with /plan-task, /start-build, /ship-task, /finish-build, /cross-boundary-audit, /review-pr, /codex-review, and /promote-stage.\n2. Use consistent vocabulary: proof unit, entry evidence, exit evidence, waiver, proof trail, previous valid lifecycle state.\n3. Decide where the proof trail is persisted: task plan in docs/backlog.json, Obsidian task tracker, PR body, or a combination. Prefer keeping summary evidence in backlog/Obsidian and detailed evidence in PR/session output.\n4. Verification: run a dry task-tree walkthrough and confirm every step can say what proof it expects, where proof is recorded, and what happens when proof is missing."
+    },
+    {
+      "number": 11,
+      "title": "Add proof planning to /plan-task",
+      "category": "feature",
+      "priority": 36,
+      "status": "complete",
+      "created_at": "2026-05-19",
+      "completed_at": "2026-05-18",
+      "dependencies": [
+        10
+      ],
+      "branch": null,
+      "plan": "## Implementation Summary\n\nTask #11 updates ~/.claude/commands/plan-task.md to include proof-unit planning at every step before any build session touches code.\n\n### Changes Made\n\n**Step 3b** — Expanded to include \"First Proof Unit\" identification (section 5) as entry gate confirmation.\n\n**Step 6** — Refactored to break implementations into proof units with 6 required fields: expected behavior, preferred proof type, exact command/check/manual path, expected initial failure (RED), expected passing evidence (GREEN), and waiver guidance.\n\n**Step 8** — Updated to save structured `proofUnits` array to docs/backlog.json alongside narrative plan.\n\n**Step 9** — Added Proof Units section appending unit summaries to Obsidian task tracker.\n\n**Verification** — Created docs/proof-unit-verification.md with example task #18 showing 5 proof units and all proof types.\n\n## First Proof Unit\n\nWhen /start-build runs on a task with proof units defined, the first proof unit should be loadable from docs/backlog.json with the `proofUnits` array present and non-empty.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "plan-task.md Step 3b includes first proof unit identification",
+          "expectedBehavior": "Step 3b section 5 defines first proof unit shape and entry gate confirmation.",
+          "proofType": "registry-diff",
+          "exactCommand": "grep -c 'first proof unit' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Pattern not found",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "plan-task.md Step 6 produces proof units with required fields",
+          "expectedBehavior": "Step 6 defines proof unit structure with all required fields.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'expectedBehavior\\|expectedInitialFailure\\|expectedPassingEvidence' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Fields not found",
+          "expectedPassingEvidence": "Count >= 3",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "plan-task.md Step 8 documents proofUnits JSON structure",
+          "expectedBehavior": "Step 8 section 2 shows proofUnits array format with 8 required fields.",
+          "proofType": "ui-check",
+          "exactCommand": "Read ~/.claude/commands/plan-task.md and verify Step 8 section 2 exists with JSON example",
+          "expectedInitialFailure": "Section not found or example incomplete",
+          "expectedPassingEvidence": "Section present with complete JSON structure",
+          "waiverGuidance": "Manual check: read Step 8"
+        },
+        {
+          "number": 4,
+          "title": "plan-task.md Step 9 appends Proof Units to Obsidian",
+          "expectedBehavior": "Step 9 section 5 shows appending Proof Units section to task tracker.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'Append the Proof Units section' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Pattern not found",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 5,
+          "title": "docs/proof-unit-verification.md demonstrates all proof types",
+          "expectedBehavior": "Verification document exists with example task #18 showing 5 proof units and all types.",
+          "proofType": "ui-check",
+          "exactCommand": "File exists at C:\\Users\\scott\\Code\\Polaris\\docs\\proof-unit-verification.md",
+          "expectedInitialFailure": "File missing",
+          "expectedPassingEvidence": "File exists with Task #18 example",
+          "waiverGuidance": "Manual: verify file exists"
+        }
+      ],
+      "pr_url": null,
+      "description": "Update /plan-task so every task plan breaks implementation into proof units before any build session touches code. This is the planning side of the TDD/proof model: /plan-task does not execute TDD, but it must define the expected proof for each implementation-bearing step.\n\nImplementation notes:\n1. Update ~/.claude/commands/plan-task.md so Step 6 produces implementation steps as proof units, not plain build instructions.\n2. For each unit, require: expected behavior, preferred proof type, exact command/check/manual path when known, expected initial failure, expected passing evidence, and waiver guidance if automated proof is not possible.\n3. Expand the existing reachability/testability check so it becomes the task-tree entry gate: persona, entry path, required state, environment, dependencies, and first proof unit all confirmed before status flips to ready.\n4. Save the proof-unit plan in docs/backlog.json and log it to the Obsidian task tracker so /start-build and /finish-build can verify against the same trail.\n5. Verification: plan a dummy backlog task and confirm the saved plan contains proof units with entry/exit evidence expectations, not just implementation bullets."
+    },
+    {
+      "number": 12,
+      "title": "Enforce proof gates in /ship-task, /start-build, and /finish-build",
+      "category": "feature",
+      "priority": 37,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [
+        11
+      ],
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "description": "Enforce the proof model in the implementation-bearing workflow commands. /ship-task should orchestrate the gates, /start-build should block production code until the first proof unit is ready, and /finish-build should refuse to open or auto-merge a stage PR unless every proof unit has exit evidence or an explicit waiver.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require the current proof unit: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n2. Update ~/.claude/commands/start-build.md Step 8/10 so it loads the proof units from the plan, names the first unit, and blocks code-writing until entry evidence exists.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add Step 2a with a pre-finish self-review checklist: spec compliance, out-of-scope diff scan, registry freshness, test evidence for each proof unit, known risks/waivers, files changed summary.\n4. Failure behavior: missing proof, stale registries, unexplained out-of-scope changes, or missing waiver keeps the task in in-progress and stops before gh pr create / gh pr merge.\n5. Preserve pragmatic escape hatches: if no automated test is possible, require a written waiver plus a manual verification path rather than pretending automation exists.\n6. Verification: create a controlled task branch with missing proof evidence and confirm /finish-build refuses before PR creation; then add evidence/waiver and confirm the workflow can proceed."
+    },
+    {
+      "number": 13,
+      "title": "Add proof-trail checks to audit, review, and promotion skills",
+      "category": "feature",
+      "priority": 38,
+      "status": "in-progress",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [
+        12
+      ],
+      "plan": "## Implementation Complete\n\n### Files Updated (in ~/.claude/)\n\n1. **commands/review-pr.md**: Added Step 4a (Verify proof trail integrity) checking proof units, build evidence, registry audit. Review output includes Proof Trail Integrity section.\n\n2. **commands/codex-review.md**: Added Step 5a (proof trail verification) with Codex prompt update to include Proof Trail Integrity. Comparison section includes proof trail alignment.\n\n3. **commands/promote-stage.md**: Added Step 1b-proof (check proof-trail status) and updated Step 1c decision logic. Hard-fail for high-risk tasks missing proof; soft-flag for standard tasks. PR body includes proof-trail status table and override block.\n\n4. **commands/promote-to-prod.md**: Same as promote-stage but stricter (hard-fail on missing reviews/proof for high-risk). Override logic captures risk details for human accountability.\n\n5. **skills/cross-boundary-audit/SKILL.md**: Updated registry template to include Audit Trail section (timestamp, boundaries checked, entry counts, new identifiers, audit status). PHASE 4 ensures audit trail recorded in each registry.\n\n### Key Features\n\n- Proof units loaded from task plan (docs/backlog.json)\n- Build evidence checked in PR diff (failing-before/passing-after or waivers)\n- Registry audit verified via docs/registries/*.md commits and content\n- Risk categorization: high-risk (security/auth/payments/migration) hard-fail on missing proof; standard tasks soft-flag\n- Override mechanism with PR body stamps for human accountability\n- All checks output structured checklists and gap summaries\n\n### Next Steps\n\nVerify by running a task with incomplete proof trail and confirming review/promotion surfaces exact missing evidence.",
+      "branch": null,
+      "pr_url": null,
+      "description": "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
+    },
+    {
+      "number": 14,
+      "title": "Move merge-to-stage responsibility from /finish-build to /promote-stage",
+      "category": "feature",
+      "priority": 39,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [
+        13
+      ],
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "description": "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -> main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
+    },
+    {
+      "number": 15,
+      "title": "Remove build in main requirement from Claude.md",
+      "description": "The title says it all.",
+      "category": "Change",
+      "priority": 60,
+      "status": "in-progress",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [],
+      "branch": "task/15-remove-build-in-main",
+      "plan": "## Summary\n\nRemove the phrase 'requires `npm run dist` rebuild' from rule 2 of CLAUDE.md (Polaris-specific rules). This requirement currently states that editing source code in the Polaris directory obligates a rebuild before commits, but the workflow should not mandate this — rebuilds are needed for the installed app distribution but not for all source edits (e.g., editing documentation, comments, or tests does not require a rebuild).\n\n## Targeted change\n\nRule 2, first sentence, currently reads:\n\n> **Three zones:** Source (`C:\\Users\\scott\\Code\\Polaris`) — edit only here, requires `npm run dist` rebuild. Installed app...\n\nShould become:\n\n> **Three zones:** Source (`C:\\Users\\scott\\Code\\Polaris`) — edit only here. Installed app...\n\nThe phrase 'requires `npm run dist` rebuild' is removed. The sentence continues naturally to distinguish the three zones. Context around this requirement remains intact (the distinction between source editing, installed app, and runtime data is unchanged).\n\n## Testability\n\nNo prerequisites. This is a documentation-only change to an existing project rule. Proof is simple: verify the phrase is removed and the rule still reads coherently.\n\n## First Proof Unit\n\n**Expected behavior:** The phrase 'requires `npm run dist` rebuild' is removed from rule 2 of CLAUDE.md, and the rule still reads naturally.\n\n**Proof type:** manual-script (file inspection via git diff and direct read).\n\n**How to verify:** After the edit, run `git diff` to confirm the line change, then read rule 2 to confirm the sentence structure is intact.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Locate the requirement phrase in rule 2",
+          "expectedBehavior": "The phrase 'requires `npm run dist` rebuild' is found in rule 2 of CLAUDE.md",
+          "proofType": "manual-script",
+          "exactCommand": "grep -n 'requires.*npm run dist' C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md",
+          "expectedInitialFailure": "Grep locates the phrase in rule 2, line ~7",
+          "expectedPassingEvidence": "Grep output shows the exact line and context",
+          "waiverGuidance": "N/A — direct text match, always automatable"
+        },
+        {
+          "number": 2,
+          "title": "Remove the phrase from rule 2",
+          "expectedBehavior": "The phrase 'requires `npm run dist` rebuild' is removed; rule 2 reads: 'Source (...) — edit only here. Installed app...'",
+          "proofType": "ui-check",
+          "exactCommand": "Open C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md, read rule 2 (lines 6–8), verify sentence structure is intact without the phrase",
+          "expectedInitialFailure": "Phrase is present before edit",
+          "expectedPassingEvidence": "Rule 2 reads naturally without the phrase; no dangling punctuation or awkward grammar",
+          "waiverGuidance": "N/A — direct file inspection"
+        },
+        {
+          "number": 3,
+          "title": "Verify file integrity and git diff",
+          "expectedBehavior": "CLAUDE.md is valid markdown with no syntax errors; git diff shows only the one-line removal",
+          "proofType": "manual-script",
+          "exactCommand": "git diff C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md — confirm diff shows removal of 'requires `npm run dist` rebuild' and nothing else",
+          "expectedInitialFailure": "File shows the phrase before edit",
+          "expectedPassingEvidence": "git diff shows exactly one line removed (the phrase); no other changes to the file",
+          "waiverGuidance": "N/A — diff inspection is deterministic"
+        }
+      ]
+    },
+    {
+      "number": 16,
+      "title": "Fix the refresh button in the backlog.",
+      "description": "The title says it all.",
+      "category": "fix",
+      "priority": 50,
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from '?? Refresh' to '? Loading�'\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html � Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** � this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loading�\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
+      "proofUnits": [
+        {
+          "expectedPassingEvidence": "diff shows +function _onBacklogDataReceived() and two new calls in case 'backlogs-data' and case 'backlog-error'",
+          "exactCommand": "git diff resources/mockup.html | grep -A5 -B5 '_onBacklogDataReceived\\|backlogs-data'",
+          "title": "Code change - add loading feedback to refresh button",
+          "proofType": "registry-diff",
+          "expectedInitialFailure": "diff shows no _onBacklogDataReceived function and no calls to it in message handlers",
+          "number": 1,
+          "expectedBehavior": "mockup.html contains a _onBacklogDataReceived() function that resets the refresh button's disabled state and text, and the backlogs-data and backlog-error message handlers call this function.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "expectedPassingEvidence": "Button visibly disables and shows 'Loading', then returns to normal after response arrives. Network tab shows list-backlogs message sent and backlogs-data response received.",
+          "exactCommand": "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent='? Loading�', wait for server response, verify button.disabled=false and textContent='?? Refresh'",
+          "title": "UI behavior - refresh button shows loading state",
+          "proofType": "ui-check",
+          "expectedInitialFailure": "Clicking refresh shows no visual feedback; button remains enabled and text unchanged",
+          "number": 2,
+          "expectedBehavior": "Clicking the ?? Refresh button disables it and changes its text to '? Loading�'. After the server responds, the button re-enables and text returns to '?? Refresh'.",
+          "waiverGuidance": "If Polaris app won't start due to Electron error, manual code review: confirm function exists, confirm message handlers call it, confirm button query selector is correct"
+        },
+        {
+          "expectedPassingEvidence": "Button returns to 'Refresh' and enabled state after any response (success or error). No console errors.",
+          "exactCommand": "Steps: (1) Open Polaris and Backlog panel. (2) Simulate an error by checking browser Network tab or server logs to confirm an error response. (3) Observe that the button returns to normal state. OR (4) Manually inspect code: confirm backlog-error case in message handler calls _onBacklogDataReceived().",
+          "title": "Error handling - button resets on error response",
+          "proofType": "manual-script",
+          "expectedInitialFailure": "Error response does not reset button state; button stuck showing 'Loading'",
+          "number": 3,
+          "expectedBehavior": "If the server responds with backlog-error, the button still resets to enabled and shows '?? Refresh' (not stuck in loading state).",
+          "waiverGuidance": "If app unavailable: code review confirms backlog-error case calls _onBacklogDataReceived() at line ~4647, same as backlogs-data case"
+        },
+        {
+          "expectedPassingEvidence": "Complete refresh cycle works; button feedback is consistent on every refresh. No errors in console.",
+          "exactCommand": "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show 'Loading'. (5) Wait for list to re-render. (6) Confirm button returns to 'Refresh' and list still shows all tasks. (7) Try clicking Refresh again � button feedback should repeat.",
+          "title": "End-to-end smoke test - full refresh cycle",
+          "proofType": "manual-script",
+          "expectedInitialFailure": "Button has no feedback or gets stuck showing 'Loading'",
+          "number": 4,
+          "expectedBehavior": "User can click Refresh in the Backlog panel, see loading feedback, and watch the backlog data re-render after the response arrives.",
+          "waiverGuidance": "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
+        }
+      ],
+      "status": "ready"
+    },
+    {
+      "number": 17,
+      "title": "Add the category type to the dashboard in the backlog.",
+      "description": "The title says it all.",
+      "category": "Update",
+      "priority": 50,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 18,
+      "title": "update the reviewer independence rule",
+      "description": "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
+      "category": "update",
+      "priority": 75,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": []
+    }
+  ]
 }
