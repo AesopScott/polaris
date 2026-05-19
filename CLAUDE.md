@@ -31,7 +31,7 @@ Scott's personal AI command center — parallel agent sessions, real API control
 
 ## Architecture
 - **Agent sessions** → Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. Tool schemas executed natively in server.js: Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, WebSearch, AskUserQuestion, TodoWrite, QueryMemory, SetProject, **SetStatus**. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
-- **Chat sessions** → Claude Max plan via Claude CLI (`spawnMaxChat`). Uses Claude Code's native tool set only. **SetStatus is NOT a Claude Code tool — do not attempt to call it in chat sessions.** Polaris auto-detects session card state from your final message: end with "Please test this" or "Try it out" → purple test card; end with "?" → amber waiting card; otherwise → green done.
+- **Chat sessions** → Claude Max plan via Claude CLI (`spawnMaxChat`). Uses Claude Code's native tool set only. Use **SetStatus** when the current session exposes it. Claude CLI chat sessions do not expose SetStatus, so Polaris auto-detects session card state from the final message as a fallback: end with "Please test this" or "Try it out" → purple test card; end with "?" → amber waiting card; otherwise → green done.
 - **Routine sessions** → DeepSeek direct API (`api.deepseek.com`) via `spawnDeepSeekRoutine()`. Single-turn, no tools.
 - Never mix routing. The old Claude CLI path (`spawnClaude`) is retained in server.js but no longer called.
 
