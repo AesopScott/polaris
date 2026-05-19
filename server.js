@@ -1591,7 +1591,7 @@ ${transcript}`;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const result = JSON.parse(jsonMatch[0]);
-    const sanitizeField = v => (v == null) ? null : typeof v === 'string' ? v : JSON.stringify(v);
+    const sanitizeField = v => (v === null || v === undefined) ? null : typeof v === 'string' ? v : JSON.stringify(v);
     return {
       architecture: sanitizeField(result.architecture),
       buildPlan:    sanitizeField(result.buildPlan),
