@@ -1875,6 +1875,15 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
     'Use these whenever the user asks about a panel, button, or UI feature — do not guess at IDs or structure.'
   );
 
+  layers.push(
+    '--- Error Reporting for Generated Code ---\n' +
+    'When writing new functions or features that may encounter errors at runtime, include error-reporting code so failures are visible in the debug panel.\n' +
+    'The utility function pushDebugLog(message, isError=false) is available from lib/debugUtil.js. Import it with: const { pushDebugLog } = require("./lib/debugUtil.js");\n' +
+    'Then call pushDebugLog("error message", true) in catch blocks to report errors.\n' +
+    'For remote server contexts where importing Node.js modules is not possible, use the WebSocket fallback: send an emit-debug-log message with {type: "emit-debug-log", message, isError}.\n' +
+    'This allows Scott to diagnose failures without manual log inspection.'
+  );
+
   return layers.join('\n\n');
 }
 
@@ -2051,6 +2060,14 @@ function buildPolarisContextBlock(config, session) {
     '  - If you ask Scott a question or need input before proceeding, call mcp__polaris__SetStatus with status "waiting".',
     '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
     'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
+  );
+
+  lines.push(
+    '',
+    'Error reporting for newly-written code:',
+    'When writing new functions or features that may encounter errors at runtime, include error-reporting code so failures are visible in the debug panel.',
+    'Use: const { pushDebugLog } = require("./lib/debugUtil.js"); then call pushDebugLog("error message", true) in catch blocks.',
+    'This allows Scott to diagnose failures without manual log inspection.',
   );
 
   lines.push('=== END POLARIS CONTEXT ===');
