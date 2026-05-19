@@ -4974,11 +4974,15 @@
       }
 
       case 'obsidian-analysis-loading':
+        if (msg.depth === 'deep') showObsidianAnalysisLoading();
         break;
 
       case 'obsidian-analysis-result':
-        if (obsidianPendingSession) obsidianPendingSession._analysis = msg.analysis;
-        showObsidianAnalysisModal(msg.analysis, msg.sessionName, msg.content, msg.projectName);
+        if (obsidianPendingSession) {
+          obsidianPendingSession._analysis = msg.analysis;
+          obsidianPendingSession._analysisDepth = msg.depth || 'normal';
+        }
+        showObsidianAnalysisModal(msg.analysis, msg.sessionName, msg.content, msg.projectName, msg.depth);
         if (camCurrentPushSid) {
           const sp = document.getElementById('cam-pushing-' + camCurrentPushSid);
           if (sp) sp.textContent = 'Review pending…';
@@ -13068,7 +13072,7 @@
     camCurrentPushSid = sid;
     pendingStatusProject = s.projectName || null;
     const content = (s.lines || []).map(l => String(l.text ?? '')).join('\n');
-    obsidianPendingSession = { sessionName: s.name, content, projectName: s.projectName || null, fromCam: true, _analysis: null };
+    obsidianPendingSession = { sessionName: s.name, content, projectName: s.projectName || null, fromCam: true, _analysis: null, _analysisDepth: 'normal' };
     camOnObsidianDone = () => { camOnObsidianDone = null; camCurrentPushSid = null; camMarkDone(sid, '✓ Pushed', '#4ade80'); };
     wsSend({ type: 'obsidian-analyze', sessionName: s.name, content, projectName: s.projectName || null });
   }
@@ -13127,11 +13131,41 @@
   }
 
   // ── Obsidian Analysis Preview ─────────────────────────────────────────────────
-  function showObsidianAnalysisModal(analysis, sessionName) {
+  function showObsidianAnalysisLoading() {
     const modal = document.getElementById('obsidian-analysis-modal');
     if (!modal) return;
+    const name = obsidianPendingSession?.sessionName || 'Session';
+    modal.innerHTML = `<div>
+      <div class="oa-header">
+        <span>Knowledge Preview - ${escHtml(name)} <span style="font-size:10px;font-weight:400;color:var(--text-muted,#9ca3af);margin-left:6px;padding:2px 6px;background:rgba(255,255,255,0.06);border-radius:4px;letter-spacing:0.02em;">DeepSeek deep review</span></span>
+      </div>
+      <div class="oa-body">
+        <p class="oa-intro">Rerunning the analysis with a deeper missed-something review...</p>
+      </div>
+      <div class="oa-footer">
+        <button disabled class="oa-btn-reject" style="opacity:0.45;cursor:default;">Reject</button>
+        <button disabled class="oa-btn-accept" style="opacity:0.45;cursor:default;">Thinking...</button>
+      </div>
+    </div>`;
+    modal.style.display = 'flex';
+    if (camCurrentPushSid) {
+      const sp = document.getElementById('cam-pushing-' + camCurrentPushSid);
+      if (sp) sp.textContent = 'Deep review running...';
+    }
+  }
+
+  function showObsidianAnalysisModal(analysis, sessionName, content, projectName, depth) {
+    const modal = document.getElementById('obsidian-analysis-modal');
+    if (!modal) return;
+    if (obsidianPendingSession) {
+      obsidianPendingSession.sessionName = sessionName;
+      obsidianPendingSession.content = content;
+      obsidianPendingSession.projectName = projectName;
+      obsidianPendingSession._analysisDepth = depth || obsidianPendingSession._analysisDepth || 'normal';
+    }
     const hasAny = analysis && (analysis.architecture || analysis.buildPlan || analysis.backlog ||
       analysis.decision || analysis.pattern || analysis.lesson);
+    const isDeep = depth === 'deep';
 
     const renderSection = (title, value, noteNum) => {
       if (!value) return '';
@@ -13149,7 +13183,7 @@
       </div>
       <div class="oa-body">
         ${hasAny ? `
-          <p class="oa-intro">The following content will be written to your Obsidian knowledge base. Review, then accept or reject.</p>
+          <p class="oa-intro">${isDeep ? 'Deep review complete. The following content will be written to your Obsidian knowledge base. Review, then accept or reject.' : 'The following content will be written to your Obsidian knowledge base. Review, then accept or reject.'}</p>
           ${renderSection('Architecture', analysis.architecture)}
           ${renderSection('Build Plan', analysis.buildPlan)}
           ${renderSection('Backlog', analysis.backlog, analysis._nextBacklog)}
@@ -13160,10 +13194,19 @@
       </div>
       <div class="oa-footer">
         <button onclick="obsidianAnalysisReject()" class="oa-btn-reject">Reject</button>
+        <button onclick="obsidianAnalysisThinkDeeper()" class="oa-btn-reject">Think Deeper</button>
         <button onclick="obsidianAnalysisAccept()" class="oa-btn-accept">Accept &amp; Push</button>
       </div>
     </div>`;
     modal.style.display = 'flex';
+  }
+
+  function obsidianAnalysisThinkDeeper() {
+    if (!obsidianPendingSession) return;
+    const { sessionName, content, projectName } = obsidianPendingSession;
+    showObsidianAnalysisLoading();
+    wsSend({ type: 'obsidian-analyze', sessionName, content, projectName, depth: 'deep' });
+    pushDebugLog(`[obsidian] Deep analysis requested: ${sessionName}`);
   }
 
   function obsidianAnalysisAccept() {
@@ -13202,6 +13245,7 @@
 
   window.obsidianAnalysisAccept = obsidianAnalysisAccept;
   window.obsidianAnalysisReject = obsidianAnalysisReject;
+  window.obsidianAnalysisThinkDeeper = obsidianAnalysisThinkDeeper;
 
   window.closeAllSessions = closeAllSessions;
   window.camRowPush       = camRowPush;

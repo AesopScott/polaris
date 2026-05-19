@@ -1505,10 +1505,15 @@ ${transcript}`;
 }
 
 // Analyze a session transcript and return a structured knowledge preview (no writes).
-async function analyzeSessionForKnowledgePreview(content, projectName) {
+async function analyzeSessionForKnowledgePreview(content, projectName, options = {}) {
   const config = readConfig();
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath || !config.deepSeekApiKey) return null;
+  const isDeep = options.depth === 'deep';
+  const contextTailChars = isDeep ? 5000 : 2000;
+  const backlogChars = isDeep ? 4000 : 1500;
+  const lastNoteChars = isDeep ? 1800 : 800;
+  const transcriptChars = isDeep ? 20000 : 8000;
 
   const proj = (config.projects || []).find(p => p.name === projectName);
   const obsDir = proj?.obsidianDir
@@ -1519,7 +1524,7 @@ async function analyzeSessionForKnowledgePreview(content, projectName) {
   const lastNoteIn = dir => {
     try {
       const files = fs.readdirSync(dir).filter(f => /^\d{4}\.md$/.test(f)).sort();
-      return files.length ? safeRead(path.join(dir, files[files.length - 1])).slice(0, 800) : '';
+      return files.length ? safeRead(path.join(dir, files[files.length - 1])).slice(0, lastNoteChars) : '';
     } catch { return ''; }
   };
   const nextNumIn = dir => {
@@ -1530,9 +1535,9 @@ async function analyzeSessionForKnowledgePreview(content, projectName) {
     } catch { return '0001'; }
   };
 
-  const arch      = obsDir ? safeRead(path.join(obsDir, '2-Architecture.md')).slice(-2000) : '';
-  const buildPlan = obsDir ? safeRead(path.join(obsDir, '3-Build-Plan.md')).slice(-2000) : '';
-  const projBacklog = proj?.workDir ? safeRead(path.join(proj.workDir, 'docs', 'backlog.json')).slice(0, 1500) : '';
+  const arch      = obsDir ? safeRead(path.join(obsDir, '2-Architecture.md')).slice(-contextTailChars) : '';
+  const buildPlan = obsDir ? safeRead(path.join(obsDir, '3-Build-Plan.md')).slice(-contextTailChars) : '';
+  const projBacklog = proj?.workDir ? safeRead(path.join(proj.workDir, 'docs', 'backlog.json')).slice(0, backlogChars) : '';
 
   const decisionsDir = path.join(vaultPath, 'Decisions');
   const patternsDir  = path.join(vaultPath, 'Patterns');
@@ -1540,11 +1545,14 @@ async function analyzeSessionForKnowledgePreview(content, projectName) {
   const backlogDir   = path.join(vaultPath, 'Backlog');
 
   const today = new Date().toISOString().slice(0, 10);
-  const transcript = content.length > 8000 ? content.slice(0, 8000) + '\n...[truncated]' : content;
+  const transcript = content.length > transcriptChars ? content.slice(0, transcriptChars) + '\n...[truncated]' : content;
+  const depthInstructions = isDeep
+    ? `\n\nThis is a second-pass deep review. The user believes the first analysis missed something. Treat that as a serious signal: audit for omissions, quiet decisions, deferred work, implicit project knowledge, risks, workflow lessons, and reusable patterns that a quick summary would skip. Compare the transcript against the existing notes and backlog context before deciding each field. Prefer specific, standalone entries over generic summaries. If the first pass was already complete, return null fields rather than inventing content.`
+    : '';
 
   const prompt = `You are a knowledge extractor for a software project called "${projectName || 'Project'}". Today is ${today}.
 
-Analyze this session transcript and determine what knowledge should be updated or created. Return ONLY valid JSON with these exact keys (set a key to null if nothing relevant):
+Analyze this session transcript and determine what knowledge should be updated or created.${depthInstructions} Return ONLY valid JSON with these exact keys (set a key to null if nothing relevant):
 
 {
   "architecture": "new architectural decisions or patterns to append to the Architecture doc, or null",
@@ -1582,7 +1590,12 @@ ${transcript}`;
     const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.deepSeekApiKey}` },
-      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1500 })
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: isDeep ? 0.1 : 0.2,
+        max_tokens: isDeep ? 3000 : 1500
+      })
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data?.error?.message || `HTTP ${resp.status}`);
@@ -9585,11 +9598,11 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'obsidian-analyze') {
-    const { sessionName, content, projectName } = msg;
-    sendTo(ws, { type: 'obsidian-analysis-loading' });
+    const { sessionName, content, projectName, depth } = msg;
+    sendTo(ws, { type: 'obsidian-analysis-loading', depth });
     try {
-      const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName);
-      sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName });
+      const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName, { depth });
+      sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName, depth });
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e?.message || String(e)}` });
     }
