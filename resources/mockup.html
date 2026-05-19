@@ -9026,6 +9026,13 @@
 
   function renderBacklogSection(scopeKey, title, tasks) {
     const colors = {
+      // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
+      'ready':             'background:rgba(96,165,250,0.25);color:#93c5fd;',
+      'in-progress':       'background:rgba(251,146,60,0.25);color:#fdba74;',
+      'in-review':         'background:rgba(74,222,128,0.25);color:#86efac;',
+      'done':              'background:rgba(34,197,94,0.35);color:#bbf7d0;',
+      'complete':          'background:rgba(34,197,94,0.35);color:#bbf7d0;',
+      // Polaris UI lifecycle statuses
       'backlog':           'background:rgba(120,120,120,0.25);color:#aaa;',
       'planned':           'background:rgba(96,165,250,0.25);color:#93c5fd;',
       'build-started':     'background:rgba(96,165,250,0.25);color:#93c5fd;',

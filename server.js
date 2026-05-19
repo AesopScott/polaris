@@ -2622,7 +2622,11 @@ function loadAllBacklogs() {
     try {
       const text = fs.readFileSync(globalPath, 'utf8');
       result.global = JSON.parse(text);
-    } catch {}
+      const statuses = (result.global.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
+      console.log(`[backlog] loaded global: ${statuses || '(no tasks)'}`);
+    } catch (e) {
+      console.warn('[backlog] global backlog not readable:', e.message);
+    }
   }
 
   // Always include every project so the Backlog panel and Add Task scope
@@ -2635,7 +2639,11 @@ function loadAllBacklogs() {
     try {
       const text = fs.readFileSync(backlogPath, 'utf8');
       backlog = JSON.parse(text);
-    } catch {}
+      const statuses = (backlog.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
+      console.log(`[backlog] loaded ${proj.name}: ${statuses || '(no tasks)'}`);
+    } catch (e) {
+      console.warn(`[backlog] ${proj.name} backlog not readable:`, e.message);
+    }
     result.projects.push({ name: proj.name, workDir: proj.workDir, backlog });
   }
 
@@ -2730,14 +2738,22 @@ function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
   );
 }
 
+// Statuses used by workflow skills (plan-task, start-build, finish-build, ship-task)
+// are included alongside the Polaris lifecycle statuses so skill-written values
+// pass validation and render correctly in the UI.
 const VALID_BACKLOG_STATUSES = new Set([
+  // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
+  'ready', 'in-progress', 'in-review', 'done', 'complete',
+  // Polaris UI lifecycle statuses
   'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
   'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
   'blocked', 'on-hold', 'cancelled'
 ]);
 
 function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
+  console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
   if (!VALID_BACKLOG_STATUSES.has(newStatus)) {
+    console.warn(`[backlog] REJECTED status "${newStatus}" — not in VALID_BACKLOG_STATUSES`);
     throw new Error('Invalid status "' + newStatus + '". Valid: ' + [...VALID_BACKLOG_STATUSES].join(', '));
   }
   const cfg = readConfig();
@@ -2766,10 +2782,15 @@ function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
   const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   const task = (data.tasks || []).find(t => t.number === taskNum);
   if (!task) throw new Error('Task #' + taskNum + ' not found in ' + scope + ' backlog.');
+  const prevStatus = task.status;
   task.status = newStatus;
-  if (newStatus === 'production' || newStatus === 'cancelled') {
+  const TERMINAL_STATUSES = new Set(['production', 'cancelled', 'done', 'complete']);
+  if (TERMINAL_STATUSES.has(newStatus)) {
     task.completed_at = new Date().toISOString().split('T')[0];
+  } else {
+    task.completed_at = null;
   }
+  console.log(`[backlog] task #${taskNum} in ${scope}: ${prevStatus} → ${newStatus}`);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {
     _autoCommitBacklog(project.workDir, taskNum, 'set task #' + taskNum + ' status to ' + newStatus);
