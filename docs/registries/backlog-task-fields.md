@@ -266,15 +266,19 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 **Schema / shape:** String, enum: "minor" | "standard" | "major", optional, defaults to "standard"
 
 **Producers (write)**
-- `server.js:2716a` (task #19) — `addBacklogTask()` stores impact (defaults to 'standard') — NOT YET IMPLEMENTED
-- `server.js:2935a` (task #19) — `updateBacklogTask()` updates impact — NOT YET IMPLEMENTED
+- `server.js:2717` — `addBacklogTask()` stores impact (defaults to 'standard')
+- `server.js:2955` — `updateBacklogTask()` updates impact (global scope)
+- `server.js:2973` — `updateBacklogTask()` updates impact (per-project scope)
 
 **Consumers (read)**
-- `resources/mockup.html` (task #19) — Table renders impact with color coding — NOT YET IMPLEMENTED
+- `resources/mockup.html:9175` — Table renders impact with color coding (green/minor, gray/standard, orange/major)
+- `resources/mockup.html:9110` — Edit button passes impact to openBacklogEditModal
+- `resources/mockup.html:9354` — Edit modal pre-populates impact dropdown
+- `resources/mockup.html:9324` — Add modal initializes impact dropdown
 - `/plan-task` skill (future) — reads impact to gate workflow
 - `/start-build` skill (future) — reads impact to enforce /plan-task if needed
 
-**Status:** ⚠ shape mismatch — Field is documented in backlog.json task #19 but server handlers and UI not yet wired to accept/display it (task #19 in-progress)
+**Status:** ✓ Balanced — Task #19 implementation complete
 
 ---
 
@@ -295,29 +299,28 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 | `proofUnits` | 1 (null init) | 3 (skills read) | ✓ intentional |
 | `branch` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `pr_url` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
-| `impact` | 2 (task #19) | 3 (task #19) | ⚠ shape mismatch — pending implementation |
+| `impact` | 3 (create/update) | 5 (display/modal/skills) | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T14:35:00Z (by /cross-boundary-audit for task #19)
+**Last audit:** 2026-05-19T23:42:00Z (by /finish-build for task #19)
 
 **Boundaries checked:** Backlog task schema fields
 
 **Evidence recorded:**
 - 14 entries documented
-- 10 entries with complete producer/consumer pairs ✓
+- 11 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
 - 3 entries with orphan producers (dependencies, branch, pr_url) ⚠
-- 1 entry with pending implementation (impact field for task #19) ⚠
-- New identifiers introduced on this task: `impact` field with enum values (minor/standard/major)
-- Registries match current code diff: no (task #19 implementation pending)
+- 0 entries with pending implementation ✓
+- New identifiers verified on task #19: `impact` field fully implemented in server and UI
+- Registries match current code diff: yes (task #19 implementation complete and verified)
 
 **Gaps identified:**
 - `dependencies` field: producers but no consumer (no enforcement)
 - `branch` field: producer but no consumer (never used)
 - `pr_url` field: producer but no consumer (never used)
-- `impact` field: schema documented, but server handlers and UI wiring pending task #19
 
-**Status:** Audit complete, task #19 implementation pending
+**Status:** Audit complete, task #19 implementation verified

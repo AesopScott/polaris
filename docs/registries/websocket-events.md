@@ -159,6 +159,52 @@ Request from client to server to change a backlog task's status.
 
 ---
 
+## `emit-debug-log`
+
+Fallback message from agents/generated code to server when the `pushDebugLog()` utility is unavailable (e.g., in environments that cannot import the utility directly).
+
+**Schema / shape:**
+```javascript
+{
+  type: 'emit-debug-log',
+  message: String,   // Debug log message
+  isError: Boolean   // Whether this is an error (affects styling)
+}
+```
+
+**Producers (Client/Agent sends)**
+- (Task #20 C.2 implementation) — Generated code unable to import `pushDebugLog()` utility will call this via WebSocket as fallback
+
+**Consumers (Server receives)**
+- (Task #20 C.1 implementation) — `server.js` WebSocket handler receives and rebroadcasts as `debug-log` to all connected clients
+
+**Status:** ⚠ **intentional orphan producer** — Producer code (C.2) will be added after consumer handler (C.1). Fallback infrastructure must be ready before agents attempt to call it.
+
+---
+
+## `debug-log`
+
+Server broadcast of debug log entries to all connected UI clients. Produced by the server as a rebroadcast of `emit-debug-log` messages and internal debug events.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'debug-log',
+  message: String,         // Debug log message with optional [timestamp] prefix
+  isError: Boolean         // Whether this is an error (affects styling)
+}
+```
+
+**Producers (Server sends)**
+- (Task #20 C.1 implementation) — `server.js` WebSocket broadcast handler rebroadcasts `emit-debug-log` messages and other debug events to all connected clients
+
+**Consumers (Client receives)**
+- (Task #20 C.3 implementation) — `resources/mockup.html` WebSocket message handler receives and renders in the debug panel via `pushDebugLog()`
+
+**Status:** ⚠ **intentional orphan consumer** — Consumer UI code (C.3) will be added after producer broadcast (C.1). Broadcast infrastructure must be ready before UI adds the handler.
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -169,22 +215,27 @@ Request from client to server to change a backlog task's status.
 | `add-backlog-task` | 1 (client) | 1 (server) | ✓ |
 | `update-backlog-task` | 1 (client) | 1 (server) | ✓ |
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
+| `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
+| `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T14:30:00Z (by /cross-boundary-audit for task #19)
+**Last audit:** 2026-05-19T23:43:00Z (by /finish-build for task #19)
 
-**Boundaries checked:** WebSocket events (backlog feature, including add/update/status mutations)
+**Boundaries checked:** WebSocket events (all event types including task #19 impact field in backlog messages)
 
 **Evidence recorded:**
-- 6 entries with complete producer/consumer pairs ✓
-- 0 entries with gaps ✓
+- 8 entries documented
+- 6 entries with complete producer/consumer pairs ✓ (backlog events verified with task #19 impact field)
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, task #20 C.1/C.2/C.3)
 - 0 entries with shape mismatches ✓
-- New identifiers introduced on this task: `impact` field in add-backlog-task and update-backlog-task payloads
-- Registries match current code diff: pending (task #19 implementation will add impact field)
+- New identifiers verified on task #19: impact field in add-backlog-task and update-backlog-task schemas
+- Registries match current code diff: yes (task #19 impact field in both client→server messages verified)
 
-**Gaps identified:** None (task #19 implementation will complete the impact field wiring)
+**Gaps identified:** 
+- ⚠ emit-debug-log: orphan producer (agent code C.2 after server handler C.1). Intentional — fallback infrastructure must be ready first.
+- ⚠ debug-log: orphan consumer (UI handler C.3 after server broadcast C.1). Intentional — broadcast before UI adds the handler.
 
-**Status:** Audit complete, ready for implementation
+**Status:** Audit complete, task #19 verified in WebSocket events
