@@ -73,6 +73,10 @@ Full changelog: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md
 Global backlog: `G:\My Drive\Aesop Academy\Obsidian\Backlog\backlog.json` - prioritized list of scheduled work
 Polaris backlog: `docs/backlog.json` - prioritized list of scheduled work
 
+## Planning
+
+Plan before building: define success criteria, scope boundaries, dependencies, and risks. For guidance on planning triggers, artifacts, and validation gates, see [planning.md](planning.md).
+
 ## Coding discipline
 General behavior rules, subordinate to the Polaris-specific rules above. Adapted from `multica-ai/andrej-karpathy-skills` `CLAUDE.md`:
 
