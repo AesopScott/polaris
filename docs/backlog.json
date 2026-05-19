@@ -194,6 +194,17 @@
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 16,
+      "title": "Fix the refresh button in the backlog.",
+      "description": "The title says it all.",
+      "category": "fix",
+      "priority": 50,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
