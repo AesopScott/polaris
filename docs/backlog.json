@@ -147,9 +147,9 @@
                       "title":  "Add proof planning to /plan-task",
                       "category":  "feature",
                       "priority":  36,
-                      "status":  "in-progress",
+                      "status":  "complete",
                       "created_at":  "2026-05-19",
-                      "completed_at":  null,
+                      "completed_at":  "2026-05-18",
                       "dependencies":  [
                                            10
                                        ],
