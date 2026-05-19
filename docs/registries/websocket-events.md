@@ -99,7 +99,7 @@ Request from client to server to add a new backlog task.
 - `resources/mockup.html:9334` — `submitBacklogAdd()` sends new task data from Add Task modal
 
 **Consumers (Server receives)**
-- `server.js:7773` — Handler receives and calls `addBacklogTask(scope, task)`
+- `server.js:7769` — Handler receives and calls `addBacklogTask(scope, task)`
 
 **Status:** ✓ Balanced producer/consumer (impact field added by task #19)
 
@@ -129,7 +129,7 @@ Request from client to server to update an existing backlog task's fields.
 - `resources/mockup.html:9364` — `submitBacklogEdit()` sends updated task data from Edit Task modal
 
 **Consumers (Server receives)**
-- `server.js:7804` — Handler receives and calls `updateBacklogTask(scope, taskNumber, updates)`
+- `server.js:7800` — Handler receives and calls `updateBacklogTask(scope, taskNumber, updates)`
 
 **Status:** ✓ Balanced producer/consumer (impact field added by task #19)
 
@@ -153,55 +153,9 @@ Request from client to server to change a backlog task's status.
 - `resources/mockup.html:9438` — Status picker sends status change request
 
 **Consumers (Server receives)**
-- `server.js:7816` — Handler receives and calls `updateBacklogTaskStatus(scope, taskNumber, status)`
+- `server.js:7781` — Handler receives and calls `updateBacklogTaskStatus(scope, taskNumber, status)`
 
 **Status:** ✓ Balanced producer/consumer
-
----
-
-## `emit-debug-log`
-
-Fallback message from agents/generated code to server when the `pushDebugLog()` utility is unavailable (e.g., in environments that cannot import the utility directly).
-
-**Schema / shape:**
-```javascript
-{
-  type: 'emit-debug-log',
-  message: String,   // Debug log message
-  isError: Boolean   // Whether this is an error (affects styling)
-}
-```
-
-**Producers (Client/Agent sends)**
-- `lib/debugUtil.js:37` — `emitDebugLogViaWebSocket()` sends via WebSocket when utility unavailable
-
-**Consumers (Server receives)**
-- `server.js:7850` — Handler receives and rebroadcasts as `debug-log` to all connected clients
-
-**Status:** ✓ Balanced producer/consumer (task #20 C.1 implementation complete)
-
----
-
-## `debug-log`
-
-Server broadcast of debug log entries to all connected UI clients. Produced by the server as a rebroadcast of `emit-debug-log` messages and internal debug events.
-
-**Schema / shape:**
-```javascript
-{
-  type: 'debug-log',
-  message: String,         // Debug log message with optional [timestamp] prefix
-  isError: Boolean         // Whether this is an error (affects styling)
-}
-```
-
-**Producers (Server sends)**
-- `server.js:7855` — WebSocket broadcast handler rebroadcasts `emit-debug-log` messages to all connected clients
-
-**Consumers (Client receives)**
-- `resources/mockup.html:4069` — WebSocket message handler receives and renders in debug panel via `pushDebugLog()`
-
-**Status:** ✓ Balanced producer/consumer (task #20 C.1/C.3 implementation complete)
 
 ---
 
@@ -215,24 +169,22 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 | `add-backlog-task` | 1 (client) | 1 (server) | ✓ |
 | `update-backlog-task` | 1 (client) | 1 (server) | ✓ |
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
-| `emit-debug-log` | 1 (agent) | 1 (server) | ✓ |
-| `debug-log` | 1 (server) | 1 (client) | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T23:30:00Z (by /cross-boundary-audit for task #20)
+**Last audit:** 2026-05-19T14:30:00Z (by /cross-boundary-audit for task #19)
 
-**Boundaries checked:** WebSocket events (all event types including task #19 impact field and task #20 debug logging)
+**Boundaries checked:** WebSocket events (backlog feature, including add/update/status mutations)
 
 **Evidence recorded:**
-- 8 entries with complete producer/consumer pairs ✓
+- 6 entries with complete producer/consumer pairs ✓
 - 0 entries with gaps ✓
 - 0 entries with shape mismatches ✓
-- New identifiers verified on task #20: `emit-debug-log` and `debug-log` event types, `pushDebugLog()` and `emitDebugLogViaWebSocket()` utilities
-- Registries match current code diff: yes (all implementations for task #20 complete)
+- New identifiers introduced on this task: `impact` field in add-backlog-task and update-backlog-task payloads
+- Registries match current code diff: pending (task #19 implementation will add impact field)
 
-**Gaps identified:** None
+**Gaps identified:** None (task #19 implementation will complete the impact field wiring)
 
-**Status:** Audit complete, task #20 debug logging fully implemented
+**Status:** Audit complete, ready for implementation
