@@ -3631,7 +3631,7 @@
         <td style="text-align:center;">
           <div style="display:flex;gap:4px;align-items:center;justify-content:center;">
             <button class="fbtn" style="background:#3b82f6;color:#fff;padding:4px 8px;font-size:12px;height:28px;" onclick="openSpace('${escHtmlAttr(p.name)}')" title="SPACE Productivity">Productivity</button>
-            <button class="card-btn" style="height:28px;width:28px;${p.buildScript ? 'background:#1d4ed8;color:#fff;' : ''}" onclick="toggleBuildScriptRow(${i})" title="Configure build script for the Build button">🔨</button>
+            <button class="card-btn" style="height:28px;width:28px;background:#7c3aed;color:#fff;" onclick="launchProjectInitiation(${i})" title="Start /project-initiation for this project">PI</button>
             <button class="card-btn" style="height:28px;width:28px;" onclick="deleteProjectRow(${i})" title="Remove">✕</button>
           </div>
         </td>`;
@@ -3675,6 +3675,30 @@
     row.style.display = row.style.display === 'none' ? '' : 'none';
   }
   window.toggleBuildScriptRow = toggleBuildScriptRow;
+
+  function launchProjectInitiation(idx) {
+    captureProjectInputs();
+    const p = projectsList[idx];
+    if (!p || !String(p.name || '').trim()) {
+      alert('Name the project before starting project initiation.');
+      return;
+    }
+    const projectName = String(p.name || '').trim();
+    const workDir = String(p.workDir || '').trim();
+    const tier = document.querySelector('.model-select')?.value || 'balanced';
+    const prompt = `/project-initiation\n\nProject: ${projectName}${workDir ? `\nLocal repo: ${workDir}` : ''}`;
+    wsSend({
+      type: 'launch-chat',
+      prompt,
+      displayPrompt: '/project-initiation',
+      workDir,
+      projectName,
+      tier,
+    });
+    pushDebugLog(`[projects] Started /project-initiation for ${projectName}`);
+    closeProjects();
+  }
+  window.launchProjectInitiation = launchProjectInitiation;
 
   function escHtmlAttr(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
