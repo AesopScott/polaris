@@ -153,7 +153,7 @@
                       "dependencies":  [
                                            10
                                        ],
-                      "branch":  "task/11-add-proof-planning",
+                      "branch":  null,
                       "plan":  "## Implementation Summary\n\nTask #11 updates ~/.claude/commands/plan-task.md to include proof-unit planning at every step before any build session touches code.\n\n### Changes Made\n\n**Step 3b** — Expanded to include \"First Proof Unit\" identification (section 5) as entry gate confirmation.\n\n**Step 6** — Refactored to break implementations into proof units with 6 required fields: expected behavior, preferred proof type, exact command/check/manual path, expected initial failure (RED), expected passing evidence (GREEN), and waiver guidance.\n\n**Step 8** — Updated to save structured `proofUnits` array to docs/backlog.json alongside narrative plan.\n\n**Step 9** — Added Proof Units section appending unit summaries to Obsidian task tracker.\n\n**Verification** — Created docs/proof-unit-verification.md with example task #18 showing 5 proof units and all proof types.\n\n## First Proof Unit\n\nWhen /start-build runs on a task with proof units defined, the first proof unit should be loadable from docs/backlog.json with the `proofUnits` array present and non-empty.",
                       "proofUnits":  [
                                          {
@@ -207,7 +207,6 @@
                                              "waiverGuidance":  "Manual: verify file exists"
                                          }
                                      ],
-                      "branch":  null,
                       "pr_url":  null,
                       "description":  "Update /plan-task so every task plan breaks implementation into proof units before any build session touches code. This is the planning side of the TDD/proof model: /plan-task does not execute TDD, but it must define the expected proof for each implementation-bearing step.\n\nImplementation notes:\n1. Update ~/.claude/commands/plan-task.md so Step 6 produces implementation steps as proof units, not plain build instructions.\n2. For each unit, require: expected behavior, preferred proof type, exact command/check/manual path when known, expected initial failure, expected passing evidence, and waiver guidance if automated proof is not possible.\n3. Expand the existing reachability/testability check so it becomes the task-tree entry gate: persona, entry path, required state, environment, dependencies, and first proof unit all confirmed before status flips to ready.\n4. Save the proof-unit plan in docs/backlog.json and log it to the Obsidian task tracker so /start-build and /finish-build can verify against the same trail.\n5. Verification: plan a dummy backlog task and confirm the saved plan contains proof units with entry/exit evidence expectations, not just implementation bullets."
                   },
@@ -359,7 +358,7 @@
                                              "waiverGuidance":  "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
                                          }
                                      ],
-                      "status":  "ready"
+                      "status":  "in-progress"
                   },
                   {
                       "number":  17,
