@@ -374,6 +374,19 @@
                       "dependencies":  [
 
                                        ]
+                  },
+                  {
+                      "number":  18,
+                      "title":  "Teach GitHub merge workflow about /clear reviewer independence",
+                      "description":  "Update the Polaris task/review workflow so GitHub-backed merges understand the local reviewer-independence rule after a /clear command. The workflow should distinguish the human/process rule from GitHub's account-level PR approval rule: after /clear, the same session may continue the review remediation and merge path, but GitHub still needs either an accepted review object, an explicit protected-branch override, or another documented merge path. The goal is to prevent future tasks from getting stuck when review is complete and remediation is complete, but GitHub rejects self-approval because the authenticated account is still the PR author.",
+                      "category":  "feature",
+                      "priority":  70,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
                   }
               ]
 }
