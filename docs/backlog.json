@@ -108,7 +108,7 @@
     },
     {
       "number": 10,
-      "title": "Add per-step TDD gate to /start-build and /ship-task Step 2",
+      "title": "Define task-tree TDD/proof gate model",
       "category": "feature",
       "priority": 35,
       "status": "backlog",
@@ -118,11 +118,11 @@
       "plan": null,
       "branch": null,
       "pr_url": null,
-      "description": "Add a TDD/proof gate before production code is written in the Polaris task workflow. The gate should live where implementation begins: /start-build Step 8/10 and /ship-task Step 2, so a task cannot move from context-loaded to code-writing without first naming the expected behavior and proof.\n\nImplementation notes:\n1. Update ~/.claude/commands/start-build.md so Step 8 requires the agent to identify the first implementation unit and its proof before writing code. Acceptable proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, or an explicit waiver that says no automated test is possible and why.\n2. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require a TDD unit for the first build step: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n3. Define the repeated TDD unit shape for task plans: expected behavior -> proof before implementation -> observe failure or waiver -> implement smallest change -> observe passing proof -> proceed to next unit.\n4. Add rollback/state behavior: if a step cannot produce proof, keep the task at in-progress and append a note to the task tracker/backlog plan rather than allowing audit or finish-build to proceed.\n5. Verification: run the workflow against a dummy backlog task and confirm a build session is blocked until test evidence or a waiver is recorded."
+      "description": "Define the shared task-tree proof model that all Polaris workflow skills will use before any implementation-bearing step runs. The goal is broader than adding TDD to /start-build and /ship-task: every workflow step must require appropriate proof, while only implementation steps require the full red/green/refactor TDD loop.\n\nCore model:\n- Workflow entry gate before the task tree starts: task has a plan, dependencies are checked, testability path is known, and the first proof unit is identified.\n- Proof unit shape: expected behavior -> proof before implementation -> observe failure or record explicit waiver -> implement smallest change -> observe passing proof -> proceed.\n- Proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, review evidence, or explicit waiver that says no automated proof is possible and why.\n- State behavior: if proof is missing or fails, stop the workflow and keep/revert the task to the previous valid lifecycle state instead of proceeding on inherited authority.\n- Distinguish step roles: planning skills define proof; build skills execute proof; audit/review/promotion skills verify the proof trail.\n\nImplementation notes:\n1. Write the canonical definitions directly into the relevant command docs, starting with /plan-task, /start-build, /ship-task, /finish-build, /cross-boundary-audit, /review-pr, /codex-review, and /promote-stage.\n2. Use consistent vocabulary: proof unit, entry evidence, exit evidence, waiver, proof trail, previous valid lifecycle state.\n3. Decide where the proof trail is persisted: task plan in docs/backlog.json, Obsidian task tracker, PR body, or a combination. Prefer keeping summary evidence in backlog/Obsidian and detailed evidence in PR/session output.\n4. Verification: run a dry task-tree walkthrough and confirm every step can say what proof it expects, where proof is recorded, and what happens when proof is missing."
     },
     {
       "number": 11,
-      "title": "Add pre-/finish-build self-review checklist",
+      "title": "Add proof planning to /plan-task",
       "category": "feature",
       "priority": 36,
       "status": "backlog",
@@ -134,11 +134,11 @@
       "plan": null,
       "branch": null,
       "pr_url": null,
-      "description": "Add an explicit author-side self-review gate before /finish-build is allowed to open and auto-merge a PR to stage. The checklist should catch missing spec work, out-of-scope edits, stale registries, and weak test evidence before stage is touched.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 3 so after /cross-boundary-audit and before Step 4 it requires a self-review summary.\n2. Update ~/.claude/commands/start-build.md Step 10 to name this as mandatory before invoking /finish-build.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add a new Step 2a that refuses to proceed unless the self-review exists in the session or task tracker.\n4. Checklist items: spec compliance against docs/backlog.json description and plan; out-of-scope diff scan; registry freshness with docs/registries touched or explicitly unchanged; test evidence for every TDD unit; known risks or waivers; files changed summary.\n5. Failure behavior: missing checklist, stale registries, missing test evidence, or unexplained out-of-scope changes keep the task in in-progress and stop before PR creation.\n6. Verification: create a controlled task branch with a missing registry update or missing test evidence and confirm /finish-build refuses before gh pr create."
+      "description": "Update /plan-task so every task plan breaks implementation into proof units before any build session touches code. This is the planning side of the TDD/proof model: /plan-task does not execute TDD, but it must define the expected proof for each implementation-bearing step.\n\nImplementation notes:\n1. Update ~/.claude/commands/plan-task.md so Step 6 produces implementation steps as proof units, not plain build instructions.\n2. For each unit, require: expected behavior, preferred proof type, exact command/check/manual path when known, expected initial failure, expected passing evidence, and waiver guidance if automated proof is not possible.\n3. Expand the existing reachability/testability check so it becomes the task-tree entry gate: persona, entry path, required state, environment, dependencies, and first proof unit all confirmed before status flips to ready.\n4. Save the proof-unit plan in docs/backlog.json and log it to the Obsidian task tracker so /start-build and /finish-build can verify against the same trail.\n5. Verification: plan a dummy backlog task and confirm the saved plan contains proof units with entry/exit evidence expectations, not just implementation bullets."
     },
     {
       "number": 12,
-      "title": "Add optional pre-stage Claude/Codex review before auto-merge to stage",
+      "title": "Enforce proof gates in /ship-task, /start-build, and /finish-build",
       "category": "feature",
       "priority": 37,
       "status": "backlog",
@@ -150,7 +150,39 @@
       "plan": null,
       "branch": null,
       "pr_url": null,
-      "description": "Add an optional pre-stage review path that lets Claude and/or Codex review the task diff before /finish-build auto-merges the task PR to stage, while preserving the existing post-stage independent /review-pr + /codex-review gate before production promotion.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md around the Step 5/6 boundary: after commit/rebase/push but before gh pr merge, offer or enforce a configurable pre-stage review option.\n2. Keep stage auto-merge as the default for low-risk tasks if Scott wants speed, but add a clear high-risk path for security/auth/data-model/cross-boundary-heavy tasks where review is required before merge to stage.\n3. Review inputs should be intentionally narrow: task description + plan, registries/contracts, and branch diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n4. Support two modes: Claude self-review in the current session for lightweight checks, and Codex/other-model review for stronger independence. If run in author context, label it as author-context review, not independent review.\n5. Preserve the existing post-stage workflow: /review-pr and /codex-review after /clear remain required evidence before /promote-stage or /promote-to-prod.\n6. Verification: run a dry task through finish-build with pre-stage review enabled, confirm PR creation pauses before gh pr merge, review findings can block stage merge, and post-stage review instructions still print after successful merge."
+      "description": "Enforce the proof model in the implementation-bearing workflow commands. /ship-task should orchestrate the gates, /start-build should block production code until the first proof unit is ready, and /finish-build should refuse to open or auto-merge a stage PR unless every proof unit has exit evidence or an explicit waiver.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require the current proof unit: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n2. Update ~/.claude/commands/start-build.md Step 8/10 so it loads the proof units from the plan, names the first unit, and blocks code-writing until entry evidence exists.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add Step 2a with a pre-finish self-review checklist: spec compliance, out-of-scope diff scan, registry freshness, test evidence for each proof unit, known risks/waivers, files changed summary.\n4. Failure behavior: missing proof, stale registries, unexplained out-of-scope changes, or missing waiver keeps the task in in-progress and stops before gh pr create / gh pr merge.\n5. Preserve pragmatic escape hatches: if no automated test is possible, require a written waiver plus a manual verification path rather than pretending automation exists.\n6. Verification: create a controlled task branch with missing proof evidence and confirm /finish-build refuses before PR creation; then add evidence/waiver and confirm the workflow can proceed."
+    },
+    {
+      "number": 13,
+      "title": "Add proof-trail checks to audit, review, and promotion skills",
+      "category": "feature",
+      "priority": 38,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [
+        12
+      ],
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "description": "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
+    },
+    {
+      "number": 14,
+      "title": "Add optional pre-stage Claude/Codex review before auto-merge to stage",
+      "category": "feature",
+      "priority": 39,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [
+        13
+      ],
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "description": "Add an optional pre-stage review path that lets Claude and/or Codex review the task diff before /finish-build auto-merges the task PR to stage, while preserving the existing post-stage independent /review-pr + /codex-review gate before production promotion.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md around the Step 5/6 boundary: after commit/rebase/push but before gh pr merge, offer or enforce a configurable pre-stage review option.\n2. Keep stage auto-merge as the default for low-risk tasks if Scott wants speed, but add a clear high-risk path for security/auth/data-model/cross-boundary-heavy tasks where review is required before merge to stage.\n3. Review inputs should be intentionally narrow: task description + plan, proof trail, registries/contracts, and branch diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n4. Support two modes: Claude self-review in the current session for lightweight checks, and Codex/other-model review for stronger independence. If run in author context, label it as author-context review, not independent review.\n5. Preserve the existing post-stage workflow: /review-pr and /codex-review after /clear remain required evidence before /promote-stage or /promote-to-prod.\n6. Verification: run a dry task through finish-build with pre-stage review enabled, confirm PR creation pauses before gh pr merge, review findings can block stage merge, and post-stage review instructions still print after successful merge."
     }
   ]
 }
