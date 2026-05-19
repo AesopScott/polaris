@@ -16,18 +16,18 @@ Scott's personal AI command center — parallel agent sessions, real API control
 
 ## Backlog Workflow Governance
 
-**Branch topology:** `main` (source) → `stage` (integration) → `prod` (production). Work flows forward; nothing merges back to main.
+**Protected branch topology:** `main`, `stage`, and `prod` are protected landing branches. Ordinary build, finish, review, and audit sessions must not write to or merge into any of them directly.
 
 **Worktree isolation:** Each `/start-build` session must create a unique git worktree + feature branch. Branches follow pattern: `task/{number}-{description}`. Rationale: prevents git state interference between parallel sessions, enables clean rollback.
 
-**PR targeting:** `/finish-build` opens PRs targeting `stage` (not main). Code review happens on stage PRs before merge.
+**PR targeting:** `/finish-build` prepares the handoff for review but does not land work on a protected branch. Code review happens before any promotion command moves work forward.
 
-**Stage branch lock:** Only `/promote-stage` can write to `stage`. Enforced by:
-1. **GitHub branch protection:** `stage` requires status checks + 1 approval before merge
-2. **Code-level guard:** Skills check git state; block any attempt to push directly to `stage`
-3. **Auto-merge gate:** Only `/promote-stage` has GitHub API token to merge PRs to `stage`
+**Promotion gates:** Protected branches change only through explicit promotion commands:
+1. **`/promote-stage`:** only command allowed to move approved work onto `stage`
+2. **`/promote-to-main`:** only command allowed to move `stage` onto `main`
+3. **`/promote-to-prod`:** only command allowed to move `main` onto `prod`
 
-**Main branch protection:** `main` accepts merges only from `/promote-stage` (via stage → main promotion). Direct pushes to main are blocked.
+**Branch locks:** Direct pushes and ordinary-session merges to `main`, `stage`, and `prod` are blocked. Promotion commands are the sole landing path for those branches.
 
 ## Architecture
 - **Agent sessions** → Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. Tool schemas executed natively in server.js: Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, WebSearch, AskUserQuestion, TodoWrite, QueryMemory, SetProject, **SetStatus**. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
