@@ -323,6 +323,31 @@
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 19,
+      "title": "Add impact field to backlog items",
+      "description": "Add a three-level impact classification (minor, standard, major) to backlog tasks. This field affects workflow: minor items can skip /plan-task, major items trigger /plan-task to break work into subtasks.\n\n## Scope\n\n### Schema changes\n- Add `impact` field to each task in docs/backlog.json with enum values: \"minor\", \"standard\" (default), \"major\"\n- Field is optional on existing tasks; defaults to \"standard\" when not present\n\n### Dashboard UI (resources/mockup.html)\n- Add IMPACT column to backlog table, positioned between CATEGORY and DEPS columns\n- Display impact value with visual styling (e.g., color-coding: green for minor, gray for standard, red/orange for major)\n- Add impact field to both Add Task and Edit Task modals as a dropdown/select with three options\n- Update edit button data attributes to pass impact value: `data-impact=\"{value}\"`\n- Update openBacklogEditModal() to accept impact parameter\n- Update submitBacklogAdd() and submitBacklogEdit() to include impact in WebSocket messages\n\n### Server (server.js)\n- Update add-backlog-task message handler to include impact field when saving\n- Update update-backlog-task message handler to accept and persist impact changes\n\n### Workflow integration (future, documented only)\n- **Minor items:** /plan-task documentation should note these can be skipped; users proceed directly to /start-build if preferred\n- **Major items:** /plan-task guidance should instruct users to break the work into multiple subtasks, add each to backlog separately, then mark the parent major task as \"production\" and archive it\n\n## Key findings from exploration\n\n### Current backlog structure\n- backlog.json tasks currently have: number, title, category, priority, status, description, plan, branch, pr_url, dependencies, proofUnits\n- Status options: backlog, planned, build-started, cba-complete, cba-half-complete, build-finished, pr-reviewed, staged, smoke-tested, production, blocked, on-hold, cancelled\n\n### UI architecture\n- Backlog rendering via renderBacklogSection() at mockup.html:9086 generates table rows\n- Each row has clickable status badge, edit button, and task cells for #, title, status, category, deps, priority\n- Edit modal functions: openBacklogEditModal() (line 9301) accepts scope, taskNumber, title, description, priority, category\n- Add modal: openBacklogAddModal() (line 9264); submitBacklogAdd() (line 9284) sends add-backlog-task WebSocket message\n- Edit submit: submitBacklogEdit() (line 9314) sends update-backlog-task WebSocket message\n\n### Styling considerations\n- Existing categories use color coding: feature (green), fix/emergency fix (red), update (yellow)\n- Impact can follow similar pattern or use different visual treatment (badges, icons, etc.)\n- Table header styling at mockup.html:9109-9117\n\n## Testability\n\n1. Can add a new backlog task with impact=\"major\"\n2. Can edit existing task to set impact\n3. Backlog panel displays impact value correctly for all three values\n4. Add/edit modals include impact dropdown and accept all three values\n5. WebSocket messages (add-backlog-task, update-backlog-task) include impact field\n6. New tasks default to impact=\"standard\" if not specified\n\n## Dependencies\n\nNone. This is a purely additive feature with no blocking dependencies.",
+      "category": "feature",
+      "priority": 45,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 20,
+      "title": "Build in debug log as a process step to the pipeline.",
+      "description": "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
+      "category": "feature",
+      "priority": 90,
+      "status": "backlog",
+      "created_at": "2026-05-19",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
