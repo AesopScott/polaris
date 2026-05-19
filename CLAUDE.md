@@ -70,6 +70,8 @@ Soul + why: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md`
 Architecture decisions: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\2-Architecture.md`
 Build plan + roadmap: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\3-Build-Plan.md`
 Full changelog: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`
+Global backlog: `G:\My Drive\Aesop Academy\Obsidian\Backlog\backlog.json` — prioritized list of scheduled work
+Polaris backlog: `docs/backlog.json` — prioritized list of scheduled work
 
 ## Coding discipline
 General behavior rules, subordinate to the Polaris-specific rules above. Adapted from `multica-ai/andrej-karpathy-skills` `CLAUDE.md`:
