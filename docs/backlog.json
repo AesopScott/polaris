@@ -5,7 +5,7 @@
                       "title":  "Skills Nav Pane — hierarchical tree with Global / Project sections + 7 categories",
                       "category":  "feature",
                       "priority":  1,
-                      "status":  "in-progress",
+                      "status":  "in-review",
                       "dependencies":  [
 
                                        ],
@@ -82,7 +82,8 @@
 
                                        ],
                       "plan":  "## Testability prerequisites\n\nNo prerequisite task is required. The Projects panel is already reachable from the top navigation, and configured projects already provide the `name` and `workDir` needed to launch a project-scoped session. Manual smoke testing is required after rebuild/install because the interaction is in the Electron UI.\n\n## Implementation plan\n\n1. Update `resources/mockup.html` in `renderProjectsPanel()` to add a compact project initiation button in each project row\u0027s action cluster, next to the existing Productivity, build-script, and delete controls.\n\n2. Add a renderer helper such as `launchProjectInitiation(idx)` that calls `captureProjectInputs()` so unsaved row edits are respected, validates that the selected project has a name, sends a `launch-chat` WebSocket message with `prompt: \u0027/project-initiation\u0027`, `displayPrompt: \u0027/project-initiation\u0027`, the row\u0027s `workDir`, the row\u0027s `projectName`, and the current selected tier, then closes the Projects panel after launch.\n\n3. Keep the change client-side unless the existing launch handler needs a small naming hint. The existing `launch-chat` path in `server.js` already accepts `workDir`, `projectName`, and `tier`, validates `workDir`, creates a Max chat session, and broadcasts the project metadata.\n\n4. Verification: run a lightweight syntax check over `resources/mockup.html` JavaScript if practical. Do not run the installer or `build-install.ps1` without explicit approval. Manual smoke test: open Projects, click the new initiation button for Polaris or another configured project, and confirm a new Max session starts in that project with `/project-initiation`.\n\n## Boundary changes\n\nNo Firestore collections, custom claims, backend API endpoints, or registry files are introduced. The only boundary touched is the existing client-to-server WebSocket message type `launch-chat`, reused with existing fields.\n\n## Dependencies\n\nNone.",
-                      "branch":  "task/6-project-initiation-button"
+                      "branch":  "task/6-project-initiation-button",
+                      "pr_url":  "https://github.com/AesopScott/polaris/pull/2"
                   },
                   {
                       "number":  7,
