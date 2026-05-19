@@ -309,10 +309,12 @@
       "description": "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
       "category": "feature",
       "priority": 90,
-      "status": "ready",
+      "status": "complete",
       "created_at": "2026-05-19",
-      "completed_at": null,
+      "completed_at": "2026-05-19",
       "dependencies": [],
+      "branch": "task/20-build-in-debug-log",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/13",
       "plan": "## Overview\n\nWhen developers build new features through the task pipeline, errors fail silently. We need newly-written code to automatically log errors to the debug panel so users can diagnose failures immediately.\n\n## Design Solution\n\nExpose `pushDebugLog()` utility across three session types (Claude CLI, OpenAI, Direct agent) + server context. Generated code calls it on error. Test code validates it works (proof units). WebSocket fallback handles remote server edge case.\n\n## Phases\n\n**Phase A: Utility Exposure** — Expose pushDebugLog() as available utility in all three session types and server context. (Tasks A.1–A.4: 4 Medium + 1 Small = ~2 days)\n\n**Phase B: Testing Pattern** — Define proof unit template for debug logging validation. Generated code includes test parameters. (Tasks B.1–B.3: 3 Medium = ~1.5 days)\n\n**Phase C: Server Context Solution** — Solve remote server edge case with WebSocket fallback. (Tasks C.1–C.3: 2 Medium + 1 Small = ~1.5 days)\n\n## First Proof Unit\n\n**Task A.1: Create pushDebugLog utility module**\n- Expected: lib/debugUtil.js exports pushDebugLog() function\n- Proof: `node -e \"const util = require('./lib/debugUtil.js'); console.log(typeof util.pushDebugLog)\"` outputs 'function'\n- Files: lib/debugUtil.js (new), server.js (add export)\n\n## Success Criteria\n\n1. Newly-written code can call pushDebugLog() across all three session types\n2. Errors from new code automatically appear in debug panel with timestamp/severity\n3. Test code validates logging works before production (proof units)\n4. Remote server scenarios reach debug panel via WebSocket fallback\n5. Debug code cleanly separated from task functionality",
       "proofUnits": [
         {

@@ -2714,6 +2714,7 @@ function addBacklogTask(scope, taskInput) {
     description: String(taskInput.description || '').trim(),
     category: String(taskInput.category || 'feature').trim(),
     priority: parseInt(taskInput.priority, 10) || 50,
+    impact: String(taskInput.impact || 'standard').trim(),
     status: 'backlog',
     created_at: new Date().toISOString().split('T')[0],
     completed_at: null,
@@ -2932,7 +2933,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
   if (!taskNum) throw new Error('Invalid task number: ' + taskNumber);
   if (!updates || typeof updates !== 'object') throw new Error('No updates provided.');
 
-  const allowedFields = ['title', 'description', 'category', 'priority'];
+  const allowedFields = ['title', 'description', 'category', 'priority', 'impact'];
   const filtered = {};
   for (const field of allowedFields) {
     if (field in updates) {
@@ -2951,6 +2952,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
     if ('description' in filtered) task.description = String(filtered.description).trim();
     if ('category' in filtered) task.category = String(filtered.category).trim();
     if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
+    if ('impact' in filtered) task.impact = String(filtered.impact).trim();
 
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
     return task;
@@ -2969,6 +2971,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
   if ('description' in filtered) task.description = String(filtered.description).trim();
   if ('category' in filtered) task.category = String(filtered.category).trim();
   if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
+  if ('impact' in filtered) task.impact = String(filtered.impact).trim();
 
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {
