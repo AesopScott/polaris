@@ -7847,6 +7847,23 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'emit-debug-log') {
+    // Fallback message from agents/generated code unable to call pushDebugLog() directly
+    // when the utility module is not importable. Rebroadcast to all UI clients as debug-log.
+    const { message, isError } = msg;
+    if (message && typeof message === 'string') {
+      const debugMsg = {
+        type: 'debug-log',
+        message: message,
+        isError: Boolean(isError)
+      };
+      broadcast(debugMsg);
+      // Optionally log to server console for audit trail (comment out if too noisy)
+      // console.log(`[DEBUG${isError ? ' ERROR' : ''}] ${message}`);
+    }
+    return;
+  }
+
   if (type === 'domain-scout-clear') {
     try {
       if (fs.existsSync(DOMAIN_SCOUT_RESULTS_PATH)) fs.unlinkSync(DOMAIN_SCOUT_RESULTS_PATH);
