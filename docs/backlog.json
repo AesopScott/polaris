@@ -177,17 +177,6 @@
       "pr_url": "https://github.com/AesopScott/polaris/pull/7"
     },
     {
-      "number": 17,
-      "title": "Add the category type to the dashboard in the backlog.",
-      "description": "The title says it all.",
-      "category": "Update",
-      "priority": 50,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
       "number": 18,
       "title": "update the reviewer independence rule",
       "description": "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
