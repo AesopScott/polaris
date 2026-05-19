@@ -127,13 +127,65 @@
       "title": "Add proof planning to /plan-task",
       "category": "feature",
       "priority": 36,
-      "status": "backlog",
+      "status": "ready",
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": [
         10
       ],
-      "plan": null,
+      "plan": "## Implementation Summary\n\nTask #11 updates ~/.claude/commands/plan-task.md to include proof-unit planning at every step before any build session touches code.\n\n### Changes Made\n\n**Step 3b** — Expanded to include \"First Proof Unit\" identification (section 5) as entry gate confirmation.\n\n**Step 6** — Refactored to break implementations into proof units with 6 required fields: expected behavior, preferred proof type, exact command/check/manual path, expected initial failure (RED), expected passing evidence (GREEN), and waiver guidance.\n\n**Step 8** — Updated to save structured `proofUnits` array to docs/backlog.json alongside narrative plan.\n\n**Step 9** — Added Proof Units section appending unit summaries to Obsidian task tracker.\n\n**Verification** — Created docs/proof-unit-verification.md with example task #18 showing 5 proof units and all proof types.\n\n## First Proof Unit\n\nWhen /start-build runs on a task with proof units defined, the first proof unit should be loadable from docs/backlog.json with the `proofUnits` array present and non-empty.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "plan-task.md Step 3b includes first proof unit identification",
+          "expectedBehavior": "Step 3b section 5 defines first proof unit shape and entry gate confirmation.",
+          "proofType": "registry-diff",
+          "exactCommand": "grep -c 'first proof unit' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Pattern not found",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "plan-task.md Step 6 produces proof units with required fields",
+          "expectedBehavior": "Step 6 defines proof unit structure with all required fields.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'expectedBehavior\\|expectedInitialFailure\\|expectedPassingEvidence' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Fields not found",
+          "expectedPassingEvidence": "Count >= 3",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "plan-task.md Step 8 documents proofUnits JSON structure",
+          "expectedBehavior": "Step 8 section 2 shows proofUnits array format with 8 required fields.",
+          "proofType": "ui-check",
+          "exactCommand": "Read ~/.claude/commands/plan-task.md and verify Step 8 section 2 exists with JSON example",
+          "expectedInitialFailure": "Section not found or example incomplete",
+          "expectedPassingEvidence": "Section present with complete JSON structure",
+          "waiverGuidance": "Manual check: read Step 8"
+        },
+        {
+          "number": 4,
+          "title": "plan-task.md Step 9 appends Proof Units to Obsidian",
+          "expectedBehavior": "Step 9 section 5 shows appending Proof Units section to task tracker.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'Append the Proof Units section' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Pattern not found",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 5,
+          "title": "docs/proof-unit-verification.md demonstrates all proof types",
+          "expectedBehavior": "Verification document exists with example task #18 showing 5 proof units and all types.",
+          "proofType": "ui-check",
+          "exactCommand": "File exists at C:\\Users\\scott\\Code\\Polaris\\docs\\proof-unit-verification.md",
+          "expectedInitialFailure": "File missing",
+          "expectedPassingEvidence": "File exists with Task #18 example",
+          "waiverGuidance": "Manual: verify file exists"
+        }
+      ],
       "branch": null,
       "pr_url": null,
       "description": "Update /plan-task so every task plan breaks implementation into proof units before any build session touches code. This is the planning side of the TDD/proof model: /plan-task does not execute TDD, but it must define the expected proof for each implementation-bearing step.\n\nImplementation notes:\n1. Update ~/.claude/commands/plan-task.md so Step 6 produces implementation steps as proof units, not plain build instructions.\n2. For each unit, require: expected behavior, preferred proof type, exact command/check/manual path when known, expected initial failure, expected passing evidence, and waiver guidance if automated proof is not possible.\n3. Expand the existing reachability/testability check so it becomes the task-tree entry gate: persona, entry path, required state, environment, dependencies, and first proof unit all confirmed before status flips to ready.\n4. Save the proof-unit plan in docs/backlog.json and log it to the Obsidian task tracker so /start-build and /finish-build can verify against the same trail.\n5. Verification: plan a dummy backlog task and confirm the saved plan contains proof units with entry/exit evidence expectations, not just implementation bullets."
