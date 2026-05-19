@@ -56,4 +56,16 @@ Architecture decisions: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\2-Arch
 Build plan + roadmap: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\3-Build-Plan.md`
 Full changelog: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\4-Changelog.md`
 
+## Coding discipline
+General behavior rules, subordinate to the Polaris-specific rules above. Adapted from `multica-ai/andrej-karpathy-skills` `CLAUDE.md`:
+
+- Think before coding. State assumptions, surface tradeoffs, and ask when the request has multiple plausible interpretations.
+- Prefer the minimum code that solves the problem. Do not add features, abstractions, flexibility, or configuration that were not requested.
+- Keep changes surgical. Do not improve adjacent code, comments, formatting, or unrelated dead code unless asked.
+- Match the existing style, even when another style seems better.
+- Clean up only the unused imports, variables, functions, or files created by your own changes.
+- Every changed line should trace directly to the user's request.
+- Define success criteria before multi-step work. For bugs, reproduce the failure before fixing when practical; for refactors, verify behavior before and after.
+- Loop until the goal is verified, and report any verification that could not be completed.
+
 <!-- PROJECT-SPECIFIC -->
