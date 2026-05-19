@@ -394,7 +394,7 @@
                       "description":  "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
                       "category":  "feature",
                       "priority":  90,
-                      "status":  "in-progress",
+                      "status":  "in-review",
                       "created_at":  "2026-05-19",
                       "completed_at":  null,
                       "dependencies":  [
@@ -402,7 +402,7 @@
                                        ],
                       "plan":  "Task #20: Build in debug log as a process step to the pipeline. Three phases: A) Utility Exposure (expose pushDebugLog across all session types), B) Testing Pattern (define proof units for debug logging), C) Server Context Solution (handle remote server fallback via WebSocket). Proof units: 9 total covering utility module, session-type availability, testing, documentation, WebSocket handlers, and end-to-end verification.",
                       "branch":  "task/20-build-in-debug-log",
-                      "pr_url":  null
+                      "pr_url":  "https://github.com/AesopScott/polaris/pull/12"
                   }
               ]
 }
