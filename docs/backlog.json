@@ -344,10 +344,103 @@
       "description": "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
       "category": "feature",
       "priority": 90,
-      "status": "backlog",
+      "status": "ready",
       "created_at": "2026-05-19",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "plan": "## Overview\n\nWhen developers build new features through the task pipeline, errors fail silently. We need newly-written code to automatically log errors to the debug panel so users can diagnose failures immediately.\n\n## Design Solution\n\nExpose `pushDebugLog()` utility across three session types (Claude CLI, OpenAI, Direct agent) + server context. Generated code calls it on error. Test code validates it works (proof units). WebSocket fallback handles remote server edge case.\n\n## Phases\n\n**Phase A: Utility Exposure** — Expose pushDebugLog() as available utility in all three session types and server context. (Tasks A.1–A.4: 4 Medium + 1 Small = ~2 days)\n\n**Phase B: Testing Pattern** — Define proof unit template for debug logging validation. Generated code includes test parameters. (Tasks B.1–B.3: 3 Medium = ~1.5 days)\n\n**Phase C: Server Context Solution** — Solve remote server edge case with WebSocket fallback. (Tasks C.1–C.3: 2 Medium + 1 Small = ~1.5 days)\n\n## First Proof Unit\n\n**Task A.1: Create pushDebugLog utility module**\n- Expected: lib/debugUtil.js exports pushDebugLog() function\n- Proof: `node -e \"const util = require('./lib/debugUtil.js'); console.log(typeof util.pushDebugLog)\"` outputs 'function'\n- Files: lib/debugUtil.js (new), server.js (add export)\n\n## Success Criteria\n\n1. Newly-written code can call pushDebugLog() across all three session types\n2. Errors from new code automatically appear in debug panel with timestamp/severity\n3. Test code validates logging works before production (proof units)\n4. Remote server scenarios reach debug panel via WebSocket fallback\n5. Debug code cleanly separated from task functionality",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Utility module created and exported",
+          "expectedBehavior": "lib/debugUtil.js exports a pushDebugLog() function that can be imported/required by generated code.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const util = require('./lib/debugUtil.js'); console.log(typeof util.pushDebugLog)\"",
+          "expectedInitialFailure": "Cannot find module './lib/debugUtil.js' or util.pushDebugLog is undefined",
+          "expectedPassingEvidence": "Output: function (or [Function: pushDebugLog])",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "Claude CLI session can access pushDebugLog",
+          "expectedBehavior": "Claude CLI sessions receive guidance to call pushDebugLog() in generated code via system prompt.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -i \"pushDebugLog\" server.js | grep -i \"buildPolarisContextBlock\\|prompt\" | head -3",
+          "expectedInitialFailure": "No matches showing pushDebugLog guidance in buildPolarisContextBlock",
+          "expectedPassingEvidence": "Grep finds lines in server.js injecting pushDebugLog guidance into prompt context",
+          "waiverGuidance": "Code review: read buildPolarisContextBlock() and confirm pushDebugLog/error-reporting guidance present"
+        },
+        {
+          "number": 3,
+          "title": "Direct agent and OpenAI sessions receive utility guidance",
+          "expectedBehavior": "Agent system prompts include guidance on how to call pushDebugLog.",
+          "proofType": "ui-check",
+          "exactCommand": "Start Direct agent session with code-writing prompt; inspect system prompt in session output; confirm pushDebugLog mention",
+          "expectedInitialFailure": "System prompt does not mention pushDebugLog or error-reporting pattern",
+          "expectedPassingEvidence": "Session prompt explicitly states how to call pushDebugLog for error reporting",
+          "waiverGuidance": "Code review: read buildDirectSystemPrompt() and confirm utility guidance present"
+        },
+        {
+          "number": 4,
+          "title": "Error-reporting pattern documentation exists",
+          "expectedBehavior": "Developer documentation explains error-reporting pattern with pushDebugLog code examples.",
+          "proofType": "registry-diff",
+          "exactCommand": "ls -la ~/.claude/commands/debug-log.md && grep -i 'pushDebugLog' ~/.claude/commands/debug-log.md",
+          "expectedInitialFailure": "File does not exist or contains no pushDebugLog examples",
+          "expectedPassingEvidence": "File exists with code examples showing pushDebugLog('error', true) in try/catch blocks",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 5,
+          "title": "Proof unit template for debug logging defined",
+          "expectedBehavior": "Documentation defines proof unit structure for validating debug logging (expectedBehavior, proofType, exactCommand, etc.).",
+          "proofType": "manual-script",
+          "exactCommand": "Open ~/.claude/commands/plan-task.md; search for 'debug logging' section; verify all required proof unit fields present with worked example",
+          "expectedInitialFailure": "No section exists or section incomplete (missing fields)",
+          "expectedPassingEvidence": "Complete proof unit template with all required fields and at least one worked example",
+          "waiverGuidance": "Code review: inspect plan-task.md Step 6 for debug logging proof unit example"
+        },
+        {
+          "number": 6,
+          "title": "Example code with debug logging and test exists",
+          "expectedBehavior": "Working example function with try/catch → pushDebugLog(), plus test validating logging works (RED → GREEN).",
+          "proofType": "failing-test",
+          "exactCommand": "npm test -- examples/debug-logging-example.test.js",
+          "expectedInitialFailure": "Test fails (example function missing pushDebugLog calls or test infrastructure not set up)",
+          "expectedPassingEvidence": "Test passes with output like '✓ debugLogExample calls pushDebugLog on error'",
+          "waiverGuidance": "Manual: require example function, call with bad input, verify pushDebugLog was called and error appears in output"
+        },
+        {
+          "number": 7,
+          "title": "WebSocket emit-debug-log handler implemented",
+          "expectedBehavior": "Server.js has WebSocket message handler for emit-debug-log that broadcasts to all connected UI clients.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -n 'emit-debug-log' server.js | head -3",
+          "expectedInitialFailure": "No matches found (handler doesn't exist)",
+          "expectedPassingEvidence": "Grep finds 2–3 lines mentioning emit-debug-log (case statement + broadcast logic)",
+          "waiverGuidance": "Code review: inspect server.js WebSocket handler section for emit-debug-log case with broadcast"
+        },
+        {
+          "number": 8,
+          "title": "Debug panel UI handles incoming debug-log WebSocket messages",
+          "expectedBehavior": "Debug panel receives debug-log WebSocket messages and renders them with timestamp, severity, same way as pushDebugLog().",
+          "proofType": "ui-check",
+          "exactCommand": "Open Polaris; manually send WebSocket: ws.send(JSON.stringify({type: 'debug-log', message: 'test error', isError: true})); inspect debug panel",
+          "expectedInitialFailure": "Message doesn't render in debug panel or causes JavaScript error",
+          "expectedPassingEvidence": "Message appears in debug panel with correct formatting, timestamp, and error styling",
+          "waiverGuidance": "Code review: read mockup.html WebSocket handler, confirm debug-log case calls pushDebugLog or equivalent render"
+        },
+        {
+          "number": 9,
+          "title": "End-to-end—newly-written code with debug logging works",
+          "expectedBehavior": "New function written in task includes error-reporting code. When function errors, error appears in debug panel automatically.",
+          "proofType": "manual-script",
+          "exactCommand": "Run /start-build on dummy task; write function with try/catch → pushDebugLog; call with bad input; verify error appears in debug panel within 1–2 seconds; verify rest of app works",
+          "expectedInitialFailure": "Function errors but nothing appears in debug panel, or debug code breaks the function",
+          "expectedPassingEvidence": "Error appears in debug panel with correct formatting; rest of app continues working normally",
+          "waiverGuidance": "Code review: confirm pushDebugLog calls isolated from core logic; unit test error handling; manual inspect in test environment"
+        }
+      ]
     }
   ]
 }
