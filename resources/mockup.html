@@ -9050,7 +9050,7 @@
     + '</tr>';
     const rows = tasks.length === 0
       ? '<tr><td colspan="6" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
-      : tasks.slice().sort((a, b) => (a.title || '').localeCompare(b.title || '')).map(t => {
+      : tasks.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0)).map(t => {
           const statusStyle = colors[t.status] || colors['backlog'];
           const depsArr = Array.isArray(t.dependencies) ? t.dependencies : [];
           const depsStr = depsArr.length ? depsArr.map(d => '#' + d).join(', ') : '—';
