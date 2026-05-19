@@ -4639,11 +4639,13 @@
 
       case 'backlogs-data':
         if (typeof renderBacklog === 'function') renderBacklog({ global: msg.global, projects: msg.projects, archive: msg.archive });
+        if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived();
         break;
 
       case 'backlog-error':
         if (typeof showBacklogError === 'function') showBacklogError(msg.error || 'Unknown error');
         else console.error('[backlog]', msg.error);
+        if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived();
         break;
 
       case 'connections':
@@ -8913,7 +8915,21 @@
     if (panel.classList.contains('hidden')) openBacklogPanel();
     else closeBacklogPanel();
   }
-  function refreshBacklogPanel() { wsSend({ type: 'list-backlogs' }); }
+  function refreshBacklogPanel() {
+    const btn = document.querySelector('[onclick="refreshBacklogPanel()"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⟳ Loading…';
+    }
+    wsSend({ type: 'list-backlogs' });
+  }
+  function _onBacklogDataReceived() {
+    const btn = document.querySelector('[onclick="refreshBacklogPanel()"]');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🔄 Refresh';
+    }
+  }
   function showBacklogError(msg) {
     const editModal = document.getElementById('backlog-edit-modal');
     const addModal = document.getElementById('backlog-add-modal');
