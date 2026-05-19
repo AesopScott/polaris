@@ -317,7 +317,7 @@
       "number": 18,
       "title": "update the reviewer independence rule",
       "description": "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
-      "category": "update",
+      "category": "Update",
       "priority": 75,
       "status": "backlog",
       "created_at": "2026-05-19",
