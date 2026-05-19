@@ -2797,7 +2797,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
     const remainingTasks = [];
 
     for (const task of (backlog.tasks || [])) {
-      if (taskNums.includes(task.number) && task.status === 'complete') {
+      if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
         const archiveEntry = { ...task, project_source: 'global', promoted_via_pr: promotionPRNumber };
         tasksToArchive.push(archiveEntry);
       } else {
@@ -2835,7 +2835,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
   const remainingTasks = [];
 
   for (const task of (backlog.tasks || [])) {
-    if (taskNums.includes(task.number) && task.status === 'complete') {
+    if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
       const archiveEntry = { ...task, project_source: project.name, promoted_via_pr: promotionPRNumber };
       tasksToArchive.push(archiveEntry);
     } else {
@@ -7768,6 +7768,13 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, status: newStatus } = msg;
       updateBacklogTaskStatus(scope, taskNumber, newStatus);
+      if (newStatus === 'production') {
+        try {
+          archiveCompletedTasks(scope, [taskNumber], null);
+        } catch (archiveErr) {
+          console.error('[backlog] archive failed after manual production status:', archiveErr.message);
+        }
+      }
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
