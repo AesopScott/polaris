@@ -203,51 +203,6 @@
       "description": "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -> main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
     },
     {
-      "number": 15,
-      "title": "Remove build in main requirement from Claude.md",
-      "description": "The title says it all.",
-      "category": "Update",
-      "priority": 60,
-      "status": "in-progress",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [],
-      "branch": "task/15-remove-build-in-main",
-      "plan": "## Summary\n\nRemove the phrase 'requires `npm run dist` rebuild' from rule 2 of CLAUDE.md (Polaris-specific rules). This requirement currently states that editing source code in the Polaris directory obligates a rebuild before commits, but the workflow should not mandate this — rebuilds are needed for the installed app distribution but not for all source edits (e.g., editing documentation, comments, or tests does not require a rebuild).\n\n## Targeted change\n\nRule 2, first sentence, currently reads:\n\n> **Three zones:** Source (`C:\\Users\\scott\\Code\\Polaris`) — edit only here, requires `npm run dist` rebuild. Installed app...\n\nShould become:\n\n> **Three zones:** Source (`C:\\Users\\scott\\Code\\Polaris`) — edit only here. Installed app...\n\nThe phrase 'requires `npm run dist` rebuild' is removed. The sentence continues naturally to distinguish the three zones. Context around this requirement remains intact (the distinction between source editing, installed app, and runtime data is unchanged).\n\n## Testability\n\nNo prerequisites. This is a documentation-only change to an existing project rule. Proof is simple: verify the phrase is removed and the rule still reads coherently.\n\n## First Proof Unit\n\n**Expected behavior:** The phrase 'requires `npm run dist` rebuild' is removed from rule 2 of CLAUDE.md, and the rule still reads naturally.\n\n**Proof type:** manual-script (file inspection via git diff and direct read).\n\n**How to verify:** After the edit, run `git diff` to confirm the line change, then read rule 2 to confirm the sentence structure is intact.",
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "Locate the requirement phrase in rule 2",
-          "expectedBehavior": "The phrase 'requires `npm run dist` rebuild' is found in rule 2 of CLAUDE.md",
-          "proofType": "manual-script",
-          "exactCommand": "grep -n 'requires.*npm run dist' C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md",
-          "expectedInitialFailure": "Grep locates the phrase in rule 2, line ~7",
-          "expectedPassingEvidence": "Grep output shows the exact line and context",
-          "waiverGuidance": "N/A — direct text match, always automatable"
-        },
-        {
-          "number": 2,
-          "title": "Remove the phrase from rule 2",
-          "expectedBehavior": "The phrase 'requires `npm run dist` rebuild' is removed; rule 2 reads: 'Source (...) — edit only here. Installed app...'",
-          "proofType": "ui-check",
-          "exactCommand": "Open C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md, read rule 2 (lines 6–8), verify sentence structure is intact without the phrase",
-          "expectedInitialFailure": "Phrase is present before edit",
-          "expectedPassingEvidence": "Rule 2 reads naturally without the phrase; no dangling punctuation or awkward grammar",
-          "waiverGuidance": "N/A — direct file inspection"
-        },
-        {
-          "number": 3,
-          "title": "Verify file integrity and git diff",
-          "expectedBehavior": "CLAUDE.md is valid markdown with no syntax errors; git diff shows only the one-line removal",
-          "proofType": "manual-script",
-          "exactCommand": "git diff C:\\\\Users\\\\scott\\\\Code\\\\Polaris\\\\CLAUDE.md — confirm diff shows removal of 'requires `npm run dist` rebuild' and nothing else",
-          "expectedInitialFailure": "File shows the phrase before edit",
-          "expectedPassingEvidence": "git diff shows exactly one line removed (the phrase); no other changes to the file",
-          "waiverGuidance": "N/A — diff inspection is deterministic"
-        }
-      ]
-    },
-    {
       "number": 16,
       "title": "Fix the refresh button in the backlog.",
       "description": "The title says it all.",
