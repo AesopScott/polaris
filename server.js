@@ -1451,9 +1451,7 @@ ${transcript}`;
       broadcast({ type: 'line', sessionId, text: '[Obsidian Rite] DeepSeek returned no usable response — session notes not saved.', role: 'error' });
       return;
     }
-    const _raw = JSON.parse(jsonMatch[0]);
-    const _sf = v => (v == null) ? null : typeof v === 'string' ? v : JSON.stringify(v);
-    extracted = { ..._raw, architecture: _sf(_raw.architecture), buildPlan: _sf(_raw.buildPlan), integrations: _sf(_raw.integrations) };
+    extracted = JSON.parse(jsonMatch[0]);
   } catch (e) {
     console.error('[extract-knowledge] DeepSeek call failed:', e.message);
     broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] DeepSeek call failed: ${e.message}`, role: 'error' });
@@ -1590,7 +1588,7 @@ ${transcript}`;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const result = JSON.parse(jsonMatch[0]);
-    const sanitizeField = v => (v == null) ? null : typeof v === 'string' ? v : JSON.stringify(v);
+    const sanitizeField = v => (v === null || v === undefined) ? null : typeof v === 'string' ? v : JSON.stringify(v);
     return {
       architecture: sanitizeField(result.architecture),
       buildPlan:    sanitizeField(result.buildPlan),
@@ -1604,7 +1602,7 @@ ${transcript}`;
       _nextBacklog:  nextNumIn(backlogDir),
     };
   } catch (e) {
-    console.error('[obsidian-analyze]', e?.message || String(e));
+    console.error('[obsidian-analyze]', e.message);
     return null;
   }
 }
@@ -2623,30 +2621,14 @@ function discoverAllSkills(workDir = null) {
 // ============================================================
 function loadAllBacklogs() {
   const cfg = readConfig();
-  const result = { global: null, projects: [], archive: { global: null, projects: [] } };
+  const result = { global: null, projects: [] };
 
   if (cfg.obsidianVaultPath) {
     const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
     try {
       const text = fs.readFileSync(globalPath, 'utf8');
       result.global = JSON.parse(text);
-      const statuses = (result.global.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
-      console.log(`[backlog] loaded global: ${statuses || '(no tasks)'}`);
-    } catch (e) {
-      console.warn('[backlog] global backlog not readable:', e.message);
-    }
-
-    // Load global archive
-    const globalArchivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
-    try {
-      const text = fs.readFileSync(globalArchivePath, 'utf8');
-      result.archive.global = JSON.parse(text);
-      const count = (result.archive.global.tasks || []).length;
-      console.log(`[backlog] loaded global archive: ${count} archived tasks`);
-    } catch (e) {
-      // Archive file doesn't exist yet - not an error
-      result.archive.global = { tasks: [] };
-    }
+    } catch {}
   }
 
   // Always include every project so the Backlog panel and Add Task scope
@@ -2659,26 +2641,8 @@ function loadAllBacklogs() {
     try {
       const text = fs.readFileSync(backlogPath, 'utf8');
       backlog = JSON.parse(text);
-      const statuses = (backlog.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
-      console.log(`[backlog] loaded ${proj.name}: ${statuses || '(no tasks)'}`);
-    } catch (e) {
-      console.warn(`[backlog] ${proj.name} backlog not readable:`, e.message);
-    }
+    } catch {}
     result.projects.push({ name: proj.name, workDir: proj.workDir, backlog });
-
-    // Load project archive
-    const archivePath = path.join(proj.workDir, 'docs', 'backlog-archive.json');
-    let archive = null;
-    try {
-      const text = fs.readFileSync(archivePath, 'utf8');
-      archive = JSON.parse(text);
-      const count = (archive.tasks || []).length;
-      console.log(`[backlog] loaded ${proj.name} archive: ${count} archived tasks`);
-    } catch (e) {
-      // Archive file doesn't exist yet - not an error
-      archive = { tasks: [] };
-    }
-    result.archive.projects.push({ name: proj.name, workDir: proj.workDir, archive });
   }
 
   return result;
@@ -2772,100 +2736,14 @@ function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
   );
 }
 
-// Statuses used by workflow skills (plan-task, start-build, finish-build, ship-task)
-// are included alongside the Polaris lifecycle statuses so skill-written values
-// pass validation and render correctly in the UI.
-// Move completed tasks from backlog to archive; called during promote-to-prod
-function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
-  const cfg = readConfig();
-  const taskNums = (Array.isArray(taskNumbers) ? taskNumbers : [taskNumbers]).map(n => parseInt(n, 10));
-
-  if (scope === 'global') {
-    if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
-    const backlogPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
-    const archivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
-
-    const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
-    let archive = { tasks: [] };
-    try {
-      archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
-    } catch (e) {
-      // Archive doesn't exist yet
-    }
-
-    const tasksToArchive = [];
-    const remainingTasks = [];
-
-    for (const task of (backlog.tasks || [])) {
-      if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
-        const archiveEntry = { ...task, project_source: 'global', promoted_via_pr: promotionPRNumber };
-        tasksToArchive.push(archiveEntry);
-      } else {
-        remainingTasks.push(task);
-      }
-    }
-
-    if (tasksToArchive.length > 0) {
-      archive.tasks = (archive.tasks || []).concat(tasksToArchive);
-      backlog.tasks = remainingTasks;
-      fs.writeFileSync(archivePath, JSON.stringify(archive, null, 2) + '\n', 'utf8');
-      fs.writeFileSync(backlogPath, JSON.stringify(backlog, null, 2) + '\n', 'utf8');
-      console.log(`[backlog] archived ${tasksToArchive.length} global tasks to backlog-archive.json`);
-    }
-    return tasksToArchive;
-  }
-
-  // Per-project scope
-  const project = (cfg.projects || []).find(p => p.name === scope);
-  if (!project) throw new Error('Project not found: ' + scope);
-  if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
-
-  const backlogPath = path.join(project.workDir, 'docs', 'backlog.json');
-  const archivePath = path.join(project.workDir, 'docs', 'backlog-archive.json');
-
-  const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
-  let archive = { tasks: [] };
-  try {
-    archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
-  } catch (e) {
-    // Archive doesn't exist yet
-  }
-
-  const tasksToArchive = [];
-  const remainingTasks = [];
-
-  for (const task of (backlog.tasks || [])) {
-    if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
-      const archiveEntry = { ...task, project_source: project.name, promoted_via_pr: promotionPRNumber };
-      tasksToArchive.push(archiveEntry);
-    } else {
-      remainingTasks.push(task);
-    }
-  }
-
-  if (tasksToArchive.length > 0) {
-    archive.tasks = (archive.tasks || []).concat(tasksToArchive);
-    backlog.tasks = remainingTasks;
-    fs.writeFileSync(archivePath, JSON.stringify(archive, null, 2) + '\n', 'utf8');
-    fs.writeFileSync(backlogPath, JSON.stringify(backlog, null, 2) + '\n', 'utf8');
-    console.log(`[backlog] archived ${tasksToArchive.length} tasks from ${scope} to backlog-archive.json`);
-  }
-  return tasksToArchive;
-}
-
 const VALID_BACKLOG_STATUSES = new Set([
-  // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
-  'ready', 'in-progress', 'in-review', 'done', 'complete',
-  // Polaris UI lifecycle statuses
   'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
   'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
   'blocked', 'on-hold', 'cancelled'
 ]);
 
 function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
-  console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
   if (!VALID_BACKLOG_STATUSES.has(newStatus)) {
-    console.warn(`[backlog] REJECTED status "${newStatus}" — not in VALID_BACKLOG_STATUSES`);
     throw new Error('Invalid status "' + newStatus + '". Valid: ' + [...VALID_BACKLOG_STATUSES].join(', '));
   }
   const cfg = readConfig();
@@ -2894,15 +2772,10 @@ function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
   const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   const task = (data.tasks || []).find(t => t.number === taskNum);
   if (!task) throw new Error('Task #' + taskNum + ' not found in ' + scope + ' backlog.');
-  const prevStatus = task.status;
   task.status = newStatus;
-  const TERMINAL_STATUSES = new Set(['production', 'cancelled', 'done', 'complete']);
-  if (TERMINAL_STATUSES.has(newStatus)) {
+  if (newStatus === 'production' || newStatus === 'cancelled') {
     task.completed_at = new Date().toISOString().split('T')[0];
-  } else {
-    task.completed_at = null;
   }
-  console.log(`[backlog] task #${taskNum} in ${scope}: ${prevStatus} → ${newStatus}`);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {
     _autoCommitBacklog(project.workDir, taskNum, 'set task #' + taskNum + ' status to ' + newStatus);
@@ -7321,7 +7194,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id   = `chat_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
+    const name = generateSessionName(prompt);
     const config = readConfig();
     const chatTier = (tier || 'balanced').toLowerCase();
     // If overrideModel is provided (e.g. cross-check model), use it directly.
@@ -7408,7 +7281,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id = `codex_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
+    const name = generateSessionName(prompt);
     const codexTier = (tier || 'balanced').toLowerCase();
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
@@ -7446,7 +7319,7 @@ async function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Image');
+    const name = generateSessionName(prompt || 'Image');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
@@ -7745,7 +7618,7 @@ async function handleMessage(ws, raw) {
   if (type === 'list-backlogs') {
     try {
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7757,7 +7630,7 @@ async function handleMessage(ws, raw) {
       const { scope, task } = msg;
       addBacklogTask(scope, task);
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7768,15 +7641,8 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, status: newStatus } = msg;
       updateBacklogTaskStatus(scope, taskNumber, newStatus);
-      if (newStatus === 'production') {
-        try {
-          archiveCompletedTasks(scope, [taskNumber], null);
-        } catch (archiveErr) {
-          console.error('[backlog] archive failed after manual production status:', archiveErr.message);
-        }
-      }
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7788,19 +7654,7 @@ async function handleMessage(ws, raw) {
       const { scope, taskNumber, updates } = msg;
       updateBacklogTask(scope, taskNumber, updates);
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
-    } catch (e) {
-      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
-    }
-    return;
-  }
-
-  if (type === 'archive-backlog-tasks') {
-    try {
-      const { scope, taskNumbers, promotionPRNumber } = msg;
-      archiveCompletedTasks(scope, taskNumbers, promotionPRNumber);
-      const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -9590,7 +9444,7 @@ async function handleMessage(ws, raw) {
       const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName);
       sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName });
     } catch (e) {
-      sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e?.message || String(e)}` });
+      sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e.message}` });
     }
     return;
   }
