@@ -1596,7 +1596,7 @@ ${transcript}`;
       _nextBacklog:  nextNumIn(backlogDir),
     };
   } catch (e) {
-    console.error('[obsidian-analyze]', e.message);
+    console.error('[obsidian-analyze]', e?.message || String(e));
     return null;
   }
 }
@@ -9438,7 +9438,7 @@ async function handleMessage(ws, raw) {
       const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName);
       sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName });
     } catch (e) {
-      sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e.message}` });
+      sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e?.message || String(e)}` });
     }
     return;
   }
