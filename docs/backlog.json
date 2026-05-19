@@ -358,7 +358,8 @@
                                              "waiverGuidance":  "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
                                          }
                                      ],
-                      "status":  "in-progress"
+                      "status":  "in-progress",
+                      "branch":  "task/16-fix-refresh-button-backlog"
                   },
                   {
                       "number":  17,
