@@ -2303,6 +2303,7 @@ const SKILL_CATEGORY_MAP = {
   'codex-review':           CATEGORIES.WORKFLOW,
   'promote-stage':          CATEGORIES.WORKFLOW,
   'promote-to-prod':        CATEGORIES.WORKFLOW,
+  'promote-to-main':        CATEGORIES.WORKFLOW,
   'mark-tasks-complete':    CATEGORIES.WORKFLOW,
   'flow-audit':             CATEGORIES.WORKFLOW,
 
