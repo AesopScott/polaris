@@ -389,60 +389,20 @@
                                        ]
                   },
                   {
-                      "number": 20,
-                      "title": "Build in debug log as a process step to the pipeline",
-                      "category": "feature",
-                      "priority": 90,
-                      "status": "in-progress",
-                      "created_at": "2026-05-19",
-                      "completed_at": null,
-                      "dependencies": [],
-                      "description": "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
-                      "branch": "task/20-build-in-debug-log",
-                      "pr_url": null,
-                      "plan": "## Phase A: Utility Exposure\nWire pushDebugLog() utility to all session contexts (Claude CLI, Direct agents, OpenAI) via system prompt guidance.\n\n## Phase B: Testing Pattern  \nDefine proof unit template and create example code demonstrating error-reporting pattern with comprehensive tests.\n\n## Phase C: WebSocket Handler\nImplement server-side handler for emit-debug-log fallback messages and client-side UI handler for debug-log broadcasts.",
-                      "proofUnits": [
-                          {
-                              "number": 1,
-                              "title": "Utility module exports pushDebugLog and emitDebugLogViaWebSocket",
-                              "expectedBehavior": "lib/debugUtil.js exports pushDebugLog(message, isError) and emitDebugLogViaWebSocket(ws, message, isError) functions.",
-                              "proofType": "smoke-command",
-                              "exactCommand": "node -e \"const u = require('./lib/debugUtil.js'); console.log(typeof u.pushDebugLog === 'function' && typeof u.emitDebugLogViaWebSocket === 'function' ? 'PASS' : 'FAIL')\"",
-                              "expectedInitialFailure": "Module not found or exports missing",
-                              "expectedPassingEvidence": "PASS printed to stdout",
-                              "waiverGuidance": "N/A"
-                          },
-                          {
-                              "number": 2,
-                              "title": "Server handler receives and rebroadcasts emit-debug-log messages",
-                              "expectedBehavior": "server.js has an emit-debug-log message handler that rebroadcasts to all clients as debug-log.",
-                              "proofType": "registry-diff",
-                              "exactCommand": "grep -n \"if (type === 'emit-debug-log')\" server.js",
-                              "expectedInitialFailure": "Handler not found",
-                              "expectedPassingEvidence": "Grep output shows handler exists",
-                              "waiverGuidance": "N/A"
-                          },
-                          {
-                              "number": 3,
-                              "title": "UI receives and renders debug-log messages in debug panel",
-                              "expectedBehavior": "mockup.html has a debug-log case in onWsMessage that calls pushDebugLog().",
-                              "proofType": "registry-diff",
-                              "exactCommand": "grep -n \"case 'debug-log'\" resources/mockup.html",
-                              "expectedInitialFailure": "Handler not found",
-                              "expectedPassingEvidence": "Grep output shows case exists",
-                              "waiverGuidance": "N/A"
-                          },
-                          {
-                              "number": 4,
-                              "title": "System prompts include error-reporting guidance",
-                              "expectedBehavior": "buildPolarisContextBlock, buildDirectSystemPrompt, and BASE_SYSTEM_PROMPT all include guidance about using pushDebugLog().",
-                              "proofType": "registry-diff",
-                              "exactCommand": "grep -c \"Error reporting\\|pushDebugLog\" server.js",
-                              "expectedInitialFailure": "Count < 3",
-                              "expectedPassingEvidence": "Count >= 3",
-                              "waiverGuidance": "N/A"
-                          }
-                      ]
+                      "number":  20,
+                      "title":  "Build in debug log as a process step to the pipeline",
+                      "description":  "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "status":  "in-progress",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ],
+                      "plan":  "Task #20: Build in debug log as a process step to the pipeline. Three phases: A) Utility Exposure (expose pushDebugLog across all session types), B) Testing Pattern (define proof units for debug logging), C) Server Context Solution (handle remote server fallback via WebSocket). Proof units: 9 total covering utility module, session-type availability, testing, documentation, WebSocket handlers, and end-to-end verification.",
+                      "branch":  "task/20-build-in-debug-log",
+                      "pr_url":  null
                   }
               ]
 }
