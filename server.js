@@ -5959,9 +5959,12 @@ async function spawnCodexSession(sessionId, prompt, config) {
     const codexWindowsRule =
       '--- Codex Shell Rule ---\n' +
       'This Codex session runs shell commands through Windows PowerShell. Use PowerShell syntax only: no bash heredocs, no `&&` command chaining, no Unix-only redirection forms, and no POSIX shell assumptions.';
+    const codexReadableOutputRule =
+      '\n\n--- Codex Human-Readable Output Rule ---\n' +
+      'Keep user-facing updates and final answers readable. Do not paste raw command output, full HTML, full diffs, logs, JSON blobs, or long tool results into the chat unless Scott explicitly asks for raw output. For verification commands, reduce output at the command level using booleans, counts, filenames, or targeted matches. If a command produces noisy output unexpectedly, summarize the relevant result instead of repeating the raw output.';
     const polarisContext = buildPolarisContextBlock(config, session);
     const knowledgeBlock = buildProjectKnowledgeBlock(config, session);
-    fullPrompt = polarisContext + '\n\n' + codexWindowsRule + knowledgeBlock + '\n\n' + (history || prompt);
+    fullPrompt = polarisContext + '\n\n' + codexWindowsRule + codexReadableOutputRule + knowledgeBlock + '\n\n' + (history || prompt);
   }
 
   // Extract text from DOCX/PDF attachments and prepend to prompt (Codex stdin is text-only).
