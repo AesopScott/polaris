@@ -12912,7 +12912,7 @@
     }
     camCurrentPushSid = sid;
     pendingStatusProject = s.projectName || null;
-    const content = (s.lines || []).map(l => l.text).join('\n');
+    const content = (s.lines || []).map(l => String(l.text ?? '')).join('\n');
     obsidianPendingSession = { sessionName: s.name, content, projectName: s.projectName || null, fromCam: true, _analysis: null };
     camOnObsidianDone = () => { camOnObsidianDone = null; camCurrentPushSid = null; camMarkDone(sid, '✓ Pushed', '#4ade80'); };
     wsSend({ type: 'obsidian-analyze', sessionName: s.name, content, projectName: s.projectName || null });
