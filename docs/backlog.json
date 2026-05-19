@@ -74,12 +74,13 @@
       "number": 7,
       "title": "Obsidian write issues.",
       "description": "Sometimes when I write to Obsidian using the close button, it just shows block block",
-      "category": "feature",
+      "category": "fix",
       "priority": 75,
-      "status": "backlog",
+      "status": "ready",
       "created_at": "2026-05-18",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "plan": "## Root cause\n\nWhen the user clicks Close → Push to Obsidian and Git, `camRowPush` sends the session content to `obsidian-analyze`, DeepSeek extracts structured knowledge, and the result is written to Obsidian via `appendBlock` in the `obsidian-commit-analysis` handler (server.js ~line 9458). `appendBlock` uses a template literal: `\\n\\n## Session Update (${today})\\n\\n${blockContent}\\n`. If DeepSeek returns a nested object or array for `architecture` or `buildPlan` instead of a plain string, JavaScript coerces it to `[object Object]` in the template literal. This is confirmed by `[object Object]` entries in `3-Build-Plan.md` and `2-Architecture.md`. Secondary issue: `camRowPush` builds the content string with `(s.lines || []).map(l => l.text).join('\\n')` — if any `l.text` is not a string, it also coerces to `[object Object]` in the transcript sent to DeepSeek.\n\n## Testability prerequisites\n\nNone — the Close button and Obsidian push flow work today. The test is: use Close → Push to Obsidian → Accept analysis → verify no `[object Object]` in the written Obsidian files.\n\n## Steps\n\n1. **server.js — sanitize `analyzeSessionForKnowledgePreview` response (~line 1590):** After `JSON.parse(jsonMatch[0])`, add a `sanitizeField` helper that returns `null` if the value is null/undefined, the value as-is if it's a string, or `JSON.stringify(value)` otherwise. Apply it to all six extracted fields (`architecture`, `buildPlan`, `backlog`, `decision`, `pattern`, `lesson`).\n\n2. **server.js — guard `appendBlock` defensively (~line 9455):** Before writing, convert blockContent to string: `const safeContent = typeof blockContent === 'string' ? blockContent : JSON.stringify(blockContent);`. Use `safeContent` in the `appendFileSync` call.\n\n3. **mockup.html — fix `camRowPush` content builder (~line 12915):** Change `(s.lines || []).map(l => l.text).join('\\n')` to `(s.lines || []).map(l => String(l.text ?? '')).join('\\n')` to prevent non-string text coercing to `[object Object]` in the transcript.\n\n4. **Bump `package.json`** patch version at delivery time.\n\n5. **Update `4-Changelog.md`** in Obsidian with the fix details.\n\n## Verification\n\nManual smoke test: launch a session, run a quick task, click Close, click Push to Obsidian and Git on that session, accept the analysis, then open the relevant Obsidian file (2-Architecture.md or 3-Build-Plan.md) and confirm the new Session Update block contains readable text — not `[object Object]`."
     },
     {
       "number": 8,
