@@ -5,7 +5,7 @@
                       "title":  "Skills Nav Pane — hierarchical tree with Global / Project sections + 7 categories",
                       "category":  "feature",
                       "priority":  1,
-                      "status":  "in-review",
+                      "status":  "in-progress",
                       "dependencies":  [
 
                                        ],
@@ -75,7 +75,7 @@
                       "description":  "I want to add a project initiation button next to the projects inside the project panel, which automatically kicks off the skill /project-initiation.",
                       "category":  "feature",
                       "priority":  70,
-                      "status":  "in-progress",
+                      "status":  "in-review",
                       "created_at":  "2026-05-18",
                       "completed_at":  null,
                       "dependencies":  [
