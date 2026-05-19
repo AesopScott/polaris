@@ -2623,7 +2623,7 @@ function discoverAllSkills(workDir = null) {
 // ============================================================
 function loadAllBacklogs() {
   const cfg = readConfig();
-  const result = { global: null, projects: [] };
+  const result = { global: null, projects: [], archive: { global: null, projects: [] } };
 
   if (cfg.obsidianVaultPath) {
     const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
@@ -2634,6 +2634,18 @@ function loadAllBacklogs() {
       console.log(`[backlog] loaded global: ${statuses || '(no tasks)'}`);
     } catch (e) {
       console.warn('[backlog] global backlog not readable:', e.message);
+    }
+
+    // Load global archive
+    const globalArchivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
+    try {
+      const text = fs.readFileSync(globalArchivePath, 'utf8');
+      result.archive.global = JSON.parse(text);
+      const count = (result.archive.global.tasks || []).length;
+      console.log(`[backlog] loaded global archive: ${count} archived tasks`);
+    } catch (e) {
+      // Archive file doesn't exist yet - not an error
+      result.archive.global = { tasks: [] };
     }
   }
 
@@ -2653,6 +2665,20 @@ function loadAllBacklogs() {
       console.warn(`[backlog] ${proj.name} backlog not readable:`, e.message);
     }
     result.projects.push({ name: proj.name, workDir: proj.workDir, backlog });
+
+    // Load project archive
+    const archivePath = path.join(proj.workDir, 'docs', 'backlog-archive.json');
+    let archive = null;
+    try {
+      const text = fs.readFileSync(archivePath, 'utf8');
+      archive = JSON.parse(text);
+      const count = (archive.tasks || []).length;
+      console.log(`[backlog] loaded ${proj.name} archive: ${count} archived tasks`);
+    } catch (e) {
+      // Archive file doesn't exist yet - not an error
+      archive = { tasks: [] };
+    }
+    result.archive.projects.push({ name: proj.name, workDir: proj.workDir, archive });
   }
 
   return result;
@@ -2749,6 +2775,84 @@ function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
 // Statuses used by workflow skills (plan-task, start-build, finish-build, ship-task)
 // are included alongside the Polaris lifecycle statuses so skill-written values
 // pass validation and render correctly in the UI.
+// Move completed tasks from backlog to archive; called during promote-to-prod
+function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
+  const cfg = readConfig();
+  const taskNums = (Array.isArray(taskNumbers) ? taskNumbers : [taskNumbers]).map(n => parseInt(n, 10));
+
+  if (scope === 'global') {
+    if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
+    const backlogPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    const archivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
+
+    const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
+    let archive = { tasks: [] };
+    try {
+      archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+    } catch (e) {
+      // Archive doesn't exist yet
+    }
+
+    const tasksToArchive = [];
+    const remainingTasks = [];
+
+    for (const task of (backlog.tasks || [])) {
+      if (taskNums.includes(task.number) && task.status === 'complete') {
+        const archiveEntry = { ...task, project_source: 'global', promoted_via_pr: promotionPRNumber };
+        tasksToArchive.push(archiveEntry);
+      } else {
+        remainingTasks.push(task);
+      }
+    }
+
+    if (tasksToArchive.length > 0) {
+      archive.tasks = (archive.tasks || []).concat(tasksToArchive);
+      backlog.tasks = remainingTasks;
+      fs.writeFileSync(archivePath, JSON.stringify(archive, null, 2) + '\n', 'utf8');
+      fs.writeFileSync(backlogPath, JSON.stringify(backlog, null, 2) + '\n', 'utf8');
+      console.log(`[backlog] archived ${tasksToArchive.length} global tasks to backlog-archive.json`);
+    }
+    return tasksToArchive;
+  }
+
+  // Per-project scope
+  const project = (cfg.projects || []).find(p => p.name === scope);
+  if (!project) throw new Error('Project not found: ' + scope);
+  if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
+
+  const backlogPath = path.join(project.workDir, 'docs', 'backlog.json');
+  const archivePath = path.join(project.workDir, 'docs', 'backlog-archive.json');
+
+  const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
+  let archive = { tasks: [] };
+  try {
+    archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+  } catch (e) {
+    // Archive doesn't exist yet
+  }
+
+  const tasksToArchive = [];
+  const remainingTasks = [];
+
+  for (const task of (backlog.tasks || [])) {
+    if (taskNums.includes(task.number) && task.status === 'complete') {
+      const archiveEntry = { ...task, project_source: project.name, promoted_via_pr: promotionPRNumber };
+      tasksToArchive.push(archiveEntry);
+    } else {
+      remainingTasks.push(task);
+    }
+  }
+
+  if (tasksToArchive.length > 0) {
+    archive.tasks = (archive.tasks || []).concat(tasksToArchive);
+    backlog.tasks = remainingTasks;
+    fs.writeFileSync(archivePath, JSON.stringify(archive, null, 2) + '\n', 'utf8');
+    fs.writeFileSync(backlogPath, JSON.stringify(backlog, null, 2) + '\n', 'utf8');
+    console.log(`[backlog] archived ${tasksToArchive.length} tasks from ${scope} to backlog-archive.json`);
+  }
+  return tasksToArchive;
+}
+
 const VALID_BACKLOG_STATUSES = new Set([
   // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
   'ready', 'in-progress', 'in-review', 'done', 'complete',
@@ -7641,7 +7745,7 @@ async function handleMessage(ws, raw) {
   if (type === 'list-backlogs') {
     try {
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7653,7 +7757,7 @@ async function handleMessage(ws, raw) {
       const { scope, task } = msg;
       addBacklogTask(scope, task);
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7665,7 +7769,7 @@ async function handleMessage(ws, raw) {
       const { scope, taskNumber, status: newStatus } = msg;
       updateBacklogTaskStatus(scope, taskNumber, newStatus);
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7677,7 +7781,19 @@ async function handleMessage(ws, raw) {
       const { scope, taskNumber, updates } = msg;
       updateBacklogTask(scope, taskNumber, updates);
       const result = loadAllBacklogs();
-      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects });
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
+    return;
+  }
+
+  if (type === 'archive-backlog-tasks') {
+    try {
+      const { scope, taskNumbers, promotionPRNumber } = msg;
+      archiveCompletedTasks(scope, taskNumbers, promotionPRNumber);
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }

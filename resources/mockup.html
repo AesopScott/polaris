@@ -1988,7 +1988,9 @@
       Global cross-cutting tasks live in the Obsidian vault at <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:3px;">Backlog/backlog.json</code>. Per-project tasks live in each project's <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:3px;">docs/backlog.json</code>. Click <strong>+ Add task</strong> to create a new entry — per-project writes auto-commit on the current branch.
     </div>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.15);display:flex;align-items:center;gap:8px;">
-      <input type="text" id="backlog-search-input" placeholder="🔍 Filter tasks as you type — searches title, status, deps, priority…" style="flex:1;padding:6px 10px;background:var(--input-bg);color:var(--text);border:1px solid #444;border-radius:4px;font-size:12px;" oninput="filterBacklogTasks(this.value)" />
+      <button id="backlog-toggle-active" class="fbtn active-toggle" onclick="switchBacklogMode('active')" title="Show active backlog" style="padding:4px 10px;font-size:11px;background:rgba(74,222,128,0.35);border:1px solid #86efac;">Active</button>
+      <button id="backlog-toggle-archive" class="fbtn archive-toggle" onclick="switchBacklogMode('archive')" title="Show archived tasks" style="padding:4px 10px;font-size:11px;">Archive</button>
+      <input type="text" id="backlog-search-input" placeholder="🔍 Filter tasks as you type — searches title, status, deps, priority…" style="flex:1;margin-left:8px;padding:6px 10px;background:var(--input-bg);color:var(--text);border:1px solid #444;border-radius:4px;font-size:12px;" oninput="filterBacklogTasks(this.value)" />
       <button class="fbtn" onclick="document.getElementById('backlog-search-input').value=''; filterBacklogTasks('');" title="Clear search" style="padding:4px 10px;font-size:11px;">Clear</button>
     </div>
     <div class="projects-panel-body" id="backlog-panel-body" style="padding:0;max-height:540px;overflow-y:auto;">
@@ -4636,7 +4638,7 @@
         break;
 
       case 'backlogs-data':
-        if (typeof renderBacklog === 'function') renderBacklog({ global: msg.global, projects: msg.projects });
+        if (typeof renderBacklog === 'function') renderBacklog({ global: msg.global, projects: msg.projects, archive: msg.archive });
         break;
 
       case 'backlog-error':
@@ -8924,6 +8926,29 @@
     console.error('[backlog]', msg);
   }
 
+  // Backlog view mode: 'active' (default) or 'archive'
+  let _backlogViewMode = 'active';
+
+  function switchBacklogMode(mode) {
+    _backlogViewMode = mode;
+    const activeBtn = document.getElementById('backlog-toggle-active');
+    const archiveBtn = document.getElementById('backlog-toggle-archive');
+    if (activeBtn && archiveBtn) {
+      if (mode === 'active') {
+        activeBtn.style.background = 'rgba(74,222,128,0.35)';
+        activeBtn.style.borderColor = '#86efac';
+        archiveBtn.style.background = '';
+        archiveBtn.style.borderColor = '';
+      } else {
+        activeBtn.style.background = '';
+        activeBtn.style.borderColor = '';
+        archiveBtn.style.background = 'rgba(34,197,94,0.35)';
+        archiveBtn.style.borderColor = '#bbf7d0';
+      }
+    }
+    if (_backlogData) renderBacklog(_backlogData);
+  }
+
   function renderBacklog(data) {
     _backlogData = data;
     const body  = document.getElementById('backlog-panel-body');
@@ -8937,16 +8962,34 @@
     });
     const sections = [];
     let totalTasks = 0;
-    // Global section — always shown (even with zero tasks)
-    const globalTasks = (data.global && Array.isArray(data.global.tasks)) ? data.global.tasks : [];
-    totalTasks += globalTasks.length;
-    sections.push(renderBacklogSection('global', '🌐 Global (cross-project)', globalTasks));
-    // Per-project sections — always shown for every configured project
-    // (docs/backlog.json auto-creates on first task add)
-    for (const proj of ((data.projects || []).sort((a, b) => a.name.localeCompare(b.name)))) {
-      const tasks = (proj.backlog && Array.isArray(proj.backlog.tasks)) ? proj.backlog.tasks : [];
-      totalTasks += tasks.length;
-      sections.push(renderBacklogSection(proj.name, '📦 ' + proj.name, tasks));
+
+    if (_backlogViewMode === 'archive') {
+      // Render archive view
+      const archiveData = data.archive || { global: null, projects: [] };
+      // Global archive section
+      const globalArchiveTasks = (archiveData.global && Array.isArray(archiveData.global.tasks)) ? archiveData.global.tasks : [];
+      totalTasks += globalArchiveTasks.length;
+      sections.push(renderArchiveSection('global', '🌐 Global (cross-project)', globalArchiveTasks));
+      // Per-project archive sections
+      for (const proj of ((data.projects || []).sort((a, b) => a.name.localeCompare(b.name)))) {
+        const projArchive = (archiveData.projects || []).find(p => p.name === proj.name);
+        const tasks = (projArchive && projArchive.archive && Array.isArray(projArchive.archive.tasks)) ? projArchive.archive.tasks : [];
+        totalTasks += tasks.length;
+        sections.push(renderArchiveSection(proj.name, '📦 ' + proj.name, tasks));
+      }
+    } else {
+      // Render active backlog view
+      // Global section — always shown (even with zero tasks)
+      const globalTasks = (data.global && Array.isArray(data.global.tasks)) ? data.global.tasks : [];
+      totalTasks += globalTasks.length;
+      sections.push(renderBacklogSection('global', '🌐 Global (cross-project)', globalTasks));
+      // Per-project sections — always shown for every configured project
+      // (docs/backlog.json auto-creates on first task add)
+      for (const proj of ((data.projects || []).sort((a, b) => a.name.localeCompare(b.name)))) {
+        const tasks = (proj.backlog && Array.isArray(proj.backlog.tasks)) ? proj.backlog.tasks : [];
+        totalTasks += tasks.length;
+        sections.push(renderBacklogSection(proj.name, '📦 ' + proj.name, tasks));
+      }
     }
     if (count) count.textContent = totalTasks + ' task' + (totalTasks === 1 ? '' : 's');
     body.innerHTML = sections.join('');
@@ -9080,6 +9123,35 @@
         + '<span style="font-size:12px;font-weight:700;flex:1;">' + escHtml(title) + '</span>'
         + '<span style="font-size:10px;opacity:0.5;">' + tasks.length + ' task' + (tasks.length === 1 ? '' : 's') + '</span>'
         + '<button class="backlog-add-btn fbtn" data-scope="' + escHtmlAttr(scopeKey) + '" style="padding:4px 10px;font-size:11px;">+ Add task</button>'
+      + '</div>'
+      + '<div class="backlog-section-body" style="display:none;">'
+        + '<table class="projects-table" style="font-size:12px;width:100%;"><thead>' + headRow + '</thead><tbody>' + rows + '</tbody></table>'
+      + '</div>'
+    + '</div>';
+  }
+
+  function renderArchiveSection(scopeKey, title, tasks) {
+    const headRow = '<tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid var(--border);">'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">#</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">TITLE</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">PROJECT</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">COMPLETED</th>'
+    + '</tr>';
+    const rows = tasks.length === 0
+      ? '<tr><td colspan="4" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No archived tasks yet.</td></tr>'
+      : tasks.slice().sort((a, b) => new Date(b.completed_at || '') - new Date(a.completed_at || '')).map(t => {
+          return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" style="opacity:0.8;cursor:default;" title="Archived on ' + (t.completed_at || '?') + '">'
+            + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
+            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
+            + '<td style="padding:8px 12px;font-size:11px;opacity:0.7;">' + escHtml(t.project_source || '?') + '</td>'
+            + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;">' + (t.completed_at || '?') + '</td>'
+          + '</tr>';
+        }).join('');
+    return '<div class="backlog-section collapsed" data-scope="' + escHtmlAttr(scopeKey) + '" style="border-bottom:1px solid var(--border);">'
+      + '<div class="backlog-section-header" style="padding:10px 16px;background:var(--header-bg);display:flex;align-items:center;gap:10px;user-select:none;cursor:pointer;">'
+        + '<span class="backlog-chevron" style="font-size:10px;width:12px;opacity:0.7;">▶</span>'
+        + '<span style="font-size:12px;font-weight:700;flex:1;">' + escHtml(title) + '</span>'
+        + '<span style="font-size:10px;opacity:0.5;">' + tasks.length + ' archived' + (tasks.length === 1 ? '' : '') + '</span>'
       + '</div>'
       + '<div class="backlog-section-body" style="display:none;">'
         + '<table class="projects-table" style="font-size:12px;width:100%;"><thead>' + headRow + '</thead><tbody>' + rows + '</tbody></table>'
