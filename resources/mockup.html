@@ -1997,7 +1997,8 @@
       <div style="padding:20px;text-align:center;opacity:0.5;">Loading backlogs…</div>
     </div>
     <div class="projects-footer">
-      <button class="fbtn" onclick="refreshBacklogPanel()" title="Re-load all backlogs">🔄 Refresh</button>
+      <button id="backlog-refresh-btn" class="fbtn" onclick="refreshBacklogPanel()" title="Re-load all backlogs">🔄 Refresh</button>
+      <span id="backlog-refresh-status" style="font-size:11px;margin-left:8px;"></span>
       <span style="margin-left:auto;font-size:11px;opacity:0.5;">Sources: vault Backlog/ + projects' docs/backlog.json</span>
     </div>
   </div>
@@ -4639,11 +4640,13 @@
 
       case 'backlogs-data':
         if (typeof renderBacklog === 'function') renderBacklog({ global: msg.global, projects: msg.projects, archive: msg.archive });
+        if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived(msg, null);
         break;
 
       case 'backlog-error':
         if (typeof showBacklogError === 'function') showBacklogError(msg.error || 'Unknown error');
         else console.error('[backlog]', msg.error);
+        if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived(null, msg.error || 'Unknown error');
         break;
 
       case 'connections':
@@ -8913,7 +8916,31 @@
     if (panel.classList.contains('hidden')) openBacklogPanel();
     else closeBacklogPanel();
   }
-  function refreshBacklogPanel() { wsSend({ type: 'list-backlogs' }); }
+  function refreshBacklogPanel() {
+    const btn = document.getElementById('backlog-refresh-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading'; }
+    const status = document.getElementById('backlog-refresh-status');
+    if (status) { status.textContent = ''; }
+    wsSend({ type: 'list-backlogs' });
+  }
+  function _onBacklogDataReceived(data, error) {
+    const btn = document.getElementById('backlog-refresh-btn');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
+    const status = document.getElementById('backlog-refresh-status');
+    if (!status) return;
+    if (error) {
+      status.style.color = '#f87171';
+      status.textContent = '✗ ' + error;
+    } else {
+      const projectCount = (data && data.projects) ? data.projects.length : 0;
+      const parts = [];
+      if (data && data.global) parts.push('vault');
+      if (projectCount > 0) parts.push(projectCount + ' project' + (projectCount !== 1 ? 's' : ''));
+      status.style.color = '#4ade80';
+      status.textContent = '✓ ' + (parts.length ? parts.join(' + ') : 'loaded');
+      setTimeout(() => { status.textContent = ''; }, 4000);
+    }
+  }
   function showBacklogError(msg) {
     const editModal = document.getElementById('backlog-edit-modal');
     const addModal = document.getElementById('backlog-add-modal');
@@ -9094,22 +9121,29 @@
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">#</th>'
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">TITLE</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">STATUS</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">CATEGORY</th>'
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">DEPS</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">PRI</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;width:40px;"></th>'
     + '</tr>';
     const rows = tasks.length === 0
-      ? '<tr><td colspan="6" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
+      ? '<tr><td colspan="7" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
       : tasks.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0)).map(t => {
           const statusStyle = colors[t.status] || colors['backlog'];
           const depsArr = Array.isArray(t.dependencies) ? t.dependencies : [];
           const depsStr = depsArr.length ? depsArr.map(d => '#' + d).join(', ') : '—';
+          const cat = (t.category || 'feature').toLowerCase();
+          let categoryStyle = '';
+          if (cat === 'feature') categoryStyle = 'color:#86efac;';
+          else if (cat === 'fix' || cat === 'emergency fix') categoryStyle = 'color:#fca5a5;';
+          else if (cat === 'update') categoryStyle = 'color:#fde047;';
           return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
             + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
+            + '<td style="padding:8px 12px;font-size:11px;' + categoryStyle + '">' + escHtml(t.category || 'feature') + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:40px;">'
