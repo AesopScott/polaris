@@ -335,7 +335,8 @@
           "waiverGuidance": "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
         }
       ],
-      "status": "ready"
+      "status": "in-review",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/7"
     },
     {
       "number": 17,
