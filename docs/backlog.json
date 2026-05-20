@@ -209,7 +209,8 @@
                     "exactCommand": "git diff docs/backlog.json | grep -A3 -B3 impact",
                     "expectedInitialFailure": "docs/backlog.json has no mention of 'impact' field",
                     "expectedPassingEvidence": "Diff shows impact field with enum values and default documented. Example: '\"impact\": \"string, enum: [minor, standard, major], optional, defaults to standard\"'",
-                    "waiverGuidance": "N/A"
+                    "waiverGuidance": "N/A",
+                    "buildEvidence": "PASS: faa91f7 diff confirms impact in addBacklogTask baseTask (server.js:2721), in allowedFields (server.js:2940), and registry backlog-task-fields.md updated with correct producer/consumer lines."
                 },
                 {
                     "number": 2,
@@ -219,7 +220,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click '+ Add task'. (3) Fill in title, set impact='major'. (4) Click 'Add Task'. (5) Check docs/backlog.json and verify the new task has '\"impact\": \"major\"' field. (6) Refresh the backlog panel and verify the impact value displays.",
                     "expectedInitialFailure": "New task created without impact field in backlog.json (field is missing or empty).",
                     "expectedPassingEvidence": "New task entry in docs/backlog.json includes '\"impact\": \"major\"' (or whichever value was set). Task is visible in UI with correct impact display.",
-                    "waiverGuidance": "Manual test steps above are sufficient. Sign-off: Scott confirms via Polaris UI."
+                    "waiverGuidance": "Manual test steps above are sufficient. Sign-off: Scott confirms via Polaris UI.",
+                    "buildEvidence": "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 3,
@@ -229,7 +231,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click the ✎ (edit) button on an existing task. (3) Change the impact dropdown from 'standard' to 'minor'. (4) Click 'Save Changes'. (5) Check docs/backlog.json and verify the task's impact field is now '\"minor\"'. (6) Close and reopen the backlog panel, verify the impact value persists.",
                     "expectedInitialFailure": "Task's impact field in backlog.json does not change, or field is not included in the update.",
                     "expectedPassingEvidence": "After saving, task's '\"impact\"' field in backlog.json has the new value. Refresh reflects the change.",
-                    "waiverGuidance": "Manual test as described; no automated test suite exists for WebSocket handlers."
+                    "waiverGuidance": "Manual test as described; no automated test suite exists for WebSocket handlers.",
+                    "buildEvidence": "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 4,
@@ -239,7 +242,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click '+ Add task'. (3) Inspect the modal: verify a <select> element labeled 'IMPACT' with three option values: minor, standard, major. (4) Verify positioning: dropdown is in the middle/spacious area, not squeezed between other fields.",
                     "expectedInitialFailure": "Modal has no impact field or dropdown. Form shows only title, description, priority, category.",
                     "expectedPassingEvidence": "Modal visibly shows an impact dropdown with all three options selectable. Dropdown can be focused and changed without errors.",
-                    "waiverGuidance": "Manual UI inspection in Polaris; Scott confirms via browser."
+                    "waiverGuidance": "Manual UI inspection in Polaris; Scott confirms via browser.",
+                    "buildEvidence": "WAIVER: HTML element <select id=\"backlog-add-impact\"> confirmed at mockup.html:2052 by code inspection. No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 5,
@@ -249,7 +253,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Open browser DevTools Network tab. (3) Click '+ Add task', fill in title='test impact', set impact='major', click 'Add Task'. (4) In Network tab, find the WebSocket message (type: add-backlog-task). (5) Inspect the message payload: verify it includes '\"impact\": \"major\"'.",
                     "expectedInitialFailure": "WebSocket message does not include impact field. Task is created but impact is missing or null.",
                     "expectedPassingEvidence": "WebSocket payload shows '\"impact\": \"major\"' (or selected value). Task is created with that impact in backlog.json.",
-                    "waiverGuidance": "Network inspection via DevTools; Scott confirms the message structure."
+                    "waiverGuidance": "Network inspection via DevTools; Scott confirms the message structure.",
+                    "buildEvidence": "WAIVER: submitBacklogAdd reads backlog-add-impact (line 9403) and includes in wsSend payload (line 9409). No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 6,
@@ -259,7 +264,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Find an existing task and click ✎ (edit). (3) Inspect modal: verify impact dropdown shows the task's current impact value (e.g., 'standard' is selected). (4) Change dropdown to 'minor'. (5) Click 'Save Changes'. (6) Re-open edit modal: verify impact now shows 'minor'.",
                     "expectedInitialFailure": "Edit modal has no impact field. Changing impact has no effect on save.",
                     "expectedPassingEvidence": "Modal displays current impact value pre-selected. After changing and saving, the new value persists and is visible in subsequent edits.",
-                    "waiverGuidance": "Manual UI inspection and round-trip test in Polaris; Scott confirms."
+                    "waiverGuidance": "Manual UI inspection and round-trip test in Polaris; Scott confirms.",
+                    "buildEvidence": "WAIVER: openBacklogEditModal sets backlog-edit-impact (line 9421); submitBacklogEdit reads and sends it (lines 9434/9441). No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 7,
@@ -269,7 +275,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Inspect the backlog table: verify column headers include 'IMPACT' between 'CATEGORY' and 'DEPS'. (3) For each task, verify the impact value is displayed. (4) Verify color coding: find a task with impact='minor' (should be green), impact='standard' (gray), impact='major' (red/orange).",
                     "expectedInitialFailure": "Table has no IMPACT column. Impact values are not displayed.",
                     "expectedPassingEvidence": "IMPACT column is visible in correct position. All three impact values are displayed with correct colors for at least one task of each type.",
-                    "waiverGuidance": "Manual visual inspection in browser; Scott confirms layout and colors match the design."
+                    "waiverGuidance": "Manual visual inspection in browser; Scott confirms layout and colors match the design.",
+                    "buildEvidence": "PASS (code): IMPACT column header at mockup.html:9219, impact td with color logic at lines 9235-9247, colspan=8 at line 9224. WAIVER: Live UI render by Scott required before merge."
                 },
                 {
                     "number": 8,
@@ -279,7 +286,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) For each backlog task, click the ✎ edit button. (3) Verify the impact dropdown in the modal shows the task's current impact value (not blank, not defaulted to 'standard'). (4) Close modal and click edit on a different task; verify the impact value matches that task's value.",
                     "expectedInitialFailure": "Edit button click opens modal but impact dropdown is blank or always shows 'standard' regardless of task's actual impact.",
                     "expectedPassingEvidence": "Edit modal always shows the correct impact value for the task being edited. Different tasks show different values when edited.",
-                    "waiverGuidance": "Manual test as described; Scott confirms."
+                    "waiverGuidance": "Manual test as described; Scott confirms.",
+                    "buildEvidence": "WAIVER: data-impact on edit button confirmed at mockup.html:9251; passed to openBacklogEditModal at line 9182. No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 9,
@@ -289,7 +297,8 @@
                     "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Add or edit a task to set impact='major'. (3) Verify it displays in the table with correct color. (4) Click the Refresh button (🔄 button in footer). (5) Wait for backlog to reload. (6) Verify the task still shows impact='major' and color-coding is correct.",
                     "expectedInitialFailure": "After refresh, impact column is not displayed or impact values revert to default/blank.",
                     "expectedPassingEvidence": "After refresh, impact values are displayed and match the values in backlog.json. No loss of data.",
-                    "waiverGuidance": "Manual test in Polaris UI; Scott confirms persistent display."
+                    "waiverGuidance": "Manual test in Polaris UI; Scott confirms persistent display.",
+                    "buildEvidence": "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
                 },
                 {
                     "number": 10,
@@ -299,7 +308,8 @@
                     "exactCommand": "Manual (full smoke test): (1) Open Polaris UI, Backlog panel (2) Add task 'Minor Task' with impact='minor' → verify displays in table with green color (3) Add task 'Standard Task' with impact='standard' → verify displays with gray color (4) Add task 'Major Task' with impact='major' → verify displays with red/orange color (5) Edit 'Minor Task': change impact to 'major' → verify table updates to red/orange color (6) Edit 'Standard Task': change impact to 'minor' → verify table updates to green color (7) Click Refresh button → verify all three tasks still display with correct colors (8) Close and reopen Backlog panel → verify tasks still show correct impact values (9) Close and reopen Polaris app → verify impact values survive app restart (persisted to backlog.json)",
                     "expectedInitialFailure": "Any operation fails: add with impact doesn't persist, edit doesn't update, refresh loses data, or colors are incorrect.",
                     "expectedPassingEvidence": "All 9 steps complete without errors. Tasks display correct impact values and colors throughout. Data survives refresh and app restart.",
-                    "waiverGuidance": "Full manual smoke test; Scott signs off that all three impact levels work end-to-end."
+                    "waiverGuidance": "Full manual smoke test; Scott signs off that all three impact levels work end-to-end.",
+                    "buildEvidence": "WAIVER: Full end-to-end manual smoke test required by Scott before merge. All code paths verified by inspection. Merge gate: Scott must check all 5 items in PR #17 test plan."
                 }
             ]
         },
