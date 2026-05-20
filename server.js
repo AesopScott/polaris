@@ -645,12 +645,20 @@ function saveSessions() {
   } catch {}
 }
 
-const BACKLOG_STATUS_TO_TASK_STATE = {
-  'backlog':     { taskState: 'backlog',        lastSkill: null },
-  'ready':       { taskState: 'ready',          lastSkill: 'plan-task' },
-  'in-progress': { taskState: 'coding',         lastSkill: 'start-build' },
-  'in-review':   { taskState: 'build-finished', lastSkill: 'finish-build' },
-  'done':        { taskState: 'done',           lastSkill: 'promote-stage' },
+// Maps backlog task status → the last skill that produced it.
+// Covers both the older Aesop scheme and the newer Polaris ship-task scheme.
+const BACKLOG_STATUS_TO_LAST_SKILL = {
+  'planned':       'plan-task',
+  'ready':         'plan-task',
+  'build-started': 'start-build',
+  'in-progress':   'start-build',
+  'build-finished':'finish-build',
+  'in-review':     'finish-build',
+  'pr-reviewed':   'review-pr',
+  'staged':        'promote-stage',
+  'production':    'promote-to-prod',
+  'complete':      'mark-tasks-complete',
+  'done':          'promote-stage',
 };
 
 function inferTaskState(session) {
@@ -664,10 +672,12 @@ function inferTaskState(session) {
     const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
     const tasks = Array.isArray(backlog) ? backlog : (backlog.tasks || []);
     const task = tasks.find(t => t.number === taskNumber);
-    if (!task) return null;
-    const mapped = BACKLOG_STATUS_TO_TASK_STATE[task.status];
-    if (!mapped) return null;
-    return { taskNumber, taskState: mapped.taskState, lastSkill: mapped.lastSkill };
+    if (!task || !task.status) return null;
+    return {
+      taskNumber,
+      taskState: task.status,
+      lastSkill: BACKLOG_STATUS_TO_LAST_SKILL[task.status] || null,
+    };
   } catch { return null; }
 }
 
@@ -2862,7 +2872,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
     const remainingTasks = [];
 
     for (const task of (backlog.tasks || [])) {
-      if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
+      if (taskNums.includes(task.number) && (task.status === 'production' || task.status === 'cancelled')) {
         const archiveEntry = { ...task, project_source: 'global', promoted_via_pr: promotionPRNumber };
         tasksToArchive.push(archiveEntry);
       } else {
@@ -2900,7 +2910,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
   const remainingTasks = [];
 
   for (const task of (backlog.tasks || [])) {
-    if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
+    if (taskNums.includes(task.number) && (task.status === 'production' || task.status === 'cancelled')) {
       const archiveEntry = { ...task, project_source: project.name, promoted_via_pr: promotionPRNumber };
       tasksToArchive.push(archiveEntry);
     } else {
@@ -7539,9 +7549,14 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null });
+    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
+    if (newSession.taskNumber && !newSession.taskState) {
+      const inf = inferTaskState(newSession);
+      if (inf) { newSession.taskState = inf.taskState; newSession.lastSkill = inf.lastSkill; }
+    }
+    sessions.set(id, newSession);
 
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
@@ -7855,11 +7870,11 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, status: newStatus } = msg;
       updateBacklogTaskStatus(scope, taskNumber, newStatus);
-      if (newStatus === 'production') {
+      if (newStatus === 'production' || newStatus === 'cancelled') {
         try {
           archiveCompletedTasks(scope, [taskNumber], null);
         } catch (archiveErr) {
-          console.error('[backlog] archive failed after manual production status:', archiveErr.message);
+          console.error('[backlog] archive failed after manual status change:', archiveErr.message);
         }
       }
       const result = loadAllBacklogs();
