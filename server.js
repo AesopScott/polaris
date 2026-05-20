@@ -2702,6 +2702,11 @@ function loadAllBacklogs() {
   return result;
 }
 
+function _validImpact(v) {
+  const s = String(v || '').trim();
+  return ['minor', 'standard', 'major'].includes(s) ? s : 'standard';
+}
+
 function _nextBacklogTaskNumber(tasks) {
   if (!Array.isArray(tasks) || tasks.length === 0) return 1;
   return tasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
@@ -2718,7 +2723,7 @@ function addBacklogTask(scope, taskInput) {
     description: String(taskInput.description || '').trim(),
     category: String(taskInput.category || 'feature').trim(),
     priority: parseInt(taskInput.priority, 10) || 50,
-    impact: (['minor', 'standard', 'major'].includes(String(taskInput.impact || '').trim()) ? String(taskInput.impact).trim() : 'standard'),
+    impact: _validImpact(taskInput.impact),
     status: 'backlog',
     created_at: new Date().toISOString().split('T')[0],
     completed_at: null,
@@ -2956,7 +2961,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
     if ('description' in filtered) task.description = String(filtered.description).trim();
     if ('category' in filtered) task.category = String(filtered.category).trim();
     if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
-    if ('impact' in filtered) { const imp = String(filtered.impact).trim(); task.impact = ['minor', 'standard', 'major'].includes(imp) ? imp : 'standard'; }
+    if ('impact' in filtered) task.impact = _validImpact(filtered.impact);
 
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
     return task;
@@ -2975,7 +2980,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
   if ('description' in filtered) task.description = String(filtered.description).trim();
   if ('category' in filtered) task.category = String(filtered.category).trim();
   if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
-  if ('impact' in filtered) { const imp = String(filtered.impact).trim(); task.impact = ['minor', 'standard', 'major'].includes(imp) ? imp : 'standard'; }
+  if ('impact' in filtered) task.impact = _validImpact(filtered.impact);
 
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {

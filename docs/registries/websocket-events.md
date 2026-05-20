@@ -96,7 +96,7 @@ Request from client to server to add a new backlog task.
 ```
 
 **Producers (Client sends)**
-- `resources/mockup.html:9334` — `submitBacklogAdd()` sends new task data from Add Task modal
+- `resources/mockup.html:9409` — `submitBacklogAdd()` sends new task data from Add Task modal
 
 **Consumers (Server receives)**
 - `server.js:7769` — Handler receives and calls `addBacklogTask(scope, task)`
@@ -126,7 +126,7 @@ Request from client to server to update an existing backlog task's fields.
 ```
 
 **Producers (Client sends)**
-- `resources/mockup.html:9364` — `submitBacklogEdit()` sends updated task data from Edit Task modal
+- `resources/mockup.html:9441` — `submitBacklogEdit()` sends updated task data from Edit Task modal
 
 **Consumers (Server receives)**
 - `server.js:7800` — Handler receives and calls `updateBacklogTask(scope, taskNumber, updates)`
@@ -232,7 +232,7 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 - 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, task #20 C.1/C.2/C.3)
 - 0 entries with shape mismatches ✓
 - New identifiers verified on task #19: impact field in add-backlog-task and update-backlog-task schemas
-- Registries match current code diff: yes (task #19 impact field in both client→server messages verified)
+- Registries match current code diff: yes (task #19 impact field in both client→server messages verified; line refs corrected to 9409/9441 post Codex review)
 
 **Gaps identified:** 
 - ⚠ emit-debug-log: orphan producer (agent code C.2 after server handler C.1). Intentional — fallback infrastructure must be ready first.

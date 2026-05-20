@@ -266,9 +266,9 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 **Schema / shape:** String, enum: "minor" | "standard" | "major", optional, defaults to "standard". Server validates and coerces invalid values to "standard".
 
 **Producers (write)**
-- `server.js:2721` — `addBacklogTask()` stores impact with enum validation (defaults to 'standard')
-- `server.js:2959` — `updateBacklogTask()` updates impact with enum validation (global scope)
-- `server.js:2979` — `updateBacklogTask()` updates impact with enum validation (per-project scope)
+- `server.js:2726` — `addBacklogTask()` stores impact via `_validImpact()` helper (defaults to 'standard')
+- `server.js:2964` — `updateBacklogTask()` updates impact via `_validImpact()` helper (global scope)
+- `server.js:2983` — `updateBacklogTask()` updates impact via `_validImpact()` helper (per-project scope)
 
 **Consumers (read)**
 - `resources/mockup.html:2052` — Add Task modal `<select id="backlog-add-impact">` (minor/standard/major)
@@ -320,7 +320,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
 - 3 entries with orphan producers (dependencies, branch, pr_url) ⚠
 - 0 entries with pending implementation ✓
-- `impact` field: server.js producers verified at lines 2721/2959/2979; mockup.html consumers verified at lines 2052/2097/9182/9219/9235/9247/9251/9389/9421; enum validation added server-side
+- `impact` field: server.js producers verified at lines 2726/2964/2983 (post `_validImpact` helper extraction); mockup.html consumers verified at lines 2052/2097/9182/9219/9235/9247/9251/9389/9421; enum validation extracted to `_validImpact()` helper at line 2705
 
 **Gaps identified:**
 - `dependencies` field: producers but no consumer (no enforcement)
