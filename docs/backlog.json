@@ -1,146 +1,175 @@
-{
-  "tasks": [
-    {
-      "number": 2,
-      "title": "Build project status + task/issue tracking pipeline (prereq for 'always commit to main' rule)",
-      "category": "feature",
-      "priority": 2,
-      "status": "backlog",
-      "dependencies": [],
-      "description": "Build first-class pipelines into Polaris for (a) project status tracking and (b) task/issue tracking, so backlog management becomes the canonical way to capture and update work across projects. Once those pipelines exist, modify the Polaris CLAUDE.md spec to enforce 'All updates to backlog.json are automatically committed to main' — a rule Scott articulated 2026-05-18 but deferred because the pipeline isn't built yet. The v1 Backlog navigation pane shipped in v1.0.433 (global backlog task #12) auto-commits on the CURRENT branch, NOT main, as the safer interim behavior. The full 'always to main' enforcement requires a stash/checkout/push/restore dance (or git-worktree equivalent) that risks losing WIP if anything fails mid-flight; safer to ship after the pipeline + UX for surfacing commit failures clearly exists. Sequence: ship status/task pipeline first → modify CLAUDE.md rule → upgrade _autoCommitBacklog() in server.js to do the full 'always main' dance.",
-      "plan": null,
-      "branch": null,
-      "pr_url": null
-    },
-    {
-      "number": 3,
-      "title": "Codex apply_patch failures when server.js context drifts",
-      "category": "fix",
-      "priority": 1,
-      "status": "backlog",
-      "dependencies": [],
-      "description": "Capture and fix the 2026-05-18 Codex apply_patch failure mode where patch verification failed because expected anchors in server.js were no longer present. Observed failures were around the spawnMaxChat insertion point and the postJsonViaHttps function signature, which means Codex generated patches against stale or mismatched file context. The fix should make patching/resume flows resilient when server.js changes under a session, likely by refreshing context, falling back to targeted search, or regenerating patches around moved functions before giving up.",
-      "plan": null,
-      "branch": null,
-      "pr_url": null
-    },
-    {
-      "number": 4,
-      "title": "Status button not updating from text entered after session close",
-      "category": "fix",
-      "priority": 1,
-      "status": "on-hold",
-      "dependencies": [],
-      "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
-      "plan": null,
-      "branch": null,
-      "pr_url": null
-    },
-    {
-      "number": 5,
-      "title": "Video analysis.",
-      "description": "Have the ability for sessions to analyze video content?",
-      "category": "feature",
-      "priority": 50,
-      "status": "backlog",
-      "created_at": "2026-05-18",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 10,
-      "title": "Define task-tree TDD/proof gate model",
-      "category": "feature",
-      "priority": 35,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [],
-      "plan": null,
-      "branch": null,
-      "pr_url": null,
-      "description": "Define the shared task-tree proof model that all Polaris workflow skills will use before any implementation-bearing step runs. The goal is broader than adding TDD to /start-build and /ship-task: every workflow step must require appropriate proof, while only implementation steps require the full red/green/refactor TDD loop.\n\nCore model:\n- Workflow entry gate before the task tree starts: task has a plan, dependencies are checked, testability path is known, and the first proof unit is identified.\n- Proof unit shape: expected behavior -> proof before implementation -> observe failure or record explicit waiver -> implement smallest change -> observe passing proof -> proceed.\n- Proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, review evidence, or explicit waiver that says no automated proof is possible and why.\n- State behavior: if proof is missing or fails, stop the workflow and keep/revert the task to the previous valid lifecycle state instead of proceeding on inherited authority.\n- Distinguish step roles: planning skills define proof; build skills execute proof; audit/review/promotion skills verify the proof trail.\n\nImplementation notes:\n1. Write the canonical definitions directly into the relevant command docs, starting with /plan-task, /start-build, /ship-task, /finish-build, /cross-boundary-audit, /review-pr, /codex-review, and /promote-stage.\n2. Use consistent vocabulary: proof unit, entry evidence, exit evidence, waiver, proof trail, previous valid lifecycle state.\n3. Decide where the proof trail is persisted: task plan in docs/backlog.json, Obsidian task tracker, PR body, or a combination. Prefer keeping summary evidence in backlog/Obsidian and detailed evidence in PR/session output.\n4. Verification: run a dry task-tree walkthrough and confirm every step can say what proof it expects, where proof is recorded, and what happens when proof is missing."
-    },
-    {
-      "number": 12,
-      "title": "Enforce proof gates in /ship-task, /start-build, and /finish-build",
-      "category": "feature",
-      "priority": 37,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [
-        11
-      ],
-      "plan": null,
-      "branch": null,
-      "pr_url": null,
-      "description": "Enforce the proof model in the implementation-bearing workflow commands. /ship-task should orchestrate the gates, /start-build should block production code until the first proof unit is ready, and /finish-build should refuse to open or auto-merge a stage PR unless every proof unit has exit evidence or an explicit waiver.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require the current proof unit: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n2. Update ~/.claude/commands/start-build.md Step 8/10 so it loads the proof units from the plan, names the first unit, and blocks code-writing until entry evidence exists.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add Step 2a with a pre-finish self-review checklist: spec compliance, out-of-scope diff scan, registry freshness, test evidence for each proof unit, known risks/waivers, files changed summary.\n4. Failure behavior: missing proof, stale registries, unexplained out-of-scope changes, or missing waiver keeps the task in in-progress and stops before gh pr create / gh pr merge.\n5. Preserve pragmatic escape hatches: if no automated test is possible, require a written waiver plus a manual verification path rather than pretending automation exists.\n6. Verification: create a controlled task branch with missing proof evidence and confirm /finish-build refuses before PR creation; then add evidence/waiver and confirm the workflow can proceed."
-    },
-    {
-      "number": 13,
-      "title": "Add proof-trail checks to audit, review, and promotion skills",
-      "category": "feature",
-      "priority": 38,
-      "status": "in-progress",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [
-        12
-      ],
-      "plan": "## Implementation Complete\n\n### Files Updated (in ~/.claude/)\n\n1. **commands/review-pr.md**: Added Step 4a (Verify proof trail integrity) checking proof units, build evidence, registry audit. Review output includes Proof Trail Integrity section.\n\n2. **commands/codex-review.md**: Added Step 5a (proof trail verification) with Codex prompt update to include Proof Trail Integrity. Comparison section includes proof trail alignment.\n\n3. **commands/promote-stage.md**: Added Step 1b-proof (check proof-trail status) and updated Step 1c decision logic. Hard-fail for high-risk tasks missing proof; soft-flag for standard tasks. PR body includes proof-trail status table and override block.\n\n4. **commands/promote-to-prod.md**: Same as promote-stage but stricter (hard-fail on missing reviews/proof for high-risk). Override logic captures risk details for human accountability.\n\n5. **skills/cross-boundary-audit/SKILL.md**: Updated registry template to include Audit Trail section (timestamp, boundaries checked, entry counts, new identifiers, audit status). PHASE 4 ensures audit trail recorded in each registry.\n\n### Key Features\n\n- Proof units loaded from task plan (docs/backlog.json)\n- Build evidence checked in PR diff (failing-before/passing-after or waivers)\n- Registry audit verified via docs/registries/*.md commits and content\n- Risk categorization: high-risk (security/auth/payments/migration) hard-fail on missing proof; standard tasks soft-flag\n- Override mechanism with PR body stamps for human accountability\n- All checks output structured checklists and gap summaries\n\n### Next Steps\n\nVerify by running a task with incomplete proof trail and confirming review/promotion surfaces exact missing evidence.",
-      "branch": null,
-      "pr_url": null,
-      "description": "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
-    },
-    {
-      "number": 14,
-      "title": "Move merge-to-stage responsibility from /finish-build to /promote-stage",
-      "category": "feature",
-      "priority": 39,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [
-        13
-      ],
-      "plan": null,
-      "branch": null,
-      "pr_url": null,
-      "description": "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -> main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
-    },
-    {
-      "number": 18,
-      "title": "update the reviewer independence rule",
-      "description": "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
-      "category": "Update",
-      "priority": 75,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 20,
-      "title": "Build in debug log as a process step to the pipeline.",
-      "description": "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
-      "category": "feature",
-      "priority": 90,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 21,
-      "title": "Add review-blocked status to backlog workflow",
-      "description": "Add a new task status 'review-blocked' to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed code review (Claude /review-pr and Codex /codex-review) but were found to have REQUEST CHANGES verdict, blocking promotion to stage/main. Currently, such tasks remain at 'build-finished', making it ambiguous whether the review is still pending or completed-with-findings. The 'review-blocked' status clarifies the state: review is done, but remediation is required before promotion. Update: backlog.json task schema, reviewer documentation, backlog navigation pane in Polaris UI, and /promote-stage logic to skip review-blocked tasks.",
-      "category": "enhancement",
-      "priority": 70,
-      "status": "backlog",
-      "created_at": "2026-05-20",
-      "completed_at": null,
-      "dependencies": []
-    }
-  ]
+﻿{
+    "tasks":  [
+                  {
+                      "number":  2,
+                      "title":  "Build project status + task/issue tracking pipeline (prereq for \u0027always commit to main\u0027 rule)",
+                      "category":  "feature",
+                      "priority":  2,
+                      "status":  "backlog",
+                      "dependencies":  [
+
+                                       ],
+                      "description":  "Build first-class pipelines into Polaris for (a) project status tracking and (b) task/issue tracking, so backlog management becomes the canonical way to capture and update work across projects. Once those pipelines exist, modify the Polaris CLAUDE.md spec to enforce \u0027All updates to backlog.json are automatically committed to main\u0027 â€” a rule Scott articulated 2026-05-18 but deferred because the pipeline isn\u0027t built yet. The v1 Backlog navigation pane shipped in v1.0.433 (global backlog task #12) auto-commits on the CURRENT branch, NOT main, as the safer interim behavior. The full \u0027always to main\u0027 enforcement requires a stash/checkout/push/restore dance (or git-worktree equivalent) that risks losing WIP if anything fails mid-flight; safer to ship after the pipeline + UX for surfacing commit failures clearly exists. Sequence: ship status/task pipeline first â†’ modify CLAUDE.md rule â†’ upgrade _autoCommitBacklog() in server.js to do the full \u0027always main\u0027 dance.",
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null
+                  },
+                  {
+                      "number":  3,
+                      "title":  "Codex apply_patch failures when server.js context drifts",
+                      "category":  "fix",
+                      "priority":  1,
+                      "status":  "backlog",
+                      "dependencies":  [
+
+                                       ],
+                      "description":  "Capture and fix the 2026-05-18 Codex apply_patch failure mode where patch verification failed because expected anchors in server.js were no longer present. Observed failures were around the spawnMaxChat insertion point and the postJsonViaHttps function signature, which means Codex generated patches against stale or mismatched file context. The fix should make patching/resume flows resilient when server.js changes under a session, likely by refreshing context, falling back to targeted search, or regenerating patches around moved functions before giving up.",
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null
+                  },
+                  {
+                      "number":  4,
+                      "title":  "Status button not updating from text entered after session close",
+                      "category":  "fix",
+                      "priority":  1,
+                      "status":  "on-hold",
+                      "dependencies":  [
+
+                                       ],
+                      "description":  "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it\u0027s submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null
+                  },
+                  {
+                      "number":  5,
+                      "title":  "Video analysis.",
+                      "description":  "Have the ability for sessions to analyze video content?",
+                      "category":  "feature",
+                      "priority":  50,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-18",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  10,
+                      "title":  "Define task-tree TDD/proof gate model",
+                      "category":  "feature",
+                      "priority":  35,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ],
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null,
+                      "description":  "Define the shared task-tree proof model that all Polaris workflow skills will use before any implementation-bearing step runs. The goal is broader than adding TDD to /start-build and /ship-task: every workflow step must require appropriate proof, while only implementation steps require the full red/green/refactor TDD loop.\n\nCore model:\n- Workflow entry gate before the task tree starts: task has a plan, dependencies are checked, testability path is known, and the first proof unit is identified.\n- Proof unit shape: expected behavior -\u003e proof before implementation -\u003e observe failure or record explicit waiver -\u003e implement smallest change -\u003e observe passing proof -\u003e proceed.\n- Proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, review evidence, or explicit waiver that says no automated proof is possible and why.\n- State behavior: if proof is missing or fails, stop the workflow and keep/revert the task to the previous valid lifecycle state instead of proceeding on inherited authority.\n- Distinguish step roles: planning skills define proof; build skills execute proof; audit/review/promotion skills verify the proof trail.\n\nImplementation notes:\n1. Write the canonical definitions directly into the relevant command docs, starting with /plan-task, /start-build, /ship-task, /finish-build, /cross-boundary-audit, /review-pr, /codex-review, and /promote-stage.\n2. Use consistent vocabulary: proof unit, entry evidence, exit evidence, waiver, proof trail, previous valid lifecycle state.\n3. Decide where the proof trail is persisted: task plan in docs/backlog.json, Obsidian task tracker, PR body, or a combination. Prefer keeping summary evidence in backlog/Obsidian and detailed evidence in PR/session output.\n4. Verification: run a dry task-tree walkthrough and confirm every step can say what proof it expects, where proof is recorded, and what happens when proof is missing."
+                  },
+                  {
+                      "number":  12,
+                      "title":  "Enforce proof gates in /ship-task, /start-build, and /finish-build",
+                      "category":  "feature",
+                      "priority":  37,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+                                           11
+                                       ],
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null,
+                      "description":  "Enforce the proof model in the implementation-bearing workflow commands. /ship-task should orchestrate the gates, /start-build should block production code until the first proof unit is ready, and /finish-build should refuse to open or auto-merge a stage PR unless every proof unit has exit evidence or an explicit waiver.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require the current proof unit: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n2. Update ~/.claude/commands/start-build.md Step 8/10 so it loads the proof units from the plan, names the first unit, and blocks code-writing until entry evidence exists.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add Step 2a with a pre-finish self-review checklist: spec compliance, out-of-scope diff scan, registry freshness, test evidence for each proof unit, known risks/waivers, files changed summary.\n4. Failure behavior: missing proof, stale registries, unexplained out-of-scope changes, or missing waiver keeps the task in in-progress and stops before gh pr create / gh pr merge.\n5. Preserve pragmatic escape hatches: if no automated test is possible, require a written waiver plus a manual verification path rather than pretending automation exists.\n6. Verification: create a controlled task branch with missing proof evidence and confirm /finish-build refuses before PR creation; then add evidence/waiver and confirm the workflow can proceed."
+                  },
+                  {
+                      "number":  13,
+                      "title":  "Add proof-trail checks to audit, review, and promotion skills",
+                      "category":  "feature",
+                      "priority":  38,
+                      "status":  "in-progress",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+                                           12
+                                       ],
+                      "plan":  "## Implementation Complete\n\n### Files Updated (in ~/.claude/)\n\n1. **commands/review-pr.md**: Added Step 4a (Verify proof trail integrity) checking proof units, build evidence, registry audit. Review output includes Proof Trail Integrity section.\n\n2. **commands/codex-review.md**: Added Step 5a (proof trail verification) with Codex prompt update to include Proof Trail Integrity. Comparison section includes proof trail alignment.\n\n3. **commands/promote-stage.md**: Added Step 1b-proof (check proof-trail status) and updated Step 1c decision logic. Hard-fail for high-risk tasks missing proof; soft-flag for standard tasks. PR body includes proof-trail status table and override block.\n\n4. **commands/promote-to-prod.md**: Same as promote-stage but stricter (hard-fail on missing reviews/proof for high-risk). Override logic captures risk details for human accountability.\n\n5. **skills/cross-boundary-audit/SKILL.md**: Updated registry template to include Audit Trail section (timestamp, boundaries checked, entry counts, new identifiers, audit status). PHASE 4 ensures audit trail recorded in each registry.\n\n### Key Features\n\n- Proof units loaded from task plan (docs/backlog.json)\n- Build evidence checked in PR diff (failing-before/passing-after or waivers)\n- Registry audit verified via docs/registries/*.md commits and content\n- Risk categorization: high-risk (security/auth/payments/migration) hard-fail on missing proof; standard tasks soft-flag\n- Override mechanism with PR body stamps for human accountability\n- All checks output structured checklists and gap summaries\n\n### Next Steps\n\nVerify by running a task with incomplete proof trail and confirming review/promotion surfaces exact missing evidence.",
+                      "branch":  null,
+                      "pr_url":  null,
+                      "description":  "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
+                  },
+                  {
+                      "number":  14,
+                      "title":  "Move merge-to-stage responsibility from /finish-build to /promote-stage",
+                      "category":  "feature",
+                      "priority":  39,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+                                           13
+                                       ],
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null,
+                      "description":  "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -\u003e main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
+                  },
+                  {
+                      "number":  18,
+                      "title":  "update the reviewer independence rule",
+                      "description":  "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
+                      "category":  "Update",
+                      "priority":  75,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  20,
+                      "title":  "Build in debug log as a process step to the pipeline.",
+                      "description":  "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  21,
+                      "title":  "Add review-blocked status to backlog workflow",
+                      "description":  "Add a new task status \u0027review-blocked\u0027 to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed code review (Claude /review-pr and Codex /codex-review) but were found to have REQUEST CHANGES verdict, blocking promotion to stage/main. Currently, such tasks remain at \u0027build-finished\u0027, making it ambiguous whether the review is still pending or completed-with-findings. The \u0027review-blocked\u0027 status clarifies the state: review is done, but remediation is required before promotion. Update: backlog.json task schema, reviewer documentation, backlog navigation pane in Polaris UI, and /promote-stage logic to skip review-blocked tasks.",
+                      "category":  "enhancement",
+                      "priority":  70,
+                      "status":  "backlog",
+                      "created_at":  "2026-05-20",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "description":  "Add a new task status \u0027failed-smoke-test\u0027 to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed implementation and been promoted to stage/main, but failed their smoke tests in the production environment. Currently, such tasks remain at \u0027staged\u0027 or \u0027production\u0027, making it unclear whether smoke testing was completed or passed. The \u0027failed-smoke-test\u0027 status clarifies the state: code is in production, but the smoke test validation failed, indicating rollback or remediation may be needed. Update: backlog.json task schema, backlog navigation pane in Polaris UI, and workflow documentation to clarify remediation path for failed smoke tests.",
+                      "category":  "enhancement",
+                      "number":  22,
+                      "created_at":  "2026-05-20",
+                      "completed_at":  null,
+                      "status":  "backlog",
+                      "dependencies":  [
+
+                                       ],
+                      "title":  "Add failed-smoke-test status to backlog workflow",
+                      "priority":  75
+                  }
+              ]
 }
