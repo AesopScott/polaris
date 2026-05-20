@@ -260,6 +260,20 @@
       "dependencies": [],
       "project_source": "Polaris",
       "promoted_via_pr": null
+    },
+    {
+      "description": "Add a new task status 'failed-smoke-test' to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed implementation and been promoted to stage/main, but failed their smoke tests in the production environment. Currently, such tasks remain at 'staged' or 'production', making it unclear whether smoke testing was completed or passed. The 'failed-smoke-test' status clarifies the state: code is in production, but the smoke test validation failed, indicating rollback or remediation may be needed. Update: backlog.json task schema, backlog navigation pane in Polaris UI, and workflow documentation to clarify remediation path for failed smoke tests.",
+      "category": "enhancement",
+      "number": 22,
+      "created_at": "2026-05-20",
+      "completed_at": "2026-05-20",
+      "status": "production",
+      "dependencies": [],
+      "title": "Add failed-smoke-test status to backlog workflow",
+      "priority": 75,
+      "impact": "minor",
+      "project_source": "Polaris",
+      "promoted_via_pr": null
     }
   ]
 }

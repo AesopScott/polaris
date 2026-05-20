@@ -4349,6 +4349,9 @@
             pinned: !!s.pinned,
             isForked: !!s.isForked,
             primarySessionId: s.primarySessionId || null,
+            taskNumber: s.taskNumber || null,
+            taskState: s.taskState || null,
+            lastSkill: s.lastSkill || null,
           };
         });
         // Restore forkActive + forkSessionId on primary sessions from fork session data
@@ -4429,6 +4432,9 @@
           silent: isSilentRoutine,
           status: 'running', startAt: Date.now(),
           lines: [], lastPrompt: null, resumeId: null, usage: null, height: null, column: null, pinned: false,
+          taskNumber: msg.taskNumber || null,
+          taskState: msg.taskState || null,
+          lastSkill: msg.lastSkill || null,
         };
         if (pendingLineImages['__next__']) {
           pendingLineImages[msg.sessionId] = pendingLineImages['__next__'];
@@ -4436,6 +4442,9 @@
         }
         if (!sessionOrder.includes(msg.sessionId)) sessionOrder.push(msg.sessionId);
         renderGrid();
+        // Backlog-based inference fallback: if task fields weren't in the broadcast, fill from loaded backlog
+        const newSess = sessionStore[msg.sessionId];
+        if (newSess && !newSess.taskState && _backlogData) applyBacklogTaskStates();
         if (msg.projectName) applyNavProjectTheme(msg.projectName);
         const isCourseRoutine = msg.routineTag && msg.routineTag.match(/^ModGen(Dev|Activate|Scaffold)-/);
         if (!msg.isForked && !isCourseRoutine) enterResumeMode(msg.sessionId, null);
@@ -4500,7 +4509,15 @@
 
       case 'session-status': {
         const s = sessionStore[msg.sessionId];
-        if (s) { s.status = msg.status; updateCardStatus(msg.sessionId, msg.status); }
+        if (s) {
+          s.status = msg.status;
+          let taskChanged = false;
+          if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
+          if (msg.taskState  !== undefined) { s.taskState  = msg.taskState;  taskChanged = true; }
+          if (msg.lastSkill  !== undefined) { s.lastSkill  = msg.lastSkill;  taskChanged = true; }
+          updateCardStatus(msg.sessionId, msg.status);
+          if (taskChanged) updateCardTaskState(msg.sessionId);
+        }
         updateStats();
         updateMiniCards();
         const isErr = msg.status === 'error';
@@ -5916,7 +5933,10 @@
         ${headerChip}
         <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
+          <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
+            <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
+            <span data-task-state style="font-size:9px;color:var(--text-muted,#94a3b8);letter-spacing:0.03em;white-space:nowrap;${s.taskNumber ? '' : 'display:none;'}">${s.taskNumber ? '#' + s.taskNumber + (s.taskState ? ' \xB7 ' + escHtml(s.taskState) : '') + (s.lastSkill ? ' /' + escHtml(s.lastSkill) : '') : ''}</span>
+          </div>
           <span class="stall-badge" data-stall-badge></span>
           <div class="card-btns">
             <button class="card-btn" title="Diagnostic log" data-action="show-diag">📋</button>
@@ -6277,6 +6297,26 @@
         term.querySelectorAll('[data-stream-role="assistant"]:not(.md-render)').forEach(renderAssistantMarkdown);
         if (status === 'waiting') maybeAddYesNoButtons(sessionId, term);
       }
+    }
+  }
+
+  function updateCardTaskState(sessionId) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector('[data-sid="' + sessionId + '"]');
+    if (!card) return;
+    const s = sessionStore[sessionId];
+    if (!s) return;
+    const el = card.querySelector('[data-task-state]');
+    if (!el) return;
+    if (s.taskNumber) {
+      let text = '#' + s.taskNumber;
+      if (s.taskState) text += ' \xB7 ' + s.taskState;
+      if (s.lastSkill) text += ' /' + s.lastSkill;
+      el.textContent = text;
+      el.style.display = '';
+    } else {
+      el.style.display = 'none';
     }
   }
 
@@ -9081,8 +9121,43 @@ Then run /clear to initialize the review session.`;
     if (_backlogData) renderBacklog(_backlogData);
   }
 
+  const BACKLOG_LAST_SKILL_MAP = {
+    'planned': 'plan-task', 'ready': 'plan-task',
+    'build-started': 'start-build', 'in-progress': 'start-build',
+    'build-finished': 'finish-build', 'in-review': 'finish-build',
+    'pr-reviewed': 'review-pr',
+    'staged': 'promote-stage',
+    'production': 'promote-to-prod',
+    'complete': 'mark-tasks-complete', 'done': 'promote-stage',
+  };
+
+  function applyBacklogTaskStates() {
+    Object.values(sessionStore).forEach(s => {
+      if (s.taskNumber && s.taskState) return; // already set
+      const match = (s.name || '').match(/^Task #(\d+):/);
+      if (!match) return;
+      const taskNum = parseInt(match[1], 10);
+      let task = null;
+      if (_backlogData.global && _backlogData.global.tasks) {
+        task = _backlogData.global.tasks.find(t => t.number === taskNum);
+      }
+      if (!task) {
+        for (const p of (_backlogData.projects || [])) {
+          const found = (p.backlog && p.backlog.tasks || []).find(t => t.number === taskNum);
+          if (found) { task = found; break; }
+        }
+      }
+      if (!task || !task.status) return;
+      s.taskNumber = taskNum;
+      s.taskState  = task.status;
+      s.lastSkill  = BACKLOG_LAST_SKILL_MAP[task.status] || null;
+      updateCardTaskState(s.id);
+    });
+  }
+
   function renderBacklog(data) {
     _backlogData = data;
+    applyBacklogTaskStates();
     const body  = document.getElementById('backlog-panel-body');
     const count = document.getElementById('backlog-panel-count');
     if (!body) return;
@@ -9228,6 +9303,7 @@ Then run /clear to initialize the review session.`;
       'cba-complete':      'background:rgba(96,165,250,0.25);color:#93c5fd;',
       'cba-half-complete': 'background:rgba(251,146,60,0.25);color:#fdba74;',
       'build-finished':    'background:rgba(96,165,250,0.25);color:#93c5fd;',
+      'review-blocked':    'background:rgba(251,146,60,0.25);color:#fdba74;',
       'pr-reviewed':       'background:rgba(74,222,128,0.25);color:#86efac;',
       'staged':            'background:rgba(74,222,128,0.25);color:#86efac;',
       'smoke-tested':      'background:rgba(74,222,128,0.25);color:#86efac;',
@@ -9496,7 +9572,7 @@ Then run /clear to initialize the review session.`;
   // Status picker popover — anchored under a clicked status badge
   const BACKLOG_STATUS_OPTIONS = [
     'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
-    'build-finished', 'pr-reviewed', 'staged', 'main', 'smoke-tested', 'production',
+    'build-finished', 'review-blocked', 'pr-reviewed', 'staged', 'main', 'smoke-tested', 'production',
     'failed-smoke-test', 'blocked', 'on-hold', 'cancelled'
   ];
   const BACKLOG_STATUS_COLORS = {
@@ -9506,6 +9582,7 @@ Then run /clear to initialize the review session.`;
     'cba-complete':      'background:rgba(96,165,250,0.25);color:#93c5fd;',
     'cba-half-complete': 'background:rgba(251,146,60,0.25);color:#fdba74;',
     'build-finished':    'background:rgba(96,165,250,0.25);color:#93c5fd;',
+    'review-blocked':    'background:rgba(251,146,60,0.25);color:#fdba74;',
     'pr-reviewed':       'background:rgba(74,222,128,0.25);color:#86efac;',
     'staged':            'background:rgba(74,222,128,0.25);color:#86efac;',
     'main':              'background:rgba(74,222,128,0.25);color:#86efac;',
