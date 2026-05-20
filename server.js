@@ -654,6 +654,7 @@ const BACKLOG_STATUS_TO_LAST_SKILL = {
   'in-progress':   'start-build',
   'build-finished':'finish-build',
   'in-review':     'finish-build',
+  'review-blocked':'codex-review',
   'pr-reviewed':   'review-pr',
   'staged':        'promote-stage',
   'production':    'promote-to-prod',
@@ -2930,7 +2931,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
 
 const VALID_BACKLOG_STATUSES = new Set([
   // Skill-written statuses (plan-task → start-build → finish-build → codex-review → promote-stage → promote-to-prod)
-  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'staged', 'production',
+  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'review-blocked', 'staged', 'production',
   // Manual post-production status: set when smoke tests fail after production deployment
   'failed-smoke-test',
   // Special states
