@@ -2874,11 +2874,11 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
 
 const VALID_BACKLOG_STATUSES = new Set([
   // Skill-written statuses (plan-task → start-build → finish-build → codex-review → promote-stage → promote-to-prod)
-  'backlog', 'planned', 'build-started', 'build-finished', 'pr-reviewed', 'staged', 'production', 'complete',
+  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'staged', 'production',
   // Special states
   'blocked', 'on-hold', 'cancelled',
   // Legacy/deprecated statuses (still allowed for backward compatibility)
-  'ready', 'in-progress', 'cba-complete', 'cba-half-complete', 'smoke-tested'
+  'ready', 'in-progress', 'complete', 'pr-reviewed', 'cba-half-complete', 'smoke-tested'
 ]);
 
 function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
