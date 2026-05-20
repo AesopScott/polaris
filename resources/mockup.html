@@ -9216,12 +9216,13 @@ Then run /clear to initialize the review session.`;
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">TITLE</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">STATUS</th>'
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">CATEGORY</th>'
+      + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">IMPACT</th>'
       + '<th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">DEPS</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">PRI</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;width:40px;"></th>'
     + '</tr>';
     const rows = tasks.length === 0
-      ? '<tr><td colspan="7" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
+      ? '<tr><td colspan="8" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
       : tasks.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0)).map(t => {
           const statusStyle = colors[t.status] || colors['backlog'];
           const depsArr = Array.isArray(t.dependencies) ? t.dependencies : [];
@@ -9231,6 +9232,11 @@ Then run /clear to initialize the review session.`;
           if (cat === 'feature') categoryStyle = 'color:#86efac;';
           else if (cat === 'fix' || cat === 'emergency fix') categoryStyle = 'color:#fca5a5;';
           else if (cat === 'update') categoryStyle = 'color:#fde047;';
+          const impact = t.impact || 'standard';
+          let impactStyle = '';
+          if (impact === 'minor') impactStyle = 'color:#86efac;';
+          else if (impact === 'major') impactStyle = 'color:#f97316;';
+          else impactStyle = 'color:#aaa;';
           return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
             + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
@@ -9238,6 +9244,7 @@ Then run /clear to initialize the review session.`;
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
             + '<td style="padding:8px 12px;font-size:11px;' + categoryStyle + '">' + escHtml(t.category || 'feature') + '</td>'
+            + '<td style="padding:8px 12px;font-size:11px;' + impactStyle + '">' + escHtml(impact) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:40px;">'
