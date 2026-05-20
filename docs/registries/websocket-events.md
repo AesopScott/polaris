@@ -99,7 +99,7 @@ Request from client to server to add a new backlog task.
 - `resources/mockup.html:9334` — `submitBacklogAdd()` sends new task data from Add Task modal
 
 **Consumers (Server receives)**
-- `server.js:7773` — Handler receives and calls `addBacklogTask(scope, task)`
+- `server.js:7769` — Handler receives and calls `addBacklogTask(scope, task)`
 
 **Status:** ✓ Balanced producer/consumer (impact field added by task #19)
 
@@ -129,7 +129,7 @@ Request from client to server to update an existing backlog task's fields.
 - `resources/mockup.html:9364` — `submitBacklogEdit()` sends updated task data from Edit Task modal
 
 **Consumers (Server receives)**
-- `server.js:7804` — Handler receives and calls `updateBacklogTask(scope, taskNumber, updates)`
+- `server.js:7800` — Handler receives and calls `updateBacklogTask(scope, taskNumber, updates)`
 
 **Status:** ✓ Balanced producer/consumer (impact field added by task #19)
 
@@ -153,7 +153,7 @@ Request from client to server to change a backlog task's status.
 - `resources/mockup.html:9438` — Status picker sends status change request
 
 **Consumers (Server receives)**
-- `server.js:7816` — Handler receives and calls `updateBacklogTaskStatus(scope, taskNumber, status)`
+- `server.js:7781` — Handler receives and calls `updateBacklogTaskStatus(scope, taskNumber, status)`
 
 **Status:** ✓ Balanced producer/consumer
 
@@ -173,12 +173,12 @@ Fallback message from agents/generated code to server when the `pushDebugLog()` 
 ```
 
 **Producers (Client/Agent sends)**
-- `lib/debugUtil.js:37` — `emitDebugLogViaWebSocket()` sends via WebSocket when utility unavailable
+- (Task #20 C.2 implementation) — Generated code unable to import `pushDebugLog()` utility will call this via WebSocket as fallback
 
 **Consumers (Server receives)**
-- `server.js:7850` — Handler receives and rebroadcasts as `debug-log` to all connected clients
+- (Task #20 C.1 implementation) — `server.js` WebSocket handler receives and rebroadcasts as `debug-log` to all connected clients
 
-**Status:** ✓ Balanced producer/consumer (task #20 C.1 implementation complete)
+**Status:** ⚠ **intentional orphan producer** — Producer code (C.2) will be added after consumer handler (C.1). Fallback infrastructure must be ready before agents attempt to call it.
 
 ---
 
@@ -196,12 +196,12 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 ```
 
 **Producers (Server sends)**
-- `server.js:7855` — WebSocket broadcast handler rebroadcasts `emit-debug-log` messages to all connected clients
+- (Task #20 C.1 implementation) — `server.js` WebSocket broadcast handler rebroadcasts `emit-debug-log` messages and other debug events to all connected clients
 
 **Consumers (Client receives)**
-- `resources/mockup.html:4069` — WebSocket message handler receives and renders in debug panel via `pushDebugLog()`
+- (Task #20 C.3 implementation) — `resources/mockup.html` WebSocket message handler receives and renders in the debug panel via `pushDebugLog()`
 
-**Status:** ✓ Balanced producer/consumer (task #20 C.1/C.3 implementation complete)
+**Status:** ⚠ **intentional orphan consumer** — Consumer UI code (C.3) will be added after producer broadcast (C.1). Broadcast infrastructure must be ready before UI adds the handler.
 
 ---
 
@@ -215,24 +215,27 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 | `add-backlog-task` | 1 (client) | 1 (server) | ✓ |
 | `update-backlog-task` | 1 (client) | 1 (server) | ✓ |
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
-| `emit-debug-log` | 1 (agent) | 1 (server) | ✓ |
-| `debug-log` | 1 (server) | 1 (client) | ✓ |
+| `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
+| `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T23:30:00Z (by /cross-boundary-audit for task #20)
+**Last audit:** 2026-05-19T23:43:00Z (by /finish-build for task #19)
 
-**Boundaries checked:** WebSocket events (all event types including task #19 impact field and task #20 debug logging)
+**Boundaries checked:** WebSocket events (all event types including task #19 impact field in backlog messages)
 
 **Evidence recorded:**
-- 8 entries with complete producer/consumer pairs ✓
-- 0 entries with gaps ✓
+- 8 entries documented
+- 6 entries with complete producer/consumer pairs ✓ (backlog events verified with task #19 impact field)
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, task #20 C.1/C.2/C.3)
 - 0 entries with shape mismatches ✓
-- New identifiers verified on task #20: `emit-debug-log` and `debug-log` event types, `pushDebugLog()` and `emitDebugLogViaWebSocket()` utilities
-- Registries match current code diff: yes (all implementations for task #20 complete)
+- New identifiers verified on task #19: impact field in add-backlog-task and update-backlog-task schemas
+- Registries match current code diff: yes (task #19 impact field in both client→server messages verified)
 
-**Gaps identified:** None
+**Gaps identified:** 
+- ⚠ emit-debug-log: orphan producer (agent code C.2 after server handler C.1). Intentional — fallback infrastructure must be ready first.
+- ⚠ debug-log: orphan consumer (UI handler C.3 after server broadcast C.1). Intentional — broadcast before UI adds the handler.
 
-**Status:** Audit complete, task #20 debug logging fully implemented
+**Status:** Audit complete, task #19 verified in WebSocket events
