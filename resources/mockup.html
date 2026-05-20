@@ -4050,6 +4050,7 @@
   let phIdx = -1;
   let debugLogs = [];
   let resumeTarget = null; // { sessionId, name, resumeId, model } | null
+  let currentResumeSessionId = null; // Track which session's float prompt is active (draft persistence)
   let launchBarAutoMinimized = false;
   let floatScrollHandler = null;
   let sessionOrder = [];   // ordered array of session IDs for render sequence
@@ -7465,7 +7466,13 @@
     const floatEl2 = document.getElementById('float-launcher');
     const useFloat2 = floatEl2 && floatEl2.classList.contains('visible');
     const promptEl = useFloat2 ? floatEl2.querySelector('.prompt-area') : document.querySelector('.palette:not(.hidden) .prompt-area');
-    if (promptEl) { promptEl.value = ''; promptEl.focus(); }
+    if (promptEl) {
+      currentResumeSessionId = sessionId;
+      const saved = localStorage.getItem(`polaris_draft_${sessionId}`);
+      promptEl.value = saved || '';
+      updateTokenCount(promptEl);
+      promptEl.focus();
+    }
   }
 
   window.clearResumeMode = function () {
@@ -7567,6 +7574,9 @@
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }
+    if (currentResumeSessionId) {
+      localStorage.removeItem(`polaris_draft_${currentResumeSessionId}`);
+    }
   }
 
   function setPrompt(text) {
@@ -13462,6 +13472,9 @@ Then run /clear to initialize the review session.`;
     document.querySelectorAll('.prompt-area').forEach(el => {
       el.addEventListener('input', () => {
         updateTokenCount(el);
+        if (currentResumeSessionId && el.id === 'float-prompt-area') {
+          localStorage.setItem(`polaris_draft_${currentResumeSessionId}`, el.value);
+        }
         if (el.id === 'float-prompt-area') {
           el.style.height = 'auto';
           el.style.height = el.scrollHeight + 'px';
