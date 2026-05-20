@@ -6011,8 +6011,8 @@
           <span style="font-size:11px;font-weight:700;color:#f59e0b;" data-session-cost>—</span>
         </div>`}
         <div class="footer-btns">
-          <button class="fbtn" data-action="copy">Copy</button>
-          <button class="fbtn" data-action="clear">Clear</button>
+          <button class="fbtn" data-action="yes">Yes</button>
+          <button class="fbtn" data-action="no">No</button>
           ${rerunSnippet}
         </div>
         <div class="color-controls">
@@ -6475,6 +6475,18 @@
         break;
       case 'clear':
         if (s) { s.lines = []; const t = cardEl.querySelector('[data-term]'); if (t) t.innerHTML = ''; }
+        break;
+      case 'yes':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'Yes', displayPrompt: 'Yes', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'no':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'No', displayPrompt: 'No', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
         break;
       case 'cycle-span': {
         if (!s) break;
