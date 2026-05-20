@@ -116,7 +116,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `resources/mockup.html:9103` — Status picker displays current status
 - `resources/mockup.html:3395` — BACKLOG_STATUS_OPTIONS defines valid values
 
-**Validation:** VALID_BACKLOG_STATUSES set at server.js:2870 — backlog, planned, build-started, cba-complete, cba-half-complete, build-finished, pr-reviewed, staged, smoke-tested, production, blocked, on-hold, cancelled, ready, in-progress, in-review, done, complete
+**Validation:** VALID_BACKLOG_STATUSES set at server.js:2875 — backlog, ready, in-progress, build-finished, pr-reviewed, production, complete, planned, build-started, cba-complete, cba-half-complete, staged, smoke-tested, blocked, on-hold, cancelled. *Note: `in-review` is NOT valid; use `build-finished` (after /finish-build) → `pr-reviewed` (after reviews pass) → `production` (shipped) or `complete` (not shipped).*
 
 **Status:** ✓ Balanced (validation enforced server-side)
 

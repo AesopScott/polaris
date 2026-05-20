@@ -2873,11 +2873,11 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
 }
 
 const VALID_BACKLOG_STATUSES = new Set([
-  // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
-  'ready', 'in-progress', 'in-review', 'done', 'complete',
-  // Polaris UI lifecycle statuses
-  'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
-  'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
+  // Skill-written statuses (plan-task → start-build → finish-build → review → promote-stage → promote-to-prod)
+  'backlog', 'ready', 'in-progress', 'build-finished', 'pr-reviewed', 'production', 'complete',
+  // Polaris UI lifecycle statuses (legacy + specialized)
+  'planned', 'build-started', 'cba-complete', 'cba-half-complete',
+  'staged', 'smoke-tested',
   'blocked', 'on-hold', 'cancelled'
 ]);
 

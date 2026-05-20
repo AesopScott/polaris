@@ -117,20 +117,21 @@ The detailed prose history continues below the table — keep both. The table is
 
 **Task model:**
 - `docs/backlog.json` stores global + per-project tasks with fields: number, title, description, category, priority, status, plan, proofUnits, branch, pr_url, impact
-- Status lifecycle: `backlog` → `ready` → `in-progress` → `in-review` → (approved) → `complete` (or `production` for shipped)
+- **Valid status values** (enum): `backlog`, `ready`, `in-progress`, `build-finished`, `pr-reviewed`, `production`, `complete`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `planned`, `cba-complete`, `cba-half-complete`, `staged`, `smoke-tested`. *Note: `in-review` is NOT a valid status.*
+- **Status lifecycle for skill-driven workflows:** `backlog` → `ready` → `in-progress` → `build-finished` (end of `/finish-build`) → `pr-reviewed` (after `/review-pr` + `/codex-review` pass) → `production` (after `/promote-to-prod` ships) or `complete` (for not-shipped tasks)
 - **Impact field** (task #19): enum `minor|standard|major` gates planning depth. Minor = skip `/plan-task`. Major = break into subtasks.
 - **Proof units** (task #11): each task plan includes `proofUnits[]` array defining TDD proof expectations (failing → passing test per unit)
 - Registry audit: `/cross-boundary-audit` verifies all task field producers/consumers, updates registry line refs, checks proof units
 - Review workflow: `/review-pr` (Claude) + `/codex-review` (Codex) must both pass before promoting to stage
 
 **Key workflows (stored in `~/.claude/commands/`):**
-- `/plan-task` — Interview phase, design outline, proof-unit breakdown, reachability check (entry gate)
-- `/start-build` — Load task plan + proof units, create branch, sync main, block code until first proof unit is ready
-- `/finish-build` — Verify proof trail + registries, commit, push, open PR to stage, record PR URL
-- `/review-pr` — Structured review against spec + registries + diff, proof-trail checklist
-- `/codex-review` — Independent Codex review, compare against prior `/review-pr`
-- `/promote-stage` — Review-approved PRs merged to stage, rollup audit, stage → main PR
-- `/promote-to-prod` — Main → prod, watch deploy, flip tasks to complete on success
+- `/plan-task` — Interview phase, design outline, proof-unit breakdown, reachability check; sets status to `ready`
+- `/start-build` — Load task plan + proof units, create branch, sync main; sets status to `in-progress`
+- `/finish-build` — Verify proof trail + registries, commit, push, open PR to stage, record PR URL; **sets status to `build-finished`**
+- `/review-pr` — Structured review against spec + registries + diff, proof-trail checklist; records review evidence
+- `/codex-review` — Independent Codex review, compare against prior `/review-pr`; records review evidence
+- `/promote-stage` — Merge review-approved PRs into stage, rollup audit; sets approved tasks to `pr-reviewed`
+- `/promote-to-prod` — Main → prod, watch deploy; flips tasks to `production` (shipped) or `complete` (not shipped)
 
 **Proof trail verification:**
 - Build evidence: failing test → implement → passing test (RED→GREEN per proof unit)
