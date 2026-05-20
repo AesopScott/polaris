@@ -222,7 +222,7 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T23:43:00Z (by /finish-build for task #19)
+**Last audit:** 2026-05-20 (by /promote-to-main cross-boundary audit for task #19)
 
 **Boundaries checked:** WebSocket events (all event types including task #19 impact field in backlog messages)
 

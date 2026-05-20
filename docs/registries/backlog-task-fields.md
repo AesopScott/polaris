@@ -310,7 +310,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-20 (post eb25b0d — task #19 implementation fixes committed to task/19-add-impact-field-clean)
+**Last audit:** 2026-05-20 (by /promote-to-main cross-boundary audit for task #19 — line refs post _validImpact extraction verified)
 
 **Boundaries checked:** Backlog task schema fields — impact field verified against actual code at current line numbers
 
