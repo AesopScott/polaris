@@ -2702,6 +2702,11 @@ function loadAllBacklogs() {
   return result;
 }
 
+function _validImpact(v) {
+  const s = String(v || '').trim();
+  return ['minor', 'standard', 'major'].includes(s) ? s : 'standard';
+}
+
 function _nextBacklogTaskNumber(tasks) {
   if (!Array.isArray(tasks) || tasks.length === 0) return 1;
   return tasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
@@ -2718,6 +2723,7 @@ function addBacklogTask(scope, taskInput) {
     description: String(taskInput.description || '').trim(),
     category: String(taskInput.category || 'feature').trim(),
     priority: parseInt(taskInput.priority, 10) || 50,
+    impact: _validImpact(taskInput.impact),
     status: 'backlog',
     created_at: new Date().toISOString().split('T')[0],
     completed_at: null,
@@ -2872,12 +2878,12 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
 }
 
 const VALID_BACKLOG_STATUSES = new Set([
-  // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
-  'ready', 'in-progress', 'in-review', 'done', 'complete',
-  // Polaris UI lifecycle statuses
-  'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
-  'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
-  'blocked', 'on-hold', 'cancelled'
+  // Skill-written statuses (plan-task → start-build → finish-build → codex-review → promote-stage → promote-to-prod)
+  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'staged', 'production',
+  // Special states
+  'blocked', 'on-hold', 'cancelled',
+  // Legacy/deprecated statuses (still allowed for backward compatibility)
+  'ready', 'in-progress', 'complete', 'pr-reviewed', 'cba-half-complete', 'smoke-tested'
 ]);
 
 function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
@@ -2936,7 +2942,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
   if (!taskNum) throw new Error('Invalid task number: ' + taskNumber);
   if (!updates || typeof updates !== 'object') throw new Error('No updates provided.');
 
-  const allowedFields = ['title', 'description', 'category', 'priority'];
+  const allowedFields = ['title', 'description', 'category', 'priority', 'impact'];
   const filtered = {};
   for (const field of allowedFields) {
     if (field in updates) {
@@ -2955,6 +2961,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
     if ('description' in filtered) task.description = String(filtered.description).trim();
     if ('category' in filtered) task.category = String(filtered.category).trim();
     if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
+    if ('impact' in filtered) task.impact = _validImpact(filtered.impact);
 
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
     return task;
@@ -2973,6 +2980,7 @@ function updateBacklogTask(scope, taskNumber, updates) {
   if ('description' in filtered) task.description = String(filtered.description).trim();
   if ('category' in filtered) task.category = String(filtered.category).trim();
   if ('priority' in filtered) task.priority = parseInt(filtered.priority, 10) || 50;
+  if ('impact' in filtered) task.impact = _validImpact(filtered.impact);
 
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {
