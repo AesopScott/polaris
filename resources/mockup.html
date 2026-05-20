@@ -9171,11 +9171,16 @@ Then run /clear to initialize the review session.`;
         showStatusPicker(badge, badge.dataset.scope, parseInt(badge.dataset.taskNumber, 10), badge.dataset.status);
       });
     });
-    // Impact cell → open impact picker popover
+    // Impact cell → cycle minor → standard → major → minor
     body.querySelectorAll('.backlog-impact-cell').forEach(cell => {
       cell.addEventListener('click', (e) => {
         e.stopPropagation();
-        showImpactPicker(cell, cell.dataset.scope, parseInt(cell.dataset.taskNumber, 10), cell.dataset.impact);
+        const order = ['minor', 'standard', 'major'];
+        const cur = cell.dataset.impact || 'standard';
+        const next = order[(order.indexOf(cur) + 1) % order.length];
+        const scope = cell.dataset.scope;
+        const taskNumber = parseInt(cell.dataset.taskNumber, 10);
+        wsSend({ type: 'update-backlog-task', scope: scope, taskNumber: taskNumber, updates: { impact: next } });
       });
     });
     // Edit button → open edit modal
