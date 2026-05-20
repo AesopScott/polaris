@@ -73,7 +73,7 @@
   #filter-waiting-label:hover, #filter-running-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
-  .btn-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; position: relative; }
+  .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; position: relative; }
   #nav-divider-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
@@ -1293,6 +1293,7 @@
       <div class="btn-grid">
         <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
+        <div class="nav-spacer"></div>
         <button id="btn-course-creator" class="hbtn btn-interface" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-thecard" class="hbtn btn-gold" onclick="openTheCard()" data-tooltip="The Card — start the Next.js dev server and open the prediction market app in your browser"><span class="lbl">The Card</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
@@ -1301,6 +1302,7 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
+        <div class="nav-spacer"></div>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
@@ -1309,6 +1311,7 @@
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
+        <div class="nav-spacer"></div>
         <button id="btn-skills" class="hbtn btn-interface" onclick="toggleSkillsPanel()" data-tooltip="Browse all installed Claude Code skills (~/.claude/skills/). Click a skill to send /name to the currently focused session."><span class="lbl">Skills</span></button>
         <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
