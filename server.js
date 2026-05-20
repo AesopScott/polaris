@@ -7604,7 +7604,11 @@ async function handleMessage(ws, raw) {
         if (session.watcher) session.watcher.close();
       }
       if (session.req) {
-        session.req.destroy();
+        try {
+          session.req.destroy();
+        } catch (e) {
+          // Ignore errors during destroy (request may already be closed)
+        }
         session.req = null;
       }
       const cleared = Array.isArray(session.pendingTurns) ? session.pendingTurns.length : 0;
@@ -7620,8 +7624,11 @@ async function handleMessage(ws, raw) {
       // Set terminal status so UI knows session is no longer running
       session.status = 'done';
       session.endAt = Date.now();
-      broadcast({ type: 'session-status', sessionId: msg.sessionId, status: 'done' });
-      saveSessions();
+      // Use setImmediate to prevent blocking the event loop from multiple synchro nous saveSessions calls
+      setImmediate(() => {
+        broadcast({ type: 'session-status', sessionId: msg.sessionId, status: 'done' });
+        saveSessions();
+      });
     }
     return;
   }
