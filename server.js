@@ -645,18 +645,53 @@ function saveSessions() {
   } catch {}
 }
 
+const BACKLOG_STATUS_TO_TASK_STATE = {
+  'backlog':     { taskState: 'backlog',        lastSkill: null },
+  'ready':       { taskState: 'ready',          lastSkill: 'plan-task' },
+  'in-progress': { taskState: 'coding',         lastSkill: 'start-build' },
+  'in-review':   { taskState: 'build-finished', lastSkill: 'finish-build' },
+  'done':        { taskState: 'done',           lastSkill: 'promote-stage' },
+};
+
+function inferTaskState(session) {
+  const match = (session.name || '').match(/^Task #(\d+):/);
+  if (!match) return null;
+  const taskNumber = parseInt(match[1], 10);
+  const workDir = session.workDir;
+  if (!workDir) return null;
+  const backlogPath = path.join(workDir, 'docs', 'backlog.json');
+  try {
+    const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
+    const tasks = Array.isArray(backlog) ? backlog : (backlog.tasks || []);
+    const task = tasks.find(t => t.number === taskNumber);
+    if (!task) return null;
+    const mapped = BACKLOG_STATUS_TO_TASK_STATE[task.status];
+    if (!mapped) return null;
+    return { taskNumber, taskState: mapped.taskState, lastSkill: mapped.lastSkill };
+  } catch { return null; }
+}
+
 function loadPersistedSessions() {
   try {
     const arr = JSON.parse(fs.readFileSync(SESSIONS_PERSIST_PATH, 'utf8'));
     if (!Array.isArray(arr)) return;
     for (const s of arr) {
       if (!s.id) continue;
-      sessions.set(s.id, {
+      const loaded = {
         ...s,
         status: s.status === 'running' ? 'done' : s.status,
         proc: null, watcher: null, timeout: null,
         lines: s.lines || [],
-      });
+      };
+      if (!loaded.taskNumber) {
+        const inferred = inferTaskState(loaded);
+        if (inferred) {
+          loaded.taskNumber = inferred.taskNumber;
+          loaded.taskState  = loaded.taskState  || inferred.taskState;
+          loaded.lastSkill  = loaded.lastSkill  || inferred.lastSkill;
+        }
+      }
+      sessions.set(s.id, loaded);
     }
     // Rebuild forkMap from persisted sessions
     for (const s of arr) {
@@ -2886,6 +2921,8 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
 const VALID_BACKLOG_STATUSES = new Set([
   // Skill-written statuses (plan-task → start-build → finish-build → codex-review → promote-stage → promote-to-prod)
   'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'staged', 'production',
+  // Manual post-production status: set when smoke tests fail after production deployment
+  'failed-smoke-test',
   // Special states
   'blocked', 'on-hold', 'cancelled',
   // Legacy/deprecated statuses (still allowed for backward compatibility)
@@ -10518,6 +10555,9 @@ wss.on('connection', (ws) => {
         totalCost: s.totalCost || 0,
         isForked: !!s.isForked,
         primarySessionId: s.primarySessionId || null,
+        taskNumber: s.taskNumber || null,
+        taskState: s.taskState || null,
+        lastSkill: s.lastSkill || null,
       })),
       history: readJSON(HISTORY_PATH, []),
       config:  (() => {

@@ -54,8 +54,9 @@ The detailed prose history continues below the table — keep both. The table is
 
 **Task model:**
 - `docs/backlog.json` stores global + per-project tasks with fields: number, title, description, category, priority, status, plan, proofUnits, branch, pr_url, impact
-- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `staged`, `production`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `pr-reviewed`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
+- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `staged`, `production`, `failed-smoke-test`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `pr-reviewed`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
 - **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task` completion) → `build-started` (after `/start-build`) → `build-finished` (after `/finish-build`) → `cba-complete` (after `/codex-review`) → `staged` (after `/promote-stage`) → `production` (after `/promote-to-prod` ships)
+- **failed-smoke-test status (manual):** Set manually when smoke tests fail after production deployment. No skill automatically transitions to this state. When opening a session with a task in `failed-smoke-test` state, the first action must ask the user: "How did this task fail smoke testing?" (capture failure details, remediation steps, whether rollback or fix is needed).
 - **Impact field** (task #19): enum `minor|standard|major` gates planning depth. Minor = skip `/plan-task`. Major = break into subtasks.
 - **Proof units** (task #11): each task plan includes `proofUnits[]` array defining TDD proof expectations (failing → passing test per unit)
 - Registry audit: `/cross-boundary-audit` verifies all task field producers/consumers, updates registry line refs, checks proof units

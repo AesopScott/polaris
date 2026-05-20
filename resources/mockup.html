@@ -9497,7 +9497,7 @@ Then run /clear to initialize the review session.`;
   const BACKLOG_STATUS_OPTIONS = [
     'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
     'build-finished', 'pr-reviewed', 'staged', 'main', 'smoke-tested', 'production',
-    'blocked', 'on-hold', 'cancelled'
+    'failed-smoke-test', 'blocked', 'on-hold', 'cancelled'
   ];
   const BACKLOG_STATUS_COLORS = {
     'backlog':           'background:rgba(120,120,120,0.25);color:#aaa;',
@@ -9511,6 +9511,7 @@ Then run /clear to initialize the review session.`;
     'main':              'background:rgba(74,222,128,0.25);color:#86efac;',
     'smoke-tested':      'background:rgba(74,222,128,0.25);color:#86efac;',
     'production':        'background:rgba(34,197,94,0.35);color:#bbf7d0;',
+    'failed-smoke-test': 'background:rgba(239,68,68,0.25);color:#fca5a5;',
     'blocked':           'background:rgba(239,68,68,0.25);color:#fca5a5;',
     'on-hold':           'background:rgba(250,204,21,0.25);color:#fde047;',
     'cancelled':         'background:rgba(120,120,120,0.25);color:#888;',
