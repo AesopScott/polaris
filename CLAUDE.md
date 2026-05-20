@@ -50,6 +50,33 @@ After bumping `package.json` version, prepend a row to the **Build Index** table
 
 The detailed prose history continues below the table — keep both. The table is the at-a-glance index; prose entries are optional for small builds.
 
+## Backlog & task workflow
+
+**Task model:**
+- `docs/backlog.json` stores global + per-project tasks with fields: number, title, description, category, priority, status, plan, proofUnits, branch, pr_url, impact
+- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `staged`, `production`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `pr-reviewed`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
+- **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task` completion) → `build-started` (after `/start-build`) → `build-finished` (after `/finish-build`) → `cba-complete` (after `/codex-review`) → `staged` (after `/promote-stage`) → `production` (after `/promote-to-prod` ships)
+- **Impact field** (task #19): enum `minor|standard|major` gates planning depth. Minor = skip `/plan-task`. Major = break into subtasks.
+- **Proof units** (task #11): each task plan includes `proofUnits[]` array defining TDD proof expectations (failing → passing test per unit)
+- Registry audit: `/cross-boundary-audit` verifies all task field producers/consumers, updates registry line refs, checks proof units
+- Review workflow: `/review-pr` (Claude) reviews; `/codex-review` (Codex) reviews and sets status to `cba-complete` before promoting to stage
+
+**Key workflows (stored in `~/.claude/commands/`):**
+- `/plan-task` — Interview phase, design outline, proof-unit breakdown, reachability check; plan completion sets status to `planned`
+- `/start-build` — Load task plan + proof units, create branch, sync main; **sets status to `build-started`**
+- `/finish-build` — Verify proof trail + registries, commit, push, open PR to stage, record PR URL; **sets status to `build-finished`**
+- `/review-pr` — Structured review against spec + registries + diff, proof-trail checklist; records review evidence only (no status change)
+- `/codex-review` — Independent Codex review, compare against prior `/review-pr`; **sets status to `cba-complete`** after passing
+- `/promote-stage` — Looks for `cba-complete` tasks, merges approved PRs into stage, rollup audit; **sets status to `staged`**
+- `/promote-to-prod` — Looks for `staged` tasks, promotes to main → prod, watches deploy; **flips to `production`**
+- `/ship-task` — Orchestrates the workflow from plan through promotion; does not change status itself (other skills do)
+
+**Proof trail verification:**
+- Build evidence: failing test → implement → passing test (RED→GREEN per proof unit)
+- Registry evidence: `/cross-boundary-audit` confirms all new identifiers in registries with correct line refs
+- Waiver path: if no automated test possible, document manual steps + Scott sign-off instead
+- Hard-fail: missing proof units in backlog.json, stale registry line refs, unexplained out-of-scope diff
+
 ## Project knowledge base
 Soul + why: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md`
 Architecture decisions: `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\2-Architecture.md`

@@ -116,7 +116,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `resources/mockup.html:9103` — Status picker displays current status
 - `resources/mockup.html:3395` — BACKLOG_STATUS_OPTIONS defines valid values
 
-**Validation:** VALID_BACKLOG_STATUSES set at server.js:2870 — backlog, planned, build-started, cba-complete, cba-half-complete, build-finished, pr-reviewed, staged, smoke-tested, production, blocked, on-hold, cancelled, ready, in-progress, in-review, done, complete
+**Validation:** VALID_BACKLOG_STATUSES set at server.js:2875 — backlog, planned, build-started, build-finished, cba-complete, staged, production, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).**
 
 **Status:** ✓ Balanced (validation enforced server-side)
 
@@ -263,22 +263,27 @@ GitHub PR URL for the task's implementation (null until PR is opened).
 
 Workflow significance: determines whether /plan-task is gated out (minor), required (major), or standard (default).
 
-**Schema / shape:** String, enum: "minor" | "standard" | "major", optional, defaults to "standard"
+**Schema / shape:** String, enum: "minor" | "standard" | "major", optional, defaults to "standard". Server validates and coerces invalid values to "standard".
 
 **Producers (write)**
-- `server.js:2717` — `addBacklogTask()` stores impact (defaults to 'standard')
-- `server.js:2955` — `updateBacklogTask()` updates impact (global scope)
-- `server.js:2974` — `updateBacklogTask()` updates impact (per-project scope)
+- `server.js:2726` — `addBacklogTask()` stores impact via `_validImpact()` helper (defaults to 'standard')
+- `server.js:2964` — `updateBacklogTask()` updates impact via `_validImpact()` helper (global scope)
+- `server.js:2983` — `updateBacklogTask()` updates impact via `_validImpact()` helper (per-project scope)
 
 **Consumers (read)**
-- `resources/mockup.html:9175` — Table renders impact with color coding (green/minor, gray/standard, orange/major)
-- `resources/mockup.html:9110` — Edit button passes impact to openBacklogEditModal
-- `resources/mockup.html:9354` — Edit modal pre-populates impact dropdown
-- `resources/mockup.html:9324` — Add modal initializes impact dropdown
+- `resources/mockup.html:2052` — Add Task modal `<select id="backlog-add-impact">` (minor/standard/major)
+- `resources/mockup.html:2097` — Edit Task modal `<select id="backlog-edit-impact">` (minor/standard/major)
+- `resources/mockup.html:9182` — Edit button click handler passes `btn.dataset.impact` to openBacklogEditModal
+- `resources/mockup.html:9219` — IMPACT column header in table
+- `resources/mockup.html:9235` — Table row reads `t.impact` and applies color coding (green/minor, gray/standard, orange/major)
+- `resources/mockup.html:9247` — Table row renders impact `<td>` cell
+- `resources/mockup.html:9251` — Edit button carries `data-impact` attribute
+- `resources/mockup.html:9389` — `openBacklogAddModal()` resets impact dropdown to 'standard'
+- `resources/mockup.html:9421` — `openBacklogEditModal()` pre-populates impact dropdown from task value
 - `/plan-task` skill (future) — reads impact to gate workflow
 - `/start-build` skill (future) — reads impact to enforce /plan-task if needed
 
-**Status:** ✓ Balanced — Task #19 implementation complete
+**Status:** ✓ Balanced — server persists, table displays, modals read/write, enum validated server-side
 
 ---
 
@@ -305,9 +310,9 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T23:55:00Z (by /cross-boundary-audit for task #19 → main promotion)
+**Last audit:** 2026-05-20 (by /promote-to-main cross-boundary audit for task #19 — line refs post _validImpact extraction verified)
 
-**Boundaries checked:** Backlog task schema fields
+**Boundaries checked:** Backlog task schema fields — impact field verified against actual code at current line numbers
 
 **Evidence recorded:**
 - 14 entries documented
@@ -315,12 +320,11 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
 - 3 entries with orphan producers (dependencies, branch, pr_url) ⚠
 - 0 entries with pending implementation ✓
-- New identifiers verified on task #19: `impact` field fully implemented in server and UI
-- Registries match current code diff: yes (task #19 implementation complete and verified)
+- `impact` field: server.js producers verified at lines 2726/2964/2983 (post `_validImpact` helper extraction); mockup.html consumers verified at lines 2052/2097/9182/9219/9235/9247/9251/9389/9421; enum validation extracted to `_validImpact()` helper at line 2705
 
 **Gaps identified:**
 - `dependencies` field: producers but no consumer (no enforcement)
 - `branch` field: producer but no consumer (never used)
 - `pr_url` field: producer but no consumer (never used)
 
-**Status:** Audit complete, task #19 implementation verified
+**Status:** Audit current — line references verified against code after task #19 implementation fixes
