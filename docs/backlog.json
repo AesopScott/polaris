@@ -130,6 +130,17 @@
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 21,
+      "title": "Add review-blocked status to backlog workflow",
+      "description": "Add a new task status 'review-blocked' to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed code review (Claude /review-pr and Codex /codex-review) but were found to have REQUEST CHANGES verdict, blocking promotion to stage/main. Currently, such tasks remain at 'build-finished', making it ambiguous whether the review is still pending or completed-with-findings. The 'review-blocked' status clarifies the state: review is done, but remediation is required before promotion. Update: backlog.json task schema, reviewer documentation, backlog navigation pane in Polaris UI, and /promote-stage logic to skip review-blocked tasks.",
+      "category": "enhancement",
+      "priority": 70,
+      "status": "backlog",
+      "created_at": "2026-05-20",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
