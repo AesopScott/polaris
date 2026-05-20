@@ -8971,6 +8971,9 @@
     }
     const reviewPrompt = `This is a code review session for independent analysis.
 
+You are reviewing project: **${f.projectName}**
+Working directory: ${f.workDir}
+
 IMPORTANT: Skip loading Build and Sessions context for reviewer independence. Review only against:
 - The task spec (from docs/backlog.json)
 - Feature Contracts and boundary registries
