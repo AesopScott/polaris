@@ -3833,7 +3833,54 @@ Review for:
 If the diff is non-empty and the changes look intentional and consistent with the task, verdict is PASS.
 Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
-  const result = await callOpenRouterOnce(useModel, apiKey, [{ role: 'user', content: reviewPrompt }], 800);
+  // Use Codex CLI if model is set to "codex"
+  let result;
+  if (useModel === 'codex') {
+    const cfg = readConfig();
+    const codexBin = cfg.codexBinaryPath || 'codex';
+    try {
+      const proc = spawnSync(codexBin, ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', '-'], {
+        input: reviewPrompt,
+        encoding: 'utf8',
+        timeout: 60000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      if (proc.error) {
+        return { verdict: 'ERROR', summary: `Codex CLI failed: ${proc.error.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+      if (proc.status !== 0) {
+        return { verdict: 'ERROR', summary: `Codex CLI exited with code ${proc.status}: ${proc.stderr || '(no stderr)'}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+      const codexOutput = proc.stdout || '';
+      // Extract JSON from Codex response (may contain additional text)
+      const jsonStr = extractFirstJson(codexOutput);
+      if (!jsonStr) {
+        return { verdict: 'ERROR', summary: 'Codex: no JSON in response', issues: [codexOutput.slice(0, 200) || ''], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const rawVerdict = String(parsed.verdict || '').toUpperCase();
+        const verdict = (rawVerdict === 'PASS' || rawVerdict === 'FAIL' || rawVerdict === 'ERROR')
+          ? rawVerdict
+          : 'ERROR';
+        return {
+          verdict,
+          summary: parsed.summary || (verdict === 'ERROR' ? `Unrecognized verdict: ${parsed.verdict}` : '(no summary)'),
+          issues:  Array.isArray(parsed.issues) ? parsed.issues : [],
+          model:   useModel,
+          ms:      Date.now() - startMs,
+          usage:   null,
+        };
+      } catch (e) {
+        return { verdict: 'ERROR', summary: `JSON parse failed: ${e.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+    } catch (e) {
+      return { verdict: 'ERROR', summary: `Codex CLI error: ${e.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+    }
+  }
+
+  // Default: use OpenRouter API
+  result = await callOpenRouterOnce(useModel, apiKey, [{ role: 'user', content: reviewPrompt }], 800);
   const ms = Date.now() - startMs;
 
   if (result.error) {
