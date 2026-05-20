@@ -268,7 +268,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 **Producers (write)**
 - `server.js:2717` — `addBacklogTask()` stores impact (defaults to 'standard')
 - `server.js:2955` — `updateBacklogTask()` updates impact (global scope)
-- `server.js:2973` — `updateBacklogTask()` updates impact (per-project scope)
+- `server.js:2974` — `updateBacklogTask()` updates impact (per-project scope)
 
 **Consumers (read)**
 - `resources/mockup.html:9175` — Table renders impact with color coding (green/minor, gray/standard, orange/major)
@@ -305,7 +305,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-19T23:42:00Z (by /finish-build for task #19)
+**Last audit:** 2026-05-19T23:55:00Z (by /cross-boundary-audit for task #19 → main promotion)
 
 **Boundaries checked:** Backlog task schema fields
 
