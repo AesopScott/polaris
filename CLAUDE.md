@@ -118,7 +118,7 @@ The detailed prose history continues below the table — keep both. The table is
 **Task model:**
 - `docs/backlog.json` stores global + per-project tasks with fields: number, title, description, category, priority, status, plan, proofUnits, branch, pr_url, impact
 - **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `pr-reviewed`, `staged`, `production`, `complete`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `cba-complete`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
-- **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task` completion) → `build-started` (after `/start-build`) → `build-finished` (after `/finish-build`) → `pr-reviewed` (after `/codex-review`) → `staged` (after `/promote-stage`) → `production` (after `/promote-to-prod` ships) or `complete` (for not-shipped tasks)
+- **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task` completion) → `build-started` (after `/start-build`) → `build-finished` (after `/finish-build`) → `cba-complete` (after `/codex-review`) → `staged` (after `/promote-stage`) → `production` (after `/promote-to-prod` ships) or `complete` (for not-shipped tasks)
 - **Impact field** (task #19): enum `minor|standard|major` gates planning depth. Minor = skip `/plan-task`. Major = break into subtasks.
 - **Proof units** (task #11): each task plan includes `proofUnits[]` array defining TDD proof expectations (failing → passing test per unit)
 - Registry audit: `/cross-boundary-audit` verifies all task field producers/consumers, updates registry line refs, checks proof units
@@ -129,8 +129,8 @@ The detailed prose history continues below the table — keep both. The table is
 - `/start-build` — Load task plan + proof units, create branch, sync main; **sets status to `build-started`**
 - `/finish-build` — Verify proof trail + registries, commit, push, open PR to stage, record PR URL; **sets status to `build-finished`**
 - `/review-pr` — Structured review against spec + registries + diff, proof-trail checklist; records review evidence only (no status change)
-- `/codex-review` — Independent Codex review, compare against prior `/review-pr`; **sets status to `pr-reviewed`** after passing
-- `/promote-stage` — Looks for `pr-reviewed` tasks, merges approved PRs into stage, rollup audit; **sets status to `staged`**
+- `/codex-review` — Independent Codex review, compare against prior `/review-pr`; **sets status to `cba-complete`** after passing
+- `/promote-stage` — Looks for `cba-complete` tasks, merges approved PRs into stage, rollup audit; **sets status to `staged`**
 - `/promote-to-prod` — Looks for `staged` tasks, promotes to main → prod, watches deploy; **flips to `production` (shipped) or `complete` (not shipped)**
 - `/ship-task` — Orchestrates the workflow from plan through promotion; does not change status itself (other skills do)
 
