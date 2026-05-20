@@ -2650,12 +2650,13 @@ function discoverAllSkills(workDir = null) {
 function loadAllBacklogs() {
   const cfg = readConfig();
   const result = { global: null, projects: [], archive: { global: null, projects: [] } };
+  // Strip UTF-8 BOM that PowerShell adds by default — JSON.parse rejects BOM-prefixed text
+  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, ''));
 
   if (cfg.obsidianVaultPath) {
     const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
     try {
-      const text = fs.readFileSync(globalPath, 'utf8');
-      result.global = JSON.parse(text);
+      result.global = readJson(globalPath);
       const statuses = (result.global.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
       console.log(`[backlog] loaded global: ${statuses || '(no tasks)'}`);
     } catch (e) {
@@ -2665,8 +2666,7 @@ function loadAllBacklogs() {
     // Load global archive
     const globalArchivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
     try {
-      const text = fs.readFileSync(globalArchivePath, 'utf8');
-      result.archive.global = JSON.parse(text);
+      result.archive.global = readJson(globalArchivePath);
       const count = (result.archive.global.tasks || []).length;
       console.log(`[backlog] loaded global archive: ${count} archived tasks`);
     } catch (e) {
@@ -2683,8 +2683,7 @@ function loadAllBacklogs() {
     const backlogPath = ensureProjectBacklogFile(proj, { commit: true }) || path.join(proj.workDir, 'docs', 'backlog.json');
     let backlog = null;
     try {
-      const text = fs.readFileSync(backlogPath, 'utf8');
-      backlog = JSON.parse(text);
+      backlog = readJson(backlogPath);
       const statuses = (backlog.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
       console.log(`[backlog] loaded ${proj.name}: ${statuses || '(no tasks)'}`);
     } catch (e) {
@@ -2696,8 +2695,7 @@ function loadAllBacklogs() {
     const archivePath = path.join(proj.workDir, 'docs', 'backlog-archive.json');
     let archive = null;
     try {
-      const text = fs.readFileSync(archivePath, 'utf8');
-      archive = JSON.parse(text);
+      archive = readJson(archivePath);
       const count = (archive.tasks || []).length;
       console.log(`[backlog] loaded ${proj.name} archive: ${count} archived tasks`);
     } catch (e) {
