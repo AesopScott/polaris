@@ -6843,6 +6843,61 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // ─── Cross-check endpoint — triggered by PostToolUse hooks from Chat sessions ──
+  if (req.method === 'POST' && req.url === '/api/cross-check-from-hook') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+      try {
+        const data = JSON.parse(body);
+        const { filePath } = data;
+        if (!filePath) { res.writeHead(400, CORS); res.end(JSON.stringify({ ok: false, error: 'Missing filePath' })); return; }
+
+        // Read new content from disk
+        let newContent = '';
+        try {
+          newContent = fs.readFileSync(filePath, 'utf8');
+        } catch {
+          res.writeHead(400, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Cannot read file' }));
+          return;
+        }
+
+        // Try to get original content from git HEAD
+        let originalContent = '';
+        try {
+          const workDir = path.dirname(filePath);
+          const relPath = path.relative(workDir, filePath);
+          originalContent = execSync(`git show HEAD:${relPath}`, {
+            cwd: workDir,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+          });
+        } catch {
+          // File is new or not in git; use empty string as original
+          originalContent = '';
+        }
+
+        // Run cross-check and return verdict
+        const verdict = await runCrossCheckAndApproval({
+          sessionId: 'hook-cross-check',
+          filePath,
+          operation: 'Write',
+          originalContent,
+          newContent,
+        });
+
+        res.writeHead(200, CORS);
+        res.end(JSON.stringify({ ok: true, verdict }));
+      } catch (e) {
+        res.writeHead(500, CORS);
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ─── Polaris MCP endpoint — exposes Polaris tools to Claude Code CLI ──────────
   // Claude Code (Max plan) sessions can't access DIRECT_TOOLS (those go to the
   // OpenRouter path). This HTTP MCP endpoint bridges the gap so SetProject,
