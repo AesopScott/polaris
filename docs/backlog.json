@@ -140,7 +140,8 @@
       "status": "backlog",
       "dependencies": [],
       "title": "Add failed-smoke-test status to backlog workflow",
-      "priority": 75
+      "priority": 75,
+      "impact": "minor"
     }
   ]
 }
