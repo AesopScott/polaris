@@ -8978,17 +8978,26 @@ IMPORTANT: Skip loading Build and Sessions context for reviewer independence. Re
 
 Then run /clear to initialize the review session.`;
 
-    wsSend({
-      type: 'launch',
+    const mode = getLaunchMode();
+    const basePayload = {
       prompt: reviewPrompt,
       displayPrompt: 'Code Review Session',
       workDir: f.workDir,
       projectName: f.projectName,
-      model: f.model,
       tier: f.tier
-    });
+    };
 
-    pushDebugLog('[review] Launched review session for ' + f.projectName);
+    if (mode === 'chat') {
+      wsSend({ type: 'launch-chat', ...basePayload });
+    } else if (mode === 'gpt') {
+      wsSend({ type: 'launch-gpt', ...basePayload });
+    } else if (mode === 'codex') {
+      wsSend({ type: 'launch-codex', ...basePayload });
+    } else {
+      wsSend({ type: 'launch', ...basePayload, model: f.model });
+    }
+
+    pushDebugLog('[review] Launched review session for ' + f.projectName + ' (mode: ' + mode + ')');
   }
   window.openReviewSession = openReviewSession;
 
