@@ -633,6 +633,9 @@ function serializeSession(s) {
     totalCost: s.totalCost || 0,
     isForked: !!s.isForked,
     primarySessionId: s.primarySessionId || null,
+    taskNumber: s.taskNumber || null,
+    taskState: s.taskState || null,
+    lastSkill: s.lastSkill || null,
   };
 }
 
@@ -2061,6 +2064,11 @@ function buildPolarisContextBlock(config, session) {
     '  - If you ask Scott a question or need input before proceeding, call mcp__polaris__SetStatus with status "waiting".',
     '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
     'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
+    '',
+    'Ship-task progress: when running /ship-task, call mcp__polaris__SetTaskState at the start of each step to update the UI.',
+    '  - Arguments: taskNumber (int), taskState (string), lastSkill (string).',
+    '  - States to use: planning, start-build, coding, audit, build-finished, in-review.',
+    '  - Example: SetTaskState({ taskNumber: 1, taskState: "build-finished", lastSkill: "finish-build" })',
   );
 
   lines.push(
@@ -3122,8 +3130,18 @@ function toolSetStatus({ status } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
   session.status = status;
-  broadcast({ type: 'session-status', sessionId, status });
+  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
   return `Status set to "${status}".`;
+}
+
+function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session) return 'Session not found.';
+  if (taskNumber !== undefined) session.taskNumber = taskNumber;
+  if (taskState  !== undefined) session.taskState  = taskState;
+  if (lastSkill  !== undefined) session.lastSkill  = lastSkill;
+  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
 // assertWritable — enforces two rules before any write:
@@ -5194,7 +5212,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   }
   if (s) { s.status = termStatus; s.endAt = Date.now(); }
   saveSessionMessages(sessionId);
-  broadcast({ type: 'session-status', sessionId, status: termStatus });
+  broadcast({ type: 'session-status', sessionId, status: termStatus, taskNumber: s?.taskNumber || null, taskState: s?.taskState || null, lastSkill: s?.lastSkill || null });
   autoObsidianForSession(sessionId);
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   releaseSessionMemory(sessionId);
@@ -6757,6 +6775,11 @@ const httpServer = http.createServer((req, res) => {
             inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'] }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['status', 'polaris_session_id'] },
           },
           {
+            name: 'SetTaskState',
+            description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step.',
+            inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number.' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
+          },
+          {
             name: 'QueryMemory',
             description: 'Query the project knowledge base loaded from Obsidian. Omit filename to get all project context.',
             inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
@@ -6771,6 +6794,7 @@ const httpServer = http.createServer((req, res) => {
           let result;
           if      (toolName === 'SetProject')   result = toolSetProject(args, sessionId);
           else if (toolName === 'SetStatus')    result = toolSetStatus(args, sessionId);
+          else if (toolName === 'SetTaskState') result = toolSetTaskState(args, sessionId);
           else if (toolName === 'QueryMemory')  result = await toolQueryMemory(args, sessionId);
           else { err(-32601, `Unknown tool: ${toolName}`); return; }
           ok({ content: [{ type: 'text', text: String(result) }] });
@@ -6810,6 +6834,7 @@ const httpServer = http.createServer((req, res) => {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [
           { name: 'SetProject', description: `Set the active project for this session. Known projects: ${projectNames || '(none configured)'}.`, inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name, or omit for no project (scratch).' } }, required: [] } },
           { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
+          { name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } },
           { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Omit filename to get all project context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' } }, required: [] } },
         ]}}));
       }
@@ -6818,6 +6843,7 @@ const httpServer = http.createServer((req, res) => {
         let result;
         if (name === 'SetProject') result = toolSetProject(args || {}, sessionId);
         else if (name === 'SetStatus') result = toolSetStatus(args || {}, sessionId);
+        else if (name === 'SetTaskState') result = toolSetTaskState(args || {}, sessionId);
         else if (name === 'QueryMemory') result = toolQueryMemory(args || {}, sessionId);
         else return res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown tool: ${name}` } }));
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(result) }] } }));
@@ -7478,9 +7504,9 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio });
+    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null });
 
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
@@ -9035,6 +9061,17 @@ async function handleMessage(ws, raw) {
   if (type === 'set-session-status') {
     const result = toolSetStatus({ status: msg.status }, msg.sessionId);
     console.log(`[set-session-status] ${msg.sessionId} → ${msg.status}: ${result}`);
+    return;
+  }
+
+  if (type === 'set-task-state') {
+    const session = sessions.get(msg.sessionId);
+    if (!session) return;
+    if (msg.taskNumber !== undefined) session.taskNumber = msg.taskNumber;
+    if (msg.taskState !== undefined) session.taskState = msg.taskState;
+    if (msg.lastSkill !== undefined) session.lastSkill = msg.lastSkill;
+    broadcast({ type: 'session-status', sessionId: msg.sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+    console.log(`[set-task-state] ${msg.sessionId} → #${session.taskNumber} ${session.taskState} /${session.lastSkill}`);
     return;
   }
 
