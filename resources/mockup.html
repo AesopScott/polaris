@@ -2010,6 +2010,8 @@
   <!-- Add Backlog Task Modal -->
   <!-- Backlog Status Picker (popover anchored under a clicked status badge) -->
   <div id="backlog-status-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:170px;"></div>
+  <!-- Backlog Impact Picker (popover anchored under a clicked impact cell) -->
+  <div id="backlog-impact-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:120px;"></div>
 
   <div id="backlog-add-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
     <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:560px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
@@ -9151,10 +9153,11 @@ Then run /clear to initialize the review session.`;
       });
     });
     // Task row → launch a new session to work on it (skip if clicking
-    // the status badge or edit button — those open pickers/modals instead)
+    // the status badge, impact cell, or edit button — those open pickers/modals instead)
     body.querySelectorAll('.backlog-task-row').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.backlog-status-badge')) return;
+        if (e.target.closest('.backlog-impact-cell')) return;
         if (e.target.closest('.backlog-edit-btn')) return;
         const scope = row.dataset.scope;
         const num = parseInt(row.dataset.taskNumber, 10);
@@ -9166,6 +9169,13 @@ Then run /clear to initialize the review session.`;
       badge.addEventListener('click', (e) => {
         e.stopPropagation();
         showStatusPicker(badge, badge.dataset.scope, parseInt(badge.dataset.taskNumber, 10), badge.dataset.status);
+      });
+    });
+    // Impact cell → open impact picker popover
+    body.querySelectorAll('.backlog-impact-cell').forEach(cell => {
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showImpactPicker(cell, cell.dataset.scope, parseInt(cell.dataset.taskNumber, 10), cell.dataset.impact);
       });
     });
     // Edit button → open edit modal
@@ -9244,7 +9254,7 @@ Then run /clear to initialize the review session.`;
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
             + '<td style="padding:8px 12px;font-size:11px;' + categoryStyle + '">' + escHtml(t.category || 'feature') + '</td>'
-            + '<td style="padding:8px 12px;font-size:11px;' + impactStyle + '">' + escHtml(impact) + '</td>'
+            + '<td class="backlog-impact-cell" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-impact="' + escHtmlAttr(impact) + '" style="padding:8px 12px;font-size:11px;cursor:pointer;' + impactStyle + '" title="Click to change impact">' + escHtml(impact) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:40px;">'
@@ -9532,6 +9542,54 @@ Then run /clear to initialize the review session.`;
     hideStatusPicker();
   });
 
+  // Impact picker popover — anchored under a clicked impact cell
+  const BACKLOG_IMPACT_OPTIONS = ['minor', 'standard', 'major'];
+  const BACKLOG_IMPACT_COLORS = {
+    'minor':    'background:rgba(74,222,128,0.25);color:#86efac;',
+    'standard': 'background:rgba(120,120,120,0.25);color:#aaa;',
+    'major':    'background:rgba(249,115,22,0.25);color:#f97316;',
+  };
+
+  function showImpactPicker(cellEl, scope, taskNumber, currentImpact) {
+    const picker = document.getElementById('backlog-impact-picker');
+    if (!picker) return;
+    const rect = cellEl.getBoundingClientRect();
+    const pickerHeight = 110;
+    let top = rect.bottom + 4;
+    if (top + pickerHeight > window.innerHeight) top = Math.max(8, rect.top - pickerHeight - 4);
+    picker.style.left = Math.max(8, Math.min(window.innerWidth - 150, rect.left)) + 'px';
+    picker.style.top = top + 'px';
+    picker.innerHTML = BACKLOG_IMPACT_OPTIONS.map(i => {
+      const style = BACKLOG_IMPACT_COLORS[i] || BACKLOG_IMPACT_COLORS['standard'];
+      const selectedRing = i === currentImpact ? 'box-shadow:inset 0 0 0 1px var(--accent);' : '';
+      return '<button data-impact="' + i + '" style="text-align:left;padding:5px 12px;border:none;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + style + selectedRing + '">' + i + '</button>';
+    }).join('');
+    picker.style.display = 'flex';
+    picker.dataset.scope = scope;
+    picker.dataset.taskNumber = String(taskNumber);
+    picker.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        wsSend({ type: 'update-backlog-task', scope: scope, taskNumber: taskNumber, updates: { impact: btn.dataset.impact } });
+        hideImpactPicker();
+      });
+    });
+  }
+
+  function hideImpactPicker() {
+    const picker = document.getElementById('backlog-impact-picker');
+    if (picker) picker.style.display = 'none';
+  }
+
+  // Hide impact picker on outside click
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('backlog-impact-picker');
+    if (!picker || picker.style.display === 'none') return;
+    if (e.target.closest('#backlog-impact-picker')) return;
+    if (e.target.classList && e.target.classList.contains('backlog-impact-cell')) return;
+    hideImpactPicker();
+  });
+
   window.openBacklogPanel       = openBacklogPanel;
   window.closeBacklogPanel      = closeBacklogPanel;
   window.toggleBacklogPanel     = toggleBacklogPanel;
@@ -9549,6 +9607,8 @@ Then run /clear to initialize the review session.`;
   window.filterBacklogTasks   = filterBacklogTasks;
   window.showStatusPicker          = showStatusPicker;
   window.hideStatusPicker          = hideStatusPicker;
+  window.showImpactPicker          = showImpactPicker;
+  window.hideImpactPicker          = hideImpactPicker;
   window.cancelTaskSessionPicker   = cancelTaskSessionPicker;
   window.confirmTaskSessionType    = confirmTaskSessionType;
 
