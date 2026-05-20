@@ -1,264 +1,236 @@
-﻿{
-    "tasks":  [
-                  {
-                      "number":  1,
-                      "title":  "Skills Nav Pane â€” hierarchical tree with Global / Project sections + 7 categories",
-                      "category":  "feature",
-                      "priority":  1,
-                      "status":  "production",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "Rework the Skills panel landed in v1.0.429 from a flat alphabetical list into a hierarchical tree. Top-level groups: Global (always shown) and {Project Name} (only when the active project has its own skills/commands/agents). Under each group, 7 collapsible category sections in this order: Project workflow, Project initiation, Code quality, Research, Codex integration, Tooling / config, Utilities. Server-side: expand discoverSkills() to scan all sources â€” user-global skills (~/.claude/skills/*/SKILL.md, currently 12), user-global commands (~/.claude/commands/*.md, currently 11), codex plugin (skills + commands + agents under ~/.claude/plugins/cache/openai-codex/codex/\u003cver\u003e/, currently 11), and project-local .claude/skills/ + .claude/commands/ when a project is active. Each discovered item gets a hardcoded category mapping based on its name (kept in a const map at the top of server.js so additions are one-line edits). Discovery is memoized by directory mtime. Client-side: replace the existing flat \u003ctable\u003e render with a tree of \u003cdetails\u003e elements (one per category, collapsed by default except first-render expansion of Project workflow). Each leaf row carries the same click-to-invoke behavior as today â€” sends /\u003cname\u003e to resumeTarget. Empty categories are hidden. Expected on-disk total: 34 (12 + 11 + 3 + 7 + 1). Bundled-but-not-on-disk skills like anthropic-skills:* and the built-in /init, /review, /security-review, /simplify, /update-config, /keybindings-help, /fewer-permission-prompts, /loop, /schedule, /claude-api should be added as a hardcoded supplement list once their source location is confirmed (bringing the total closer to Scott\u0027s stated 41 custom-created skills). Categorization decisions: evaluate-repo and find-skill â†’ new \u0027Research\u0027 category (pre-decision discovery, not code QA); flow-audit â†’ Project workflow (its output is backlog tasks); cross-boundary-audit â†’ Code quality (operates on existing code). Built this session alongside Polaris\u0027s new docs/backlog.json scaffolding flow.",
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null,
-                      "completed_at":  "2026-05-20",
-                      "project_source":  "Polaris",
-                      "promoted_via_pr":  null
-                  },
-                  {
-                      "number":  6,
-                      "title":  "Project initiation button",
-                      "category":  "feature",
-                      "priority":  50,
-                      "status":  "production",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  "2026-05-19",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "Add a project initiation button next to projects in the project panel, which automatically kicks off the skill /project-initiation.",
-                      "plan":  null,
-                      "branch":  "task/6-project-initiation-button",
-                      "pr_url":  "https://github.com/AesopScott/polaris/pull/8",
-                      "project_source":  "Polaris",
-                      "promoted_via_pr":  "8"
-                  },
-                  {
-                      "number":  7,
-                      "title":  "Obsidian write issues.",
-                      "category":  "fix",
-                      "priority":  50,
-                      "status":  "production",
-                      "created_at":  "2026-05-18",
-                      "completed_at":  "2026-05-19",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "Sometimes when writing to Obsidian using the close button, it just shows block block",
-                      "plan":  null,
-                      "branch":  "task/7-obsidian-write-issues",
-                      "pr_url":  "https://github.com/AesopScott/polaris/pull/1",
-                      "project_source":  "Polaris",
-                      "promoted_via_pr":  "1"
-                  },
-                  {
-                      "number":  16,
-                      "title":  "Fix the refresh button in the backlog.",
-                      "description":  "The title says it all.",
-                      "category":  "fix",
-                      "priority":  50,
-                      "created_at":  "2026-05-19",
-                      "completed_at":  "2026-05-20",
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from \u0027?? Refresh\u0027 to \u0027? Loadingï¿½\u0027\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html ï¿½ Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** ï¿½ this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loadingï¿½\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
-                      "proofUnits":  [
-                                         {
-                                             "expectedPassingEvidence":  "diff shows +function _onBacklogDataReceived() and two new calls in case \u0027backlogs-data\u0027 and case \u0027backlog-error\u0027",
-                                             "exactCommand":  "git diff resources/mockup.html | grep -A5 -B5 \u0027_onBacklogDataReceived\\|backlogs-data\u0027",
-                                             "title":  "Code change - add loading feedback to refresh button",
-                                             "proofType":  "registry-diff",
-                                             "expectedInitialFailure":  "diff shows no _onBacklogDataReceived function and no calls to it in message handlers",
-                                             "number":  1,
-                                             "expectedBehavior":  "mockup.html contains a _onBacklogDataReceived() function that resets the refresh button\u0027s disabled state and text, and the backlogs-data and backlog-error message handlers call this function.",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "expectedPassingEvidence":  "Button visibly disables and shows \u0027Loading\u0027, then returns to normal after response arrives. Network tab shows list-backlogs message sent and backlogs-data response received.",
-                                             "exactCommand":  "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent=\u0027? Loadingï¿½\u0027, wait for server response, verify button.disabled=false and textContent=\u0027?? Refresh\u0027",
-                                             "title":  "UI behavior - refresh button shows loading state",
-                                             "proofType":  "ui-check",
-                                             "expectedInitialFailure":  "Clicking refresh shows no visual feedback; button remains enabled and text unchanged",
-                                             "number":  2,
-                                             "expectedBehavior":  "Clicking the ?? Refresh button disables it and changes its text to \u0027? Loadingï¿½\u0027. After the server responds, the button re-enables and text returns to \u0027?? Refresh\u0027.",
-                                             "waiverGuidance":  "If Polaris app won\u0027t start due to Electron error, manual code review: confirm function exists, confirm message handlers call it, confirm button query selector is correct"
-                                         },
-                                         {
-                                             "expectedPassingEvidence":  "Button returns to \u0027Refresh\u0027 and enabled state after any response (success or error). No console errors.",
-                                             "exactCommand":  "Steps: (1) Open Polaris and Backlog panel. (2) Simulate an error by checking browser Network tab or server logs to confirm an error response. (3) Observe that the button returns to normal state. OR (4) Manually inspect code: confirm backlog-error case in message handler calls _onBacklogDataReceived().",
-                                             "title":  "Error handling - button resets on error response",
-                                             "proofType":  "manual-script",
-                                             "expectedInitialFailure":  "Error response does not reset button state; button stuck showing \u0027Loading\u0027",
-                                             "number":  3,
-                                             "expectedBehavior":  "If the server responds with backlog-error, the button still resets to enabled and shows \u0027?? Refresh\u0027 (not stuck in loading state).",
-                                             "waiverGuidance":  "If app unavailable: code review confirms backlog-error case calls _onBacklogDataReceived() at line ~4647, same as backlogs-data case"
-                                         },
-                                         {
-                                             "expectedPassingEvidence":  "Complete refresh cycle works; button feedback is consistent on every refresh. No errors in console.",
-                                             "exactCommand":  "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show \u0027Loading\u0027. (5) Wait for list to re-render. (6) Confirm button returns to \u0027Refresh\u0027 and list still shows all tasks. (7) Try clicking Refresh again ï¿½ button feedback should repeat.",
-                                             "title":  "End-to-end smoke test - full refresh cycle",
-                                             "proofType":  "manual-script",
-                                             "expectedInitialFailure":  "Button has no feedback or gets stuck showing \u0027Loading\u0027",
-                                             "number":  4,
-                                             "expectedBehavior":  "User can click Refresh in the Backlog panel, see loading feedback, and watch the backlog data re-render after the response arrives.",
-                                             "waiverGuidance":  "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
-                                         }
-                                     ],
-                      "status":  "production",
-                      "pr_url":  "https://github.com/AesopScott/polaris/pull/7",
-                      "project_source":  "Polaris",
-                      "promoted_via_pr":  null
-                  },
-                  {
-                      "number":  19,
-                      "title":  "Add impact field to backlog items",
-                      "description":  "Add a three-level impact classification (minor, standard, major) to backlog tasks. This field affects workflow: minor items can skip /plan-task, major items trigger /plan-task to break work into subtasks.\n\n## Scope\n\n### Schema changes\n- Add `impact` field to each task in docs/backlog.json with enum values: \"minor\", \"standard\" (default), \"major\"\n- Field is optional on existing tasks; defaults to \"standard\" when not present\n\n### Dashboard UI (resources/mockup.html)\n- Add IMPACT column to backlog table, positioned between CATEGORY and DEPS columns\n- Display impact value with visual styling (e.g., color-coding: green for minor, gray for standard, red/orange for major)\n- Add impact field to both Add Task and Edit Task modals as a dropdown/select with three options\n- Update edit button data attributes to pass impact value: `data-impact=\"{value}\"`\n- Update openBacklogEditModal() to accept impact parameter\n- Update submitBacklogAdd() and submitBacklogEdit() to include impact in WebSocket messages\n\n### Server (server.js)\n- Update add-backlog-task message handler to include impact field when saving\n- Update update-backlog-task message handler to accept and persist impact changes\n\n### Workflow integration (future, documented only)\n- **Minor items:** /plan-task documentation should note these can be skipped; users proceed directly to /start-build if preferred\n- **Major items:** /plan-task guidance should instruct users to break the work into multiple subtasks, add each to backlog separately, then mark the parent major task as \"production\" and archive it\n\n## Key findings from exploration\n\n### Current backlog structure\n- backlog.json tasks currently have: number, title, category, priority, status, description, plan, branch, pr_url, dependencies, proofUnits\n- Status options: backlog, planned, build-started, cba-complete, cba-half-complete, build-finished, pr-reviewed, staged, smoke-tested, production, blocked, on-hold, cancelled\n\n### UI architecture\n- Backlog rendering via renderBacklogSection() at mockup.html:9086 generates table rows\n- Each row has clickable status badge, edit button, and task cells for #, title, status, category, deps, priority\n- Edit modal functions: openBacklogEditModal() (line 9301) accepts scope, taskNumber, title, description, priority, category\n- Add modal: openBacklogAddModal() (line 9264); submitBacklogAdd() (line 9284) sends add-backlog-task WebSocket message\n- Edit submit: submitBacklogEdit() (line 9314) sends update-backlog-task WebSocket message\n\n### Styling considerations\n- Existing categories use color coding: feature (green), fix/emergency fix (red), update (yellow)\n- Impact can follow similar pattern or use different visual treatment (badges, icons, etc.)\n- Table header styling at mockup.html:9109-9117\n\n## Testability\n\n1. Can add a new backlog task with impact=\"major\"\n2. Can edit existing task to set impact\n3. Backlog panel displays impact value correctly for all three values\n4. Add/edit modals include impact dropdown and accept all three values\n5. WebSocket messages (add-backlog-task, update-backlog-task) include impact field\n6. New tasks default to impact=\"standard\" if not specified\n\n## Dependencies\n\nNone. This is a purely additive feature with no blocking dependencies.",
-                      "category":  "feature",
-                      "priority":  45,
-                      "status":  "production",
-                      "created_at":  "2026-05-19",
-                      "completed_at":  "2026-05-20",
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  "## Design Discussion\n\nCurrent workflow forces small tasks through an unnecessarily cumbersome planning process (/plan-task), creating friction and slowing delivery. Conversely, large tasks skip planning/breakdown entirely, leading to unfocused, noisy code that\u0027s error-prone and hard to manage. The impact field enables right-sizing the process to match task complexity: lightweight tasks get a fast path, complex tasks get decomposition guidance upfront.\n\n## Outline Plan\n\nFive phases: (1) Schema \u0026 Server Foundation â€” update backlog.json and server.js handlers to accept impact. (2) Backlog UI â€” Modals â€” add impact dropdown to Add and Edit modals. (3) Backlog UI â€” Table Display â€” add IMPACT column with color coding. (4) Integration \u0026 Refresh â€” ensure refresh preserves impact state. (5) Verification \u0026 Testing â€” end-to-end manual smoke test.\n\nPhase 1 must complete before Phases 2â€“3 (UI depends on server). Phases 2â€“3 can run in parallel. Phase 4 depends on 2â€“3. Phase 5 is the final gate.\n\nEstimated effort: ~7.5 hours solo (3â€“4 hours with parallelization). Estimated complexity: Low â€” additive changes, no refactoring.",
-                      "branch":  "task/19-add-impact-field-clean",
-                      "pr_url":  "https://github.com/AesopScott/polaris/pull/17",
-                      "proofUnits":  [
-                                         {
-                                             "number":  1,
-                                             "title":  "Schema change â€” impact field documented",
-                                             "expectedBehavior":  "docs/backlog.json includes documentation or schema comment explaining the impact field (enum: minor/standard/major, optional, defaults to standard).",
-                                             "proofType":  "registry-diff",
-                                             "exactCommand":  "git diff docs/backlog.json | grep -A3 -B3 impact",
-                                             "expectedInitialFailure":  "docs/backlog.json has no mention of \u0027impact\u0027 field",
-                                             "expectedPassingEvidence":  "Diff shows impact field with enum values and default documented. Example: \u0027\"impact\": \"string, enum: [minor, standard, major], optional, defaults to standard\"\u0027",
-                                             "waiverGuidance":  "N/A",
-                                             "buildEvidence":  "PASS: faa91f7 diff confirms impact in addBacklogTask baseTask (server.js:2721), in allowedFields (server.js:2940), and registry backlog-task-fields.md updated with correct producer/consumer lines."
-                                         },
-                                         {
-                                             "number":  2,
-                                             "title":  "Server â€” addBacklogTask() accepts and persists impact",
-                                             "expectedBehavior":  "When a new task is added via WebSocket with impact field, the server persists it to backlog.json. The task object in the file includes the impact field with the value that was sent.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Click \u0027+ Add task\u0027. (3) Fill in title, set impact=\u0027major\u0027. (4) Click \u0027Add Task\u0027. (5) Check docs/backlog.json and verify the new task has \u0027\"impact\": \"major\"\u0027 field. (6) Refresh the backlog panel and verify the impact value displays.",
-                                             "expectedInitialFailure":  "New task created without impact field in backlog.json (field is missing or empty).",
-                                             "expectedPassingEvidence":  "New task entry in docs/backlog.json includes \u0027\"impact\": \"major\"\u0027 (or whichever value was set). Task is visible in UI with correct impact display.",
-                                             "waiverGuidance":  "Manual test steps above are sufficient. Sign-off: Scott confirms via Polaris UI.",
-                                             "buildEvidence":  "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  3,
-                                             "title":  "Server â€” updateBacklogTask() accepts impact updates",
-                                             "expectedBehavior":  "When an existing task is updated via WebSocket with a new impact value, the server persists it. The task\u0027s impact field in backlog.json changes to the new value.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Click the âœŽ (edit) button on an existing task. (3) Change the impact dropdown from \u0027standard\u0027 to \u0027minor\u0027. (4) Click \u0027Save Changes\u0027. (5) Check docs/backlog.json and verify the task\u0027s impact field is now \u0027\"minor\"\u0027. (6) Close and reopen the backlog panel, verify the impact value persists.",
-                                             "expectedInitialFailure":  "Task\u0027s impact field in backlog.json does not change, or field is not included in the update.",
-                                             "expectedPassingEvidence":  "After saving, task\u0027s \u0027\"impact\"\u0027 field in backlog.json has the new value. Refresh reflects the change.",
-                                             "waiverGuidance":  "Manual test as described; no automated test suite exists for WebSocket handlers.",
-                                             "buildEvidence":  "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  4,
-                                             "title":  "UI â€” Add Task modal includes impact dropdown",
-                                             "expectedBehavior":  "Opening the \u0027Add Task\u0027 modal displays an impact dropdown with three options (minor, standard, major), positioned in the spacious center area of the form.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Click \u0027+ Add task\u0027. (3) Inspect the modal: verify a \u003cselect\u003e element labeled \u0027IMPACT\u0027 with three option values: minor, standard, major. (4) Verify positioning: dropdown is in the middle/spacious area, not squeezed between other fields.",
-                                             "expectedInitialFailure":  "Modal has no impact field or dropdown. Form shows only title, description, priority, category.",
-                                             "expectedPassingEvidence":  "Modal visibly shows an impact dropdown with all three options selectable. Dropdown can be focused and changed without errors.",
-                                             "waiverGuidance":  "Manual UI inspection in Polaris; Scott confirms via browser.",
-                                             "buildEvidence":  "WAIVER: HTML element \u003cselect id=\"backlog-add-impact\"\u003e confirmed at mockup.html:2052 by code inspection. No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  5,
-                                             "title":  "UI â€” submitBacklogAdd() includes impact in WebSocket message",
-                                             "expectedBehavior":  "When \u0027Add Task\u0027 is submitted, the WebSocket message to server includes the impact field with the selected value.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Open browser DevTools Network tab. (3) Click \u0027+ Add task\u0027, fill in title=\u0027test impact\u0027, set impact=\u0027major\u0027, click \u0027Add Task\u0027. (4) In Network tab, find the WebSocket message (type: add-backlog-task). (5) Inspect the message payload: verify it includes \u0027\"impact\": \"major\"\u0027.",
-                                             "expectedInitialFailure":  "WebSocket message does not include impact field. Task is created but impact is missing or null.",
-                                             "expectedPassingEvidence":  "WebSocket payload shows \u0027\"impact\": \"major\"\u0027 (or selected value). Task is created with that impact in backlog.json.",
-                                             "waiverGuidance":  "Network inspection via DevTools; Scott confirms the message structure.",
-                                             "buildEvidence":  "WAIVER: submitBacklogAdd reads backlog-add-impact (line 9403) and includes in wsSend payload (line 9409). No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  6,
-                                             "title":  "UI â€” Edit Task modal displays and updates impact",
-                                             "expectedBehavior":  "Opening the \u0027Edit Task\u0027 modal displays the current task\u0027s impact value in the dropdown. Changing the dropdown and saving persists the new value.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Find an existing task and click âœŽ (edit). (3) Inspect modal: verify impact dropdown shows the task\u0027s current impact value (e.g., \u0027standard\u0027 is selected). (4) Change dropdown to \u0027minor\u0027. (5) Click \u0027Save Changes\u0027. (6) Re-open edit modal: verify impact now shows \u0027minor\u0027.",
-                                             "expectedInitialFailure":  "Edit modal has no impact field. Changing impact has no effect on save.",
-                                             "expectedPassingEvidence":  "Modal displays current impact value pre-selected. After changing and saving, the new value persists and is visible in subsequent edits.",
-                                             "waiverGuidance":  "Manual UI inspection and round-trip test in Polaris; Scott confirms.",
-                                             "buildEvidence":  "WAIVER: openBacklogEditModal sets backlog-edit-impact (line 9421); submitBacklogEdit reads and sends it (lines 9434/9441). No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  7,
-                                             "title":  "UI â€” Table displays IMPACT column with color coding",
-                                             "expectedBehavior":  "The backlog table includes an IMPACT column (positioned between CATEGORY and DEPS) displaying each task\u0027s impact value. Values are color-coded: green for minor, gray for standard, red/orange for major.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Inspect the backlog table: verify column headers include \u0027IMPACT\u0027 between \u0027CATEGORY\u0027 and \u0027DEPS\u0027. (3) For each task, verify the impact value is displayed. (4) Verify color coding: find a task with impact=\u0027minor\u0027 (should be green), impact=\u0027standard\u0027 (gray), impact=\u0027major\u0027 (red/orange).",
-                                             "expectedInitialFailure":  "Table has no IMPACT column. Impact values are not displayed.",
-                                             "expectedPassingEvidence":  "IMPACT column is visible in correct position. All three impact values are displayed with correct colors for at least one task of each type.",
-                                             "waiverGuidance":  "Manual visual inspection in browser; Scott confirms layout and colors match the design.",
-                                             "buildEvidence":  "PASS (code): IMPACT column header at mockup.html:9219, impact td with color logic at lines 9235-9247, colspan=8 at line 9224. WAIVER: Live UI render by Scott required before merge."
-                                         },
-                                         {
-                                             "number":  8,
-                                             "title":  "UI â€” Edit button passes impact value",
-                                             "expectedBehavior":  "When the edit button (âœŽ) is clicked, the modal opens and the impact dropdown is pre-populated with the task\u0027s current impact value.",
-                                             "proofType":  "ui-check",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) For each backlog task, click the âœŽ edit button. (3) Verify the impact dropdown in the modal shows the task\u0027s current impact value (not blank, not defaulted to \u0027standard\u0027). (4) Close modal and click edit on a different task; verify the impact value matches that task\u0027s value.",
-                                             "expectedInitialFailure":  "Edit button click opens modal but impact dropdown is blank or always shows \u0027standard\u0027 regardless of task\u0027s actual impact.",
-                                             "expectedPassingEvidence":  "Edit modal always shows the correct impact value for the task being edited. Different tasks show different values when edited.",
-                                             "waiverGuidance":  "Manual test as described; Scott confirms.",
-                                             "buildEvidence":  "WAIVER: data-impact on edit button confirmed at mockup.html:9251; passed to openBacklogEditModal at line 9182. No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  9,
-                                             "title":  "Refresh â€” impact values persist after backlog reload",
-                                             "expectedBehavior":  "After clicking the Refresh button in the Backlog panel, the impact field display is updated correctly and impact values persist (don\u0027t revert to a default).",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "Manual: (1) Open Polaris UI, Backlog panel. (2) Add or edit a task to set impact=\u0027major\u0027. (3) Verify it displays in the table with correct color. (4) Click the Refresh button (ðŸ”„ button in footer). (5) Wait for backlog to reload. (6) Verify the task still shows impact=\u0027major\u0027 and color-coding is correct.",
-                                             "expectedInitialFailure":  "After refresh, impact column is not displayed or impact values revert to default/blank.",
-                                             "expectedPassingEvidence":  "After refresh, impact values are displayed and match the values in backlog.json. No loss of data.",
-                                             "waiverGuidance":  "Manual test in Polaris UI; Scott confirms persistent display.",
-                                             "buildEvidence":  "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
-                                         },
-                                         {
-                                             "number":  10,
-                                             "title":  "End-to-end â€” all three impact values work through full cycle",
-                                             "expectedBehavior":  "A user can add three tasks (one each with impact=minor/standard/major), edit any of them to change impact values, and all operations persist through UI refresh and display correctly.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "Manual (full smoke test): (1) Open Polaris UI, Backlog panel (2) Add task \u0027Minor Task\u0027 with impact=\u0027minor\u0027 â†’ verify displays in table with green color (3) Add task \u0027Standard Task\u0027 with impact=\u0027standard\u0027 â†’ verify displays with gray color (4) Add task \u0027Major Task\u0027 with impact=\u0027major\u0027 â†’ verify displays with red/orange color (5) Edit \u0027Minor Task\u0027: change impact to \u0027major\u0027 â†’ verify table updates to red/orange color (6) Edit \u0027Standard Task\u0027: change impact to \u0027minor\u0027 â†’ verify table updates to green color (7) Click Refresh button â†’ verify all three tasks still display with correct colors (8) Close and reopen Backlog panel â†’ verify tasks still show correct impact values (9) Close and reopen Polaris app â†’ verify impact values survive app restart (persisted to backlog.json)",
-                                             "expectedInitialFailure":  "Any operation fails: add with impact doesn\u0027t persist, edit doesn\u0027t update, refresh loses data, or colors are incorrect.",
-                                             "expectedPassingEvidence":  "All 9 steps complete without errors. Tasks display correct impact values and colors throughout. Data survives refresh and app restart.",
-                                             "waiverGuidance":  "Full manual smoke test; Scott signs off that all three impact levels work end-to-end.",
-                                             "buildEvidence":  "WAIVER: Full end-to-end manual smoke test required by Scott before merge. All code paths verified by inspection. Merge gate: Scott must check all 5 items in PR #17 test plan."
-                                         }
-                                     ],
-                      "project_source":  "Polaris",
-                      "promoted_via_pr":  null
-                  },
-                  {
-                      "created_at":  "2026-05-19",
-                      "promoted_via_pr":  null,
-                      "title":  "Add the category type to the dashboard in the backlog.",
-                      "category":  "Update",
-                      "project_source":  "Polaris",
-                      "branch":  null,
-                      "description":  "Add the category field display to the backlog dashboard UI.",
-                      "priority":  50,
-                      "dependencies":  [
-
-                                       ],
-                      "number":  17,
-                      "status":  "production",
-                      "plan":  null,
-                      "completed_at":  "2026-05-20",
-                      "pr_url":  null
-                  }
-              ]
+{
+  "tasks": [
+    {
+      "number": 6,
+      "title": "Project initiation button",
+      "category": "feature",
+      "priority": 50,
+      "status": "production",
+      "created_at": "2026-05-18",
+      "completed_at": "2026-05-19",
+      "dependencies": [],
+      "description": "Add a project initiation button next to projects in the project panel, which automatically kicks off the skill /project-initiation.",
+      "plan": null,
+      "branch": "task/6-project-initiation-button",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/8",
+      "project_source": "Polaris",
+      "promoted_via_pr": "8"
+    },
+    {
+      "number": 7,
+      "title": "Obsidian write issues.",
+      "category": "fix",
+      "priority": 50,
+      "status": "production",
+      "created_at": "2026-05-18",
+      "completed_at": "2026-05-19",
+      "dependencies": [],
+      "description": "Sometimes when writing to Obsidian using the close button, it just shows block block",
+      "plan": null,
+      "branch": "task/7-obsidian-write-issues",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/1",
+      "project_source": "Polaris",
+      "promoted_via_pr": "1"
+    },
+    {
+      "number": 1,
+      "title": "Skills Nav Pane — hierarchical tree with Global / Project sections + 7 categories",
+      "category": "feature",
+      "priority": 1,
+      "status": "production",
+      "dependencies": [],
+      "description": "Rework the Skills panel landed in v1.0.429 from a flat alphabetical list into a hierarchical tree. Top-level groups: Global (always shown) and {Project Name} (only when the active project has its own skills/commands/agents). Under each group, 7 collapsible category sections in this order: Project workflow, Project initiation, Code quality, Research, Codex integration, Tooling / config, Utilities. Server-side: expand discoverSkills() to scan all sources — user-global skills (~/.claude/skills/*/SKILL.md, currently 12), user-global commands (~/.claude/commands/*.md, currently 11), codex plugin (skills + commands + agents under ~/.claude/plugins/cache/openai-codex/codex/<ver>/, currently 11), and project-local .claude/skills/ + .claude/commands/ when a project is active. Each discovered item gets a hardcoded category mapping based on its name (kept in a const map at the top of server.js so additions are one-line edits). Discovery is memoized by directory mtime. Client-side: replace the existing flat <table> render with a tree of <details> elements (one per category, collapsed by default except first-render expansion of Project workflow). Each leaf row carries the same click-to-invoke behavior as today — sends /<name> to resumeTarget. Empty categories are hidden. Expected on-disk total: 34 (12 + 11 + 3 + 7 + 1). Bundled-but-not-on-disk skills like anthropic-skills:* and the built-in /init, /review, /security-review, /simplify, /update-config, /keybindings-help, /fewer-permission-prompts, /loop, /schedule, /claude-api should be added as a hardcoded supplement list once their source location is confirmed (bringing the total closer to Scott's stated 41 custom-created skills). Categorization decisions: evaluate-repo and find-skill → new 'Research' category (pre-decision discovery, not code QA); flow-audit → Project workflow (its output is backlog tasks); cross-boundary-audit → Code quality (operates on existing code). Built this session alongside Polaris's new docs/backlog.json scaffolding flow.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "completed_at": "2026-05-20",
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 19,
+      "title": "Add impact field to backlog items",
+      "description": "Add a three-level impact classification (minor, standard, major) to backlog tasks. This field affects workflow: minor items can skip /plan-task, major items trigger /plan-task to break work into subtasks.\n\n## Scope\n\n### Schema changes\n- Add `impact` field to each task in docs/backlog.json with enum values: \"minor\", \"standard\" (default), \"major\"\n- Field is optional on existing tasks; defaults to \"standard\" when not present\n\n### Dashboard UI (resources/mockup.html)\n- Add IMPACT column to backlog table, positioned between CATEGORY and DEPS columns\n- Display impact value with visual styling (e.g., color-coding: green for minor, gray for standard, red/orange for major)\n- Add impact field to both Add Task and Edit Task modals as a dropdown/select with three options\n- Update edit button data attributes to pass impact value: `data-impact=\"{value}\"`\n- Update openBacklogEditModal() to accept impact parameter\n- Update submitBacklogAdd() and submitBacklogEdit() to include impact in WebSocket messages\n\n### Server (server.js)\n- Update add-backlog-task message handler to include impact field when saving\n- Update update-backlog-task message handler to accept and persist impact changes\n\n### Workflow integration (future, documented only)\n- **Minor items:** /plan-task documentation should note these can be skipped; users proceed directly to /start-build if preferred\n- **Major items:** /plan-task guidance should instruct users to break the work into multiple subtasks, add each to backlog separately, then mark the parent major task as \"production\" and archive it\n\n## Key findings from exploration\n\n### Current backlog structure\n- backlog.json tasks currently have: number, title, category, priority, status, description, plan, branch, pr_url, dependencies, proofUnits\n- Status options: backlog, planned, build-started, cba-complete, cba-half-complete, build-finished, pr-reviewed, staged, smoke-tested, production, blocked, on-hold, cancelled\n\n### UI architecture\n- Backlog rendering via renderBacklogSection() at mockup.html:9086 generates table rows\n- Each row has clickable status badge, edit button, and task cells for #, title, status, category, deps, priority\n- Edit modal functions: openBacklogEditModal() (line 9301) accepts scope, taskNumber, title, description, priority, category\n- Add modal: openBacklogAddModal() (line 9264); submitBacklogAdd() (line 9284) sends add-backlog-task WebSocket message\n- Edit submit: submitBacklogEdit() (line 9314) sends update-backlog-task WebSocket message\n\n### Styling considerations\n- Existing categories use color coding: feature (green), fix/emergency fix (red), update (yellow)\n- Impact can follow similar pattern or use different visual treatment (badges, icons, etc.)\n- Table header styling at mockup.html:9109-9117\n\n## Testability\n\n1. Can add a new backlog task with impact=\"major\"\n2. Can edit existing task to set impact\n3. Backlog panel displays impact value correctly for all three values\n4. Add/edit modals include impact dropdown and accept all three values\n5. WebSocket messages (add-backlog-task, update-backlog-task) include impact field\n6. New tasks default to impact=\"standard\" if not specified\n\n## Dependencies\n\nNone. This is a purely additive feature with no blocking dependencies.",
+      "category": "feature",
+      "priority": 45,
+      "status": "production",
+      "created_at": "2026-05-19",
+      "completed_at": "2026-05-20",
+      "dependencies": [],
+      "plan": "## Design Discussion\n\nCurrent workflow forces small tasks through an unnecessarily cumbersome planning process (/plan-task), creating friction and slowing delivery. Conversely, large tasks skip planning/breakdown entirely, leading to unfocused, noisy code that's error-prone and hard to manage. The impact field enables right-sizing the process to match task complexity: lightweight tasks get a fast path, complex tasks get decomposition guidance upfront.\n\n## Outline Plan\n\nFive phases: (1) Schema & Server Foundation — update backlog.json and server.js handlers to accept impact. (2) Backlog UI — Modals — add impact dropdown to Add and Edit modals. (3) Backlog UI — Table Display — add IMPACT column with color coding. (4) Integration & Refresh — ensure refresh preserves impact state. (5) Verification & Testing — end-to-end manual smoke test.\n\nPhase 1 must complete before Phases 2–3 (UI depends on server). Phases 2–3 can run in parallel. Phase 4 depends on 2–3. Phase 5 is the final gate.\n\nEstimated effort: ~7.5 hours solo (3–4 hours with parallelization). Estimated complexity: Low — additive changes, no refactoring.",
+      "branch": "task/19-add-impact-field-clean",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/17",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Schema change — impact field documented",
+          "expectedBehavior": "docs/backlog.json includes documentation or schema comment explaining the impact field (enum: minor/standard/major, optional, defaults to standard).",
+          "proofType": "registry-diff",
+          "exactCommand": "git diff docs/backlog.json | grep -A3 -B3 impact",
+          "expectedInitialFailure": "docs/backlog.json has no mention of 'impact' field",
+          "expectedPassingEvidence": "Diff shows impact field with enum values and default documented. Example: '\"impact\": \"string, enum: [minor, standard, major], optional, defaults to standard\"'",
+          "waiverGuidance": "N/A",
+          "buildEvidence": "PASS: faa91f7 diff confirms impact in addBacklogTask baseTask (server.js:2721), in allowedFields (server.js:2940), and registry backlog-task-fields.md updated with correct producer/consumer lines."
+        },
+        {
+          "number": 2,
+          "title": "Server — addBacklogTask() accepts and persists impact",
+          "expectedBehavior": "When a new task is added via WebSocket with impact field, the server persists it to backlog.json. The task object in the file includes the impact field with the value that was sent.",
+          "proofType": "manual-script",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click '+ Add task'. (3) Fill in title, set impact='major'. (4) Click 'Add Task'. (5) Check docs/backlog.json and verify the new task has '\"impact\": \"major\"' field. (6) Refresh the backlog panel and verify the impact value displays.",
+          "expectedInitialFailure": "New task created without impact field in backlog.json (field is missing or empty).",
+          "expectedPassingEvidence": "New task entry in docs/backlog.json includes '\"impact\": \"major\"' (or whichever value was set). Task is visible in UI with correct impact display.",
+          "waiverGuidance": "Manual test steps above are sufficient. Sign-off: Scott confirms via Polaris UI.",
+          "buildEvidence": "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 3,
+          "title": "Server — updateBacklogTask() accepts impact updates",
+          "expectedBehavior": "When an existing task is updated via WebSocket with a new impact value, the server persists it. The task's impact field in backlog.json changes to the new value.",
+          "proofType": "manual-script",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click the ✎ (edit) button on an existing task. (3) Change the impact dropdown from 'standard' to 'minor'. (4) Click 'Save Changes'. (5) Check docs/backlog.json and verify the task's impact field is now '\"minor\"'. (6) Close and reopen the backlog panel, verify the impact value persists.",
+          "expectedInitialFailure": "Task's impact field in backlog.json does not change, or field is not included in the update.",
+          "expectedPassingEvidence": "After saving, task's '\"impact\"' field in backlog.json has the new value. Refresh reflects the change.",
+          "waiverGuidance": "Manual test as described; no automated test suite exists for WebSocket handlers.",
+          "buildEvidence": "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 4,
+          "title": "UI — Add Task modal includes impact dropdown",
+          "expectedBehavior": "Opening the 'Add Task' modal displays an impact dropdown with three options (minor, standard, major), positioned in the spacious center area of the form.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Click '+ Add task'. (3) Inspect the modal: verify a <select> element labeled 'IMPACT' with three option values: minor, standard, major. (4) Verify positioning: dropdown is in the middle/spacious area, not squeezed between other fields.",
+          "expectedInitialFailure": "Modal has no impact field or dropdown. Form shows only title, description, priority, category.",
+          "expectedPassingEvidence": "Modal visibly shows an impact dropdown with all three options selectable. Dropdown can be focused and changed without errors.",
+          "waiverGuidance": "Manual UI inspection in Polaris; Scott confirms via browser.",
+          "buildEvidence": "WAIVER: HTML element <select id=\"backlog-add-impact\"> confirmed at mockup.html:2052 by code inspection. No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 5,
+          "title": "UI — submitBacklogAdd() includes impact in WebSocket message",
+          "expectedBehavior": "When 'Add Task' is submitted, the WebSocket message to server includes the impact field with the selected value.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Open browser DevTools Network tab. (3) Click '+ Add task', fill in title='test impact', set impact='major', click 'Add Task'. (4) In Network tab, find the WebSocket message (type: add-backlog-task). (5) Inspect the message payload: verify it includes '\"impact\": \"major\"'.",
+          "expectedInitialFailure": "WebSocket message does not include impact field. Task is created but impact is missing or null.",
+          "expectedPassingEvidence": "WebSocket payload shows '\"impact\": \"major\"' (or selected value). Task is created with that impact in backlog.json.",
+          "waiverGuidance": "Network inspection via DevTools; Scott confirms the message structure.",
+          "buildEvidence": "WAIVER: submitBacklogAdd reads backlog-add-impact (line 9403) and includes in wsSend payload (line 9409). No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 6,
+          "title": "UI — Edit Task modal displays and updates impact",
+          "expectedBehavior": "Opening the 'Edit Task' modal displays the current task's impact value in the dropdown. Changing the dropdown and saving persists the new value.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Find an existing task and click ✎ (edit). (3) Inspect modal: verify impact dropdown shows the task's current impact value (e.g., 'standard' is selected). (4) Change dropdown to 'minor'. (5) Click 'Save Changes'. (6) Re-open edit modal: verify impact now shows 'minor'.",
+          "expectedInitialFailure": "Edit modal has no impact field. Changing impact has no effect on save.",
+          "expectedPassingEvidence": "Modal displays current impact value pre-selected. After changing and saving, the new value persists and is visible in subsequent edits.",
+          "waiverGuidance": "Manual UI inspection and round-trip test in Polaris; Scott confirms.",
+          "buildEvidence": "WAIVER: openBacklogEditModal sets backlog-edit-impact (line 9421); submitBacklogEdit reads and sends it (lines 9434/9441). No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 7,
+          "title": "UI — Table displays IMPACT column with color coding",
+          "expectedBehavior": "The backlog table includes an IMPACT column (positioned between CATEGORY and DEPS) displaying each task's impact value. Values are color-coded: green for minor, gray for standard, red/orange for major.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Inspect the backlog table: verify column headers include 'IMPACT' between 'CATEGORY' and 'DEPS'. (3) For each task, verify the impact value is displayed. (4) Verify color coding: find a task with impact='minor' (should be green), impact='standard' (gray), impact='major' (red/orange).",
+          "expectedInitialFailure": "Table has no IMPACT column. Impact values are not displayed.",
+          "expectedPassingEvidence": "IMPACT column is visible in correct position. All three impact values are displayed with correct colors for at least one task of each type.",
+          "waiverGuidance": "Manual visual inspection in browser; Scott confirms layout and colors match the design.",
+          "buildEvidence": "PASS (code): IMPACT column header at mockup.html:9219, impact td with color logic at lines 9235-9247, colspan=8 at line 9224. WAIVER: Live UI render by Scott required before merge."
+        },
+        {
+          "number": 8,
+          "title": "UI — Edit button passes impact value",
+          "expectedBehavior": "When the edit button (✎) is clicked, the modal opens and the impact dropdown is pre-populated with the task's current impact value.",
+          "proofType": "ui-check",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) For each backlog task, click the ✎ edit button. (3) Verify the impact dropdown in the modal shows the task's current impact value (not blank, not defaulted to 'standard'). (4) Close modal and click edit on a different task; verify the impact value matches that task's value.",
+          "expectedInitialFailure": "Edit button click opens modal but impact dropdown is blank or always shows 'standard' regardless of task's actual impact.",
+          "expectedPassingEvidence": "Edit modal always shows the correct impact value for the task being edited. Different tasks show different values when edited.",
+          "waiverGuidance": "Manual test as described; Scott confirms.",
+          "buildEvidence": "WAIVER: data-impact on edit button confirmed at mockup.html:9251; passed to openBacklogEditModal at line 9182. No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 9,
+          "title": "Refresh — impact values persist after backlog reload",
+          "expectedBehavior": "After clicking the Refresh button in the Backlog panel, the impact field display is updated correctly and impact values persist (don't revert to a default).",
+          "proofType": "manual-script",
+          "exactCommand": "Manual: (1) Open Polaris UI, Backlog panel. (2) Add or edit a task to set impact='major'. (3) Verify it displays in the table with correct color. (4) Click the Refresh button (🔄 button in footer). (5) Wait for backlog to reload. (6) Verify the task still shows impact='major' and color-coding is correct.",
+          "expectedInitialFailure": "After refresh, impact column is not displayed or impact values revert to default/blank.",
+          "expectedPassingEvidence": "After refresh, impact values are displayed and match the values in backlog.json. No loss of data.",
+          "waiverGuidance": "Manual test in Polaris UI; Scott confirms persistent display.",
+          "buildEvidence": "WAIVER: No automated test infrastructure for Polaris WebSocket/Electron UI. Manual smoke test by Scott required before merge. Code paths verified by inspection: server stores impact (line 2721), updateBacklogTask persists it (lines 2959/2979) with enum validation, table renders IMPACT column (lines 9219/9235-9247), modals read/write it (lines 9389/9421)."
+        },
+        {
+          "number": 10,
+          "title": "End-to-end — all three impact values work through full cycle",
+          "expectedBehavior": "A user can add three tasks (one each with impact=minor/standard/major), edit any of them to change impact values, and all operations persist through UI refresh and display correctly.",
+          "proofType": "manual-script",
+          "exactCommand": "Manual (full smoke test): (1) Open Polaris UI, Backlog panel (2) Add task 'Minor Task' with impact='minor' → verify displays in table with green color (3) Add task 'Standard Task' with impact='standard' → verify displays with gray color (4) Add task 'Major Task' with impact='major' → verify displays with red/orange color (5) Edit 'Minor Task': change impact to 'major' → verify table updates to red/orange color (6) Edit 'Standard Task': change impact to 'minor' → verify table updates to green color (7) Click Refresh button → verify all three tasks still display with correct colors (8) Close and reopen Backlog panel → verify tasks still show correct impact values (9) Close and reopen Polaris app → verify impact values survive app restart (persisted to backlog.json)",
+          "expectedInitialFailure": "Any operation fails: add with impact doesn't persist, edit doesn't update, refresh loses data, or colors are incorrect.",
+          "expectedPassingEvidence": "All 9 steps complete without errors. Tasks display correct impact values and colors throughout. Data survives refresh and app restart.",
+          "waiverGuidance": "Full manual smoke test; Scott signs off that all three impact levels work end-to-end.",
+          "buildEvidence": "WAIVER: Full end-to-end manual smoke test required by Scott before merge. All code paths verified by inspection. Merge gate: Scott must check all 5 items in PR #17 test plan."
+        }
+      ],
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 16,
+      "title": "Fix the refresh button in the backlog.",
+      "description": "The title says it all.",
+      "category": "fix",
+      "priority": 50,
+      "created_at": "2026-05-19",
+      "completed_at": "2026-05-20",
+      "dependencies": [],
+      "plan": "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from '?? Refresh' to '? Loading�'\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html � Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** � this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loading�\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
+      "proofUnits": [
+        {
+          "expectedPassingEvidence": "diff shows +function _onBacklogDataReceived() and two new calls in case 'backlogs-data' and case 'backlog-error'",
+          "exactCommand": "git diff resources/mockup.html | grep -A5 -B5 '_onBacklogDataReceived\\|backlogs-data'",
+          "title": "Code change - add loading feedback to refresh button",
+          "proofType": "registry-diff",
+          "expectedInitialFailure": "diff shows no _onBacklogDataReceived function and no calls to it in message handlers",
+          "number": 1,
+          "expectedBehavior": "mockup.html contains a _onBacklogDataReceived() function that resets the refresh button's disabled state and text, and the backlogs-data and backlog-error message handlers call this function.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "expectedPassingEvidence": "Button visibly disables and shows 'Loading', then returns to normal after response arrives. Network tab shows list-backlogs message sent and backlogs-data response received.",
+          "exactCommand": "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent='? Loading�', wait for server response, verify button.disabled=false and textContent='?? Refresh'",
+          "title": "UI behavior - refresh button shows loading state",
+          "proofType": "ui-check",
+          "expectedInitialFailure": "Clicking refresh shows no visual feedback; button remains enabled and text unchanged",
+          "number": 2,
+          "expectedBehavior": "Clicking the ?? Refresh button disables it and changes its text to '? Loading�'. After the server responds, the button re-enables and text returns to '?? Refresh'.",
+          "waiverGuidance": "If Polaris app won't start due to Electron error, manual code review: confirm function exists, confirm message handlers call it, confirm button query selector is correct"
+        },
+        {
+          "expectedPassingEvidence": "Button returns to 'Refresh' and enabled state after any response (success or error). No console errors.",
+          "exactCommand": "Steps: (1) Open Polaris and Backlog panel. (2) Simulate an error by checking browser Network tab or server logs to confirm an error response. (3) Observe that the button returns to normal state. OR (4) Manually inspect code: confirm backlog-error case in message handler calls _onBacklogDataReceived().",
+          "title": "Error handling - button resets on error response",
+          "proofType": "manual-script",
+          "expectedInitialFailure": "Error response does not reset button state; button stuck showing 'Loading'",
+          "number": 3,
+          "expectedBehavior": "If the server responds with backlog-error, the button still resets to enabled and shows '?? Refresh' (not stuck in loading state).",
+          "waiverGuidance": "If app unavailable: code review confirms backlog-error case calls _onBacklogDataReceived() at line ~4647, same as backlogs-data case"
+        },
+        {
+          "expectedPassingEvidence": "Complete refresh cycle works; button feedback is consistent on every refresh. No errors in console.",
+          "exactCommand": "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show 'Loading'. (5) Wait for list to re-render. (6) Confirm button returns to 'Refresh' and list still shows all tasks. (7) Try clicking Refresh again � button feedback should repeat.",
+          "title": "End-to-end smoke test - full refresh cycle",
+          "proofType": "manual-script",
+          "expectedInitialFailure": "Button has no feedback or gets stuck showing 'Loading'",
+          "number": 4,
+          "expectedBehavior": "User can click Refresh in the Backlog panel, see loading feedback, and watch the backlog data re-render after the response arrives.",
+          "waiverGuidance": "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
+        }
+      ],
+      "status": "production",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/7",
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    }
+  ]
 }
