@@ -389,6 +389,22 @@
                                        ]
                   },
                   {
+                      "number":  19,
+                      "title":  "Add impact field to backlog items",
+                      "description":  "Current workflow forces small tasks through an unnecessarily cumbersome planning process (/plan-task), creating friction and slowing delivery. Conversely, large tasks skip planning/breakdown entirely, leading to unfocused, noisy code that's error-prone and hard to manage. The impact field enables right-sizing the process to match task complexity: lightweight tasks get a fast path, complex tasks get decomposition guidance upfront.",
+                      "category":  "feature",
+                      "priority":  45,
+                      "status":  "production",
+                      "created_at":  "2026-05-19",
+                      "completed_at":  "2026-05-20",
+                      "dependencies":  [
+
+                                       ],
+                      "branch":  "task/19-add-impact-field-clean",
+                      "pr_url":  "https://github.com/AesopScott/polaris/pull/15",
+                      "plan":  "## DESIGN DISCUSSION — Add impact field to backlog items\n\n**User Problem**\nCurrent workflow forces small tasks through an unnecessarily cumbersome planning process (/plan-task), creating friction and slowing delivery. Conversely, large tasks skip planning/breakdown entirely, leading to unfocused, noisy code that's error-prone and hard to manage. The impact field enables right-sizing the process to match task complexity: lightweight tasks get a fast path, complex tasks get decomposition guidance upfront.\n\n**End-to-End Reachability**\n✓ Yes. Persona journey works end-to-end:\n- Minor task: User sets impact, skips /plan-task, goes straight to /start-build → code → ship (fast path)\n- Standard task: User sets impact, /plan-task is called as normal, flow continues (no regression)\n- Major task: User sets impact, /plan-task is called and guides decomposition into subtasks added to backlog, parent marked production/archived\n- Safety gate: /start-build enforces /plan-task if task is not minor AND plan is missing (catches bypasses)\n\n**System Components**\n- **backlog.json schema** — stores optional `impact` field (enum: minor, standard, major) on each task\n- **Backlog UI** (mockup.html) — displays impact in table (color-coded: green/minor, gray/standard, red-orange/major), allows editing via Add/Edit modals, positioned in spacious middle area\n- **Server handlers** (server.js) — persist impact on create and update\n- **Skill integration** (/plan-task, /start-build) — read impact field, gate behavior, with graceful fallback to \"standard\" if field unreadable\n\n## Implementation Complete\n\nImplementation phases completed in commit c0d1b36:\n1. Schema & Server Foundation: impact field added to backlog.json schema; server handlers updated to accept/persist impact\n2. Backlog UI — Modals: Add Task and Edit Task modals include impact dropdown\n3. Backlog UI — Table Display: IMPACT column added to table with color-coded display\n4. Integration & Refresh: refresh button preserves impact field state\n5. Verification & Testing: end-to-end manual testing completed\n\n## Proof Units\n\nAll 10 proof units verified in commit c0d1b36. Registry audit completed and documented in docs/registries/backlog-task-fields.md."
+                  },
+                  {
                       "number":  20,
                       "title":  "Build in debug log as a process step to the pipeline",
                       "description":  "Every task you run through should also add debugging to the interface so that if something goes wrong, you can see it and get detailed information about it. This should be a skill that is added to the pipeline.",
