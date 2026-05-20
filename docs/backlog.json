@@ -110,61 +110,6 @@
       "description": "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -> main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
     },
     {
-      "number": 16,
-      "title": "Fix the refresh button in the backlog.",
-      "description": "The title says it all.",
-      "category": "fix",
-      "priority": 50,
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [],
-      "plan": "## Root Cause\n\nThe refresh button in the Backlog panel provides no visual feedback when clicked. Users cannot tell whether their refresh action is working, is still loading, or has already completed. This creates confusion and degrades the UX for an otherwise functional operation.\n\n## Solution\n\nAdd loading feedback to the refresh button:\n1. When clicked, disable the button and change its text from '?? Refresh' to '? Loading�'\n2. When the server responds (success or error), re-enable the button and restore the original text\n3. The feedback is minimal but gives clear signal that the action was registered and is in progress\n\n## Implementation scope\n\n**Files changed:**\n- \resources/mockup.html � Add _onBacklogDataReceived() function, update \refreshBacklogPanel() to disable button on click, hook message handlers for \backlogs-data and \backlog-error to reset button state\n\n**No boundary changes** � this is a pure UI-level change with no API, database, or registry impacts.\n\n## First Proof Unit\n\n**Expected behavior:** When a user clicks the ?? Refresh button in the Backlog panel, the button disables and shows \"? Loading�\". When the server responds, the button re-enables and returns to \"?? Refresh\".\n\n**Verification:** Manual UI inspection in browser DevTools or visual test run.\n\n## Dependencies\n\nNone. This task is fully isolated.",
-      "proofUnits": [
-        {
-          "expectedPassingEvidence": "diff shows +function _onBacklogDataReceived() and two new calls in case 'backlogs-data' and case 'backlog-error'",
-          "exactCommand": "git diff resources/mockup.html | grep -A5 -B5 '_onBacklogDataReceived\\|backlogs-data'",
-          "title": "Code change - add loading feedback to refresh button",
-          "proofType": "registry-diff",
-          "expectedInitialFailure": "diff shows no _onBacklogDataReceived function and no calls to it in message handlers",
-          "number": 1,
-          "expectedBehavior": "mockup.html contains a _onBacklogDataReceived() function that resets the refresh button's disabled state and text, and the backlogs-data and backlog-error message handlers call this function.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "expectedPassingEvidence": "Button visibly disables and shows 'Loading', then returns to normal after response arrives. Network tab shows list-backlogs message sent and backlogs-data response received.",
-          "exactCommand": "Open Polaris, click Backlog button to show panel, click ?? Refresh button, inspect DevTools Elements tab and observe button.disabled=true and textContent='? Loading�', wait for server response, verify button.disabled=false and textContent='?? Refresh'",
-          "title": "UI behavior - refresh button shows loading state",
-          "proofType": "ui-check",
-          "expectedInitialFailure": "Clicking refresh shows no visual feedback; button remains enabled and text unchanged",
-          "number": 2,
-          "expectedBehavior": "Clicking the ?? Refresh button disables it and changes its text to '? Loading�'. After the server responds, the button re-enables and text returns to '?? Refresh'.",
-          "waiverGuidance": "If Polaris app won't start due to Electron error, manual code review: confirm function exists, confirm message handlers call it, confirm button query selector is correct"
-        },
-        {
-          "expectedPassingEvidence": "Button returns to 'Refresh' and enabled state after any response (success or error). No console errors.",
-          "exactCommand": "Steps: (1) Open Polaris and Backlog panel. (2) Simulate an error by checking browser Network tab or server logs to confirm an error response. (3) Observe that the button returns to normal state. OR (4) Manually inspect code: confirm backlog-error case in message handler calls _onBacklogDataReceived().",
-          "title": "Error handling - button resets on error response",
-          "proofType": "manual-script",
-          "expectedInitialFailure": "Error response does not reset button state; button stuck showing 'Loading'",
-          "number": 3,
-          "expectedBehavior": "If the server responds with backlog-error, the button still resets to enabled and shows '?? Refresh' (not stuck in loading state).",
-          "waiverGuidance": "If app unavailable: code review confirms backlog-error case calls _onBacklogDataReceived() at line ~4647, same as backlogs-data case"
-        },
-        {
-          "expectedPassingEvidence": "Complete refresh cycle works; button feedback is consistent on every refresh. No errors in console.",
-          "exactCommand": "Steps: (1) Open Polaris, click Backlog. (2) Observe backlog items load. (3) Click ?? Refresh. (4) Watch button show 'Loading'. (5) Wait for list to re-render. (6) Confirm button returns to 'Refresh' and list still shows all tasks. (7) Try clicking Refresh again � button feedback should repeat.",
-          "title": "End-to-end smoke test - full refresh cycle",
-          "proofType": "manual-script",
-          "expectedInitialFailure": "Button has no feedback or gets stuck showing 'Loading'",
-          "number": 4,
-          "expectedBehavior": "User can click Refresh in the Backlog panel, see loading feedback, and watch the backlog data re-render after the response arrives.",
-          "waiverGuidance": "If Polaris unavailable: confirm via code review that all four changes are in place: (1) refreshBacklogPanel disables button, (2) _onBacklogDataReceived re-enables, (3) backlogs-data case calls reset, (4) backlog-error case calls reset"
-        }
-      ],
-      "status": "in-review",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/7"
-    },
-    {
       "number": 18,
       "title": "update the reviewer independence rule",
       "description": "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
