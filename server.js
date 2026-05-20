@@ -7880,6 +7880,12 @@ async function handleMessage(ws, raw) {
       }
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+      for (const [, session] of sessions) {
+        if (session.taskNumber === taskNumber) {
+          session.taskState = newStatus;
+          broadcast({ type: 'session-status', sessionId: session.id, status: session.status, taskNumber: session.taskNumber, taskState: newStatus, lastSkill: session.lastSkill || null });
+        }
+      }
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
