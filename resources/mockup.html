@@ -438,6 +438,9 @@
      regardless of card width or button count. (Earlier flex-wrap + max-width
      approach was replaced 1.0.123 because grid handles this more cleanly.) */
   .card-btn { width: 22px; height: 22px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+  .focus-btn { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid #60a5fa; color: #93c5fd; background: transparent; cursor: pointer; transition: all 0.15s; }
+  .focus-btn:hover { background: rgba(96,165,250,0.2); }
+  .focus-btn.focus-active { background: rgba(96,165,250,0.3); border-color: #3b82f6; color: #fff; font-weight: 700; }
   .terminal { flex: 1; padding: 8px 10px; font-family: 'CascadiaCode', 'Cascadia Code', 'Consolas', monospace; font-size: 11px; line-height: 1.5; overflow-y: auto; white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; }
   .context-bar-wrap { padding: 4px 10px; }
   .context-label-bar { font-size: 10px; opacity: 0.6; display: flex; justify-content: space-between; margin-bottom: 3px; }
@@ -4060,6 +4063,7 @@
   let protectedPatterns = ['*.md']; // file patterns requiring approval before modification
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
+  let focusedProject = null; // project name currently focused, or null if no focus
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
@@ -4362,6 +4366,7 @@
           }
         });
         applyConfig(msg.config || {});
+        if (msg.config?.focusedProject) focusedProject = msg.config.focusedProject;
         if (msg.protectedPatterns) protectedPatterns = msg.protectedPatterns;
         if (msg.installId) {
           installIdStore = msg.installId;
@@ -5835,7 +5840,8 @@
       wideRow.className = 'session-wide-row';
       wideCards.forEach(s => {
         const card = buildCard(s);
-        if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
+        const projectMismatch = focusedProject && s.projectName !== focusedProject;
+        if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
         wideRow.appendChild(card);
       });
       grid.appendChild(wideRow);
@@ -5858,9 +5864,10 @@
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
       const card = buildCard(s);
-      if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
+      const projectMismatch = focusedProject && s.projectName !== focusedProject;
+      if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
       cols[idx].appendChild(card);
-      colHeights[idx] += (s.minimized || hiddenCards.has(s.id)) ? 0 : (parseInt(s.height) || 260) + 12;
+      colHeights[idx] += (s.minimized || hiddenCards.has(s.id) || projectMismatch) ? 0 : (parseInt(s.height) || 260) + 12;
     });
     grid.appendChild(colsRow);
 
@@ -5926,12 +5933,20 @@
     const headerChip = chipLabel
       ? `<span class="card-project-chip" style="background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;">${escHtml(chipLabel)}</span>`
       : '';
+    const focusButtonClass = focusedProject === chipLabel ? 'focus-active' : '';
+    const focusButtonTitle = focusedProject === chipLabel ? 'Click to show all sessions' : 'Click to show only this project';
+    const focusButton = chipLabel
+      ? `<button class="focus-btn ${focusButtonClass}" data-action="toggle-focus" data-project="${escHtmlAttr(chipLabel)}" title="${focusButtonTitle}">Focus</button>`
+      : '';
     const titleStyle = chipLabel ? 'margin-left:10px;' : '';
 
     el.innerHTML = `
       <div class="card-header">
         <span class="card-drag-handle" data-drag-handle title="Drag to reorder">⠿⠿</span>
-        ${headerChip}
+        <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
+          ${headerChip}
+          ${focusButton}
+        </div>
         <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
@@ -6534,6 +6549,23 @@
         const isOn = cardEl.classList.toggle('verbose-on');
         const btn = cardEl.querySelector('[data-verb-btn]');
         if (btn) btn.classList.toggle('verb-active', isOn);
+        break;
+      }
+      case 'toggle-focus': {
+        const projectName = cardEl.dataset.project || (s?.projectName);
+        if (!projectName) break;
+        if (focusedProject === projectName) {
+          focusedProject = null;
+        } else {
+          focusedProject = projectName;
+        }
+        fetch('/set-focused-project', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ focusedProject })
+        }).catch(e => console.error('Failed to set focused project:', e));
+        renderGrid();
+        pushDebugLog(`[focus] ${focusedProject ? `Focused on "${focusedProject}"` : 'Focus cleared'}`);
         break;
       }
     }
