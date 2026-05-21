@@ -115,7 +115,7 @@
       "title": "Add proof-trail checks to audit, review, and promotion skills",
       "category": "feature",
       "priority": 38,
-      "status": "in-progress",
+      "status": "build-finished",
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": [
