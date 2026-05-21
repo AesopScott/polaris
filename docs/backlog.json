@@ -66,16 +66,15 @@
       "title": "Enforce proof gates in /ship-task, /start-build, and /finish-build",
       "category": "feature",
       "priority": 37,
-      "status": "backlog",
+      "impact": "minor",
+      "status": "review-blocked",
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": [
         11
       ],
-      "impact": "minor",
-      "status": "build-started",
       "branch": "task/12-enforce-proof-gates",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/25",
       "plan": "Minor task — no /plan-task required.\n\nThree targeted edits to ~/.claude/commands/:\n1. ship-task.md Step 2: replace 'Write your code now' with a 2-line reminder that proof units are active and /finish-build will verify exit evidence.\n2. start-build.md Step 8: add plan-existence gate — verify proofUnits[] is populated in backlog.json AND the Obsidian task file exists before permitting code-writing.\n3. finish-build.md: add hard gate before gh pr create — CBA must have run on this branch AND passed with zero hard-fail findings (not merely 'registries were touched').",
       "proofUnits": [
         {
