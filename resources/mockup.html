@@ -7108,7 +7108,9 @@
         const chip = document.createElement('div');
         chip.className = 'mini-card';
         chip.style.cursor = 'pointer';
-        chip.style.color = s.isChat ? '#a78bfa' : (window.getProjectColorByName ? window.getProjectColorByName(s.projectName) || '#60a5fa' : '#60a5fa');
+        const color = s.isChat ? '#a78bfa' : (window.getProjectColorByName ? window.getProjectColorByName(s.projectName) || '#60a5fa' : '#60a5fa');
+        chip.style.background = color;
+        chip.style.color = '#000';
         chip.title = `Click to restore: ${s.name}`;
         chip.textContent = (s.name || 'Session').split(' ').slice(0, 3).join(' ');
         chip.onclick = () => restoreCard(s.id);
@@ -7120,6 +7122,8 @@
         chip.className = 'mini-card';
         chip.style.opacity = '0.6';
         chip.style.cursor = 'pointer';
+        chip.style.background = '#60a5fa';
+        chip.style.color = '#000';
         chip.title = 'Click to cycle through more minimized sessions';
         chip.textContent = `+${remaining} more`;
         chip.onclick = () => { miniCardOffsets.min = (miniCardOffsets.min + 1) % minimized.length; updateMiniCards(); };
