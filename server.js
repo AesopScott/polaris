@@ -6930,6 +6930,25 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/set-focused-project') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { focusedProject } = JSON.parse(body);
+        const cfg = readConfig();
+        cfg.focusedProject = focusedProject;
+        writeJSON(CONFIG_PATH, cfg);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/api/launch-routine') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
