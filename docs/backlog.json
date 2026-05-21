@@ -67,7 +67,7 @@
       "category": "feature",
       "priority": 37,
       "impact": "minor",
-      "status": "build-finished",
+      "status": "production",
       "created_at": "2026-05-19",
       "completed_at": null,
       "dependencies": [
