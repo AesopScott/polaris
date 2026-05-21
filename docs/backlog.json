@@ -137,6 +137,18 @@
       "created_at": "2026-05-21",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 15,
+      "title": "Add in LangGraph orchestration.",
+      "description": "C:\\Users\\scott\\Code\\Polaris\\docs\\LANGGRAPH_IMPLEMENTATION_CONTEXT.md\n\nReference this file for notes.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-21",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
