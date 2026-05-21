@@ -274,6 +274,119 @@
       "impact": "minor",
       "project_source": "Polaris",
       "promoted_via_pr": null
+    },
+    {
+      "number": 18,
+      "title": "update the reviewer independence rule",
+      "description": "update the reviewer independence rule so it explicitly accepts same-session continuation after /clear. Please test this.",
+      "category": "Update",
+      "priority": 75,
+      "status": "cancelled",
+      "created_at": "2026-05-19",
+      "completed_at": "2026-05-21",
+      "dependencies": [],
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 14,
+      "title": "Move merge-to-stage responsibility from /finish-build to /promote-stage",
+      "category": "feature",
+      "priority": 39,
+      "status": "cancelled",
+      "created_at": "2026-05-19",
+      "completed_at": "2026-05-21",
+      "dependencies": [
+        13
+      ],
+      "plan": null,
+      "branch": null,
+      "pr_url": null,
+      "description": "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -> main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow.",
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 11,
+      "title": "Add proof planning to /plan-task",
+      "category": "feature",
+      "priority": 36,
+      "status": "production",
+      "created_at": "2026-05-19",
+      "completed_at": "2026-05-19",
+      "dependencies": [10],
+      "description": "Update /plan-task so every task plan breaks implementation into proof units before any build session touches code. This is the planning side of the TDD/proof model: /plan-task does not execute TDD, but it must define the expected proof for each implementation-bearing step.\n\nImplementation notes:\n1. Update ~/.claude/commands/plan-task.md so Step 6 produces implementation steps as proof units, not plain build instructions.\n2. For each unit, require: expected behavior, preferred proof type, exact command/check/manual path when known, expected initial failure, expected passing evidence, and waiver guidance if automated proof is not possible.\n3. Expand the existing reachability/testability check so it becomes the task-tree entry gate: persona, entry path, required state, environment, dependencies, and first proof unit all confirmed before status flips to ready.\n4. Save the proof-unit plan in docs/backlog.json and log it to the Obsidian task tracker so /start-build and /finish-build can verify against the same trail.\n5. Verification: plan a dummy backlog task and confirm the saved plan contains proof units with entry/exit evidence expectations, not just implementation bullets.",
+      "plan": "## Implementation Summary\n\nTask #11 updates ~/.claude/commands/plan-task.md to include proof-unit planning at every step before any build session touches code.\n\n### Changes Made\n\n**Step 3b** — Expanded to include \"First Proof Unit\" identification (section 5) as entry gate confirmation.\n\n**Step 6** — Refactored to break implementations into proof units with 6 required fields: expected behavior, preferred proof type, exact command/check/manual path, expected initial failure (RED), expected passing evidence (GREEN), and waiver guidance.\n\n**Step 8** — Updated to save structured `proofUnits` array to docs/backlog.json alongside narrative plan.\n\n**Step 9** — Added Proof Units section appending unit summaries to Obsidian task tracker.\n\n**Verification** — Created docs/proof-unit-verification.md with example task #18 showing 5 proof units and all proof types.\n\n## First Proof Unit\n\nWhen /start-build runs on a task with proof units defined, the first proof unit should be loadable from docs/backlog.json with the `proofUnits` array present and non-empty.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "plan-task.md Step 3b includes first proof unit identification",
+          "expectedBehavior": "Step 3b section 5 defines first proof unit shape and entry gate confirmation.",
+          "proofType": "registry-diff",
+          "exactCommand": "grep -c 'first proof unit' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Pattern not found",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "plan-task.md Step 6 produces proof units with required fields",
+          "expectedBehavior": "Step 6 defines proof unit structure with all required fields.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'expectedBehavior\\|expectedInitialFailure\\|expectedPassingEvidence' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Fields not found",
+          "expectedPassingEvidence": "Count >= 3",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "plan-task.md Step 8 documents proofUnits JSON structure",
+          "expectedBehavior": "Step 8 section 2 shows proofUnits array format with 8 required fields.",
+          "proofType": "ui-check",
+          "exactCommand": "Read ~/.claude/commands/plan-task.md and verify Step 8 section 2 exists with JSON example",
+          "expectedInitialFailure": "Section not found or example incomplete",
+          "expectedPassingEvidence": "Section present with complete JSON structure",
+          "waiverGuidance": "Manual check: read Step 8"
+        },
+        {
+          "number": 4,
+          "title": "plan-task.md Step 9 appends Proof Units to Obsidian",
+          "expectedBehavior": "Step 9 section 5 shows appending Proof Units section to task tracker.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'Append the Proof Units section' ~/.claude/commands/plan-task.md",
+          "expectedInitialFailure": "Pattern not found",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 5,
+          "title": "docs/proof-unit-verification.md demonstrates all proof types",
+          "expectedBehavior": "Verification document exists with example task #18 showing 5 proof units and all types.",
+          "proofType": "ui-check",
+          "exactCommand": "File exists at C:\\Users\\scott\\Code\\Polaris\\docs\\proof-unit-verification.md",
+          "expectedInitialFailure": "File missing",
+          "expectedPassingEvidence": "File exists with Task #18 example",
+          "waiverGuidance": "Manual: verify file exists"
+        }
+      ],
+      "branch": "task/11-add-proof-planning",
+      "pr_url": null,
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 21,
+      "title": "Add review-blocked status to backlog workflow",
+      "description": "Add a new task status 'review-blocked' to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed code review (Claude /review-pr and Codex /codex-review) but were found to have REQUEST CHANGES verdict, blocking promotion to stage/main. Currently, such tasks remain at 'build-finished', making it ambiguous whether the review is still pending or completed-with-findings. The 'review-blocked' status clarifies the state: review is done, but remediation is required before promotion. Update: backlog.json task schema, reviewer documentation, backlog navigation pane in Polaris UI, and /promote-stage logic to skip review-blocked tasks.",
+      "category": "enhancement",
+      "priority": 70,
+      "status": "production",
+      "created_at": "2026-05-20",
+      "completed_at": "2026-05-21",
+      "dependencies": [],
+      "impact": "minor",
+      "project_source": "Polaris",
+      "promoted_via_pr": null
     }
   ]
 }
