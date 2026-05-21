@@ -5831,6 +5831,7 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
+    if (focusedProject) console.error(`[focus-dbg] renderGrid with focusedProject="${focusedProject}"`);
     grid.innerHTML = '';
     const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
@@ -6554,19 +6555,20 @@
       }
       case 'toggle-focus': {
         const projectName = cardEl.dataset.project || (s?.projectName);
+        console.error(`[focus-dbg] clicked — cardEl.dataset.project="${cardEl.dataset.project}" s.projectName="${s?.projectName}" resolved="${projectName}"`);
         if (!projectName) break;
         if (focusedProject === projectName) {
           focusedProject = null;
         } else {
           focusedProject = projectName;
         }
+        console.error(`[focus-dbg] focusedProject now="${focusedProject}"`);
         fetch('/set-focused-project', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ focusedProject })
         }).catch(e => console.error('Failed to set focused project:', e));
         renderGrid();
-        pushDebugLog(`[focus] ${focusedProject ? `Focused on "${focusedProject}"` : 'Focus cleared'}`);
         break;
       }
     }
