@@ -125,6 +125,18 @@
       "branch": null,
       "pr_url": null,
       "description": "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
+    },
+    {
+      "number": 14,
+      "title": "Move tasks between projects",
+      "description": "I need to be able to move tasks to other projects.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-21",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
