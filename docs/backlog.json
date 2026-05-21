@@ -94,22 +94,6 @@
       "description": "Extend the proof model beyond implementation commands so audit, review, and promotion steps verify the proof trail before they confer authority on the task. These steps do not run full TDD, but they should verify that planning and build steps produced the required evidence.\n\nImplementation notes:\n1. Update /cross-boundary-audit so it records registry-proof evidence: which boundaries were checked, producer/consumer evidence, gaps, and whether registry changes match the current task diff.\n2. Update /review-pr and /codex-review so their review rubric includes proof-trail integrity: proof units present, failing-before/passing-after evidence or waiver present, registry proof present, and no unexplained out-of-scope diff.\n3. Update /promote-stage and /promote-to-prod so pre-promotion evidence checks include proof-trail status in addition to Claude review, Codex review, and stage-testing evidence.\n4. Make missing proof evidence visible but not always fatal at promotion: hard-fail for high-risk tasks unless override reason is captured; allow explicit override block in promotion PR body for human accountability.\n5. Verification: run a task with incomplete proof trail and confirm review/promotion surfaces the exact missing evidence instead of only asking whether reviews were done."
     },
     {
-      "number": 14,
-      "title": "Move merge-to-stage responsibility from /finish-build to /promote-stage",
-      "category": "feature",
-      "priority": 39,
-      "status": "cancelled",
-      "created_at": "2026-05-19",
-      "completed_at": "2026-05-20",
-      "dependencies": [
-        13
-      ],
-      "plan": null,
-      "branch": null,
-      "pr_url": null,
-      "description": "Change the task lifecycle so /finish-build no longer auto-merges the task PR into the shared stage branch. /finish-build should finish the task branch, verify the proof trail and registries, commit, push, open the PR targeting stage, record the PR URL, and then stop. The merge into stage is not a standalone loose step: it belongs inside /promote-stage, after /review-pr and /codex-review have completed cleanly or the user records an override.\n\nImplementation notes:\n1. Update ~/.claude/commands/finish-build.md so Step 6 opens the PR targeting stage but does not run gh pr merge. Rename the report language from \"merged to stage\" to \"stage PR opened and awaiting review\".\n2. Update ~/.claude/commands/promote-stage.md so its first phase handles review-ready task PRs: find open task PRs targeting stage, verify Claude/Codex review evidence and proof-trail status, then merge approved task PRs into stage.\n3. After /promote-stage merges reviewed task PRs into stage, it can continue with its existing stage promotion responsibilities: rollup audit, stage verification prompt, and stage -> main promotion PR flow.\n4. Update /ship-task resumption logic so a task with an open stage PR but not merged to stage resumes by directing the user through /review-pr, /codex-review, then /promote-stage. It should not jump directly to production promotion language.\n5. Update docs/backlog.json status semantics if needed: distinguish \"review-ready\" or \"stage-pr-open\" from \"in-review\" if the current status name implies already merged to stage.\n6. Keep review inputs intentionally narrow: task description + plan, proof trail, registries/contracts, and PR diff. Do not include Soul/Architecture/session narrative unless needed, to reduce author-side framing bias.\n7. Verification: run a dry task through /finish-build and confirm it stops with an open PR to stage and no merge commit on stage; then run /promote-stage and confirm it merges only reviewed/approved task PRs into stage before continuing the promotion workflow."
-    },
-    {
       "number": 21,
       "title": "Add review-blocked status to backlog workflow",
       "description": "Add a new task status 'review-blocked' to docs/backlog.json workflow and Polaris UI. This status represents tasks that have completed code review (Claude /review-pr and Codex /codex-review) but were found to have REQUEST CHANGES verdict, blocking promotion to stage/main. Currently, such tasks remain at 'build-finished', making it ambiguous whether the review is still pending or completed-with-findings. The 'review-blocked' status clarifies the state: review is done, but remediation is required before promotion. Update: backlog.json task schema, reviewer documentation, backlog navigation pane in Polaris UI, and /promote-stage logic to skip review-blocked tasks.",
