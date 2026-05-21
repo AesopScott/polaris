@@ -2,6 +2,9 @@
 
 Scott's personal AI command center — parallel agent sessions, real API control, Electron desktop UI.
 
+## Session startup
+Run `gh repo set-default AesopScott/polaris` at the start of every session before using any `gh` commands.
+
 ## Critical rules
 1. **Propose before writing.** For file edits and writes, state the planned change and wait for explicit yes. Reads, searches, and tool calls proceed without asking.
 2. **Three zones:** Source (`C:\Users\scott\Code\Polaris`) — edit only here, requires `npm run dist` rebuild. Installed app (`C:\Users\scott\AppData\Local\Programs\Polaris\resources`) — only touch with explicit approval. Runtime data (`C:\Users\scott\AppData\Roaming\.claude\polaris\`, the user's `Downloads` folder, and `G:\*`) — only places for runtime reads/writes.
