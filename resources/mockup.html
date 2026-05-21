@@ -1435,10 +1435,11 @@
       <div class="mini-card" style="opacity:0.4;">+ 2 more</div>
     </div>
 
-    <!-- Right column: Waiting + Running Sessions + Hidden count on one row -->
+    <!-- Right column: Waiting + Running Sessions + Testing + Hidden count on one row -->
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
+      <span id="stat-testing-wrap" class="stat" style="display:none;"><span data-stat-testing style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-testing" id="filter-testing-label" onclick="toggleTestingFilter()" style="cursor:pointer;" title="Hide/show testing sessions">Testing</span></span>
       <span id="stat-hidden-wrap" class="stat" style="display:none;"><span id="stat-hidden-count" style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span onclick="unhideAll()" style="cursor:pointer;color:#94a3b8;" title="Show all hidden sessions">Hidden · Show</span></span>
     </div>
 
@@ -6956,8 +6957,12 @@
     const vals = Object.values(sessionStore);
     const running  = vals.filter(s => s.status === 'running').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
+    const testing  = vals.filter(s => s.status === 'test').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
+    document.querySelectorAll('[data-stat-testing]').forEach(el => el.textContent = testing);
+    const testingWrap = document.getElementById('stat-testing-wrap');
+    if (testingWrap) testingWrap.style.display = testing > 0 ? '' : 'none';
     applySessionFilter();
     updateHiddenCount();
     updateGridNewSessionBar();
@@ -7007,6 +7012,22 @@
       if (card) card.style.display = '';
     });
     hiddenCards.clear();
+    updateMiniCards();
+    updateHiddenCount();
+    applySessionFilter();
+    saveHiddenCards();
+  };
+
+  window.toggleTestingFilter = function() {
+    const testSessions = Object.values(sessionStore).filter(s => s.status === 'test').map(s => s.id);
+    const allHidden = testSessions.every(sid => hiddenCards.has(sid));
+
+    if (allHidden) {
+      testSessions.forEach(sid => hiddenCards.delete(sid));
+    } else {
+      testSessions.forEach(sid => hiddenCards.add(sid));
+    }
+
     updateMiniCards();
     updateHiddenCount();
     applySessionFilter();
