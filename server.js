@@ -2837,8 +2837,8 @@ function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
   const verb = verbOverride || ('add task #' + taskNumber);
 
   // Run git commit asynchronously (non-blocking) with a 5-second timeout
-  exec('git add docs/backlog.json && git commit -m "chore(backlog): ' + verb + ' from Polaris"',
-    { cwd: repoDir, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] },
+  exec('git add docs/backlog.json && git commit -m "chore(backlog): ' + verb + ' from Polaris" && git push',
+    { cwd: repoDir, timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] },
     (err, stdout, stderr) => {
       // Silently log errors instead of throwing — don't block the UI
       if (err) {
