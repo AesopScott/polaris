@@ -72,9 +72,43 @@
       "dependencies": [
         11
       ],
-      "plan": null,
-      "branch": null,
+      "impact": "minor",
+      "status": "build-started",
+      "branch": "task/12-enforce-proof-gates",
       "pr_url": null,
+      "plan": "Minor task — no /plan-task required.\n\nThree targeted edits to ~/.claude/commands/:\n1. ship-task.md Step 2: replace 'Write your code now' with a 2-line reminder that proof units are active and /finish-build will verify exit evidence.\n2. start-build.md Step 8: add plan-existence gate — verify proofUnits[] is populated in backlog.json AND the Obsidian task file exists before permitting code-writing.\n3. finish-build.md: add hard gate before gh pr create — CBA must have run on this branch AND passed with zero hard-fail findings (not merely 'registries were touched').",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "ship-task.md Step 2 no longer says 'Write your code now' without proof context",
+          "expectedBehavior": "Step 2 reminder text references proof units and directs user to collect exit evidence",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'proof unit' ~/.claude/commands/ship-task.md",
+          "expectedInitialFailure": "Count = 0",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "start-build.md Step 8 gates on proofUnits[] presence and Obsidian task file",
+          "expectedBehavior": "Step 8 checks proofUnits array in backlog.json and Obsidian task file before allowing code-writing",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'proofUnits' ~/.claude/commands/start-build.md",
+          "expectedInitialFailure": "Count = 0",
+          "expectedPassingEvidence": "Count >= 1",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "finish-build.md hard-fails if CBA did not pass clean",
+          "expectedBehavior": "finish-build refuses gh pr create when CBA has hard-fail findings or was not run",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c 'hard-fail' ~/.claude/commands/finish-build.md",
+          "expectedInitialFailure": "Count reflects only existing Step 3a hard-fail language (no gate before pr create)",
+          "expectedPassingEvidence": "New gate block present before Step 6 (gh pr create) referencing CBA pass status",
+          "waiverGuidance": "N/A"
+        }
+      ],
       "description": "Enforce the proof model in the implementation-bearing workflow commands. /ship-task should orchestrate the gates, /start-build should block production code until the first proof unit is ready, and /finish-build should refuse to open or auto-merge a stage PR unless every proof unit has exit evidence or an explicit waiver.\n\nImplementation notes:\n1. Update ~/.claude/commands/ship-task.md Step 2 so after /start-build returns, the workflow does not merely say \"write your code now.\" It should require the current proof unit: expected behavior, proof/check, observed failing result or waiver, then permission to implement.\n2. Update ~/.claude/commands/start-build.md Step 8/10 so it loads the proof units from the plan, names the first unit, and blocks code-writing until entry evidence exists.\n3. Update ~/.claude/commands/finish-build.md Step 2 or add Step 2a with a pre-finish self-review checklist: spec compliance, out-of-scope diff scan, registry freshness, test evidence for each proof unit, known risks/waivers, files changed summary.\n4. Failure behavior: missing proof, stale registries, unexplained out-of-scope changes, or missing waiver keeps the task in in-progress and stops before gh pr create / gh pr merge.\n5. Preserve pragmatic escape hatches: if no automated test is possible, require a written waiver plus a manual verification path rather than pretending automation exists.\n6. Verification: create a controlled task branch with missing proof evidence and confirm /finish-build refuses before PR creation; then add evidence/waiver and confirm the workflow can proceed."
     },
     {
