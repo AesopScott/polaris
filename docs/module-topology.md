@@ -42,6 +42,7 @@ contracts          ──── leaf; zero outbound dependencies
 2. **contracts is a pure leaf** — it never imports from another Polaris module.
 3. **wsAdapter is the hub** — it may depend on all other modules (after wiring).
 4. **Rollback gate** — each module phase is a separate git commit on `task/25-split-server-modules`. Any phase can be reverted independently without affecting server.js runtime behavior, because the modules are compile-only until wired.
+5. **WsHandlerMap type coverage** — `WsHandlerMap` is `Record<string, WsMessageHandler>` (plain string keys). `WS_MESSAGE_TYPES` in wsAdapter.ts lists all 130 server.js handler branches, including ~70 server-internal operational types (tool dispatch, session control, fork management, file ops, MCP config, etc.) that are not yet in the `AnyWebSocketMessage` union in contracts.ts. The registry documents the ~100 client↔server bidirectional types. The delta is intentional: wsAdapter pre-registers all handler slots; as each is wired, its message type will be added to `AnyWebSocketMessage`.
 
 ## Current State (2026-05-22)
 
