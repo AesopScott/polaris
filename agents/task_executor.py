@@ -12,7 +12,6 @@ Implements persistent SQLite checkpointing for Proof Unit 2 (checkpoint survival
 
 import json
 import sqlite3
-import asyncio
 from pathlib import Path
 from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException
