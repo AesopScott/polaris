@@ -576,11 +576,11 @@ export interface CoreOperations {
   validateToolSchema(toolName: string): Promise<boolean>;
 
   // Task & Backlog (from backlog service)
-  transitionTask(taskNumber: number, newStatus: string, scope?: string): Promise<BacklogTask>;
+  transitionTask(scope: string, taskNumber: number | string, newStatus: string): Promise<BacklogTask>;
   getTask(taskNumber: number, scope?: string): Promise<BacklogTask | null>;
   listBacklogTasks(scope?: string): Promise<BacklogTask[]>;
   addBacklogTask(scope: string, task: Partial<BacklogTask>): Promise<BacklogTask>;
-  updateBacklogTask(taskNumber: number, updates: Partial<BacklogTask>, scope?: string): Promise<BacklogTask>;
+  updateBacklogTask(scope: string, taskNumber: number | string, updates: Partial<BacklogTask>): Promise<BacklogTask>;
 
   // Cross-Check (from crossCheck service)
   recordCrossCheck(gate: CrossCheckGate): Promise<void>;

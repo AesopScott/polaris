@@ -17,6 +17,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { ProofUnit } from './contracts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -75,12 +76,6 @@ export interface BacklogTask {
   plan?: string;
   proofUnits?: ProofUnit[];
   [key: string]: any;
-}
-
-export interface ProofUnit {
-  id: string;
-  description: string;
-  status?: 'pending' | 'passing' | 'waived';
 }
 
 export interface ProjectBacklogEntry {
@@ -340,11 +335,11 @@ export function addBacklogTask(scope: BacklogScope, taskInput: AddTaskInput): Ba
     if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured in Polaris settings.');
     const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
     const archivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
-    const data: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const data: { tasks: BacklogTask[] } = _readJson(filePath);
     if (!Array.isArray(data.tasks)) data.tasks = [];
     let archivedTasks: BacklogTask[] = [];
     try {
-      const archiveData: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+      const archiveData: { tasks: BacklogTask[] } = _readJson(archivePath);
       if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
     } catch {}
     baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
@@ -365,7 +360,7 @@ export function addBacklogTask(scope: BacklogScope, taskInput: AddTaskInput): Ba
 
   let data: { tasks: BacklogTask[] };
   try {
-    data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    data = _readJson(filePath);
   } catch (e: any) {
     if (e.code === 'ENOENT') {
       try { fs.mkdirSync(path.dirname(filePath), { recursive: true }); } catch {}
@@ -378,7 +373,7 @@ export function addBacklogTask(scope: BacklogScope, taskInput: AddTaskInput): Ba
 
   let archivedTasks: BacklogTask[] = [];
   try {
-    const archiveData: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+    const archiveData: { tasks: BacklogTask[] } = _readJson(archivePath);
     if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
   } catch {}
 
@@ -422,7 +417,7 @@ export function updateBacklogTaskStatus(
   if (scope === 'global') {
     if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
     const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
-    const data: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const data: { tasks: BacklogTask[] } = _readJson(filePath);
     const task = (data.tasks || []).find(t => t.number === taskNum);
     if (!task) throw new Error('Task #' + taskNum + ' not found in global backlog.');
     task.status = newStatus as BacklogStatus;
@@ -440,7 +435,7 @@ export function updateBacklogTaskStatus(
   if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
 
   const filePath = path.join(project.workDir, 'docs', 'backlog.json');
-  const data: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const data: { tasks: BacklogTask[] } = _readJson(filePath);
   const task = (data.tasks || []).find(t => t.number === taskNum);
   if (!task) throw new Error('Task #' + taskNum + ' not found in ' + scope + ' backlog.');
 
@@ -491,7 +486,7 @@ export function updateBacklogTask(
   if (scope === 'global') {
     if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
     const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
-    const data: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const data: { tasks: BacklogTask[] } = _readJson(filePath);
     const task = (data.tasks || []).find(t => t.number === taskNum);
     if (!task) throw new Error('Task #' + taskNum + ' not found in global backlog.');
     applyUpdates(task);
@@ -506,7 +501,7 @@ export function updateBacklogTask(
   if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
 
   const filePath = path.join(project.workDir, 'docs', 'backlog.json');
-  const data: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const data: { tasks: BacklogTask[] } = _readJson(filePath);
   const task = (data.tasks || []).find(t => t.number === taskNum);
   if (!task) throw new Error('Task #' + taskNum + ' not found in ' + scope + ' backlog.');
   applyUpdates(task);
@@ -544,10 +539,10 @@ export function archiveBacklogTasks(
     archivePath: string,
     projectSource: string
   ): BacklogTask[] => {
-    const backlog: { tasks: BacklogTask[] } = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
+    const backlog: { tasks: BacklogTask[] } = _readJson(backlogPath);
     let archive: { tasks: BacklogTask[] } = { tasks: [] };
     try {
-      archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+      archive = _readJson(archivePath);
     } catch {}
 
     const tasksToArchive: BacklogTask[] = [];
