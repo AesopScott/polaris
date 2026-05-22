@@ -2902,9 +2902,13 @@ function _validImpact(v) {
   return ['minor', 'standard', 'major'].includes(s) ? s : 'standard';
 }
 
-function _nextBacklogTaskNumber(tasks) {
-  if (!Array.isArray(tasks) || tasks.length === 0) return 1;
-  return tasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
+function _nextBacklogTaskNumber(currentTasks, archivedTasks) {
+  const allTasks = [
+    ...(Array.isArray(currentTasks) ? currentTasks : []),
+    ...(Array.isArray(archivedTasks) ? archivedTasks : [])
+  ];
+  if (allTasks.length === 0) return 1;
+  return allTasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
 }
 
 function addBacklogTask(scope, taskInput) {
@@ -2928,6 +2932,7 @@ function addBacklogTask(scope, taskInput) {
   if (scope === 'global') {
     if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured in Polaris settings.');
     const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    const archivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
     let data;
     try {
       data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -2935,7 +2940,14 @@ function addBacklogTask(scope, taskInput) {
       throw new Error('Could not read global backlog at ' + filePath + ': ' + e.message);
     }
     if (!Array.isArray(data.tasks)) data.tasks = [];
-    baseTask.number = _nextBacklogTaskNumber(data.tasks);
+    let archivedTasks = [];
+    try {
+      const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+      if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
+    } catch (e) {
+      // Archive file doesn't exist yet or can't be read — that's fine
+    }
+    baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
     baseTask.scope = 'global';
     data.tasks.push(baseTask);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
@@ -2948,6 +2960,7 @@ function addBacklogTask(scope, taskInput) {
   if (!project) throw new Error('Project not found in config: ' + scope);
   if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir configured.');
   const filePath = path.join(project.workDir, 'docs', 'backlog.json');
+  const archivePath = path.join(project.workDir, 'docs', 'backlog-archive.json');
   let data;
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -2961,7 +2974,14 @@ function addBacklogTask(scope, taskInput) {
     }
   }
   if (!Array.isArray(data.tasks)) data.tasks = [];
-  baseTask.number = _nextBacklogTaskNumber(data.tasks);
+  let archivedTasks = [];
+  try {
+    const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+    if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
+  } catch (e) {
+    // Archive file doesn't exist yet or can't be read — that's fine
+  }
+  baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
   data.tasks.push(baseTask);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
 
