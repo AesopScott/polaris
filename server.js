@@ -4778,7 +4778,64 @@ async function callMcpTool(serverName, toolName, args) {
   return formatMcpResult(result);
 }
 
+// ── Per-session git worktrees ─────────────────────────────────────────────────
+// Each agent/chat session with a git project gets an isolated linked worktree
+// so concurrent sessions never share branch state. The session's workDir is
+// replaced with the worktree path; repoWorkDir retains the original project root.
+
+const WORKTREES_DIR = path.join(os.tmpdir(), 'polaris-wt');
+
+function createSessionWorktree(sessionId, repoWorkDir) {
+  if (!repoWorkDir || !fs.existsSync(repoWorkDir)) return null;
+  try { execSync('git rev-parse --git-dir', { cwd: repoWorkDir, stdio: 'ignore' }); }
+  catch { return null; }
+  const wtDir = path.join(WORKTREES_DIR, sessionId);
+  try {
+    fs.mkdirSync(WORKTREES_DIR, { recursive: true });
+    execSync(`git worktree add --detach "${wtDir}"`, { cwd: repoWorkDir, stdio: ['ignore', 'pipe', 'pipe'] });
+    return wtDir;
+  } catch (e) {
+    console.error(`[worktree] create failed for ${sessionId}:`, e.stderr?.toString().trim() || e.message);
+    return null;
+  }
+}
+
+function verifyWorktreeOwnership(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s?.worktreePath) return null;
+  const wtPath = s.worktreePath;
+  for (const [id, sess] of sessions) {
+    if (id !== sessionId && sess.worktreePath === wtPath)
+      return `Worktree conflict: session ${id} also claims this path`;
+  }
+  try {
+    const raw = execSync('git worktree list --porcelain', { cwd: wtPath, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+    const wtNorm = path.normalize(wtPath).toLowerCase();
+    const found = raw.split('\n')
+      .filter(l => l.startsWith('worktree '))
+      .some(l => path.normalize(l.slice('worktree '.length).trim()).toLowerCase() === wtNorm);
+    if (!found) return 'Session worktree is no longer registered — isolation may be compromised';
+  } catch (e) {
+    return `Worktree verification failed: ${e.message}`;
+  }
+  return null;
+}
+
+function removeSessionWorktree(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s?.worktreePath) return;
+  const { worktreePath, repoWorkDir } = s;
+  s.worktreePath = null;
+  try {
+    const repo = repoWorkDir && fs.existsSync(repoWorkDir) ? repoWorkDir : worktreePath;
+    execSync(`git worktree remove --force "${worktreePath}"`, { cwd: repo, stdio: 'ignore' });
+  } catch {}
+  try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'Bash', 'PowerShell']);
 
 async function executeDirectTool(name, input, workDir, sessionId) {
   if (name.startsWith('mcp__')) {
@@ -4786,6 +4843,10 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     const serverName = parts[1];
     const toolName = parts.slice(2).join('__');
     return await callMcpTool(serverName, toolName, input);
+  }
+  if (WRITE_TOOLS.has(name)) {
+    const wtErr = verifyWorktreeOwnership(sessionId);
+    if (wtErr) return `[Worktree guard] ${wtErr}. Write blocked to prevent cross-session contamination.`;
   }
   switch (name) {
     case 'Read':       return toolRead(input, sessionId, workDir);
@@ -5353,6 +5414,7 @@ function releaseSessionMemory(sessionId) {
     try { s.watcher.close(); } catch {}
     s.watcher = null;
   }
+  removeSessionWorktree(sessionId);
 }
 
 async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
@@ -7587,6 +7649,13 @@ async function handleMessage(ws, raw) {
       pendingDocs:   Array.isArray(docs)   ? docs.filter(d => d && typeof d.dataUrl === 'string')   : [],
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
     });
+    if (effectiveWorkDir) {
+      const wtPath = createSessionWorktree(id, effectiveWorkDir);
+      if (wtPath) {
+        const s = sessions.get(id);
+        if (s) { s.repoWorkDir = effectiveWorkDir; s.worktreePath = wtPath; s.workDir = wtPath; }
+      }
+    }
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, chipLabel: chipLabel || null, chipColor: chipColor || null, model: chatModel, isChat: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     const launchAttachments = [
@@ -7692,6 +7761,19 @@ async function handleMessage(ws, raw) {
     }
     sessions.set(id, newSession);
 
+    // Provision an isolated git worktree so concurrent sessions on the same project
+    // never share branch state. Skips CHAT_DIR and non-git directories gracefully.
+    let sessionWorkDir = effectiveWorkDir;
+    if (effectiveWorkDir && effectiveWorkDir !== CHAT_DIR) {
+      const wtPath = createSessionWorktree(id, effectiveWorkDir);
+      if (wtPath) {
+        newSession.repoWorkDir = effectiveWorkDir;
+        newSession.worktreePath = wtPath;
+        newSession.workDir = wtPath;
+        sessionWorkDir = wtPath;
+      }
+    }
+
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
@@ -7723,7 +7805,7 @@ async function handleMessage(ws, raw) {
         const routeMsg = `[routing] eval session → runDirectAgent (model=${routineModel || 'default'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
-        runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[eval-agent] unhandled error:', err.stack || err.message));
+        runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[eval-agent] unhandled error:', err.stack || err.message));
       } else if (routineModel === 'chat') {
         const routeMsg = `[routing] routineTag="${routineTag}" model=chat → chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
         console.log(routeMsg);
@@ -7733,11 +7815,11 @@ async function handleMessage(ws, raw) {
         const routeMsg = `[routing] routineTag="${routineTag}" → runDirectAgent (model=${routineModel || 'default'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
-        runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[routine-agent] unhandled error:', err.stack || err.message));
+        runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[routine-agent] unhandled error:', err.stack || err.message));
       }
     } else {
       console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
-      runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
+      runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
     }
     return;
   }
