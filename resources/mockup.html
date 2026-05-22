@@ -32,7 +32,7 @@
   .pal-btn.active { border-color: #fff; }
 
   /* App Shell */
-  .app { min-height: 100vh; display: flex; flex-direction: column; }
+  .app { height: 100vh; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   /* Notification Banner */
   .notif-banner {
@@ -526,7 +526,7 @@
 
   .palette {
     background: var(--bg); color: var(--text);
-    min-height: calc(100vh - 52px); display: flex; flex-direction: column;
+    min-height: 100vh; display: flex; flex-direction: column;
   }
 
   .palette.projects-panel,
@@ -539,10 +539,56 @@
     -webkit-backdrop-filter: none;
   }
 
+  .palette.projects-panel.hidden,
+  .palette.preview-panel.hidden {
+    display: none;
+  }
+
   .palette.projects-panel .projects-panel-body,
   .palette.preview-panel .projects-panel-body,
   .palette.preview-panel .docs-body {
     background: var(--card-bg, #111827);
+  }
+
+  #backlog-add-modal > div,
+  #backlog-edit-modal > div,
+  #task-session-picker > div {
+    background: var(--card-bg, #111827) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: var(--border, #1e293b) !important;
+    isolation: isolate;
+  }
+
+  #task-session-picker {
+    background: rgba(0,0,0,0.82) !important;
+  }
+
+  #task-session-picker .fbtn {
+    background: #111827 !important;
+    color: #e2e8f0 !important;
+    border-color: #1e293b !important;
+  }
+
+  #task-session-picker .fbtn:hover {
+    background: #1e293b !important;
+  }
+
+  #backlog-status-picker,
+  #backlog-impact-picker {
+    background: var(--card-bg, #111827) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: var(--border, #1e293b) !important;
+  }
+
+  #backlog-add-modal input,
+  #backlog-add-modal textarea,
+  #backlog-add-modal select,
+  #backlog-edit-modal input,
+  #backlog-edit-modal textarea,
+  #backlog-edit-modal select {
+    background: var(--input-bg, #1e293b) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: #444 !important;
   }
 
   /* Apply palette vars */
@@ -1326,6 +1372,7 @@
         <div class="nav-spacer"></div>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
+        <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button id="btn-reload" class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
@@ -1789,7 +1836,6 @@
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Path to the Codex CLI binary. Default: <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">codex</code> (uses npm global install). Change only if binary is not on PATH. Auth uses <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">~/.codex/auth.json</code> from your Codex desktop app login. MCP servers from the Connections panel are injected automatically into each session.</div>
         </div>
       </div>
-    </div>
       <div class="panel-section">
         <div class="context-label accent-label">VIDEO ANALYSIS</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
@@ -2772,7 +2818,7 @@
     <span class="text-muted" style="font-size:10px;font-weight:400;">· No entries yet</span>
     <span class="debug-chevron" style="margin-left:auto;font-size:10px;opacity:0.5;">▲ expand</span>
   </div>
-  <div class="debug-panel" style="margin-bottom:20px;">
+  <div class="debug-panel">
     <div class="debug-panel-inner"></div>
   </div>
 
