@@ -154,7 +154,7 @@
     {
       "number": 26,
       "title": "Make task orchestration an explicit state machine",
-      "description": "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -> build-started -> build-finished -> cba-complete -> staged -> production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
+      "description": "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -> build-started -> cba-complete -> build-finished -> PR-Reviewed-> staged -> production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
       "category": "feature",
       "priority": 95,
       "impact": "major",
