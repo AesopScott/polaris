@@ -7103,39 +7103,32 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/run-summary') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const payload = JSON.parse(body);
-        const workDir = payload.workDir || process.cwd();
-        const summaryScript = path.join(workDir, 'scripts', 'summary.js');
+    // Always resolve summary.js relative to this server file, regardless of which
+    // project the UI has selected — summary.js lives in the Polaris source tree.
+    const summaryScript = path.join(__dirname, 'scripts', 'summary.js');
+    const stripAnsi = str => str.replace(/\x1B\[[0-9;]*[mGKHF]/g, '').replace(/\x1Bc/g, '');
 
-        if (!fs.existsSync(summaryScript)) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'summary.js not found in project' }));
-          return;
-        }
+    if (!fs.existsSync(summaryScript)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'summary.js not found — rebuild Polaris from source' }));
+      return;
+    }
 
-        try {
-          const output = execSync(`node "${summaryScript}"`, {
-            encoding: 'utf-8',
-            cwd: workDir,
-            timeout: 10000,
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ output }));
-        } catch (execErr) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: execErr.message, output: execErr.stdout?.toString() || '' }));
-        }
-      } catch (parseErr) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid request body: ' + parseErr.message }));
-      }
-    });
+    try {
+      const raw = execSync(`node "${summaryScript}"`, {
+        encoding: 'utf-8',
+        cwd: __dirname,
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      const output = stripAnsi(raw).trim();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ output }));
+    } catch (execErr) {
+      const output = stripAnsi(execErr.stdout?.toString() || '').trim();
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: execErr.message, output }));
+    }
     return;
   }
 

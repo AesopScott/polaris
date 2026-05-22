@@ -129,7 +129,6 @@ function formatBranchSection(name, tasks, pr) {
 
 // ─── Main ───────────────────────────────────────────────────────────────
 async function main() {
-  console.clear();
   console.log('\n╔════════════════════════════════════════════════════════════════╗');
   console.log('║                      WORKFLOW SUMMARY                           ║');
   console.log('╚════════════════════════════════════════════════════════════════╝');
