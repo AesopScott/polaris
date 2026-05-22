@@ -402,10 +402,103 @@
             "category": "feature",
             "priority": 70,
             "impact": "standard",
-            "status": "backlog",
+            "status": "planned",
             "created_at": "2026-05-22",
             "completed_at": null,
-            "dependencies": []
+            "dependencies": [],
+            "plan": "## Overview\n\nAdd an orchestrator window that auto-activates when two or more sessions are open for the same project. The orchestrator is a passive monitor — it reads session state, detects conflicts, and enables Scott to resolve conflicts and push git/Obsidian updates per session. No commands run from the orchestrator directly.\n\n## Phases\n\n1. Server Foundations: Session registry + 4 new HTTP endpoints (GET /branch-state, POST /reserve-merge-slot, POST /release-merge-slot, POST /dry-run-merge stub). Persist state to orchestrator-state.json in Runtime zone.\n2. Git Integration: Worktree state query helper, file contention detection, full dry-run merge implementation (throwaway branch, auto-cleaned).\n3. Orchestrator UI Panel: New panel in mockup.html — auto-activates on second session, session cards with branch/worktree/conflict state, push buttons.\n4. Conflict Resolution + Merge Serialization: FIFO merge slot queue wired into push flow, Obsidian bridge for session summaries, retry logic, amber conflict alerts.\n\n## First Proof Unit\n\nGET /branch-state returns live session data. curl http://localhost:40000/branch-state returns HTTP 200 with JSON containing featureBranches keyed by branch name with head, worktreePath, and contention fields.",
+            "proofUnits": [
+                {
+                    "number": 1,
+                    "title": "/branch-state returns live session data",
+                    "expectedBehavior": "GET /branch-state returns JSON listing all active sessions for the project with branch, worktree path, HEAD SHA, and contention array.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "curl -s http://localhost:40000/branch-state | python -m json.tool",
+                    "expectedInitialFailure": "HTTP 404 — endpoint does not exist.",
+                    "expectedPassingEvidence": "HTTP 200 with JSON body containing featureBranches keyed by branch name, each with head, worktreePath, and contention fields.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 2,
+                    "title": "Merge slot queue serializes concurrent requests",
+                    "expectedBehavior": "Two simultaneous POST /reserve-merge-slot requests for the same target branch result in one acquired and one queued with position: 2.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "Send two POST /reserve-merge-slot requests with taskNumber 36 and 37, both targeting stage. First should return {status:acquired,position:1}, second {status:queued,position:2}.",
+                    "expectedInitialFailure": "HTTP 404 — endpoint does not exist.",
+                    "expectedPassingEvidence": "First returns {status:acquired,position:1}, second returns {status:queued,position:2}.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 3,
+                    "title": "Dry-run merge detects conflict correctly",
+                    "expectedBehavior": "POST /dry-run-merge with a conflicting source branch returns {status: conflict, conflictFiles: [...]} and leaves the repo clean.",
+                    "proofType": "api-check",
+                    "exactCommand": "POST http://localhost:40000/dry-run-merge with {sourceBranch:\"task/36-orchestrator\",targetBranch:\"main\",cleanup:true}. Then run: git status and git branch to confirm no dry-run-* branch exists.",
+                    "expectedInitialFailure": "HTTP 404 or stub always returns {status:clean}.",
+                    "expectedPassingEvidence": "Returns {status:conflict,conflictFiles:[...]} when conflict exists; git status shows clean; no dry-run-* branch exists.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 4,
+                    "title": "File contention detection flags overlapping edits",
+                    "expectedBehavior": "When two active sessions have modified the same file, /branch-state includes that file in the contention[] array.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "1. Open two sessions on same project, both with server.js modified\n2. GET http://localhost:40000/branch-state\n3. Verify contention array includes server.js",
+                    "expectedInitialFailure": "contention field missing or always empty.",
+                    "expectedPassingEvidence": "/branch-state response has contention: [\"server.js\"] when both sessions list it as modified.",
+                    "waiverGuidance": "Manual verification with two real sessions is acceptable."
+                },
+                {
+                    "number": 5,
+                    "title": "Orchestrator panel auto-activates on second session",
+                    "expectedBehavior": "Opening a second agent session for the same project causes the orchestrator panel to appear without manual action; closing back to one session hides it.",
+                    "proofType": "ui-check",
+                    "exactCommand": "1. Start Polaris (npm start)\n2. Open one session for Project A — orchestrator panel should be hidden\n3. Open a second session for Project A — orchestrator panel should appear automatically\n4. Close one session — panel should hide",
+                    "expectedInitialFailure": "Panel does not exist or does not auto-activate.",
+                    "expectedPassingEvidence": "Panel appears on second session open; disappears when count drops to 1.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 6,
+                    "title": "Session cards show correct branch, worktree, and conflict state",
+                    "expectedBehavior": "Each session card displays correct branch, worktree path, HEAD SHA, and file contention indicators sourced live from /branch-state.",
+                    "proofType": "ui-check",
+                    "exactCommand": "1. Open two sessions on different branches for same project\n2. Verify each card shows correct branch and worktree\n3. Modify same file in both sessions; verify contention indicator appears",
+                    "expectedInitialFailure": "Cards show placeholder data or no contention indicator.",
+                    "expectedPassingEvidence": "Each card matches live git state; contention badge appears on file overlap.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 7,
+                    "title": "Full push flow executes through merge slot",
+                    "expectedBehavior": "Push Git acquires a slot, runs dry-run, executes push if clean, releases slot. A second concurrent push waits in queue until the first completes.",
+                    "proofType": "manual-script",
+                    "exactCommand": "1. Open two sessions on branches with no conflicts\n2. Click Push Git on Session A — verify slot acquired, dry-run clean, push executes, slot released\n3. While Session A runs, click Push Git on Session B — verify queued state\n4. After Session A completes, verify Session B push runs automatically",
+                    "expectedInitialFailure": "Push ignores slot coordination or button does nothing.",
+                    "expectedPassingEvidence": "Pushes complete in order; Session B starts only after Session A slot is released.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 8,
+                    "title": "Amber conflict alert fires on conflict detection",
+                    "expectedBehavior": "When Push Git triggers a conflicting dry-run, an amber alert card appears in the orchestrator panel with conflicting files and diff excerpt. Push is held; git repo stays clean.",
+                    "proofType": "ui-check",
+                    "exactCommand": "1. Create two branches conflicting on same file\n2. Open both as sessions in orchestrator\n3. Click Push Git on conflicting session\n4. Verify amber alert appears with conflict file list and diff\n5. Verify git status shows clean working tree",
+                    "expectedInitialFailure": "No amber alert; push silently fails or corrupts git state.",
+                    "expectedPassingEvidence": "Amber alert card shows conflict details; git state clean.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 9,
+                    "title": "Push Obsidian writes session summary to Build Plan",
+                    "expectedBehavior": "Clicking Push Obsidian appends a timestamped session summary (branch, worktree, modified files, conflict status) to the project 3-Build_Plan.md in Obsidian.",
+                    "proofType": "manual-script",
+                    "exactCommand": "1. Open a session with some modified files\n2. Click Push Obsidian in the orchestrator panel\n3. Open G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\3-Build_Plan.md\n4. Verify a new timestamped session summary block was appended",
+                    "expectedInitialFailure": "Button does nothing; file unchanged; or write fails silently.",
+                    "expectedPassingEvidence": "Build Plan shows new summary block matching the session actual branch/worktree/file state.",
+                    "waiverGuidance": "N/A"
+                }
+            ]
         }
     ]
 }
