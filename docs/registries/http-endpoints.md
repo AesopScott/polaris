@@ -126,6 +126,103 @@ Query the LangGraph executor for a stalled or failed task's last checkpoint, and
 
 ---
 
+### `GET /branch-state`
+
+Returns current branch/worktree state for all active sessions in a project.
+
+**Method:** `GET`
+**Producer:** `server.js` HTTP handler — queries git + OrchestratorRegistry (task #36, Phase 1)
+**Consumer:** `resources/mockup.html` — orchestrator panel polls on interval
+
+**Response Payload:**
+```json
+{
+  "featureBranches": {
+    "task/N-slug": {
+      "head": "string — HEAD SHA",
+      "worktreePath": "string",
+      "filesChanged": ["string"],
+      "contention": ["string — files touched by multiple sessions"]
+    }
+  }
+}
+```
+
+**Status:** ⚠ planned (task #36, Task 1.2) — not yet implemented
+
+---
+
+### `POST /reserve-merge-slot`
+
+Acquire or queue a merge slot for a task promoting to a target branch. Serializes concurrent promotions.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — Push Git button handler (task #36, Phase 4)
+**Consumer:** `server.js` — FIFO merge slot queue manager
+
+**Request Payload:**
+```json
+{ "taskNumber": number, "targetBranch": "string", "timeout": number }
+```
+
+**Response Payload:**
+```json
+{ "status": "acquired" | "queued", "slotId": "string", "position": number }
+```
+
+**Status:** ⚠ planned (task #36, Task 1.3) — not yet implemented
+
+---
+
+### `POST /release-merge-slot`
+
+Release a held merge slot after push completes or is cancelled.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — push completion handler (task #36, Phase 4)
+**Consumer:** `server.js` — FIFO merge slot queue manager
+
+**Request Payload:**
+```json
+{ "slotId": "string", "status": "success" | "failed" }
+```
+
+**Response Payload:**
+```json
+{ "released": true, "nextInQueue": { "taskNumber": number } | null }
+```
+
+**Status:** ⚠ planned (task #36, Task 1.3) — not yet implemented
+
+---
+
+### `POST /dry-run-merge`
+
+Attempt merge on a throwaway branch to detect conflicts before any real merge.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — push flow (task #36, Phase 4)
+**Consumer:** `server.js` — creates throwaway branch, runs `git merge --no-commit --no-ff`, cleans up
+
+**Request Payload:**
+```json
+{ "sourceBranch": "string", "targetBranch": "string", "cleanup": boolean }
+```
+
+**Response Payload (clean):**
+```json
+{ "status": "clean" }
+```
+
+**Response Payload (conflict):**
+```json
+{ "status": "conflict", "conflictFiles": ["string"] }
+```
+
+**Status:** ⚠ planned (task #36, Task 1.4 stub → Task 2.3 full impl) — not yet implemented
+
+---
+
 ## Maintenance Rule
 
 Every PR that adds, removes, or modifies an HTTP endpoint **must update this registry in the same commit**. Changes include:

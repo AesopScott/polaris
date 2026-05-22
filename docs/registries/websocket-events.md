@@ -206,6 +206,58 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 
 ---
 
+## `orchConflict`
+
+Server broadcast when `POST /dry-run-merge` detects a merge conflict. Holds the merge slot until resolved.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'orchConflict',
+  sessionId: String,       // Session whose push triggered the conflict
+  sourceBranch: String,
+  targetBranch: String,
+  conflictFiles: Array<String>,  // Files with conflict markers
+  slotId: String           // Held merge slot — must be released after resolution
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — `/dry-run-merge` handler emits when conflict detected (task #36, Task 4.1, planned)
+
+**Consumers (Client receives)**
+- `resources/mockup.html` — orchestrator panel renders amber conflict alert card (task #36, Task 4.3, planned)
+
+**Status:** ⚠ planned (task #36) — not yet implemented
+
+---
+
+## `orchAmber`
+
+Server broadcast for permanent push failure or unresolvable conflict requiring Scott's decision.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'orchAmber',
+  sessionId: String,
+  reason: String,          // Human-readable reason
+  detail: String,          // Technical detail (error message, diff excerpt)
+  retryCount: Number,      // How many retries were attempted
+  slotId: String | null    // Held slot if applicable
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — push flow emits after max retries exceeded or permanent failure (task #36, Task 4.3, planned)
+
+**Consumers (Client receives)**
+- `resources/mockup.html` — orchestrator panel renders amber decision card (task #36, Task 4.3, planned)
+
+**Status:** ⚠ planned (task #36) — not yet implemented
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -218,12 +270,14 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
 | `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
+| `orchConflict` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
+| `orchAmber` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-22T18:00:00Z (by /cross-boundary-audit for task #36)
 
 **Task:** #26 — Make task orchestration an explicit state machine
 
