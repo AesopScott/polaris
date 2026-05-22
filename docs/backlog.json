@@ -49,20 +49,6 @@
       "impact": "minor"
     },
     {
-      "number": 10,
-      "title": "Define task-tree TDD/proof gate model",
-      "category": "feature",
-      "priority": 35,
-      "status": "backlog",
-      "created_at": "2026-05-19",
-      "completed_at": null,
-      "dependencies": [],
-      "plan": null,
-      "branch": null,
-      "pr_url": null,
-      "description": "Define the shared task-tree proof model that all Polaris workflow skills will use before any implementation-bearing step runs. The goal is broader than adding TDD to /start-build and /ship-task: every workflow step must require appropriate proof, while only implementation steps require the full red/green/refactor TDD loop.\n\nCore model:\n- Workflow entry gate before the task tree starts: task has a plan, dependencies are checked, testability path is known, and the first proof unit is identified.\n- Proof unit shape: expected behavior -> proof before implementation -> observe failure or record explicit waiver -> implement smallest change -> observe passing proof -> proceed.\n- Proof types: automated failing test, failing smoke command, failing API check, failing UI/browser check, registry diff expectation, manual verification script, review evidence, or explicit waiver that says no automated proof is possible and why.\n- State behavior: if proof is missing or fails, stop the workflow and keep/revert the task to the previous valid lifecycle state instead of proceeding on inherited authority.\n- Distinguish step roles: planning skills define proof; build skills execute proof; audit/review/promotion skills verify the proof trail.\n\nImplementation notes:\n1. Write the canonical definitions directly into the relevant command docs, starting with /plan-task, /start-build, /ship-task, /finish-build, /cross-boundary-audit, /review-pr, /codex-review, and /promote-stage.\n2. Use consistent vocabulary: proof unit, entry evidence, exit evidence, waiver, proof trail, previous valid lifecycle state.\n3. Decide where the proof trail is persisted: task plan in docs/backlog.json, Obsidian task tracker, PR body, or a combination. Prefer keeping summary evidence in backlog/Obsidian and detailed evidence in PR/session output.\n4. Verification: run a dry task-tree walkthrough and confirm every step can say what proof it expects, where proof is recorded, and what happens when proof is missing."
-    },
-    {
       "number": 13,
       "title": "Add proof-trail checks to audit, review, and promotion skills",
       "category": "feature",
