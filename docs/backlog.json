@@ -54,12 +54,13 @@
       "description": "Make sure that any new task number created for any new backlog item is not lower than the lowest found current or archived project task number.",
       "category": "fix",
       "priority": 50,
-      "status": "build-started",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
       "impact": "minor",
-      "branch": "task/32-project-task-number-determination"
+      "branch": "task/32-project-task-number-determination",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/27"
     }
   ]
 }
