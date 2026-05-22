@@ -35,7 +35,7 @@
                       "category":  "feature",
                       "priority":  90,
                       "impact":  "standard",
-                      "status":  "review-blocked",
+                      "status":  "cba-complete",
                       "created_at":  "2026-05-21",
                       "completed_at":  null,
                       "dependencies":  [
@@ -230,7 +230,7 @@
                                              "exactCommand":  "Test key endpoints: curl -s http://localhost:40000/api/backlog | jq . (should return backlog JSON). curl -s http://localhost:40000/sessions | jq . (should return sessions). Check: All endpoints return 200 or expected status.",
                                              "expectedInitialFailure":  "httpRoutes module does not exist or endpoints return 500 or are unavailable after extraction.",
                                              "expectedPassingEvidence":  "All key endpoints respond with 200 and valid JSON. grep httpRoutes server.js shows it\u0027s imported.",
-                                             "waiverGuidance":  "N/A — HTTP endpoints are testable via curl or fetch."
+                                             "waiverGuidance":  "N/A ï¿½ HTTP endpoints are testable via curl or fetch."
                                          },
                                          {
                                              "number":  9,
@@ -240,7 +240,7 @@
                                              "exactCommand":  "git diff main -- src/websocket.ts. Verify: WebSocket handlers are small and delegate to core services. Example: ws.on(\u0027executeTool\u0027, async (msg) =\u003e { return await toolRuntime.execute(...) }).",
                                              "expectedInitialFailure":  "websocket.ts still contains business logic or doesn\u0027t delegate to core services.",
                                              "expectedPassingEvidence":  "Diff shows websocket.ts is significantly smaller and all handlers delegate to core service modules (agentRuntime, toolRuntime, etc.).",
-                                             "waiverGuidance":  "N/A — Code review of websocket.ts diff is sufficient."
+                                             "waiverGuidance":  "N/A ï¿½ Code review of websocket.ts diff is sufficient."
                                          },
                                          {
                                              "number":  10,
@@ -260,7 +260,7 @@
                                              "exactCommand":  "Read Obsidian file: G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\2-Architecture.md. Verify: Sections exist for refactored module overview, module dependency graph, data flow between modules, design decisions and rationale.",
                                              "expectedInitialFailure":  "Architecture.md is not updated or lacks module documentation.",
                                              "expectedPassingEvidence":  "Architecture.md has clear sections documenting the 8 modules, their responsibilities, dependencies, and the WebSocket adapter pattern.",
-                                             "waiverGuidance":  "N/A — Obsidian doc review is straightforward."
+                                             "waiverGuidance":  "N/A ï¿½ Obsidian doc review is straightforward."
                                          },
                                          {
                                              "number":  12,
@@ -270,7 +270,7 @@
                                              "exactCommand":  "Read C:\\Users\\scott\\Code\\Polaris\\docs\\module-topology.md. Verify: Diagram shows modules and arrows indicating dependencies. Expected pattern: contracts.ts (leaf, no dependencies), sessionStore.ts -\u003e contracts.ts, agentRuntime.ts -\u003e contracts.ts, sessionStore.ts, etc.",
                                              "expectedInitialFailure":  "module-topology.md does not exist or is incomplete.",
                                              "expectedPassingEvidence":  "Clear topology diagram or graph showing all 8 modules and their dependency relationships.",
-                                             "waiverGuidance":  "N/A — Markdown topology is straightforward to create and verify."
+                                             "waiverGuidance":  "N/A ï¿½ Markdown topology is straightforward to create and verify."
                                          },
                                          {
                                              "number":  13,
