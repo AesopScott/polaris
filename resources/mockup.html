@@ -1438,6 +1438,7 @@
         <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button id="btn-balance" class="hbtn btn-systems" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
+        <button id="btn-orchestrator" class="hbtn btn-tracking" onclick="toggleOrchestratorPanel()" data-tooltip="Orchestrator — monitor concurrent sessions, detect file contention, and coordinate branch pushes"><span class="lbl">Orch</span></button>
       </div>
     </div>
 
@@ -4543,6 +4544,8 @@
         if ((msg.connectedMcpServers || []).length === 0) {
           showMcpDisconnectedBanner();
         }
+        // Check orchestrator auto-activate after sessions are populated
+        setTimeout(() => { if (typeof checkAutoActivate === 'function') checkAutoActivate(); }, 500);
         break;
 
       case 'connect-approval-required':
@@ -4666,6 +4669,28 @@
           routinesList.forEach(r => {
             if (r.triggerType === 'event' && r.triggerValue === evtKey) fireRoutine(r);
           });
+        }
+        // Auto-activate orchestrator if 2+ active sessions for the same project
+        if (typeof checkAutoActivate === 'function') checkAutoActivate();
+        break;
+      }
+
+      case 'orchConflict': {
+        if (typeof renderOrchConflict === 'function') renderOrchConflict(msg);
+        const panel = document.getElementById('orchestrator-panel');
+        if (panel && panel.classList.contains('hidden')) {
+          panel.classList.remove('hidden');
+          if (typeof checkAutoActivate === 'function') checkAutoActivate();
+        }
+        break;
+      }
+
+      case 'orchAmber': {
+        if (typeof renderOrchAmber === 'function') renderOrchAmber(msg);
+        const panel = document.getElementById('orchestrator-panel');
+        if (panel && panel.classList.contains('hidden')) {
+          panel.classList.remove('hidden');
+          if (typeof checkAutoActivate === 'function') checkAutoActivate();
         }
         break;
       }
@@ -15116,7 +15141,163 @@ This is your current workflow status across all branches. Review the tasks and P
 
   requestAnimationFrame(draw);
 })();
+
+// ── Orchestrator Panel ────────────────────────────────────────────────────────
+
+(function () {
+  let orchPollInterval = null;
+  const ORCH_POLL_MS = 5000;
+
+  // Count active (non-done, non-error) sessions per project
+  function countActiveByProject() {
+    const counts = {};
+    for (const s of Object.values(window.sessionStore || {})) {
+      if (!s.projectName || s.status === 'done' || s.status === 'error') continue;
+      counts[s.projectName] = (counts[s.projectName] || 0) + 1;
+    }
+    return counts;
+  }
+
+  // Auto-activate: open panel if any project has 2+ active sessions
+  function checkAutoActivate() {
+    const counts = countActiveByProject();
+    const shouldBeOpen = Object.values(counts).some(n => n >= 2);
+    const panel = document.getElementById('orchestrator-panel');
+    if (!panel) return;
+    if (shouldBeOpen && panel.classList.contains('hidden')) {
+      panel.classList.remove('hidden');
+      startOrchPoll();
+    }
+  }
+
+  function startOrchPoll() {
+    if (orchPollInterval) return;
+    orchPollInterval = setInterval(fetchAndRenderBranchState, ORCH_POLL_MS);
+    fetchAndRenderBranchState();
+  }
+
+  function stopOrchPoll() {
+    if (orchPollInterval) { clearInterval(orchPollInterval); orchPollInterval = null; }
+  }
+
+  async function fetchAndRenderBranchState() {
+    try {
+      const res = await fetch('/branch-state');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderBranchState(data);
+    } catch {}
+  }
+
+  function renderBranchState(data) {
+    const container = document.getElementById('orch-branch-container');
+    if (!container) return;
+
+    const projects = Object.entries(data);
+    if (projects.length === 0) {
+      container.innerHTML = '<p style="opacity:0.4;font-size:12px;padding:16px;">No active multi-session projects detected.</p>';
+      return;
+    }
+
+    container.innerHTML = projects.map(([proj, info]) => {
+      const branches = Object.entries(info.featureBranches || {});
+      const hasContention = Object.keys(info.contention || {}).length > 0;
+
+      const branchRows = branches.map(([branch, b]) => {
+        const contentionFiles = b.contention || [];
+        const statusDot = contentionFiles.length > 0
+          ? '<span style="color:#f59e0b;font-weight:700;" title="File contention">&#9888;</span>'
+          : '<span style="color:#22c55e;" title="No contention">&#9679;</span>';
+        const filesHtml = b.filesChanged.length > 0
+          ? `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${b.filesChanged.slice(0, 5).join(', ')}${b.filesChanged.length > 5 ? ` +${b.filesChanged.length - 5} more` : ''}</div>`
+          : '<div style="font-size:10px;opacity:0.3;margin-top:2px;">no changes</div>';
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${statusDot}
+            <code style="font-size:11px;">${branch}</code>
+            <span style="font-size:10px;opacity:0.5;">${b.head || ''}</span>
+            <span style="margin-left:auto;font-size:10px;opacity:0.5;">${b.sessionName || b.sessionId}</span>
+          </div>
+          ${filesHtml}
+          ${contentionFiles.length > 0 ? `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">Contention: ${contentionFiles.join(', ')}</div>` : ''}
+        </div>`;
+      }).join('');
+
+      return `<div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;opacity:0.6;letter-spacing:1px;margin-bottom:6px;">${proj.toUpperCase()} &mdash; ${info.sessionCount} sessions</div>
+        ${hasContention ? `<div style="background:#f59e0b22;border:1px solid #f59e0b55;border-radius:6px;padding:6px 10px;font-size:11px;color:#f59e0b;margin-bottom:8px;">File contention detected — review before pushing.</div>` : ''}
+        ${branchRows || '<div style="opacity:0.4;font-size:11px;">No worktree data</div>'}
+      </div>`;
+    }).join('');
+  }
+
+  // Render an amber conflict alert card
+  function renderOrchConflict(msg) {
+    const feed = document.getElementById('orch-alerts-feed');
+    if (!feed) return;
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#f59e0b22;border:1px solid #f59e0b;border-radius:8px;padding:12px;margin-bottom:10px;';
+    card.innerHTML = `<div style="font-weight:700;color:#f59e0b;font-size:12px;">MERGE CONFLICT — Session ${msg.sessionId}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:0.8;">${msg.sourceBranch} → ${msg.targetBranch}</div>
+      <div style="font-size:11px;margin-top:4px;">Conflicting files: <code>${(msg.conflictFiles || []).join(', ')}</code></div>
+      <div style="font-size:10px;opacity:0.5;margin-top:4px;">Slot held: ${msg.slotId} — resolve conflict then release slot.</div>`;
+    feed.prepend(card);
+  }
+
+  function renderOrchAmber(msg) {
+    const feed = document.getElementById('orch-alerts-feed');
+    if (!feed) return;
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#ef444422;border:1px solid #ef4444;border-radius:8px;padding:12px;margin-bottom:10px;';
+    card.innerHTML = `<div style="font-weight:700;color:#ef4444;font-size:12px;">PUSH FAILURE — Session ${msg.sessionId}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:0.8;">${msg.reason}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:0.6;">${msg.detail}</div>
+      <div style="font-size:10px;opacity:0.5;margin-top:4px;">Retries: ${msg.retryCount}${msg.slotId ? ` · Slot: ${msg.slotId}` : ''}</div>`;
+    feed.prepend(card);
+  }
+
+  // Expose to global scope for nav button and WS handler
+  window.toggleOrchestratorPanel = function () {
+    const panel = document.getElementById('orchestrator-panel');
+    if (!panel) return;
+    const hidden = panel.classList.toggle('hidden');
+    if (!hidden) { startOrchPoll(); }
+    else { stopOrchPoll(); }
+  };
+  window.closeOrchestratorPanel = function () {
+    const panel = document.getElementById('orchestrator-panel');
+    if (panel) panel.classList.add('hidden');
+    stopOrchPoll();
+  };
+  window.renderOrchConflict = renderOrchConflict;
+  window.renderOrchAmber    = renderOrchAmber;
+  window.checkAutoActivate  = checkAutoActivate;
+})();
+
 </script>
+
+<!-- Orchestrator Panel HTML -->
+<div class="projects-panel hidden palette" id="orchestrator-panel" style="width:680px;max-height:80vh;">
+  <div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+  <div class="preview-toolbar" style="cursor:default;">
+    <span style="flex:1;font-size:13px;font-weight:800;">Build Orchestrator</span>
+    <span id="orch-poll-indicator" style="font-size:10px;opacity:0.4;margin-right:8px;">polling…</span>
+    <button class="preview-close-btn" onclick="closeOrchestratorPanel()">&#x2715;</button>
+  </div>
+  <div class="projects-panel-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:0;">
+    <!-- Alerts feed -->
+    <div style="padding:12px 16px 0;">
+      <div style="font-size:10px;font-weight:700;opacity:0.4;letter-spacing:1px;margin-bottom:6px;">ALERTS</div>
+      <div id="orch-alerts-feed"></div>
+    </div>
+    <!-- Branch state -->
+    <div style="padding:0 16px 12px;">
+      <div style="font-size:10px;font-weight:700;opacity:0.4;letter-spacing:1px;margin-bottom:6px;">SESSIONS &amp; BRANCHES</div>
+      <div id="orch-branch-container"><p style="opacity:0.4;font-size:12px;">Loading…</p></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
 
