@@ -54,7 +54,7 @@
       "description": "Make sure that any new task number created for any new backlog item is not lower than the lowest found current or archived project task number.",
       "category": "fix",
       "priority": 50,
-      "status": "review-blocked",
+      "status": "cba-complete",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
