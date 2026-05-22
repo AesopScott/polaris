@@ -222,20 +222,20 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-20 (by /promote-to-main cross-boundary audit for task #19)
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
 
-**Boundaries checked:** WebSocket events (all event types including task #19 impact field in backlog messages)
+**Task:** #25 — Split server.js into bounded runtime services
+
+**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js)
 
 **Evidence recorded:**
 - 8 entries documented
-- 6 entries with complete producer/consumer pairs ✓ (backlog events verified with task #19 impact field)
-- 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, task #20 C.1/C.2/C.3)
-- 0 entries with shape mismatches ✓
-- New identifiers verified on task #19: impact field in add-backlog-task and update-backlog-task schemas
-- Registries match current code diff: yes (task #19 impact field in both client→server messages verified; line refs corrected to 9409/9441 post Codex review)
+- 6 entries with complete producer/consumer pairs ✓
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, for task #20)
+- 0 entries with shape mismatches
+- New identifiers introduced on task #25: none (pure internal refactoring)
+- Registries match current code diff: yes
 
-**Gaps identified:** 
-- ⚠ emit-debug-log: orphan producer (agent code C.2 after server handler C.1). Intentional — fallback infrastructure must be ready first.
-- ⚠ debug-log: orphan consumer (UI handler C.3 after server broadcast C.1). Intentional — broadcast before UI adds the handler.
+**Gaps identified:** 2 pre-existing intentional orphan gaps (emit-debug-log, debug-log for task #20)
 
-**Status:** Audit complete, task #19 verified in WebSocket events
+**Status:** Audit complete — registries valid for task #25 scope. Internal refactoring does not alter WebSocket event contract.

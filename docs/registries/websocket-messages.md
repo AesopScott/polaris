@@ -71,3 +71,24 @@ Liveness check / keep-alive.
 | `get-pre-build-check-status` | client → server | ⚠ orphan server handler |
 | `ping` | client → server | ⚠ orphan server handler |
 | *(all other ~96 types)* | both | ✓ |
+
+---
+
+## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
+
+**Task:** #25 — Split server.js into bounded runtime services
+
+**Boundaries checked:** WebSocket `type` message types between client (resources/mockup.html) and server (server.js)
+
+**Evidence recorded:**
+- 96 entries with complete producer/consumer pairs ✓
+- 4 entries with gaps (orphan server handlers) ⚠
+- 0 entries with shape mismatches
+- New identifiers introduced on task #25: none (pure internal refactoring)
+- Registries match current code diff: yes
+
+**Gaps identified:** 4 pre-existing orphan handlers (get-config, get-history, get-pre-build-check-status, ping)
+
+**Status:** Audit complete — registries valid for task #25 scope. Internal refactoring does not alter WebSocket contract.

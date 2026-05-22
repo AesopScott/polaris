@@ -139,3 +139,24 @@ Windows user home directory.
 | `RESOURCES_PATH` | main.js | server.js:71 | ✓ |
 | `SERVER_PORT` | main.js | server.js:19 | ✓ |
 | `USERPROFILE` | OS | server.js:2991, 8558, 8576, 8596 | ✓ |
+
+---
+
+## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
+
+**Task:** #25 — Split server.js into bounded runtime services
+
+**Boundaries checked:** Environment variables (`process.env.*`) read in server.js and main.js
+
+**Evidence recorded:**
+- 8 entries with complete producer/consumer pairs ✓
+- 0 entries with gaps
+- 0 entries with shape mismatches
+- New identifiers introduced on task #25: none (pure internal refactoring)
+- Registries match current code diff: yes
+
+**Gaps identified:** none
+
+**Status:** Audit complete — all env vars valid and balanced. Internal refactoring preserves all environment variable contracts.
