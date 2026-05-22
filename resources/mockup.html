@@ -6246,6 +6246,27 @@
     });
   }
 
+  function applySkillLinksToMarkdown(element) {
+    const skillPattern = /\/([a-z-]+)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+    const nodesToReplace = [];
+
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.parentElement.tagName === 'CODE' || node.parentElement.tagName === 'PRE') continue;
+      if (skillPattern.test(node.textContent)) {
+        nodesToReplace.push(node);
+      }
+    }
+
+    nodesToReplace.forEach(textNode => {
+      const span = document.createElement('span');
+      const nodes = convertSkillReferencesToLinks(textNode.textContent);
+      nodes.forEach(n => span.appendChild(n));
+      textNode.parentNode.replaceChild(span, textNode);
+    });
+  }
+
   function renderAssistantMarkdown(div) {
     if (typeof marked === 'undefined') return;
     const raw = div.dataset.rawText || div.textContent;
@@ -6262,6 +6283,7 @@
       if (typeof hljs !== 'undefined') {
         div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
       }
+      applySkillLinksToMarkdown(div);
       if (wasAtBottom) {
         const term = div.closest('[data-term]');
         if (term) term.scrollTop = term.scrollHeight;
@@ -6299,6 +6321,73 @@
     return merged;
   }
 
+  function convertSkillReferencesToLinks(text) {
+    const div = document.createElement('div');
+    const skillPattern = /\/([a-z-]+)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = skillPattern.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        div.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+      }
+
+      const skillName = match[1];
+      const args = match[2] ? match[2].trim() : '';
+      const fullSkill = match[0].trim();
+
+      const skillLink = document.createElement('span');
+      skillLink.className = 'skill-link';
+      skillLink.dataset.skill = fullSkill;
+      skillLink.textContent = fullSkill;
+      skillLink.style.cssText = `
+        background: rgba(96, 165, 250, 0.15);
+        color: #60a5fa;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid rgba(96, 165, 250, 0.3);
+        cursor: pointer;
+        font-family: 'Consolas', monospace;
+        font-size: 0.95em;
+        display: inline-block;
+        white-space: nowrap;
+        transition: all 0.2s ease;
+        user-select: none;
+      `;
+      skillLink.title = `Click to add "${fullSkill}" to the prompt`;
+      skillLink.onclick = (e) => {
+        e.stopPropagation();
+        const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+        const floatPrompt = document.getElementById('float-prompt-area');
+        const targetInput = floatPrompt?.offsetParent ? floatPrompt : promptEl;
+        if (targetInput) {
+          const currentText = targetInput.value;
+          targetInput.value = currentText ? (currentText + ' ' + fullSkill) : fullSkill;
+          targetInput.focus();
+          targetInput.scrollTop = targetInput.scrollHeight;
+          updateTokenCount(targetInput);
+        }
+      };
+      skillLink.onmouseover = (e) => {
+        e.target.style.background = 'rgba(96, 165, 250, 0.25)';
+        e.target.style.borderColor = 'rgba(96, 165, 250, 0.6)';
+      };
+      skillLink.onmouseout = (e) => {
+        e.target.style.background = 'rgba(96, 165, 250, 0.15)';
+        e.target.style.borderColor = 'rgba(96, 165, 250, 0.3)';
+      };
+
+      div.appendChild(skillLink);
+      lastIndex = skillPattern.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      div.appendChild(document.createTextNode(text.substring(lastIndex)));
+    }
+
+    return div.childNodes.length > 0 ? Array.from(div.childNodes) : [document.createTextNode(text)];
+  }
+
   function makeLineEl(line, sessionId) {
     line = { ...line, text: stripProcessCleanupNoise(line.text) };
     const div = document.createElement('div');
@@ -6313,7 +6402,8 @@
         div.appendChild(imgEl);
       }
     } else {
-      div.textContent = line.text;
+      const nodes = convertSkillReferencesToLinks(line.text);
+      nodes.forEach(node => div.appendChild(node));
     }
     if (sessionId) {
       const s = sessionStore[sessionId];
