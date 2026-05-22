@@ -541,6 +541,8 @@
   .palette .card { background: var(--card-bg); }
   .palette .card-footer { background: var(--footer-bg); border-top: 1px solid var(--border); }
   .palette .fbtn { background: var(--fbtn-bg); color: var(--fbtn-text); }
+  .palette .projects-panel { background: var(--card-bg); }
+  .palette .preview-panel { background: var(--card-bg); }
   .palette .card-btn { background: var(--card-btn-bg); color: var(--text); }
   .card-btn.is-pinned { background: rgba(239,68,68,0.35) !important; color: #fff !important; }
   .card-btn.is-expanded { background: rgba(96,165,250,0.3) !important; color: #60a5fa !important; }
@@ -1314,7 +1316,7 @@
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
-        <div class="nav-spacer"></div>
+        <button id="btn-summary" class="hbtn btn-interface" onclick="openSummarySession()" data-tooltip="View workflow summary: tasks and PRs on Main, Stage, and all work-tree branches"><span class="lbl">Summary</span></button>
         <button id="btn-skills" class="hbtn btn-interface" onclick="toggleSkillsPanel()" data-tooltip="Browse all installed Claude Code skills (~/.claude/skills/). Click a skill to send /name to the currently focused session."><span class="lbl">Skills</span></button>
         <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
@@ -1323,7 +1325,6 @@
         <button id="btn-connect" class="hbtn btn-systems" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
         <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
         <!-- Row 4 -->
-        <button id="btn-summary" class="hbtn btn-interface" onclick="openSummarySession()" data-tooltip="View workflow summary: tasks and PRs on Main, Stage, and all work-tree branches"><span class="lbl">Summary</span></button>
         <button id="btn-review" class="hbtn btn-config" onclick="openReviewSession()" data-tooltip="Open a code review session with independent context (skip Build/Sessions loading) and switch to main branch"><span class="lbl">Review</span></button>
         <button id="btn-backlog" class="hbtn btn-interface" onclick="toggleBacklogPanel()" data-tooltip="View and manage backlogs across all projects + the global cross-cutting backlog from the Obsidian vault"><span class="lbl">Backlog</span></button>
         <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
