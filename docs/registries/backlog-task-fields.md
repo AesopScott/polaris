@@ -116,7 +116,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `resources/mockup.html:9103` — Status picker displays current status
 - `resources/mockup.html:3395` — BACKLOG_STATUS_OPTIONS defines valid values
 
-**Validation:** VALID_BACKLOG_STATUSES set at server.js:2875 — backlog, planned, build-started, build-finished, cba-complete, staged, production, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).**
+**Validation:** VALID_BACKLOG_STATUSES set at server.js:3194 — backlog, planned, build-started, build-finished, cba-complete, review-blocked, staged, production, failed-smoke-test, stalled, failed, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).** `stalled` and `failed` are written by the LangGraph executor (task #26) when a human gate times out or a node throws an unhandled exception.
 
 **Status:** ✓ Balanced (validation enforced server-side)
 
@@ -310,22 +310,21 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
+**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
 
-**Task:** #25 — Split server.js into bounded runtime services
+**Task:** #26 — Make task orchestration an explicit state machine
 
-**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), and skills
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and agents/task_executor.py
 
 **Evidence recorded:**
 - 14 entries documented
 - 11 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
-- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠
+- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠ pre-existing
 - 0 entries with shape mismatches
-- New identifiers introduced on task #25: none (pure internal refactoring)
-- Registries match current code diff: yes
-- Task #25 adds new fields: `plan` (narrative) and `proofUnits` (array) to backlog entry for task #25 itself; existing schema unchanged
+- New identifiers introduced on task #26: `stalled` and `failed` status values added to VALID_BACKLOG_STATUSES (server.js:3194); written by LangGraph executor
+- Registries match current code diff: yes — server.js patched in this audit run
 
-**Gaps identified:** 3 pre-existing orphan producers (dependencies, branch, pr_url) — defer to future tasks
+**Gaps identified:** 2 pre-existing hard blockers resolved — `stalled` and `failed` added to VALID_BACKLOG_STATUSES. 3 pre-existing orphan producers (dependencies, branch, pr_url) deferred.
 
-**Status:** Audit complete — registries valid for task #25 scope. Internal refactoring preserves backlog contract. Task #25 itself uses plan and proofUnits fields as already-documented contract.
+**Status:** Audit complete — hard blockers resolved. Registries valid for task #26 scope.

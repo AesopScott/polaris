@@ -3196,6 +3196,8 @@ const VALID_BACKLOG_STATUSES = new Set([
   'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'review-blocked', 'staged', 'production',
   // Manual post-production status: set when smoke tests fail after production deployment
   'failed-smoke-test',
+  // State machine statuses written by LangGraph executor (task #26)
+  'stalled', 'failed',
   // Special states
   'blocked', 'on-hold', 'cancelled',
   // Legacy/deprecated statuses (still allowed for backward compatibility)

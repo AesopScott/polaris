@@ -43,6 +43,7 @@ Response from server with backlog content (global, project-specific, archived).
 - `server.js:7779` — Archive load
 - `server.js:7791` — All backlogs (vault + projects)
 - `server.js:7803` — Project backlog load
+- `server.js:/sync-state handler` — ⚠ planned (task #26, Task 6.3) — broadcast after executor pushes status update via POST /sync-state
 
 **Consumers (Client receives)**
 - `resources/mockup.html:4640` — Message handler calls `renderBacklog()` with payload
@@ -222,20 +223,20 @@ Server broadcast of debug log entries to all connected UI clients. Produced by t
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
+**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
 
-**Task:** #25 — Split server.js into bounded runtime services
+**Task:** #26 — Make task orchestration an explicit state machine
 
-**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js)
+**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js), including new /sync-state-triggered broadcasts
 
 **Evidence recorded:**
 - 8 entries documented
 - 6 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, for task #20)
 - 0 entries with shape mismatches
-- New identifiers introduced on task #25: none (pure internal refactoring)
-- Registries match current code diff: yes
+- New identifiers introduced on task #26: new producer for `backlogs-data` (server.js /sync-state handler, planned)
+- Registries match current code diff: yes (new producer marked planned)
 
-**Gaps identified:** 2 pre-existing intentional orphan gaps (emit-debug-log, debug-log for task #20)
+**Gaps identified:** 2 pre-existing intentional orphan gaps (emit-debug-log, debug-log for task #20). New `backlogs-data` producer is planned/pending until task #26 builds /sync-state.
 
-**Status:** Audit complete — registries valid for task #25 scope. Internal refactoring does not alter WebSocket event contract.
+**Status:** Audit complete — registries updated for task #26 scope.
