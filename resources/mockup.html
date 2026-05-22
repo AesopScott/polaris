@@ -1323,6 +1323,7 @@
         <button id="btn-connect" class="hbtn btn-systems" data-tooltip="View git status per project and manage MCP server connections"><span class="lbl">Connect</span></button>
         <button id="btn-docs" class="hbtn btn-config" onclick="openDocs()" data-tooltip="Open the Polaris user guide"><span class="lbl">Docs</span></button>
         <!-- Row 4 -->
+        <button id="btn-summary" class="hbtn btn-interface" onclick="openSummarySession()" data-tooltip="View workflow summary: tasks and PRs on Main, Stage, and all work-tree branches"><span class="lbl">Summary</span></button>
         <button id="btn-review" class="hbtn btn-config" onclick="openReviewSession()" data-tooltip="Open a code review session with independent context (skip Build/Sessions loading) and switch to main branch"><span class="lbl">Review</span></button>
         <button id="btn-backlog" class="hbtn btn-interface" onclick="toggleBacklogPanel()" data-tooltip="View and manage backlogs across all projects + the global cross-cutting backlog from the Obsidian vault"><span class="lbl">Backlog</span></button>
         <button id="btn-preview" class="hbtn btn-gold" onclick="togglePreview()" data-tooltip="Toggle the floating live preview panel for the selected session"><span class="lbl">Preview</span></button>
@@ -9198,6 +9199,60 @@ Then run /clear to initialize the review session.`;
     pushDebugLog('[review] Launched review session for ' + f.projectName + ' (mode: ' + mode + ')');
   }
   window.openReviewSession = openReviewSession;
+
+  async function openSummarySession() {
+    const f = getLaunchFields();
+    if (!f || !f.projectName) {
+      alert('Please select a project before opening a summary session.');
+      return;
+    }
+
+    try {
+      // Fetch the summary output from the server
+      const response = await fetch('/run-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectName: f.projectName, workDir: f.workDir })
+      });
+
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+      const data = await response.json();
+
+      const summaryOutput = data.output || 'No summary available';
+      const summaryPrompt = `## Workflow Summary for ${f.projectName}
+
+\`\`\`
+${summaryOutput}
+\`\`\`
+
+This is your current workflow status across all branches. Review the tasks and PRs by status.`;
+
+      const mode = getLaunchMode();
+      const basePayload = {
+        prompt: summaryPrompt,
+        displayPrompt: 'Workflow Summary',
+        workDir: f.workDir,
+        projectName: f.projectName,
+        tier: f.tier
+      };
+
+      if (mode === 'chat') {
+        wsSend({ type: 'launch-chat', ...basePayload });
+      } else if (mode === 'gpt') {
+        wsSend({ type: 'launch-gpt', ...basePayload });
+      } else if (mode === 'codex') {
+        wsSend({ type: 'launch-codex', ...basePayload });
+      } else {
+        wsSend({ type: 'launch', ...basePayload, model: f.model });
+      }
+
+      pushDebugLog('[summary] Launched summary session for ' + f.projectName);
+    } catch (err) {
+      pushDebugLog('[summary] Error: ' + err.message, true);
+      alert('Failed to generate summary: ' + err.message);
+    }
+  }
+  window.openSummarySession = openSummarySession;
 
   function toggleBacklogPanel() {
     const panel = document.getElementById('backlog-panel');

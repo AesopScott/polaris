@@ -7102,6 +7102,43 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/run-summary') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const workDir = payload.workDir || process.cwd();
+        const summaryScript = path.join(workDir, 'scripts', 'summary.js');
+
+        if (!fs.existsSync(summaryScript)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'summary.js not found in project' }));
+          return;
+        }
+
+        try {
+          const output = execSync(`node "${summaryScript}"`, {
+            encoding: 'utf-8',
+            cwd: workDir,
+            timeout: 10000,
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ output }));
+        } catch (execErr) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: execErr.message, output: execErr.stdout?.toString() || '' }));
+        }
+      } catch (parseErr) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body: ' + parseErr.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/api/time') {
     // Returns the server's wall-clock time. Useful for time-sync routines —
     // the server (Node.js) has unrestricted network access and Windows keeps it NTP-synced.
