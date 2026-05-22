@@ -40,8 +40,8 @@
     <rect class="btn" x="689" y="60" width="84" height="56" rx="14"/><text class="txt orange" x="731" y="89">Routines</text>
     <rect class="btn" x="783" y="60" width="84" height="56" rx="14"/><text class="txt purple" x="825" y="89">Settings</text>
 
-    <rect class="btn" x="219" y="130" width="84" height="56" rx="14"/><text class="txt gold" x="261" y="159">Manifest</text>
-    <rect class="btn" x="313" y="130" width="84" height="56" rx="14"/><text class="txt green" x="355" y="159">Diamond</text>
+    <rect class="btn" x="219" y="130" width="84" height="56" rx="14"/><text class="txt green" x="261" y="159">Diamond</text>
+    <rect class="btn" x="313" y="130" width="84" height="56" rx="14"/><text class="txt gold" x="355" y="159">Manifest</text>
     <rect class="btn" x="407" y="130" width="84" height="56" rx="14"/><text class="txt blue" x="449" y="159">Cross ✓</text>
     <rect class="btn" x="501" y="130" width="84" height="56" rx="14"/><text class="txt pink" x="543" y="159">Archive</text>
     <rect class="btn" x="595" y="130" width="84" height="56" rx="14"/><text class="txt green" x="637" y="159">Reload</text>

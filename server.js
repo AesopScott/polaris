@@ -1511,6 +1511,91 @@ function scaffoldBacklog(project) {
   }
 }
 
+function scaffoldDeployYml(project) {
+  const { name, workDir } = project;
+  if (!workDir) return;
+  try {
+    const githubDir = path.join(workDir, '.github', 'workflows');
+    const deployPath = path.join(githubDir, 'deploy.yml');
+    if (fs.existsSync(deployPath)) return; // Idempotent: don't overwrite if already exists
+
+    fs.mkdirSync(githubDir, { recursive: true });
+
+    // Deploy.yml template based on AesopScott/Aesop
+    const deployYmlContent = `name: Deploy to Mocahost
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:        # manual "Run workflow" button for force redeploys
+
+concurrency:
+  group: deploy-mocahost
+  # IMPORTANT: keep this \`false\`. With \`true\`, every push cancels the
+  # in-flight deploy mid-FTP, and on a busy push day no deploy ever
+  # finishes (see 2026-04-28 incident: 10 cancelled in a row, prod stuck
+  # 13+ hours behind main). \`false\` lets runs queue and complete in
+  # order; the latest run still wins because FTP uploads the whole tree.
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          token: \${{ secrets.AIP_COMMIT_TOKEN || secrets.AESOP_PAT || github.token }}
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: 65.181.111.131
+          username: hivetec1
+          password: \${{ secrets.FTP_PASSWORD }}
+          port: 21
+          protocol: ftps
+          local-dir: ./
+          server-dir: /public_html/aesop-academy/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.github/**
+            **/.claude/**
+            **/TEMP/**
+            **/archive/**
+            **/aesop-api/archive/**
+            **/Board Meetings/**
+            **/secrets.local.php
+            **/config.local.php
+            **/*.bat
+            **/*.ps1
+            **/audit_*.txt
+            **/audit_modules.py
+            **/fix_*.py
+            **/README.md
+            **/.DS_Store
+            # cPanel infrastructure — never touch
+            cgi-bin/**
+            .htaccess
+`;
+
+    fs.writeFileSync(deployPath, deployYmlContent, 'utf8');
+    console.log(`[scaffold-deploy] wrote ${deployPath} for ${name}`);
+    broadcast({
+      type: 'deploy-yml-scaffolded',
+      project: name,
+      path: deployPath,
+      message: 'deploy.yml created. Create FTP_PASSWORD secret in GitHub before deploying.'
+    });
+  } catch (e) {
+    console.error('[scaffold-deploy] failed:', e.message);
+  }
+}
+
 async function scaffoldGitRepo(project) {
   const { name, workDir, repo } = project;
   if (!workDir) return;
@@ -4787,7 +4872,7 @@ function normalizeMcpAllowlist(allowlist) {
 function getMcpServerConfigs(allowlist = null) {
   const servers = readClaudeJson().mcpServers || {};
   const normalized = normalizeMcpAllowlist(allowlist);
-  if (normalized === null) return servers;
+  if (normalized === null) return {};
   const allowed = new Set(normalized);
   return Object.fromEntries(Object.entries(servers).filter(([name]) => allowed.has(name)));
 }
@@ -6055,7 +6140,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
     const mcpJsonPath = path.join(cwd, '.mcp.json');
     const existing = readJSON(mcpJsonPath, {});
     const project = (readConfig().projects || []).find(p => p.workDir && p.workDir.toLowerCase() === cwd.toLowerCase());
-    let baseServers = existing.mcpServers || {};
+    let baseServers = {};
     if (project && Array.isArray(project.mcpServers) && project.mcpServers.length > 0) {
       const globalMcp = readJSON(MCP_JSON_PATH, {});
       baseServers = {};
@@ -9703,6 +9788,7 @@ async function handleMessage(ws, raw) {
     writeJSON(CONFIG_PATH, cfg);
     if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
     if (idx < 0) scaffoldBacklog(proj);
+    if (idx < 0) scaffoldDeployYml(proj);
     sendTo(ws, { type: 'config-saved' });
     return;
   }

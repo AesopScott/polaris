@@ -4861,6 +4861,11 @@
         if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived(null, msg.error || 'Unknown error');
         break;
 
+      case 'deploy-yml-scaffolded':
+        pushDebugLog(`[deploy.yml] scaffolded for ${msg.project} at ${msg.path}`);
+        showDeploySecretPrompt(msg.project);
+        break;
+
       case 'connections':
         renderConnections(msg.data);
         break;
@@ -9527,6 +9532,13 @@ This is your current workflow status across all branches. Review the tasks and P
     if (err) { err.style.display = 'block'; err.textContent = msg; setTimeout(() => { err.style.display = 'none'; }, 5000); }
     console.error('[backlog]', msg);
   }
+
+  function showDeploySecretPrompt(projectName) {
+    const msg = `✓ deploy.yml scaffolded for "${projectName}"\n\n⚠️  Next step: Create FTP_PASSWORD secret\n\nGo to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret\n\nName: FTP_PASSWORD\nValue: [your FTP server password]`;
+    alert(msg);
+    pushDebugLog(`[deploy-yml] FTP_PASSWORD secret prompt shown for ${projectName}`);
+  }
+  window.showDeploySecretPrompt = showDeploySecretPrompt;
 
   // Backlog view mode: 'active' (default) or 'archive'
   let _backlogViewMode = 'active';
