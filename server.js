@@ -3993,6 +3993,7 @@ Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-li
         encoding: 'utf8',
         timeout: 60000,
         maxBuffer: 10 * 1024 * 1024,
+        shell: true,
       });
       if (proc.error) {
         return { verdict: 'ERROR', summary: `Codex CLI failed: ${proc.error.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
@@ -7415,6 +7416,78 @@ const httpServer = http.createServer((req, res) => {
         );
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, sessionId: id }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/dispatch-agent') {
+    // Dispatch an agent from a Python LangGraph node.
+    // Called by agents/spike/sidecar_spike.py and agents/task_executor.py to invoke
+    // UI-selected agents (max, sonnet, haiku, deepseek) and return their text response.
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { agent, prompt, task_number } = JSON.parse(body);
+        if (!agent || !prompt || task_number === undefined) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: false, error: 'agent, prompt, and task_number are required' }));
+        }
+
+        // Create a temporary session for this agent invocation
+        const id = `lang_dispatch_${Date.now()}`;
+        const name = `[LangGraph #${task_number}] ${agent} agent`;
+        const cfg = readConfig();
+        const projectName = cfg.focusedProject || null;
+        const projectEntry = projectName ? (cfg.projects || []).find(p => p.name === projectName) : null;
+        const workDir = projectEntry?.workDir || CHAT_DIR;
+
+        // Map agent name to model
+        const agentToModel = {
+          'max': 'claude-opus-4-7',
+          'sonnet': 'claude-sonnet-4-6',
+          'haiku': 'claude-haiku-4-5-20251001',
+          'deepseek': 'deepseek/deepseek-chat',
+        };
+        const model = agentToModel[agent] || 'claude-sonnet-4-6';
+
+        sessions.set(id, {
+          id, name, workDir, projectName, model, tier: 'balanced',
+          isChat: false, status: 'running', startAt: Date.now(),
+          proc: null, watcher: null, timeout: null, lines: [],
+          lastPrompt: prompt, claudeSessionId: null,
+          pendingImages: [], pendingDocs: [], pendingAudio: [],
+        });
+
+        // Run the agent and capture output
+        const responses = [];
+        const originalBroadcast = broadcast;
+        let captureOutput = (msg) => {
+          if (msg.type === 'session-line' && msg.sessionId === id) {
+            responses.push(msg.content);
+          }
+          originalBroadcast(msg);
+        };
+        broadcast = captureOutput;
+
+        runDirectAgent(id, prompt, workDir)
+          .then(() => {
+            broadcast = originalBroadcast;
+            const response = responses.join('\n');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, response }));
+            sessions.delete(id);
+          })
+          .catch(err => {
+            broadcast = originalBroadcast;
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+            sessions.delete(id);
+          });
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message }));
