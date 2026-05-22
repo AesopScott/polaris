@@ -7104,31 +7104,110 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/run-summary') {
-    // Always resolve summary.js relative to this server file, regardless of which
-    // project the UI has selected — summary.js lives in the Polaris source tree.
-    const summaryScript = path.join(__dirname, 'scripts', 'summary.js');
-    const stripAnsi = str => str.replace(/\x1B\[[0-9;]*[mGKHF]/g, '').replace(/\x1Bc/g, '');
-
-    if (!fs.existsSync(summaryScript)) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'summary.js not found — rebuild Polaris from source' }));
-      return;
-    }
-
+    // Inline summary logic — no external script file needed, works in both
+    // dev (npm start) and installed (asar) environments.
     try {
-      const raw = execSync(`node "${summaryScript}"`, {
-        encoding: 'utf-8',
-        cwd: __dirname,
-        timeout: 15000,
-        stdio: ['pipe', 'pipe', 'pipe']
+      const cfg = readConfig();
+
+      // Find the Polaris project workDir — first project whose docs/backlog.json exists.
+      const polarisProj = (cfg.projects || []).find(p =>
+        p.workDir && fs.existsSync(path.join(p.workDir, 'docs', 'backlog.json'))
+      );
+      const repoRoot = polarisProj?.workDir || process.cwd();
+
+      const safeExec = cmd => {
+        try { return execSync(cmd, { encoding: 'utf-8', cwd: repoRoot, timeout: 8000 }).trim(); }
+        catch { return ''; }
+      };
+
+      const safeJSON = p => {
+        try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
+      };
+
+      const backlog = safeJSON(path.join(repoRoot, 'docs', 'backlog.json'));
+      const archive = safeJSON(path.join(repoRoot, 'docs', 'backlog-archive.json'));
+      const allTasks = [...(backlog.tasks || []), ...(archive.tasks || [])];
+
+      // Branch list
+      const branchRaw = safeExec('git branch --format="%(refname:short)|%(objectname:short)|%(committerdate:short)"');
+      const branches = {};
+      branchRaw.split('\n').filter(Boolean).forEach(line => {
+        const [name, commit, date] = line.split('|');
+        if (name) branches[name.trim()] = { commit, date };
       });
-      const output = stripAnsi(raw).trim();
+
+      // Tasks keyed by branch name
+      const byBranch = {};
+      allTasks.forEach(t => {
+        if (!t.branch) return;
+        (byBranch[t.branch] = byBranch[t.branch] || []).push(t);
+      });
+
+      const getPR = branch => {
+        try {
+          const out = safeExec(`gh pr list --head "${branch}" --json "number,title,state,url" --limit 1`);
+          if (!out) return null;
+          return JSON.parse(out)[0] || null;
+        } catch { return null; }
+      };
+
+      const lines = [];
+
+      const section = (heading, tasks, pr) => {
+        lines.push(`\n━━━ ${heading} ━━━`);
+        if (pr) {
+          const st = pr.state === 'MERGED' ? '✓ MERGED' : pr.state === 'OPEN' ? '⧗ OPEN' : '✗ CLOSED';
+          lines.push(`  PR #${pr.number}: ${st} — ${pr.title}`);
+          lines.push(`  ${pr.url}`);
+        }
+        if (tasks.length > 0) {
+          lines.push('');
+          tasks.forEach(t => {
+            lines.push(`  #${String(t.number).padStart(3)}  [${t.status}]  ${t.title}`);
+            if (t.pr_url) lines.push(`        → ${t.pr_url}`);
+          });
+        } else if (!pr) {
+          lines.push('  (empty)');
+        }
+      };
+
+      section('MAIN (Production)',  allTasks.filter(t => t.status === 'production'), getPR('main'));
+      section('STAGE (Ready for Prod)', allTasks.filter(t => t.status === 'staged'), getPR('stage'));
+
+      lines.push('\n━━━ WORK TREES ━━━');
+      const workBranches = Object.keys(branches).filter(b => b.startsWith('task-'));
+      if (workBranches.length === 0) {
+        lines.push('  (no active work trees)');
+      } else {
+        workBranches.forEach(branch => {
+          const { commit, date } = branches[branch];
+          lines.push(`\n  ${branch}  (${commit} — ${date})`);
+          const pr = getPR(branch);
+          if (pr) {
+            const st = pr.state === 'MERGED' ? '✓' : pr.state === 'OPEN' ? '⧗' : '✗';
+            lines.push(`    ${st} PR #${pr.number}: ${pr.title}`);
+          }
+          const tasks = byBranch[branch] || [];
+          if (tasks.length > 0) {
+            tasks.forEach(t => lines.push(`    #${String(t.number).padStart(3)} — [${t.status}] — ${t.title}`));
+          } else {
+            lines.push('    (no linked tasks)');
+          }
+        });
+      }
+
+      const byStatus = {};
+      allTasks.forEach(t => { (byStatus[t.status] = byStatus[t.status] || []).push(t); });
+      lines.push('\n━━━ STATS ━━━');
+      lines.push(`  Total tasks: ${allTasks.length}`);
+      Object.entries(byStatus).sort().forEach(([s, ts]) => lines.push(`  ${s.padEnd(22)}: ${ts.length}`));
+      lines.push(`  Active branches: ${workBranches.length}`);
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ output }));
-    } catch (execErr) {
-      const output = stripAnsi(execErr.stdout?.toString() || '').trim();
+      res.end(JSON.stringify({ output: lines.join('\n') }));
+    } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: execErr.message, output }));
+      res.end(JSON.stringify({ error: err.message }));
     }
     return;
   }
