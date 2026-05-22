@@ -47,6 +47,92 @@
       "created_at": "2026-05-21",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 25,
+      "title": "Split server.js into bounded runtime services",
+      "description": "Polaris has strong local coherence, but server.js currently owns config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. Split the monolith into bounded modules such as agentRuntime, toolRuntime, sessionStore, contracts, mcpGateway, crossCheck, backlog, and httpRoutes. Keep the desktop-local architecture, but make the WebSocket server an adapter over typed core operations like launchSession, executeTool, transitionTask, recordCrossCheck, and loadMemory.",
+      "category": "refactor",
+      "priority": 95,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 26,
+      "title": "Make task orchestration an explicit state machine",
+      "description": "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -> build-started -> build-finished -> cba-complete -> staged -> production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
+      "category": "feature",
+      "priority": 95,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        24
+      ]
+    },
+    {
+      "number": 27,
+      "title": "Create a single source of truth for tool and message contracts",
+      "description": "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
+      "category": "feature",
+      "priority": 92,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 28,
+      "title": "Upgrade project memory into ranked retrieval",
+      "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 29,
+      "title": "Replace regex-heavy tool safety with capability policies",
+      "description": "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
+      "category": "security",
+      "priority": 92,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 30,
+      "title": "Expand agent evals into product-critical acceptance suites",
+      "description": "The existing agent eval harness is a strong seed, but it is too small to guard Polaris's behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
+      "category": "test",
+      "priority": 88,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 31,
+      "title": "Make trust, proof, cost, and recovery visible in the product",
+      "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
