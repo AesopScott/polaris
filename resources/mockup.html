@@ -4070,6 +4070,7 @@
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
   const pendingDocs   = []; // [{ name, dataUrl }] — DOCX/PDF files (server extracts text)
   const pendingAudio  = []; // [{ name, dataUrl }] — MP3/MP4 audio files
+  const pendingVideos = []; // [{ name, dataUrl, type }] — MP4/MOV video files (server extracts frames)
   const pendingLineImages = {}; // sessionId → images[] buffered until the user line event arrives
 
   // ── Connection ────────────────────────────────────────────────────────────────
@@ -7265,7 +7266,9 @@
   const DOC_EXT    = /\.(pdf|docx?)$/i;
   const AUDIO_MIME = new Set(['audio/mpeg','audio/mp4','audio/wav','audio/ogg','audio/webm','audio/x-m4a','audio/aac']);
   const AUDIO_EXT  = /\.(mp3|wav|m4a|ogg|webm|aac)$/i;
-  const VIDEO_MIME = /^video\//;
+  const VIDEO_MIME = new Set(['video/mp4','video/quicktime']);
+  const VIDEO_EXT  = /\.(mp4|mov)$/i;
+  const YOUTUBE_URL_PATTERN = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 
   function makeChip(className, label, onRemove) {
     const chip = document.createElement('div');
@@ -7277,13 +7280,10 @@
 
   function attachFile(file, sourceEl) {
     const name = file.name || 'file';
-    if (VIDEO_MIME.test(file.type)) {
-      alert(`Video files are not supported.\n\nPolaris accepts images (JPEG, PNG, GIF, WebP), audio files (MP3, WAV, M4A, OGG, WebM, AAC), PDFs, and Word documents.`);
-      return;
-    }
     const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(name);
     const isDoc   = !isImage && (DOC_MIME.has(file.type) || DOC_EXT.test(name));
     const isAudio = !isImage && !isDoc && (AUDIO_MIME.has(file.type) || AUDIO_EXT.test(name));
+    const isVideo = !isImage && !isDoc && !isAudio && (VIDEO_MIME.has(file.type) || VIDEO_EXT.test(name));
 
     const inFloat = !!(sourceEl && sourceEl.closest('#float-launcher'));
     const getChipsContainers = () => inFloat
@@ -7293,7 +7293,7 @@
       ? document.getElementById('float-prompt-area')
       : document.querySelector('.palette:not(.hidden) .prompt-area');
 
-    if (isImage || isDoc || isAudio) {
+    if (isImage || isDoc || isAudio || isVideo) {
       const reader = new FileReader();
       reader.onload = ev => {
         let item, chipClass, label;
@@ -7305,10 +7305,14 @@
           item = { name, dataUrl: ev.target.result };
           pendingDocs.push(item);
           chipClass = 'file-chip'; label = `📄 ${name}`;
-        } else {
+        } else if (isAudio) {
           item = { name, dataUrl: ev.target.result };
           pendingAudio.push(item);
           chipClass = 'file-chip'; label = `🎵 ${name}`;
+        } else if (isVideo) {
+          item = { name, dataUrl: ev.target.result, type: file.type };
+          pendingVideos.push(item);
+          chipClass = 'file-chip'; label = `🎬 ${name}`;
         }
         const arr = isImage ? pendingImages : isDoc ? pendingDocs : pendingAudio;
         getChipsContainers().forEach(container => {
@@ -7478,7 +7482,7 @@
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,.webm,.aac';
+    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,.webm,.aac,.mp4,.mov';
     fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f, sourceEl); };
     fileInput.click();
   }
@@ -7660,16 +7664,18 @@
     const imagePayload = pendingImages.map(i => ({ name: i.name, dataUrl: i.dataUrl }));
     const docPayload   = pendingDocs.map(d => ({ name: d.name, dataUrl: d.dataUrl }));
     const audioPayload = pendingAudio.map(a => ({ name: a.name, dataUrl: a.dataUrl }));
+    const videoPayload = pendingVideos.map(v => ({ name: v.name, dataUrl: v.dataUrl, type: v.type }));
     pendingImages.length = 0;
     pendingDocs.length   = 0;
     pendingAudio.length  = 0;
+    pendingVideos.length = 0;
     document.querySelectorAll('.file-chips').forEach(c => c.innerHTML = '');
     const mode = getLaunchMode();
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
@@ -7677,15 +7683,15 @@
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
     } else if (mode === 'gpt') {
       wsSend({ type: 'launch-gpt', prompt: fullPrompt, displayPrompt: f.prompt, projectName: f.projectName, tier: f.tier });
     } else if (mode === 'codex') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch-codex', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch-codex', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
     } else {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }
