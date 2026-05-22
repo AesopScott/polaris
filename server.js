@@ -7106,104 +7106,151 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/run-summary') {
-    // Inline summary logic — no external script file needed, works in both
-    // dev (npm start) and installed (asar) environments.
     try {
       const cfg = readConfig();
 
-      // Find the Polaris project workDir — first project whose docs/backlog.json exists.
+      // Resolve repo root from config — first project with docs/backlog.json
       const polarisProj = (cfg.projects || []).find(p =>
         p.workDir && fs.existsSync(path.join(p.workDir, 'docs', 'backlog.json'))
       );
       const repoRoot = polarisProj?.workDir || process.cwd();
 
-      const safeExec = cmd => {
-        try { return execSync(cmd, { encoding: 'utf-8', cwd: repoRoot, timeout: 8000 }).trim(); }
-        catch { return ''; }
+      const run = (cmd, fallback = '') => {
+        try { return execSync(cmd, { encoding: 'utf-8', cwd: repoRoot, timeout: 10000 }).trim(); }
+        catch { return fallback; }
       };
 
       const safeJSON = p => {
         try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
       };
 
+      // ── Backlog tasks keyed by branch ──────────────────────────────────────
       const backlog = safeJSON(path.join(repoRoot, 'docs', 'backlog.json'));
       const archive = safeJSON(path.join(repoRoot, 'docs', 'backlog-archive.json'));
       const allTasks = [...(backlog.tasks || []), ...(archive.tasks || [])];
-
-      // Branch list
-      const branchRaw = safeExec('git branch --format="%(refname:short)|%(objectname:short)|%(committerdate:short)"');
-      const branches = {};
-      branchRaw.split('\n').filter(Boolean).forEach(line => {
-        const [name, commit, date] = line.split('|');
-        if (name) branches[name.trim()] = { commit, date };
-      });
-
-      // Tasks keyed by branch name
-      const byBranch = {};
+      const tasksByBranch = {};
       allTasks.forEach(t => {
         if (!t.branch) return;
-        (byBranch[t.branch] = byBranch[t.branch] || []).push(t);
+        (tasksByBranch[t.branch] = tasksByBranch[t.branch] || []).push(t);
       });
 
-      const getPR = branch => {
-        try {
-          const out = safeExec(`gh pr list --head "${branch}" --json "number,title,state,url" --limit 1`);
-          if (!out) return null;
-          return JSON.parse(out)[0] || null;
-        } catch { return null; }
+      // ── All open PRs in one query ──────────────────────────────────────────
+      const prsByBranch = {};
+      try {
+        const prRaw = run('gh pr list --state open --json number,title,url,headRefName --limit 50');
+        if (prRaw) JSON.parse(prRaw).forEach(pr => { prsByBranch[pr.headRefName] = pr; });
+      } catch { /* gh not available */ }
+
+      // ── Worktrees — filter out detached session temps ──────────────────────
+      const wtRaw = run('git worktree list --porcelain');
+      const worktrees = [];
+      if (wtRaw) {
+        const blocks = wtRaw.split('\n\n').filter(Boolean);
+        blocks.forEach(block => {
+          const wtPath  = (block.match(/^worktree (.+)$/m) || [])[1] || '';
+          const head    = (block.match(/^HEAD ([a-f0-9]+)$/m) || [])[1] || '';
+          const brRef   = (block.match(/^branch (.+)$/m) || [])[1] || '';
+          const branch  = brRef.replace('refs/heads/', '');
+          const isTemp  = wtPath.includes('polaris-wt') || wtPath.includes('AppData\\Local\\Temp');
+          const detached = block.includes('\ndetached');
+          if (!isTemp && !detached) worktrees.push({ path: wtPath, branch, head });
+        });
+      }
+
+      // ── All local branches ─────────────────────────────────────────────────
+      const allBranchRaw = run('git branch --format=%(refname:short)');
+      const allBranches = allBranchRaw.split('\n').filter(Boolean);
+
+      // Active work branches: task/* and task-* and wip/*, excluding backup/* and already-merged
+      // (ahead === 0 means fully merged into main — skip those)
+      const workBranches = allBranches.filter(b =>
+        (b.startsWith('task/') || b.startsWith('task-') || b.startsWith('wip/')) &&
+        !b.startsWith('backup/')
+      ).filter(b => {
+        const n = run(`git rev-list main..${b} --count`);
+        return parseInt(n, 10) > 0;
+      });
+
+      // Helper: last N commits on a branch vs main
+      const recentCommits = (branch, n = 3) => {
+        const log = run(`git log ${branch} -${n} --oneline --no-decorate`);
+        return log ? log.split('\n').filter(Boolean) : [];
+      };
+
+      const aheadCount = branch => {
+        const n = run(`git rev-list main..${branch} --count`);
+        return parseInt(n, 10) || 0;
       };
 
       const lines = [];
+      const hr = '─'.repeat(60);
 
-      const section = (heading, tasks, pr) => {
-        lines.push(`\n━━━ ${heading} ━━━`);
-        if (pr) {
-          const st = pr.state === 'MERGED' ? '✓ MERGED' : pr.state === 'OPEN' ? '⧗ OPEN' : '✗ CLOSED';
-          lines.push(`  PR #${pr.number}: ${st} — ${pr.title}`);
-          lines.push(`  ${pr.url}`);
-        }
-        if (tasks.length > 0) {
-          lines.push('');
-          tasks.forEach(t => {
-            lines.push(`  #${String(t.number).padStart(3)}  [${t.status}]  ${t.title}`);
-            if (t.pr_url) lines.push(`        → ${t.pr_url}`);
-          });
-        } else if (!pr) {
-          lines.push('  (empty)');
-        }
-      };
+      // ── MAIN ──────────────────────────────────────────────────────────────
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  MAIN  (production)');
+      lines.push(`${'━'.repeat(60)}`);
+      recentCommits('main').forEach(c => lines.push(`  ${c}`));
 
-      section('MAIN (Production)',  allTasks.filter(t => t.status === 'production'), getPR('main'));
-      section('STAGE (Ready for Prod)', allTasks.filter(t => t.status === 'staged'), getPR('stage'));
-
-      lines.push('\n━━━ WORK TREES ━━━');
-      const workBranches = Object.keys(branches).filter(b => b.startsWith('task-'));
-      if (workBranches.length === 0) {
-        lines.push('  (no active work trees)');
+      // ── STAGE ─────────────────────────────────────────────────────────────
+      const stageExists = allBranches.includes('stage');
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  STAGE  (ready for prod)');
+      lines.push(`${'━'.repeat(60)}`);
+      if (stageExists) {
+        const ahead = aheadCount('stage');
+        lines.push(ahead > 0 ? `  ${ahead} commit(s) ahead of main` : '  (even with main)');
+        recentCommits('stage').forEach(c => lines.push(`  ${c}`));
+        const stagePR = prsByBranch['stage'];
+        if (stagePR) lines.push(`  PR #${stagePR.number} OPEN — ${stagePR.title}\n  ${stagePR.url}`);
       } else {
+        lines.push('  (branch does not exist)');
+      }
+
+      // ── ACTIVE WORK BRANCHES ──────────────────────────────────────────────
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  ACTIVE BRANCHES');
+      lines.push(`${'━'.repeat(60)}`);
+      if (workBranches.length === 0) {
+        lines.push('  (none)');
+      } else {
+        const worktreeByBranch = {};
+        worktrees.forEach(w => { worktreeByBranch[w.branch] = w; });
+
         workBranches.forEach(branch => {
-          const { commit, date } = branches[branch];
-          lines.push(`\n  ${branch}  (${commit} — ${date})`);
-          const pr = getPR(branch);
-          if (pr) {
-            const st = pr.state === 'MERGED' ? '✓' : pr.state === 'OPEN' ? '⧗' : '✗';
-            lines.push(`    ${st} PR #${pr.number}: ${pr.title}`);
-          }
-          const tasks = byBranch[branch] || [];
+          const ahead = aheadCount(branch);
+          const pr    = prsByBranch[branch];
+          const tasks = tasksByBranch[branch] || [];
+          const wt    = worktreeByBranch[branch];
+          lines.push(`\n  ${branch}${wt ? '  [worktree active]' : ''}`);
+          lines.push(`  ${hr}`);
+          lines.push(`  ${ahead} commit(s) ahead of main`);
+          if (wt) lines.push(`  Worktree: ${wt.path}`);
+          recentCommits(branch, 3).forEach(c => lines.push(`    ${c}`));
+          if (pr) lines.push(`  PR #${pr.number} OPEN — ${pr.title}\n  ${pr.url}`);
           if (tasks.length > 0) {
-            tasks.forEach(t => lines.push(`    #${String(t.number).padStart(3)} — [${t.status}] — ${t.title}`));
-          } else {
-            lines.push('    (no linked tasks)');
+            tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] — ${t.title}`));
           }
         });
       }
 
-      const byStatus = {};
-      allTasks.forEach(t => { (byStatus[t.status] = byStatus[t.status] || []).push(t); });
-      lines.push('\n━━━ STATS ━━━');
-      lines.push(`  Total tasks: ${allTasks.length}`);
-      Object.entries(byStatus).sort().forEach(([s, ts]) => lines.push(`  ${s.padEnd(22)}: ${ts.length}`));
-      lines.push(`  Active branches: ${workBranches.length}`);
+      // ── NAMED WORKTREES ───────────────────────────────────────────────────
+      const namedWTs = worktrees.filter(w => w.branch !== 'main' && w.branch !== 'stage');
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  WORKTREES');
+      lines.push(`${'━'.repeat(60)}`);
+      if (namedWTs.length === 0) {
+        lines.push('  (none besides main)');
+      } else {
+        namedWTs.forEach(wt => {
+          lines.push(`\n  ${wt.branch}`);
+          lines.push(`  Path: ${wt.path}`);
+          lines.push(`  HEAD: ${wt.head.slice(0, 7)}`);
+          const tasks = tasksByBranch[wt.branch] || [];
+          if (tasks.length > 0) tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] — ${t.title}`));
+        });
+      }
+
+      lines.push('');
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ output: lines.join('\n') }));
