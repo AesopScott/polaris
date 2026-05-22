@@ -127,6 +127,23 @@ Windows user home directory.
 
 ---
 
+## `STALL_TIMEOUT_SECONDS`
+
+Maximum seconds a LangGraph task may remain paused at a human gate before the executor marks it `stalled`. Configurable so short timeouts can be used in tests.
+
+**Set by:** Operator (manual env var or `.env` file in `agents/`)
+**Default:** `3600` (1 hour) — used by executor when variable is absent
+
+**Producers**
+- Operator shell / test harness — sets before starting `task_executor.py`
+
+**Consumers**
+- `agents/task_executor.py` — read via `os.environ.get('STALL_TIMEOUT_SECONDS', '3600')` (task #26, Task 3.3)
+
+**Status:** ⚠ planned (task #26) — not yet consumed; variable has no producer in current codebase (operator must set manually)
+
+---
+
 ## Summary
 
 | Variable | Set by | Consumers | Status |
@@ -138,25 +155,26 @@ Windows user home directory.
 | `POLARIS_SKILLS_DIR` | main.js | server.js:62 | ✓ |
 | `RESOURCES_PATH` | main.js | server.js:71 | ✓ |
 | `SERVER_PORT` | main.js | server.js:19 | ✓ |
+| `STALL_TIMEOUT_SECONDS` | Operator | task_executor.py (planned) | ⚠ planned |
 | `USERPROFILE` | OS | server.js:2991, 8558, 8576, 8596 | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
+**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
 
-**Task:** #25 — Split server.js into bounded runtime services
+**Task:** #26 — Make task orchestration an explicit state machine
 
-**Boundaries checked:** Environment variables (`process.env.*`) read in server.js and main.js
+**Boundaries checked:** Environment variables (`process.env.*`) read in server.js, main.js, and agents/task_executor.py
 
 **Evidence recorded:**
 - 8 entries with complete producer/consumer pairs ✓
-- 0 entries with gaps
+- 1 entry planned/pending (STALL_TIMEOUT_SECONDS) ⚠
 - 0 entries with shape mismatches
-- New identifiers introduced on task #25: none (pure internal refactoring)
-- Registries match current code diff: yes
+- New identifiers introduced on task #26: `STALL_TIMEOUT_SECONDS`
+- Registries match current code diff: yes (new entry is pre-registered for build)
 
-**Gaps identified:** none
+**Gaps identified:** STALL_TIMEOUT_SECONDS has no automated producer — operator must set manually or leave at default (3600s). Acceptable; documented with default.
 
-**Status:** Audit complete — all env vars valid and balanced. Internal refactoring preserves all environment variable contracts.
+**Status:** Audit complete — registries updated for task #26 scope.

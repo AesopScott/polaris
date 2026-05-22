@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polaris Nav Layout Preview</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: start center;
+    padding: 36px;
+    background: #080d16;
+    font-family: "Segoe UI", sans-serif;
+    color: #e5e7eb;
+  }
+  .preview-frame {
+    width: min(980px, 100%);
+    background: #0d1117;
+    border-bottom: 1px solid rgba(96,165,250,0.2);
+    padding: 18px 22px;
+  }
+  .btn-grid {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(92px, 1fr));
+    gap: 8px 12px;
+    position: relative;
+  }
+  .hbtn {
+    background: linear-gradient(145deg, #1a2030, #0d1117);
+    border: none;
+    border-radius: 12px;
+    padding: 8px 5px;
+    min-height: 56px;
+    cursor: default;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    box-shadow:
+      6px 6px 12px rgba(0,0,0,0.6),
+      -3px -3px 8px rgba(70,90,130,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .lbl {
+    font-size: 21px;
+    line-height: 1;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .btn-interface .lbl { color: #86ef6f; }
+  .btn-gold .lbl { color: #fbbf24; }
+  .btn-tracking .lbl { color: #8b7cf6; }
+  .btn-danger .lbl { color: #fb923c; }
+  .btn-systems .lbl { color: #fb765f; }
+  .btn-config .lbl { color: #9f82ff; }
+  .column-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: #f4c842;
+    box-shadow: 0 0 10px #f4c842, 0 0 18px rgba(244,200,66,0.65);
+    opacity: 0.8;
+  }
+  .spacer { min-height: 56px; }
+  .r1 { left: calc((100% - 84px) / 8 * 1 + 6px); }
+  .r2 { left: calc((100% - 84px) / 8 * 2 + 18px); }
+  .r3 { left: calc((100% - 84px) / 8 * 3 + 30px); }
+  .r4 { left: calc((100% - 84px) / 8 * 4 + 42px); }
+  .r5 { left: calc((100% - 84px) / 8 * 5 + 54px); }
+  .r6 { left: calc((100% - 84px) / 8 * 6 + 66px); }
+  .r7 { left: calc((100% - 84px) / 8 * 7 + 78px); }
+</style>
+</head>
+<body>
+  <div class="preview-frame">
+    <div class="btn-grid">
+      <span class="column-rail r1"></span>
+      <span class="column-rail r2"></span>
+      <span class="column-rail r3"></span>
+      <span class="column-rail r4"></span>
+      <span class="column-rail r5"></span>
+      <span class="column-rail r6"></span>
+      <span class="column-rail r7"></span>
+
+      <span class="spacer"></span>
+      <button class="hbtn btn-interface"><span class="lbl">Courses</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Factory</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Build</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Files</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Restart</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Routines</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Settings</span></button>
+
+      <span class="spacer"></span>
+      <button class="hbtn btn-interface"><span class="lbl">Diamond</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Manifest</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Cross ✓</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Archive</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reload</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Projects</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Tour</span></button>
+
+      <button class="hbtn btn-config"><span class="lbl">Summary</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Skills</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Web</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Code ✓</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Version</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Reset</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Connect</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Docs</span></button>
+
+      <button class="hbtn btn-config"><span class="lbl">Review</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Backlog</span></button>
+      <button class="hbtn btn-gold"><span class="lbl">Preview</span></button>
+      <button class="hbtn btn-tracking"><span class="lbl">Monaco</span></button>
+      <button class="hbtn btn-danger"><span class="lbl">Obsidian</span></button>
+      <button class="hbtn btn-interface"><span class="lbl">Close</span></button>
+      <button class="hbtn btn-systems"><span class="lbl">Balance</span></button>
+      <button class="hbtn btn-config"><span class="lbl">Support</span></button>
+    </div>
+  </div>
+</body>
+</html>

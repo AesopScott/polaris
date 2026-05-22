@@ -275,7 +275,7 @@ const BASE_SYSTEM_PROMPT = [
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
   'End-of-session ritual when source files were modified: (1) Bump `package.json` version — patch increment (1.0.X → 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and prompt them to run the build-install script.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses. Do not give constant "I am reading X", "I have finished Y" status updates — just do the work and provide the final result or the next proposal.',
-  'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The three values and when to use them: (1) SetStatus("test") — after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses so it\'s visually obvious. (2) SetStatus("waiting") — whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("done") — only when the task is fully complete and requires no further verification. The server auto-detects git commits → "test" and a trailing question mark → "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
+  'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The values and when to use them: (1) SetStatus("test") — after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses. (2) SetStatus("waiting") — whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("hold") — to manually pause the session for later. (4) SetStatus("done") — only when the task is fully complete and requires no further verification. The server auto-detects git commits → "test" and a trailing question mark → "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
   'When you need to ask the user a question, need clarification, or require their input before proceeding, you MUST use the AskUserQuestion tool — never write the question as plain text in your response. The AskUserQuestion tool renders a visually prominent interactive prompt in the UI and pauses the session so the user cannot miss it. Plain-text questions get buried in terminal output and are routinely missed.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
   "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away — generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
@@ -1539,6 +1539,91 @@ function scaffoldBacklog(project) {
   }
 }
 
+function scaffoldDeployYml(project) {
+  const { name, workDir } = project;
+  if (!workDir) return;
+  try {
+    const githubDir = path.join(workDir, '.github', 'workflows');
+    const deployPath = path.join(githubDir, 'deploy.yml');
+    if (fs.existsSync(deployPath)) return; // Idempotent: don't overwrite if already exists
+
+    fs.mkdirSync(githubDir, { recursive: true });
+
+    // Deploy.yml template based on AesopScott/Aesop
+    const deployYmlContent = `name: Deploy to Mocahost
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:        # manual "Run workflow" button for force redeploys
+
+concurrency:
+  group: deploy-mocahost
+  # IMPORTANT: keep this \`false\`. With \`true\`, every push cancels the
+  # in-flight deploy mid-FTP, and on a busy push day no deploy ever
+  # finishes (see 2026-04-28 incident: 10 cancelled in a row, prod stuck
+  # 13+ hours behind main). \`false\` lets runs queue and complete in
+  # order; the latest run still wins because FTP uploads the whole tree.
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          token: \${{ secrets.AIP_COMMIT_TOKEN || secrets.AESOP_PAT || github.token }}
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: 65.181.111.131
+          username: hivetec1
+          password: \${{ secrets.FTP_PASSWORD }}
+          port: 21
+          protocol: ftps
+          local-dir: ./
+          server-dir: /public_html/aesop-academy/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.github/**
+            **/.claude/**
+            **/TEMP/**
+            **/archive/**
+            **/aesop-api/archive/**
+            **/Board Meetings/**
+            **/secrets.local.php
+            **/config.local.php
+            **/*.bat
+            **/*.ps1
+            **/audit_*.txt
+            **/audit_modules.py
+            **/fix_*.py
+            **/README.md
+            **/.DS_Store
+            # cPanel infrastructure — never touch
+            cgi-bin/**
+            .htaccess
+`;
+
+    fs.writeFileSync(deployPath, deployYmlContent, 'utf8');
+    console.log(`[scaffold-deploy] wrote ${deployPath} for ${name}`);
+    broadcast({
+      type: 'deploy-yml-scaffolded',
+      project: name,
+      path: deployPath,
+      message: 'deploy.yml created. Create FTP_PASSWORD secret in GitHub before deploying.'
+    });
+  } catch (e) {
+    console.error('[scaffold-deploy] failed:', e.message);
+  }
+}
+
 async function scaffoldGitRepo(project) {
   const { name, workDir, repo } = project;
   if (!workDir) return;
@@ -2013,7 +2098,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
   { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Call with no arguments at session start to load all project context. Pass filename to retrieve a specific file.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Omit to get all project memory.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
-  { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
+  { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "hold" to manually pause the session. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'hold', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
   { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions — follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
   { type: 'function', function: { name: 'GetNavigationSchema', description: 'Get the complete Polaris navigation pane structure — all buttons, labels, tooltips, handlers, and available panel IDs.', parameters: { type: 'object', properties: {}, required: [] } } },
   { type: 'function', function: { name: 'GetButton', description: 'Get details about a specific navigation button by ID (e.g., "btn-status", "btn-build").', parameters: { type: 'object', properties: { buttonId: { type: 'string', description: 'Button ID to look up' } }, required: ['buttonId'] } } },
@@ -2279,6 +2364,7 @@ function buildPolarisContextBlock(config, session) {
     'Session card status: use the SetStatus tool explicitly; do not rely on text auto-detection except as a fallback.',
     '  - After code changes, commits, builds, UI fixes, or any handoff where Scott must rebuild/install or verify behavior, call mcp__polaris__SetStatus with status "test".',
     '  - If you ask Scott a question or need input before proceeding, call mcp__polaris__SetStatus with status "waiting".',
+    '  - To manually pause the session, call mcp__polaris__SetStatus with status "hold".',
     '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
     'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
     '',
@@ -3138,6 +3224,8 @@ const VALID_BACKLOG_STATUSES = new Set([
   'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'review-blocked', 'staged', 'production',
   // Manual post-production status: set when smoke tests fail after production deployment
   'failed-smoke-test',
+  // State machine statuses written by LangGraph executor (task #26)
+  'stalled', 'failed',
   // Special states
   'blocked', 'on-hold', 'cancelled',
   // Legacy/deprecated statuses (still allowed for backward compatibility)
@@ -3375,7 +3463,7 @@ function inferTermStatus(lastText) {
 }
 
 function toolSetStatus({ status } = {}, sessionId) {
-  const ALLOWED = ['test', 'waiting', 'done', 'broken'];
+  const ALLOWED = ['test', 'waiting', 'hold', 'done', 'broken'];
   if (!ALLOWED.includes(status)) return `Invalid status "${status}". Allowed: ${ALLOWED.join(', ')}.`;
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
@@ -3892,6 +3980,33 @@ function extractFirstJson(text) {
   return null;
 }
 
+// Finds the first JSON object that contains a "verdict" key, scanning all JSON
+// objects in the text plus any JSON embedded in their string values (for CLI
+// envelopes like {"output":"...{\"verdict\":...}..."} or JSONL event streams).
+function extractReviewJson(text) {
+  let remaining = text;
+  while (remaining.length) {
+    const idx = remaining.indexOf('{');
+    if (idx === -1) break;
+    remaining = remaining.slice(idx);
+    const candidate = extractFirstJson(remaining);
+    if (!candidate) break;
+    try {
+      const p = JSON.parse(candidate);
+      if ('verdict' in p) return candidate;
+      // Outer JSON has no verdict — search inside string values (CLI envelopes)
+      for (const val of Object.values(p)) {
+        if (typeof val !== 'string') continue;
+        const inner = extractFirstJson(val);
+        if (!inner) continue;
+        try { const ip = JSON.parse(inner); if ('verdict' in ip) return inner; } catch {}
+      }
+    } catch {}
+    remaining = remaining.slice(candidate.length);
+  }
+  return null;
+}
+
 // ─── Cross-Check engine (Phase 2) ────────────────────────────────────────────
 // Reviews proposed file changes via a configurable model before they hit disk.
 // Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 — at
@@ -4043,8 +4158,9 @@ Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-li
         return { verdict: 'ERROR', summary: `Codex CLI exited with code ${proc.status}: ${proc.stderr || '(no stderr)'}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
       }
       const codexOutput = proc.stdout || '';
-      // Extract JSON from Codex response (may contain additional text)
-      const jsonStr = extractFirstJson(codexOutput);
+      // Extract JSON from Codex response — uses envelope-aware extractor so CLI
+      // wrappers like {"output":"...{\"verdict\":...}"} are unwrapped correctly.
+      const jsonStr = extractReviewJson(codexOutput);
       if (!jsonStr) {
         return { verdict: 'ERROR', summary: 'Codex: no JSON in response', issues: [codexOutput.slice(0, 200) || ''], model: useModel, ms: Date.now() - startMs, usage: null };
       }
@@ -4786,7 +4902,7 @@ function normalizeMcpAllowlist(allowlist) {
 function getMcpServerConfigs(allowlist = null) {
   const servers = readClaudeJson().mcpServers || {};
   const normalized = normalizeMcpAllowlist(allowlist);
-  if (normalized === null) return servers;
+  if (normalized === null) return {};
   const allowed = new Set(normalized);
   return Object.fromEntries(Object.entries(servers).filter(([name]) => allowed.has(name)));
 }
@@ -6054,7 +6170,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
     const mcpJsonPath = path.join(cwd, '.mcp.json');
     const existing = readJSON(mcpJsonPath, {});
     const project = (readConfig().projects || []).find(p => p.workDir && p.workDir.toLowerCase() === cwd.toLowerCase());
-    let baseServers = existing.mcpServers || {};
+    let baseServers = {};
     if (project && Array.isArray(project.mcpServers) && project.mcpServers.length > 0) {
       const globalMcp = readJSON(MCP_JSON_PATH, {});
       baseServers = {};
@@ -9702,6 +9818,7 @@ async function handleMessage(ws, raw) {
     writeJSON(CONFIG_PATH, cfg);
     if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
     if (idx < 0) scaffoldBacklog(proj);
+    if (idx < 0) scaffoldDeployYml(proj);
     sendTo(ws, { type: 'config-saved' });
     return;
   }

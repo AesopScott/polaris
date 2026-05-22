@@ -74,6 +74,40 @@
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
   .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; position: relative; }
+  /* Locked nav slots: add new buttons by assigning a free grid cell; do not rely on auto-placement. */
+  .nav-spacer { min-width: 0; min-height: 38px; }
+  .nav-spacer-row-1 { grid-row: 1; grid-column: 1; }
+  .nav-spacer-row-2 { grid-row: 2; grid-column: 1; }
+  #btn-course-creator { grid-row: 1; grid-column: 2; }
+  #btn-factory { grid-row: 1; grid-column: 3; }
+  #btn-build { grid-row: 1; grid-column: 4; }
+  #btn-files { grid-row: 1; grid-column: 5; }
+  #btn-restart { grid-row: 1; grid-column: 6; }
+  #btn-routines { grid-row: 1; grid-column: 7; }
+  #btn-settings { grid-row: 1; grid-column: 8; }
+  #btn-diamond { grid-row: 2; grid-column: 2; }
+  #btn-manifest { grid-row: 2; grid-column: 3; }
+  #btn-cross-check { grid-row: 2; grid-column: 4; }
+  #btn-archive { grid-row: 2; grid-column: 5; }
+  #btn-reload { grid-row: 2; grid-column: 6; }
+  #btn-projects { grid-row: 2; grid-column: 7; }
+  #btn-walkthrough { grid-row: 2; grid-column: 8; }
+  #btn-summary { grid-row: 3; grid-column: 1; }
+  #btn-skills { grid-row: 3; grid-column: 2; }
+  #btn-web { grid-row: 3; grid-column: 3; }
+  #btn-code-health { grid-row: 3; grid-column: 4; }
+  #btn-versions { grid-row: 3; grid-column: 5; }
+  #btn-reset { grid-row: 3; grid-column: 6; }
+  #btn-connect { grid-row: 3; grid-column: 7; }
+  #btn-docs { grid-row: 3; grid-column: 8; }
+  #btn-review { grid-row: 4; grid-column: 1; }
+  #btn-backlog { grid-row: 4; grid-column: 2; }
+  #btn-preview { grid-row: 4; grid-column: 3; }
+  #btn-monaco { grid-row: 4; grid-column: 4; }
+  #btn-obsidian { grid-row: 4; grid-column: 5; }
+  #btn-close { grid-row: 4; grid-column: 6; }
+  #btn-balance { grid-row: 4; grid-column: 7; }
+  #btn-support { grid-row: 4; grid-column: 8; }
   #nav-divider-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
@@ -370,6 +404,15 @@
         0 16px 48px rgba(0,0,0,0.4),
         0 24px 80px rgba(0,0,0,0.3);
     }
+  }
+  /* Hold cards glow steady yellow — session paused on hold */
+  .card.status-hold-card {
+    box-shadow:
+      0 0 0 1px rgba(250,204,21,0.4),
+      0 0 18px rgba(250,204,21,0.2),
+      0 8px 16px rgba(0,0,0,0.5),
+      0 16px 48px rgba(0,0,0,0.4),
+      0 24px 80px rgba(0,0,0,0.3);
   }
   /* Broken cards pulse bright orange — session died, needs manual recreation */
   .card.status-broken-card {
@@ -1360,17 +1403,17 @@
       <div class="btn-grid">
         <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
-        <div class="nav-spacer"></div>
+        <div class="nav-spacer nav-spacer-row-1"></div>
         <button id="btn-course-creator" class="hbtn btn-interface" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
-        <button id="btn-thecard" class="hbtn btn-gold" onclick="openTheCard()" data-tooltip="The Card — start the Next.js dev server and open the prediction market app in your browser"><span class="lbl">The Card</span></button>
+        <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
         <button id="btn-files" class="hbtn btn-danger" onclick="toggleFileManager()" data-tooltip="Browse and explore the selected project's working directory"><span class="lbl">Files</span></button>
         <button id="btn-restart" class="hbtn btn-interface" data-tooltip="Restart the Polaris server and reload the UI"><span class="lbl">Restart</span></button>
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
+        <div class="nav-spacer nav-spacer-row-2"></div>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
-        <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
@@ -4818,6 +4861,11 @@
         if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived(null, msg.error || 'Unknown error');
         break;
 
+      case 'deploy-yml-scaffolded':
+        pushDebugLog(`[deploy.yml] scaffolded for ${msg.project} at ${msg.path}`);
+        showDeploySecretPrompt(msg.project);
+        break;
+
       case 'connections':
         renderConnections(msg.data);
         break;
@@ -5982,12 +6030,13 @@
       + (s.status === 'running' ? ' status-running-card' : '')
       + (s.status === 'waiting' ? ' status-waiting-card' : '')
       + (s.status === 'test'    ? ' status-test-card'    : '')
+      + (s.status === 'hold'    ? ' status-hold-card'    : '')
       + (s.status === 'broken'  ? ' status-broken-card'  : '');
     el.dataset.sid = s.id;
     if (s.height) el.style.height = s.height;
 
-    const statusClass = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' }[s.status] || 'status-running';
-    const statusLabel = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', broken: 'Broken' }[s.status] || s.status;
+    const statusClass = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken' }[s.status] || 'status-running';
+    const statusLabel = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold', broken: 'Broken' }[s.status] || s.status;
     const rerunSnippet = '';
 
     let chipLabel = '';
@@ -6018,7 +6067,7 @@
       el.style.setProperty('--card-title-color', chipColor);
     }
     // Status color overrides the project color for the top stripe
-    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
+    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', hold: '#faca15', broken: '#f97316' };
     if (STATUS_STRIPE[s.status]) el.style.setProperty('--card-stripe-color', STATUS_STRIPE[s.status]);
     // Status overrides chip color for the stripe (e.g. test → red, waiting → amber)
     const INIT_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
@@ -6122,7 +6171,7 @@
         <div class="footer-btns">
           <button class="fbtn" data-action="yes">Yes</button>
           <button class="fbtn" data-action="no">No</button>
-          <button class="fbtn" data-action="write">Write</button>
+          <button class="fbtn" data-action="write">Write to Obsidian and Git & Continue</button>
           ${rerunSnippet}
         </div>
         <div class="color-controls">
@@ -6250,21 +6299,23 @@
   }
 
   function applySkillLinksToMarkdown(element) {
-    const skillPattern = /\/([a-z-]+)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
     const nodesToReplace = [];
 
     let node;
     while (node = walker.nextNode()) {
       if (node.parentElement.tagName === 'CODE' || node.parentElement.tagName === 'PRE') continue;
-      if (skillPattern.test(node.textContent)) {
+      if ((node.textContent || '').includes('/')) {
         nodesToReplace.push(node);
       }
     }
 
     nodesToReplace.forEach(textNode => {
-      const span = document.createElement('span');
       const nodes = convertSkillReferencesToLinks(textNode.textContent);
+      if (nodes.length === 1 && nodes[0].nodeType === Node.TEXT_NODE && nodes[0].textContent === textNode.textContent) {
+        return;
+      }
+      const span = document.createElement('span');
       nodes.forEach(n => span.appendChild(n));
       textNode.parentNode.replaceChild(span, textNode);
     });
@@ -6324,22 +6375,40 @@
     return merged;
   }
 
-  function convertSkillReferencesToLinks(text) {
-    const div = document.createElement('div');
+  let _skillLinkRegexCache = { source: null, regex: null };
+
+  function getSkillLinkRegex() {
     const knownSkills = window._knownSkillNames;
-    const skillPattern = /\/([a-z][a-z0-9-]*)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
+    if (!knownSkills || !knownSkills.size) return null;
+    if (_skillLinkRegexCache.source === knownSkills) return _skillLinkRegexCache.regex;
+
+    const names = Array.from(knownSkills)
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)
+      .map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const regex = names.length ? new RegExp(`/(${names.join('|')})(?=$|[\\s.,:;!?)'"\`])`, 'g') : null;
+    _skillLinkRegexCache = { source: knownSkills, regex };
+    return regex;
+  }
+
+  function convertSkillReferencesToLinks(text) {
+    if (!text || !text.includes('/')) return [document.createTextNode(text || '')];
+    const skillPattern = getSkillLinkRegex();
+    if (!skillPattern) return [document.createTextNode(text)];
+    const div = document.createElement('div');
+    skillPattern.lastIndex = 0;
     let lastIndex = 0;
     let match;
 
     while ((match = skillPattern.exec(text)) !== null) {
       const skillName = match[1];
-      if (knownSkills && !knownSkills.has(skillName)) continue;
+      const prevChar = match.index > 0 ? text[match.index - 1] : '';
+      if (prevChar && /[A-Za-z0-9_.:-]/.test(prevChar)) continue;
 
       if (match.index > lastIndex) {
         div.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
       }
 
-      const args = match[2] ? match[2].trim() : '';
       const fullSkill = match[0].trim();
 
       const skillLink = document.createElement('span');
@@ -6481,20 +6550,21 @@
     if (stallEl) stallEl.style.display = 'none';
     const badge = card.querySelector('.status-badge');
     if (badge) {
-      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' }[status] || 'status-running');
-      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', broken: 'Broken' }[status] || status;
+      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken' }[status] || 'status-running');
+      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold', broken: 'Broken' }[status] || status;
     }
-    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card', 'status-broken-card');
+    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card', 'status-hold-card', 'status-broken-card');
     if (status === 'running') card.classList.add('status-running-card');
     else if (status === 'waiting') card.classList.add('status-waiting-card');
     else if (status === 'test') card.classList.add('status-test-card');
+    else if (status === 'hold') card.classList.add('status-hold-card');
     else if (status === 'broken') card.classList.add('status-broken-card');
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
-    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
+    const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', hold: '#faca15', broken: '#f97316' };
     const stripeColor = STATUS_STRIPE[status] || card.dataset.projectColor || null;
     if (stripeColor) card.style.setProperty('--card-stripe-color', stripeColor);
     else card.style.removeProperty('--card-stripe-color');
-    if (status === 'done' || status === 'waiting' || status === 'test') {
+    if (status === 'done' || status === 'waiting' || status === 'test' || status === 'hold') {
       const term = card.querySelector('[data-term]');
       if (term) {
         term.querySelectorAll('[data-stream-role="assistant"]:not(.md-render)').forEach(renderAssistantMarkdown);
@@ -9462,6 +9532,13 @@ This is your current workflow status across all branches. Review the tasks and P
     if (err) { err.style.display = 'block'; err.textContent = msg; setTimeout(() => { err.style.display = 'none'; }, 5000); }
     console.error('[backlog]', msg);
   }
+
+  function showDeploySecretPrompt(projectName) {
+    const msg = `✓ deploy.yml scaffolded for "${projectName}"\n\n⚠️  Next step: Create FTP_PASSWORD secret\n\nGo to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret\n\nName: FTP_PASSWORD\nValue: [your FTP server password]`;
+    alert(msg);
+    pushDebugLog(`[deploy-yml] FTP_PASSWORD secret prompt shown for ${projectName}`);
+  }
+  window.showDeploySecretPrompt = showDeploySecretPrompt;
 
   // Backlog view mode: 'active' (default) or 'archive'
   let _backlogViewMode = 'active';

@@ -24,9 +24,8 @@
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true,
-    "isolatedModules": false,
-    "types": ["node"],
-    "typeRoots": ["C:/Users/scott/Code/Polaris/node_modules/@types"]
+    "isolatedModules": true,
+    "types": ["node"]
   },
   "include": [
     "src/**/*"
