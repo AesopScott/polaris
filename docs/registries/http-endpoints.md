@@ -148,7 +148,7 @@ Returns current branch/worktree state for all active sessions in a project.
 }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.2) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js` `/branch-state` handler; groups active sessions by `projectName`, calls `getWorktreeBranchInfo()` per session, detects contention via `detectFileContention()`
 
 ---
 
@@ -170,7 +170,7 @@ Acquire or queue a merge slot for a task promoting to a target branch. Serialize
 { "status": "acquired" | "queued", "slotId": "string", "position": number }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.3) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js` FIFO merge slot queue; persisted to `orchestrator-state.json`
 
 ---
 
@@ -192,7 +192,7 @@ Release a held merge slot after push completes or is cancelled.
 { "released": true, "nextInQueue": { "taskNumber": number } | null }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.3) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js` releases slot, promotes next queued request, persists state
 
 ---
 
@@ -219,7 +219,7 @@ Attempt merge on a throwaway branch to detect conflicts before any real merge.
 { "status": "conflict", "conflictFiles": ["string"] }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.4 stub → Task 2.3 full impl) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 2) — `server.js` creates throwaway branch, runs `git merge --no-commit --no-ff`, parses UU/AA/DD conflict markers, always aborts in `finally` block; optional `repoPath` in body
 
 ---
 

@@ -223,12 +223,12 @@ Server broadcast when `POST /dry-run-merge` detects a merge conflict. Holds the 
 ```
 
 **Producers (Server sends)**
-- `server.js` — `/dry-run-merge` handler emits when conflict detected (task #36, Task 4.1, planned)
+- `server.js` — `/dry-run-merge` handler emits when conflict detected (task #36, Phase 4 — server-side emission pending Phase 4 push flow wiring)
 
 **Consumers (Client receives)**
-- `resources/mockup.html` — orchestrator panel renders amber conflict alert card (task #36, Task 4.3, planned)
+- `resources/mockup.html:orchConflict case` — `renderOrchConflict()` appends alert card and auto-opens orchestrator panel (task #36, Phase 3) ✓
 
-**Status:** ⚠ planned (task #36) — not yet implemented
+**Status:** ⚠ partial (task #36) — consumer implemented (Phase 3); producer wired in Phase 4 push flow
 
 ---
 
@@ -249,12 +249,12 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 ```
 
 **Producers (Server sends)**
-- `server.js` — push flow emits after max retries exceeded or permanent failure (task #36, Task 4.3, planned)
+- `server.js` — push flow emits after max retries exceeded or permanent failure (task #36, Phase 4 — pending Phase 4 push flow wiring)
 
 **Consumers (Client receives)**
-- `resources/mockup.html` — orchestrator panel renders amber decision card (task #36, Task 4.3, planned)
+- `resources/mockup.html:orchAmber case` — `renderOrchAmber()` appends red failure card and auto-opens orchestrator panel (task #36, Phase 3) ✓
 
-**Status:** ⚠ planned (task #36) — not yet implemented
+**Status:** ⚠ partial (task #36) — consumer implemented (Phase 3); producer wired in Phase 4 push flow
 
 ---
 
@@ -270,8 +270,8 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
 | `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
-| `orchConflict` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
-| `orchAmber` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
+| `orchConflict` | 1 (server, Phase 4) | 1 (client ✓) | ⚠ partial — consumer done, producer Phase 4 |
+| `orchAmber` | 1 (server, Phase 4) | 1 (client ✓) | ⚠ partial — consumer done, producer Phase 4 |
 
 ---
 
