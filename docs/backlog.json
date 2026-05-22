@@ -224,13 +224,13 @@
       "category": "feature",
       "priority": 95,
       "impact": "major",
-      "status": "planned",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         24
       ],
-      "branch": null,
+      "branch": "task/26-explicit-state-machine",
       "pr_url": null,
       "plan": "## Overview\n\nTask #24 shipped LangGraph stubs (state.py, task_graph.py, task_executor.py). Task #26 makes the state machine authoritative: formal preconditions, real HITL pause/resume, proof gate verification, retry paths, failure recovery, and a sync contract with backlog.json so both existing skills and new LangGraph nodes stay in sync.\n\n## Phases\n\n1. Extend TaskState — add proof_units, proof_results, human_gate_signal, retry_count, error_log, StatusLiteral matching backlog enum\n2. Formal Transition Table — transitions.py with preconditions and mutations for each (from, to) pair\n3. Real HITL Pause/Resume — executor actually suspends at interrupt nodes; /signal unblocks; stall timeout sets status=stalled\n4. Proof Gates and Retry Paths — finish_build_node validates proof units; codex_review retry edge; failed_smoke dead-end node\n5. Failure Recovery — @safe_node decorator snapshots state and sets status=failed on exception\n6. backlog.json Sync Contract — executor writes status back after each node; /sync-state endpoint in server.js\n\n## First Proof Unit\n\nTaskState schema extended: `python -c \"from state import TaskState; ts = {'task_number': 1, 'current_node': 'START', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; print('OK')\"` exits 0.",
       "proofUnits": [
