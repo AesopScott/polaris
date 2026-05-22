@@ -2836,7 +2836,20 @@ function discoverAllSkills(workDir = null) {
 // per Scott's rule: "All updates to backlog.json are automatically committed."
 // v1 commits on current branch; full "always to main" with stash/checkout dance is deferred.
 // ============================================================
+let backlogCache = null;
+let backlogCacheAt = 0;
+const BACKLOG_CACHE_TTL_MS = 5000;
+
+function invalidateBacklogCache() {
+  backlogCache = null;
+  backlogCacheAt = 0;
+}
+
 function loadAllBacklogs() {
+  if (backlogCache && Date.now() - backlogCacheAt < BACKLOG_CACHE_TTL_MS) {
+    return backlogCache;
+  }
+
   const cfg = readConfig();
   const result = { global: null, projects: [], archive: { global: null, projects: [] } };
   // Strip UTF-8 BOM that PowerShell adds by default — JSON.parse rejects BOM-prefixed text
@@ -2846,8 +2859,6 @@ function loadAllBacklogs() {
     const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
     try {
       result.global = readJson(globalPath);
-      const statuses = (result.global.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
-      console.log(`[backlog] loaded global: ${statuses || '(no tasks)'}`);
     } catch (e) {
       console.warn('[backlog] global backlog not readable:', e.message);
     }
@@ -2856,8 +2867,6 @@ function loadAllBacklogs() {
     const globalArchivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
     try {
       result.archive.global = readJson(globalArchivePath);
-      const count = (result.archive.global.tasks || []).length;
-      console.log(`[backlog] loaded global archive: ${count} archived tasks`);
     } catch (e) {
       // Archive file doesn't exist yet - not an error
       result.archive.global = { tasks: [] };
@@ -2869,12 +2878,10 @@ function loadAllBacklogs() {
   // file is created on first task add via addBacklogTask().
   const projects = (cfg.projects || []).filter(p => p.workDir && p.name);
   for (const proj of projects) {
-    const backlogPath = ensureProjectBacklogFile(proj, { commit: true }) || path.join(proj.workDir, 'docs', 'backlog.json');
+    const backlogPath = ensureProjectBacklogFile(proj) || path.join(proj.workDir, 'docs', 'backlog.json');
     let backlog = null;
     try {
       backlog = readJson(backlogPath);
-      const statuses = (backlog.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
-      console.log(`[backlog] loaded ${proj.name}: ${statuses || '(no tasks)'}`);
     } catch (e) {
       console.warn(`[backlog] ${proj.name} backlog not readable:`, e.message);
     }
@@ -2885,8 +2892,6 @@ function loadAllBacklogs() {
     let archive = null;
     try {
       archive = readJson(archivePath);
-      const count = (archive.tasks || []).length;
-      console.log(`[backlog] loaded ${proj.name} archive: ${count} archived tasks`);
     } catch (e) {
       // Archive file doesn't exist yet - not an error
       archive = { tasks: [] };
@@ -2894,6 +2899,14 @@ function loadAllBacklogs() {
     result.archive.projects.push({ name: proj.name, workDir: proj.workDir, archive });
   }
 
+  const globalTasks = result.global?.tasks?.length || 0;
+  const projectTasks = result.projects.reduce((sum, p) => sum + ((p.backlog?.tasks || []).length), 0);
+  const archiveTasks = (result.archive.global?.tasks?.length || 0)
+    + result.archive.projects.reduce((sum, p) => sum + ((p.archive?.tasks || []).length), 0);
+  console.log(`[backlog] loaded ${projects.length} projects, ${globalTasks + projectTasks} active tasks, ${archiveTasks} archived tasks`);
+
+  backlogCache = result;
+  backlogCacheAt = Date.now();
   return result;
 }
 
@@ -8539,6 +8552,7 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, task } = msg;
       addBacklogTask(scope, task);
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
@@ -8558,6 +8572,7 @@ async function handleMessage(ws, raw) {
           console.error('[backlog] archive failed after manual status change:', archiveErr.message);
         }
       }
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
       for (const [, session] of sessions) {
@@ -8576,6 +8591,7 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, updates } = msg;
       updateBacklogTask(scope, taskNumber, updates);
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
@@ -8588,6 +8604,7 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumbers, promotionPRNumber } = msg;
       archiveCompletedTasks(scope, taskNumbers, promotionPRNumber);
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {

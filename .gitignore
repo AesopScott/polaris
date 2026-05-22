@@ -3,6 +3,11 @@ dist/
 release/
 *.log
 .DS_Store
-.claude/
+.claude/*
+!.claude/commands/
 secrets.js
 .mcp.json
+agents/__pycache__/
+agents/*.db
+agents/**/*.db
+*.pyc
