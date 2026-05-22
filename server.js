@@ -12,133 +12,6 @@ const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 
-// ─── Video utilities (frame extraction) ────────────────────────────────────────
-const VIDEO_TEMP_DIR = path.join(APPDATA, '.claude', 'polaris', 'video-temp');
-const VIDEO_FRAME_COUNT = 6; // Extract N keyframes from video
-
-function ensureVideoTempDir() {
-  if (!fs.existsSync(VIDEO_TEMP_DIR)) fs.mkdirSync(VIDEO_TEMP_DIR, { recursive: true });
-}
-
-async function extractVideoFrames(dataUrl, videoName) {
-  // Extract frames from a video (base64 dataUrl) using ffmpeg
-  // Returns array of base64 JPEG images
-  return new Promise(async (resolve) => {
-    try {
-      ensureVideoTempDir();
-      const videoId = crypto.randomBytes(8).toString('hex');
-      const videoPath = path.join(VIDEO_TEMP_DIR, `${videoId}.mp4`);
-      const frameDir = path.join(VIDEO_TEMP_DIR, `${videoId}_frames`);
-
-      if (!fs.existsSync(frameDir)) fs.mkdirSync(frameDir, { recursive: true });
-
-      // Write video file from dataUrl
-      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-      if (!match) return resolve([]);
-
-      const videoBuffer = Buffer.from(match[2], 'base64');
-      fs.writeFileSync(videoPath, videoBuffer);
-
-      // Use ffmpeg to extract frames
-      const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf fps=1/${Math.ceil(VIDEO_FRAME_COUNT)} -vframes ${VIDEO_FRAME_COUNT} "${frameDir}/frame_%03d.jpg" -y -hide_banner -loglevel error 2>&1`;
-
-      execSync(ffmpegCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 30000 }).catch(() => {});
-
-      // Read extracted frames and convert to base64
-      const frames = [];
-      for (let i = 1; i <= VIDEO_FRAME_COUNT; i++) {
-        const framePath = path.join(frameDir, `frame_${String(i).padStart(3, '0')}.jpg`);
-        if (fs.existsSync(framePath)) {
-          try {
-            const frameBuffer = fs.readFileSync(framePath);
-            const base64 = frameBuffer.toString('base64');
-            frames.push({
-              name: `${videoName}-frame-${i}.jpg`,
-              dataUrl: `data:image/jpeg;base64,${base64}`
-            });
-          } catch (e) {}
-        }
-      }
-
-      // Cleanup
-      try { fs.rmSync(videoPath); } catch (e) {}
-      try { fs.rmSync(frameDir, { recursive: true }); } catch (e) {}
-
-      resolve(frames);
-    } catch (e) {
-      console.error('[video] frame extraction failed:', e.message);
-      resolve([]);
-    }
-  });
-}
-
-async function downloadYouTubeVideo(urlOrId) {
-  // Download a YouTube video and extract frames
-  // Returns array of base64 JPEG images
-  return new Promise(async (resolve) => {
-    try {
-      const videoId = typeof urlOrId === 'string' && urlOrId.length === 11
-        ? urlOrId
-        : (urlOrId.match(/[a-zA-Z0-9_-]{11}/) || [])[0];
-
-      if (!videoId || videoId.length !== 11) return resolve([]);
-
-      ensureVideoTempDir();
-      const tempId = crypto.randomBytes(8).toString('hex');
-      const videoPath = path.join(VIDEO_TEMP_DIR, `${tempId}.mp4`);
-      const frameDir = path.join(VIDEO_TEMP_DIR, `${tempId}_frames`);
-
-      if (!fs.existsSync(frameDir)) fs.mkdirSync(frameDir, { recursive: true });
-
-      // Use yt-dlp or youtube-dl if available; otherwise use ffmpeg's built-in youtube support
-      const dlCmd = `yt-dlp -f "best[ext=mp4]" -o "${videoPath}" "https://youtu.be/${videoId}" 2>&1`;
-
-      try {
-        execSync(dlCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 60000 });
-      } catch (e) {
-        // Fallback to ffmpeg's youtube support
-        try {
-          const ffmpegDlCmd = `ffmpeg -i "https://youtu.be/${videoId}" -c copy "${videoPath}" -y -hide_banner -loglevel error 2>&1`;
-          execSync(ffmpegDlCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 60000 });
-        } catch (e2) {
-          console.error('[youtube] download failed:', e2.message);
-          return resolve([]);
-        }
-      }
-
-      // Extract frames using same logic as local video
-      const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf fps=1/${Math.ceil(VIDEO_FRAME_COUNT)} -vframes ${VIDEO_FRAME_COUNT} "${frameDir}/frame_%03d.jpg" -y -hide_banner -loglevel error 2>&1`;
-
-      try {
-        execSync(ffmpegCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
-      } catch (e) {}
-
-      const frames = [];
-      for (let i = 1; i <= VIDEO_FRAME_COUNT; i++) {
-        const framePath = path.join(frameDir, `frame_${String(i).padStart(3, '0')}.jpg`);
-        if (fs.existsSync(framePath)) {
-          try {
-            const frameBuffer = fs.readFileSync(framePath);
-            const base64 = frameBuffer.toString('base64');
-            frames.push({
-              name: `youtube-${videoId}-frame-${i}.jpg`,
-              dataUrl: `data:image/jpeg;base64,${base64}`
-            });
-          } catch (e) {}
-        }
-      }
-
-      try { fs.rmSync(videoPath); } catch (e) {}
-      try { fs.rmSync(frameDir, { recursive: true }); } catch (e) {}
-
-      resolve(frames);
-    } catch (e) {
-      console.error('[youtube] video download failed:', e.message);
-      resolve([]);
-    }
-  });
-}
-
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const APPDATA      = process.env.APPDATA || os.homedir();
 const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', 'polaris');
@@ -181,6 +54,135 @@ const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
+
+// ─── Video utilities (frame extraction) ────────────────────────────────────────
+const VIDEO_TEMP_DIR   = path.join(POLARIS_DIR, 'video-temp');
+const VIDEO_FRAME_COUNT = 6;
+
+// Detect installed binary — checks PATH first, then winget install location.
+function detectBin(name) {
+  const candidates = [name];
+  if (process.platform === 'win32') {
+    // Common winget / scoop install locations on Windows
+    const localApp = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    candidates.push(
+      path.join(localApp, 'Microsoft', 'WinGet', 'Packages', `Gyan.FFmpeg_*`, 'ffmpeg-*-full_build', 'bin', 'ffmpeg.exe'),
+      path.join(localApp, 'Programs', 'yt-dlp', 'yt-dlp.exe'),
+      path.join('C:\\', 'ffmpeg', 'bin', name + '.exe'),
+      path.join('C:\\', 'tools', name + '.exe'),
+    );
+  }
+  for (const candidate of candidates) {
+    try {
+      spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 3000 });
+      return candidate; // found — the spawn didn't throw
+    } catch {}
+    try {
+      execSync(`${candidate} -version`, { stdio: 'ignore', timeout: 3000 });
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+const videoDeps = { ffmpeg: null, ytdlp: null, checked: false };
+
+function checkVideoDeps() {
+  videoDeps.ffmpeg = detectBin('ffmpeg');
+  videoDeps.ytdlp  = detectBin('yt-dlp');
+  videoDeps.checked = true;
+  console.log(`[video-deps] ffmpeg=${videoDeps.ffmpeg || 'NOT FOUND'} yt-dlp=${videoDeps.ytdlp || 'NOT FOUND'}`);
+}
+
+function ensureVideoTempDir() {
+  if (!fs.existsSync(VIDEO_TEMP_DIR)) fs.mkdirSync(VIDEO_TEMP_DIR, { recursive: true });
+}
+
+function extractFramesFromFile(videoPath, frameDir, ffmpegBin) {
+  const cmd = `"${ffmpegBin}" -i "${videoPath}" -vf "fps=1/${VIDEO_FRAME_COUNT}" -vframes ${VIDEO_FRAME_COUNT} "${frameDir}/frame_%03d.jpg" -y -hide_banner -loglevel error`;
+  try { execSync(cmd, { encoding: 'utf8', timeout: 60000 }); } catch (e) {
+    console.error('[video] ffmpeg extraction error:', e.message.slice(0, 300));
+  }
+  const frames = [];
+  for (let i = 1; i <= VIDEO_FRAME_COUNT; i++) {
+    const fp = path.join(frameDir, `frame_${String(i).padStart(3, '0')}.jpg`);
+    if (fs.existsSync(fp)) {
+      try { frames.push(fs.readFileSync(fp).toString('base64')); } catch {}
+    }
+  }
+  return frames;
+}
+
+async function extractVideoFrames(dataUrl, videoName) {
+  if (!videoDeps.checked) checkVideoDeps();
+  if (!videoDeps.ffmpeg) return [];
+
+  try {
+    ensureVideoTempDir();
+    const id      = crypto.randomBytes(8).toString('hex');
+    const vidPath = path.join(VIDEO_TEMP_DIR, `${id}.mp4`);
+    const frmDir  = path.join(VIDEO_TEMP_DIR, `${id}_frames`);
+    fs.mkdirSync(frmDir, { recursive: true });
+
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) return [];
+    fs.writeFileSync(vidPath, Buffer.from(match[2], 'base64'));
+
+    const b64Frames = extractFramesFromFile(vidPath, frmDir, videoDeps.ffmpeg);
+    try { fs.rmSync(vidPath); } catch {}
+    try { fs.rmSync(frmDir, { recursive: true }); } catch {}
+
+    return b64Frames.map((b64, i) => ({
+      name: `${videoName}-frame-${i + 1}.jpg`,
+      dataUrl: `data:image/jpeg;base64,${b64}`,
+    }));
+  } catch (e) {
+    console.error('[video] extractVideoFrames failed:', e.message);
+    return [];
+  }
+}
+
+async function downloadYouTubeVideo(videoId) {
+  if (!videoDeps.checked) checkVideoDeps();
+  if (!videoDeps.ytdlp && !videoDeps.ffmpeg) return [];
+
+  try {
+    ensureVideoTempDir();
+    const id      = crypto.randomBytes(8).toString('hex');
+    const vidPath = path.join(VIDEO_TEMP_DIR, `${id}.mp4`);
+    const frmDir  = path.join(VIDEO_TEMP_DIR, `${id}_frames`);
+    fs.mkdirSync(frmDir, { recursive: true });
+
+    const ytUrl = `https://youtu.be/${videoId}`;
+    let downloaded = false;
+
+    if (videoDeps.ytdlp) {
+      try {
+        execSync(`"${videoDeps.ytdlp}" -f "best[ext=mp4]/best" -o "${vidPath}" "${ytUrl}"`, { encoding: 'utf8', timeout: 120000 });
+        downloaded = fs.existsSync(vidPath);
+      } catch (e) { console.error('[youtube] yt-dlp failed:', e.message.slice(0, 300)); }
+    }
+    if (!downloaded && videoDeps.ffmpeg) {
+      try {
+        execSync(`"${videoDeps.ffmpeg}" -i "${ytUrl}" -c copy "${vidPath}" -y -hide_banner -loglevel error`, { encoding: 'utf8', timeout: 120000 });
+        downloaded = fs.existsSync(vidPath);
+      } catch (e) { console.error('[youtube] ffmpeg download failed:', e.message.slice(0, 300)); }
+    }
+    if (!downloaded) return [];
+
+    const b64Frames = extractFramesFromFile(vidPath, frmDir, videoDeps.ffmpeg || videoDeps.ytdlp);
+    try { fs.rmSync(vidPath); } catch {}
+    try { fs.rmSync(frmDir, { recursive: true }); } catch {}
+
+    return b64Frames.map((b64, i) => ({
+      name: `youtube-${videoId}-frame-${i + 1}.jpg`,
+      dataUrl: `data:image/jpeg;base64,${b64}`,
+    }));
+  } catch (e) {
+    console.error('[youtube] downloadYouTubeVideo failed:', e.message);
+    return [];
+  }
+}
 
 // User-global Claude Code skills (~/.claude/skills/). Each subdirectory is a
 // skill with a SKILL.md file. Discovered at session start, exposed to the
@@ -7033,6 +7035,53 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && req.url === '/video-deps') {
+    if (!videoDeps.checked) checkVideoDeps();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ffmpeg: !!videoDeps.ffmpeg,
+      ytdlp:  !!videoDeps.ytdlp,
+      ffmpegPath: videoDeps.ffmpeg || null,
+      ytdlpPath:  videoDeps.ytdlp  || null,
+    }));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/video-deps/install') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    // Fire-and-forget winget installs; broadcast progress over WS so the UI can show it.
+    (async () => {
+      const tools = [
+        { id: 'Gyan.FFmpeg',  label: 'ffmpeg' },
+        { id: 'yt-dlp.yt-dlp', label: 'yt-dlp' },
+      ];
+      broadcast({ type: 'video-deps-install', status: 'started', message: 'Installing ffmpeg and yt-dlp via winget…' });
+      let allOk = true;
+      for (const tool of tools) {
+        broadcast({ type: 'video-deps-install', status: 'progress', message: `Installing ${tool.label}…` });
+        try {
+          execSync(`winget install --id ${tool.id} --silent --accept-package-agreements --accept-source-agreements`, { encoding: 'utf8', timeout: 120000 });
+          broadcast({ type: 'video-deps-install', status: 'progress', message: `${tool.label} installed.` });
+        } catch (e) {
+          broadcast({ type: 'video-deps-install', status: 'progress', message: `${tool.label} install failed: ${e.message.slice(0, 200)}` });
+          allOk = false;
+        }
+      }
+      // Re-detect after install
+      videoDeps.checked = false;
+      checkVideoDeps();
+      broadcast({
+        type: 'video-deps-install',
+        status: allOk ? 'done' : 'done-partial',
+        message: allOk ? 'Video analysis ready. Restart Polaris if ffmpeg/yt-dlp are not yet in PATH.' : 'Some tools failed to install. Check terminal for details.',
+        ffmpeg: !!videoDeps.ffmpeg,
+        ytdlp:  !!videoDeps.ytdlp,
+      });
+    })();
+    res.end(JSON.stringify({ started: true }));
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/api/time') {
     // Returns the server's wall-clock time. Useful for time-sync routines —
     // the server (Node.js) has unrestricted network access and Windows keeps it NTP-synced.
@@ -10845,6 +10894,7 @@ fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
+  checkVideoDeps(); // non-blocking — results cached in videoDeps
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();

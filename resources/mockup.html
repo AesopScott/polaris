@@ -1772,6 +1772,19 @@
         </div>
       </div>
     </div>
+      <div class="panel-section">
+        <div class="context-label accent-label">VIDEO ANALYSIS</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <span id="video-deps-ffmpeg-dot" style="width:8px;height:8px;border-radius:50%;background:#374151;display:inline-block;flex-shrink:0;"></span>
+          <span style="font-size:11px;opacity:0.75;">ffmpeg</span>
+          <span id="video-deps-ytdlp-dot" style="width:8px;height:8px;border-radius:50%;background:#374151;display:inline-block;flex-shrink:0;margin-left:8px;"></span>
+          <span style="font-size:11px;opacity:0.75;">yt-dlp</span>
+          <button id="video-deps-install-btn" class="fbtn" style="margin-left:auto;padding:3px 12px;font-size:11px;" onclick="installVideoDeps()">Install</button>
+        </div>
+        <div id="video-deps-status-msg" style="font-size:10px;opacity:0.55;"></div>
+        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Required for MP4/MOV uploads and YouTube URL analysis. Installed via winget.</div>
+      </div>
+    </div>
     <div class="projects-footer">
       <button class="fbtn" style="background:#6366f1;color:#fff;font-weight:700;" onclick="syncGlobalFiles()">↺ Sync Global Files</button>
       <div style="display:flex;gap:8px;">
@@ -4266,6 +4279,17 @@
           statusEl.innerHTML = '✗ Cross-check failed: ' + escHtml(msg.message || 'unknown');
         }
         pushDebugLog(`[pre-build-check] error: ${msg.message}`);
+        break;
+      }
+
+      case 'video-deps-install': {
+        const msg2 = document.getElementById('video-deps-status-msg');
+        const btn2 = document.getElementById('video-deps-install-btn');
+        if (msg2) msg2.textContent = msg.message || '';
+        if (msg.status === 'done' || msg.status === 'done-partial') {
+          if (btn2) { btn2.disabled = false; btn2.textContent = 'Install'; }
+          updateVideoDepsUI({ ffmpeg: !!msg.ffmpeg, ytdlp: !!msg.ytdlp });
+        }
         break;
       }
 
@@ -8329,6 +8353,44 @@
   window.openSettings  = openSettings;
   window.closeSettings = closeSettings;
   window.saveSettings  = saveSettings;
+
+  // ── Video deps status ─────────────────────────────────────────────────────────
+  function updateVideoDepsUI(data) {
+    const ffDot = document.getElementById('video-deps-ffmpeg-dot');
+    const ytDot = document.getElementById('video-deps-ytdlp-dot');
+    const btn   = document.getElementById('video-deps-install-btn');
+    if (ffDot) ffDot.style.background = data.ffmpeg ? '#22c55e' : '#ef4444';
+    if (ytDot) ytDot.style.background = data.ytdlp  ? '#22c55e' : '#ef4444';
+    if (btn) btn.style.display = (data.ffmpeg && data.ytdlp) ? 'none' : '';
+  }
+
+  async function fetchVideoDeps() {
+    try {
+      const r = await fetch('/video-deps');
+      if (r.ok) updateVideoDepsUI(await r.json());
+    } catch {}
+  }
+
+  async function installVideoDeps() {
+    const btn = document.getElementById('video-deps-install-btn');
+    const msg = document.getElementById('video-deps-status-msg');
+    if (btn) { btn.disabled = true; btn.textContent = 'Installing…'; }
+    if (msg) msg.textContent = 'Starting install via winget…';
+    try {
+      await fetch('/video-deps/install', { method: 'POST' });
+    } catch (e) {
+      if (msg) msg.textContent = `Error: ${e.message}`;
+      if (btn) { btn.disabled = false; btn.textContent = 'Install'; }
+    }
+  }
+  window.installVideoDeps = installVideoDeps;
+
+  // Refresh when settings panel opens and handle WS events
+  const _origOpenSettings = window.openSettings;
+  window.openSettings = function(...args) {
+    _origOpenSettings(...args);
+    fetchVideoDeps();
+  };
 
   async function syncTimeNow() {
     const btn = document.getElementById('settings-sync-time-btn');
