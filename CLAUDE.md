@@ -2,6 +2,9 @@
 
 Scott's personal AI command center — parallel agent sessions, real API control, Electron desktop UI.
 
+## Session startup
+Run `gh repo set-default AesopScott/polaris` at the start of every session before using any `gh` commands.
+
 ## Critical rules
 1. **Propose before writing.** For file edits and writes, state the planned change and wait for explicit yes. Reads, searches, and tool calls proceed without asking.
 2. **Three zones:** Source (`C:\Users\scott\Code\Polaris`) — edit only here, requires `npm run dist` rebuild. Installed app (`C:\Users\scott\AppData\Local\Programs\Polaris\resources`) — only touch with explicit approval. Runtime data (`C:\Users\scott\AppData\Roaming\.claude\polaris\`, the user's `Downloads` folder, and `G:\*`) — only places for runtime reads/writes.
@@ -13,6 +16,7 @@ Scott's personal AI command center — parallel agent sessions, real API control
 8. **Never give up after one tool failure.** If `QueryMemory` returns an error or empty content, fall back to `Read`, `Glob`, or `Grep` against the filesystem — do not stop and ask the user. Canonical paths to try first: `C:\Users\scott\Code\Polaris\CLAUDE.md` (project rules) and `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md` through `8-Logs.md` (project knowledge base, listed in detail under "Project knowledge base" below). Bash and PowerShell tools are available — use them. Asking the user to "advise" or "provide the path" is a last resort, not a first response.
 9. **Config archives.** Every write to `%APPDATA%\.claude\polaris\config.json` auto-copies the prior content to `%APPDATA%\.claude\polaris\config-archive\config.<ISO>.json`. Append-only, capped at 200 files / 10 MB total — oldest pruned first. If a save corrupts or wipes config (the 2026-05-05 incident wiped `obsidianDir`, MCP servers, and routines from every project), restore from the most recent pre-incident archive. Do not trust `config.backup.json` alone — single-level, gets rotated past loss points.
 10. **Never run the installer without explicit approval.** Running `build-install.ps1` or any `dist` build launches an NSIS installer that can trigger a Windows reboot. Always ask Scott before running any build+install command. Building with `npm start` or `npm run pack` is safe (no installer, no reboot risk).
+11. **Project isolation.** Do not read files, inspect git history, or browse the directory structure of any other project directory without explicit approval from Scott. Cross-project access is permitted only when Scott explicitly names the other project in the request.
 
 ## Architecture
 - **Agent sessions** → Direct OpenRouter API (`POST https://openrouter.ai/api/v1/chat/completions`, OpenAI streaming format). Implemented in `runDirectAgent()` in server.js. Rolling 20-turn message window. Tool schemas executed natively in server.js: Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch, WebSearch, AskUserQuestion, TodoWrite, QueryMemory, SetProject, **SetStatus**. System prompt = BASE_SYSTEM_PROMPT + CLAUDE.md + project memory. No CLI involved.
@@ -54,8 +58,9 @@ The detailed prose history continues below the table — keep both. The table is
 
 **Task model:**
 - `docs/backlog.json` stores global + per-project tasks with fields: number, title, description, category, priority, status, plan, proofUnits, branch, pr_url, impact
-- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `staged`, `production`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `pr-reviewed`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
+- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `staged`, `production`, `failed-smoke-test`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `pr-reviewed`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
 - **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task` completion) → `build-started` (after `/start-build`) → `build-finished` (after `/finish-build`) → `cba-complete` (after `/codex-review`) → `staged` (after `/promote-stage`) → `production` (after `/promote-to-prod` ships)
+- **failed-smoke-test status (manual):** Set manually when smoke tests fail after production deployment. No skill automatically transitions to this state. When opening a session with a task in `failed-smoke-test` state, the first action must ask the user: "How did this task fail smoke testing?" (capture failure details, remediation steps, whether rollback or fix is needed).
 - **Impact field** (task #19): enum `minor|standard|major` gates planning depth. Minor = skip `/plan-task`. Major = break into subtasks.
 - **Proof units** (task #11): each task plan includes `proofUnits[]` array defining TDD proof expectations (failing → passing test per unit)
 - Registry audit: `/cross-boundary-audit` verifies all task field producers/consumers, updates registry line refs, checks proof units
