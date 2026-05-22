@@ -5831,7 +5831,7 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
-    if (focusedProject) console.error(`[focus-dbg] renderGrid with focusedProject="${focusedProject}"`);
+    if (focusedProject) pushDebugLog(`[focus-dbg] renderGrid — focusedProject="${focusedProject}" sessionCount=${sessionOrder.length}`, true);
     grid.innerHTML = '';
     const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
@@ -6555,19 +6555,19 @@
       }
       case 'toggle-focus': {
         const projectName = cardEl.dataset.project || (s?.projectName);
-        console.error(`[focus-dbg] clicked — cardEl.dataset.project="${cardEl.dataset.project}" s.projectName="${s?.projectName}" resolved="${projectName}"`);
+        pushDebugLog(`[focus-dbg] clicked — btn.data-project="${cardEl.dataset.project}" s.projectName="${s?.projectName}" resolved="${projectName}"`, true);
         if (!projectName) break;
         if (focusedProject === projectName) {
           focusedProject = null;
         } else {
           focusedProject = projectName;
         }
-        console.error(`[focus-dbg] focusedProject now="${focusedProject}"`);
+        pushDebugLog(`[focus-dbg] focusedProject now="${focusedProject}" sessions=${Object.values(sessionStore).map(x=>x.projectName+'('+x.id.slice(-4)+')').join(',')}`, true);
         fetch('/set-focused-project', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ focusedProject })
-        }).catch(e => console.error('Failed to set focused project:', e));
+        }).catch(e => pushDebugLog('[focus-dbg] fetch error: ' + e.message, true));
         renderGrid();
         break;
       }
