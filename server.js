@@ -3864,6 +3864,33 @@ function extractFirstJson(text) {
   return null;
 }
 
+// Finds the first JSON object that contains a "verdict" key, scanning all JSON
+// objects in the text plus any JSON embedded in their string values (for CLI
+// envelopes like {"output":"...{\"verdict\":...}..."} or JSONL event streams).
+function extractReviewJson(text) {
+  let remaining = text;
+  while (remaining.length) {
+    const idx = remaining.indexOf('{');
+    if (idx === -1) break;
+    remaining = remaining.slice(idx);
+    const candidate = extractFirstJson(remaining);
+    if (!candidate) break;
+    try {
+      const p = JSON.parse(candidate);
+      if ('verdict' in p) return candidate;
+      // Outer JSON has no verdict — search inside string values (CLI envelopes)
+      for (const val of Object.values(p)) {
+        if (typeof val !== 'string') continue;
+        const inner = extractFirstJson(val);
+        if (!inner) continue;
+        try { const ip = JSON.parse(inner); if ('verdict' in ip) return inner; } catch {}
+      }
+    } catch {}
+    remaining = remaining.slice(candidate.length);
+  }
+  return null;
+}
+
 // ─── Cross-Check engine (Phase 2) ────────────────────────────────────────────
 // Reviews proposed file changes via a configurable model before they hit disk.
 // Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 — at
@@ -4015,8 +4042,9 @@ Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-li
         return { verdict: 'ERROR', summary: `Codex CLI exited with code ${proc.status}: ${proc.stderr || '(no stderr)'}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
       }
       const codexOutput = proc.stdout || '';
-      // Extract JSON from Codex response (may contain additional text)
-      const jsonStr = extractFirstJson(codexOutput);
+      // Extract JSON from Codex response — uses envelope-aware extractor so CLI
+      // wrappers like {"output":"...{\"verdict\":...}"} are unwrapped correctly.
+      const jsonStr = extractReviewJson(codexOutput);
       if (!jsonStr) {
         return { verdict: 'ERROR', summary: 'Codex: no JSON in response', issues: [codexOutput.slice(0, 200) || ''], model: useModel, ms: Date.now() - startMs, usage: null };
       }
