@@ -1,241 +1,267 @@
-{
-  "tasks": [
-    {
-      "number": 4,
-      "title": "Status button not updating from text entered after session close",
-      "category": "fix",
-      "priority": 1,
-      "status": "on-hold",
-      "dependencies": [],
-      "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
-      "plan": null,
-      "branch": null,
-      "pr_url": null
-    },
-    {
-      "number": 14,
-      "title": "Move tasks between projects",
-      "description": "I need to be able to move tasks to other projects.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "minor",
-      "status": "backlog",
-      "created_at": "2026-05-21",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 24,
-      "title": "LangGraph: Spike + Foundation (Phases 1-3)",
-      "description": "Validate the Python sidecar HTTP bridge pattern, build the /lang skill entry point and agent dispatch layer, define TaskState, and build the StateGraph stubs + FastAPI executor. This is the go/no-go spike before any node implementation. Reference: C:\\Users\\scott\\Code\\Polaris\\docs\\LANGGRAPH_IMPLEMENTATION_CONTEXT.md",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "ready",
-      "created_at": "2026-05-21",
-      "completed_at": null,
-      "dependencies": [],
-      "branch": "task/24-langgraph-orchestration",
-      "pr_url": null,
-      "plan": "## Overview\n\nValidate the Python sidecar HTTP bridge pattern and build the LangGraph foundation. This is a parallel POC skill (/lang) that does not replace /ship-task.\n\n## Phases\n\n### Phase 1: Python Sidecar Spike\nBuild minimal FastAPI + LangGraph spike. Confirm server.js can start/stop the Python process and call /advance via HTTP. Validate SQLite checkpoint survival across a simulated process restart.\n\n### Phase 2: Skill Entry Point + Dispatch Layer\nCreate ~/.claude/commands/lang.md. Add /dispatch-agent HTTP POST handler in server.js for Python nodes to invoke UI-selected agent. Design and implement WebSocket pause/resume protocol (lang:pause, lang:signal, lang:state).\n\n### Phase 3: StateGraph + Executor\nDefine TaskState TypedDict. Build agents/task_graph.py (StateGraph with 9 stub nodes). Build agents/task_executor.py (FastAPI server, endpoints: POST /advance, POST /signal, GET /state, SQLite checkpoint). Wire server.js to start/stop sidecar lifecycle.\n\n## First Proof Unit\n\nPython sidecar HTTP bridge: POST localhost:4001/advance returns HTTP 200 with stub node result. Validates the core IPC bridge before any node logic is built.",
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "Python sidecar HTTP bridge responds",
-          "expectedBehavior": "Running sidecar_spike.py FastAPI server responds to a test HTTP POST /advance with 200 and a stub node result.",
-          "proofType": "smoke-command",
-          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris-task-24 && python agents/spike/sidecar_spike.py & curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 99, \\\"node\\\": \\\"stub\\\"}\"",
-          "expectedInitialFailure": "curl: (7) Failed to connect to localhost port 4001",
-          "expectedPassingEvidence": "HTTP 200 with JSON body {\"status\": \"ok\", \"node\": \"stub\"}",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 2,
-          "title": "SQLite checkpoint survives sidecar restart",
-          "expectedBehavior": "After running to a pause point, killing Python process, and restarting, GET /state returns the last checkpointed node — not START.",
-          "proofType": "manual-script",
-          "exactCommand": "1. Start sidecar. 2. POST /advance task_number:99. 3. Kill process. 4. Restart sidecar. 5. GET /state?task_number=99 — confirm last node, not START.",
-          "expectedInitialFailure": "GET /state returns empty or START node after restart",
-          "expectedPassingEvidence": "GET /state returns last completed node and full TaskState matching pre-kill state",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 3,
-          "title": "/lang skill file invokes executor",
-          "expectedBehavior": "Running /lang 24 starts the Python sidecar and receives a response from POST /advance.",
-          "proofType": "smoke-command",
-          "exactCommand": "/lang 24 then curl -s http://localhost:4001/state?task_number=24",
-          "expectedInitialFailure": "/lang not found or no response from executor",
-          "expectedPassingEvidence": "GET /state returns TaskState with task_number:24 and status:planning",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 4,
-          "title": "Agent dispatch callback works from Python node",
-          "expectedBehavior": "POST /dispatch-agent on server.js invokes the UI-selected agent and returns its text response.",
-          "proofType": "smoke-command",
-          "exactCommand": "curl -s -X POST http://localhost:40000/dispatch-agent -H \"Content-Type: application/json\" -d \"{\\\"agent\\\": \\\"max\\\", \\\"prompt\\\": \\\"Say hello.\\\", \\\"task_number\\\": 24}\"",
-          "expectedInitialFailure": "HTTP 404 — endpoint does not exist",
-          "expectedPassingEvidence": "HTTP 200 with {\"response\": \"Hello...\"}",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 5,
-          "title": "StateGraph compiles and runs to first node",
-          "expectedBehavior": "task_graph.py compiles, StateGraph instantiates, and a test invoke runs plan_node stub without errors.",
-          "proofType": "smoke-command",
-          "exactCommand": "python -c \"from agents.task_graph import build_graph; g = build_graph(); print('OK')\"",
-          "expectedInitialFailure": "ImportError or AttributeError",
-          "expectedPassingEvidence": "Prints OK without errors",
-          "waiverGuidance": "N/A"
-        }
-      ]
-    },
-    {
-      "number": 33,
-      "title": "LangGraph: Node Implementation + HITL (Phases 4-5)",
-      "description": "Build all 9 LangGraph node files (plan, start_build, build, finish_build, review, codex_review, stage_decision, promote_stage, promote_prod) and wire HITL pause/resume semantics with WebSocket signal forwarding. Depends on Task #24.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        24
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 34,
-      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
-      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        33
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 25,
-      "title": "Split server.js into bounded runtime services",
-      "description": "Polaris has strong local coherence, but server.js currently owns config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. Split the monolith into bounded modules such as agentRuntime, toolRuntime, sessionStore, contracts, mcpGateway, crossCheck, backlog, and httpRoutes. Keep the desktop-local architecture, but make the WebSocket server an adapter over typed core operations like launchSession, executeTool, transitionTask, recordCrossCheck, and loadMemory.",
-      "category": "refactor",
-      "priority": 95,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 26,
-      "title": "Make task orchestration an explicit state machine",
-      "description": "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -> build-started -> cba-complete -> build-finished -> PR-Reviewed-> staged -> production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
-      "category": "feature",
-      "priority": 95,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        24
-      ]
-    },
-    {
-      "number": 27,
-      "title": "Create a single source of truth for tool and message contracts",
-      "description": "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
-      "category": "feature",
-      "priority": 92,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 28,
-      "title": "Upgrade project memory into ranked retrieval",
-      "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 29,
-      "title": "Replace regex-heavy tool safety with capability policies",
-      "description": "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
-      "category": "security",
-      "priority": 92,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 30,
-      "title": "Expand agent evals into product-critical acceptance suites",
-      "description": "The existing agent eval harness is a strong seed, but it is too small to guard Polaris's behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
-      "category": "test",
-      "priority": 88,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 31,
-      "title": "Make trust, proof, cost, and recovery visible in the product",
-      "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 35,
-      "title": "Project Orchestration",
-      "description": "I want to build an orchestration capability when there are multiple sessions running actively for a particular project. Reference these notes and let's build this process. \n\ndocs/orchestrator-design.md",
-      "category": "feature",
-      "priority": 70,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 36,
-      "title": "Add a ship task orchestration capability.",
-      "description": "I want to have an orchestration window that monitors all open active sessions for projects and ensures that coordination and conflicts are managed. Reference this file for more information.   docs/orchestrator-design.md",
-      "category": "feature",
-      "priority": 70,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": []
-    }
-  ]
+﻿{
+    "tasks":  [
+                  {
+                      "number":  4,
+                      "title":  "Status button not updating from text entered after session close",
+                      "category":  "fix",
+                      "priority":  1,
+                      "status":  "on-hold",
+                      "dependencies":  [
+
+                                       ],
+                      "description":  "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it\u0027s submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
+                      "plan":  null,
+                      "branch":  null,
+                      "pr_url":  null
+                  },
+                  {
+                      "number":  14,
+                      "title":  "Move tasks between projects",
+                      "description":  "I need to be able to move tasks to other projects.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "impact":  "minor",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-21",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  24,
+                      "title":  "LangGraph: Spike + Foundation (Phases 1-3)",
+                      "description":  "Validate the Python sidecar HTTP bridge pattern, build the /lang skill entry point and agent dispatch layer, define TaskState, and build the StateGraph stubs + FastAPI executor. This is the go/no-go spike before any node implementation. Reference: C:\\Users\\scott\\Code\\Polaris\\docs\\LANGGRAPH_IMPLEMENTATION_CONTEXT.md",
+                      "category":  "feature",
+                      "priority":  90,
+                      "impact":  "standard",
+                      "status":  "build-finished",
+                      "created_at":  "2026-05-21",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ],
+                      "branch":  "task/24-langgraph-orchestration",
+                      "pr_url":  "https://github.com/AesopScott/polaris/pull/29",
+                      "plan":  "## Overview\n\nValidate the Python sidecar HTTP bridge pattern and build the LangGraph foundation. This is a parallel POC skill (/lang) that does not replace /ship-task.\n\n## Phases\n\n### Phase 1: Python Sidecar Spike\nBuild minimal FastAPI + LangGraph spike. Confirm server.js can start/stop the Python process and call /advance via HTTP. Validate SQLite checkpoint survival across a simulated process restart.\n\n### Phase 2: Skill Entry Point + Dispatch Layer\nCreate ~/.claude/commands/lang.md. Add /dispatch-agent HTTP POST handler in server.js for Python nodes to invoke UI-selected agent. Design and implement WebSocket pause/resume protocol (lang:pause, lang:signal, lang:state).\n\n### Phase 3: StateGraph + Executor\nDefine TaskState TypedDict. Build agents/task_graph.py (StateGraph with 9 stub nodes). Build agents/task_executor.py (FastAPI server, endpoints: POST /advance, POST /signal, GET /state, SQLite checkpoint). Wire server.js to start/stop sidecar lifecycle.\n\n## First Proof Unit\n\nPython sidecar HTTP bridge: POST localhost:4001/advance returns HTTP 200 with stub node result. Validates the core IPC bridge before any node logic is built.",
+                      "proofUnits":  [
+                                         {
+                                             "number":  1,
+                                             "title":  "Python sidecar HTTP bridge responds",
+                                             "expectedBehavior":  "Running sidecar_spike.py FastAPI server responds to a test HTTP POST /advance with 200 and a stub node result.",
+                                             "proofType":  "smoke-command",
+                                             "exactCommand":  "cd C:\\Users\\scott\\Code\\Polaris-task-24 \u0026\u0026 python agents/spike/sidecar_spike.py \u0026 curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 99, \\\"node\\\": \\\"stub\\\"}\"",
+                                             "expectedInitialFailure":  "curl: (7) Failed to connect to localhost port 4001",
+                                             "expectedPassingEvidence":  "HTTP 200 with JSON body {\"status\": \"ok\", \"node\": \"stub\"}",
+                                             "waiverGuidance":  "N/A"
+                                         },
+                                         {
+                                             "number":  2,
+                                             "title":  "SQLite checkpoint survives sidecar restart",
+                                             "expectedBehavior":  "After running to a pause point, killing Python process, and restarting, GET /state returns the last checkpointed node â€” not START.",
+                                             "proofType":  "manual-script",
+                                             "exactCommand":  "1. Start sidecar. 2. POST /advance task_number:99. 3. Kill process. 4. Restart sidecar. 5. GET /state?task_number=99 â€” confirm last node, not START.",
+                                             "expectedInitialFailure":  "GET /state returns empty or START node after restart",
+                                             "expectedPassingEvidence":  "GET /state returns last completed node and full TaskState matching pre-kill state",
+                                             "waiverGuidance":  "N/A"
+                                         },
+                                         {
+                                             "number":  3,
+                                             "title":  "/lang skill file invokes executor",
+                                             "expectedBehavior":  "Running /lang 24 starts the Python sidecar and receives a response from POST /advance.",
+                                             "proofType":  "smoke-command",
+                                             "exactCommand":  "/lang 24 then curl -s http://localhost:4001/state?task_number=24",
+                                             "expectedInitialFailure":  "/lang not found or no response from executor",
+                                             "expectedPassingEvidence":  "GET /state returns TaskState with task_number:24 and status:planning",
+                                             "waiverGuidance":  "N/A"
+                                         },
+                                         {
+                                             "number":  4,
+                                             "title":  "Agent dispatch callback works from Python node",
+                                             "expectedBehavior":  "POST /dispatch-agent on server.js invokes the UI-selected agent and returns its text response.",
+                                             "proofType":  "smoke-command",
+                                             "exactCommand":  "curl -s -X POST http://localhost:40000/dispatch-agent -H \"Content-Type: application/json\" -d \"{\\\"agent\\\": \\\"max\\\", \\\"prompt\\\": \\\"Say hello.\\\", \\\"task_number\\\": 24}\"",
+                                             "expectedInitialFailure":  "HTTP 404 â€” endpoint does not exist",
+                                             "expectedPassingEvidence":  "HTTP 200 with {\"response\": \"Hello...\"}",
+                                             "waiverGuidance":  "N/A"
+                                         },
+                                         {
+                                             "number":  5,
+                                             "title":  "StateGraph compiles and runs to first node",
+                                             "expectedBehavior":  "task_graph.py compiles, StateGraph instantiates, and a test invoke runs plan_node stub without errors.",
+                                             "proofType":  "smoke-command",
+                                             "exactCommand":  "python -c \"from agents.task_graph import build_graph; g = build_graph(); print(\u0027OK\u0027)\"",
+                                             "expectedInitialFailure":  "ImportError or AttributeError",
+                                             "expectedPassingEvidence":  "Prints OK without errors",
+                                             "waiverGuidance":  "N/A"
+                                         }
+                                     ]
+                  },
+                  {
+                      "number":  33,
+                      "title":  "LangGraph: Node Implementation + HITL (Phases 4-5)",
+                      "description":  "Build all 9 LangGraph node files (plan, start_build, build, finish_build, review, codex_review, stage_decision, promote_stage, promote_prod) and wire HITL pause/resume semantics with WebSocket signal forwarding. Depends on Task #24.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "impact":  "standard",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+                                           24
+                                       ],
+                      "branch":  null,
+                      "pr_url":  null,
+                      "plan":  null,
+                      "proofUnits":  [
+
+                                     ]
+                  },
+                  {
+                      "number":  34,
+                      "title":  "LangGraph: Integration + POC Validation (Phases 6-7)",
+                      "description":  "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "impact":  "standard",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+                                           33
+                                       ],
+                      "branch":  null,
+                      "pr_url":  null,
+                      "plan":  null,
+                      "proofUnits":  [
+
+                                     ]
+                  },
+                  {
+                      "number":  25,
+                      "title":  "Split server.js into bounded runtime services",
+                      "description":  "Polaris has strong local coherence, but server.js currently owns config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. Split the monolith into bounded modules such as agentRuntime, toolRuntime, sessionStore, contracts, mcpGateway, crossCheck, backlog, and httpRoutes. Keep the desktop-local architecture, but make the WebSocket server an adapter over typed core operations like launchSession, executeTool, transitionTask, recordCrossCheck, and loadMemory.",
+                      "category":  "refactor",
+                      "priority":  95,
+                      "impact":  "major",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  26,
+                      "title":  "Make task orchestration an explicit state machine",
+                      "description":  "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -\u003e build-started -\u003e cba-complete -\u003e build-finished -\u003e PR-Reviewed-\u003e staged -\u003e production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
+                      "category":  "feature",
+                      "priority":  95,
+                      "impact":  "major",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+                                           24
+                                       ]
+                  },
+                  {
+                      "number":  27,
+                      "title":  "Create a single source of truth for tool and message contracts",
+                      "description":  "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
+                      "category":  "feature",
+                      "priority":  92,
+                      "impact":  "major",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  28,
+                      "title":  "Upgrade project memory into ranked retrieval",
+                      "description":  "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "impact":  "major",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  29,
+                      "title":  "Replace regex-heavy tool safety with capability policies",
+                      "description":  "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
+                      "category":  "security",
+                      "priority":  92,
+                      "impact":  "major",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  30,
+                      "title":  "Expand agent evals into product-critical acceptance suites",
+                      "description":  "The existing agent eval harness is a strong seed, but it is too small to guard Polaris\u0027s behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
+                      "category":  "test",
+                      "priority":  88,
+                      "impact":  "standard",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  31,
+                      "title":  "Make trust, proof, cost, and recovery visible in the product",
+                      "description":  "Polaris\u0027s strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
+                      "category":  "feature",
+                      "priority":  90,
+                      "impact":  "major",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  35,
+                      "title":  "Project Orchestration",
+                      "description":  "I want to build an orchestration capability when there are multiple sessions running actively for a particular project. Reference these notes and let\u0027s build this process. \n\ndocs/orchestrator-design.md",
+                      "category":  "feature",
+                      "priority":  70,
+                      "impact":  "standard",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  },
+                  {
+                      "number":  36,
+                      "title":  "Add a ship task orchestration capability.",
+                      "description":  "I want to have an orchestration window that monitors all open active sessions for projects and ensures that coordination and conflicts are managed. Reference this file for more information.   docs/orchestrator-design.md",
+                      "category":  "feature",
+                      "priority":  70,
+                      "impact":  "standard",
+                      "status":  "backlog",
+                      "created_at":  "2026-05-22",
+                      "completed_at":  null,
+                      "dependencies":  [
+
+                                       ]
+                  }
+              ]
 }
