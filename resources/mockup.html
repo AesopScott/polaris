@@ -6122,6 +6122,7 @@
         <div class="footer-btns">
           <button class="fbtn" data-action="yes">Yes</button>
           <button class="fbtn" data-action="no">No</button>
+          <button class="fbtn" data-action="write">Write</button>
           ${rerunSnippet}
         </div>
         <div class="color-controls">
@@ -6692,6 +6693,12 @@
       case 'no':
         if (s) {
           wsSend({ type: 'resume', sessionId, prompt: 'No', displayPrompt: 'No', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'write':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'Write an update to Git and Obsidian and then continue', displayPrompt: 'Write', resumeId: s.resumeId, model: null });
           enterResumeMode(sessionId, null);
         }
         break;
