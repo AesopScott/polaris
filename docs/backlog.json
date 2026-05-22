@@ -144,12 +144,155 @@
                       "category":  "refactor",
                       "priority":  95,
                       "impact":  "major",
-                      "status":  "backlog",
+                      "status":  "ready",
                       "created_at":  "2026-05-22",
                       "completed_at":  null,
                       "dependencies":  [
 
-                                       ]
+                                       ],
+                      "plan":  "## Overview\n\nserver.js is a monolithic module handling config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. As features grow, the monolith becomes harder to test, debug, and maintain. This refactoring extracts 8 bounded modules with explicit dependencies and a WebSocket adapter pattern to improve stability and maintainability.\n\n## Architecture\n\nEight bounded modules will be created:\n- contracts.ts: Type definitions and schemas (single source of truth)\n- sessionStore.ts: Session state management and persistence\n- agentRuntime.ts: Agent spawning and session loops\n- toolRuntime.ts: Tool execution and schema validation\n- mcpGateway.ts: MCP bridge and tool envelope handling\n- crossCheck.ts: Cross-Check approval/rejection logic\n- backlog.ts: Task operations and transitions\n- httpRoutes.ts: HTTP endpoint routing and file serving\n\nWebSocket server becomes a thin adapter over typed core operations: launchSession, executeTool, transitionTask, recordCrossCheck, loadMemory.\n\n## Key Risks & Mitigations\n\nRisk: Mission-critical code breakage. server.js is the engine of the entire player system.\nMitigation: Incremental extraction with rollback gates. Clear commit boundaries. Smoke tests after each phase.\n\nRisk: Type boundary mismatch. Contracts module must capture all message shapes.\nMitigation: Audit server.js before extraction. Automated schema validation in WebSocket adapter.\n\nRisk: Circular dependencies. Modules may accidentally depend on each other.\nMitigation: Contracts is a leaf. Core services depend only on contracts. WebSocket is a hub.\n\n## Phases\n\n1. Foundation: Extract contracts module\n2. Core Services: Extract sessionStore, agentRuntime\n3. Core Services: Extract toolRuntime, mcpGateway\n4. Core Services: Extract crossCheck, backlog\n5. HTTP Routes: Extract httpRoutes\n6. WebSocket Adapter: Refactor websocket.ts as thin adapter\n7. Integration: Wire modules, test, verify rollback\n8. Documentation: Update Architecture.md, JSDoc, topology diagram\n\n## First Proof Unit\n\nContracts module defined and compiles. All TypeScript types for WebSocket messages, tool contracts, and task orchestration are in src/runtime/contracts.ts and compile without errors.\nProof: npx tsc --noEmit src/runtime/contracts.ts exits with code 0.",
+                      "proofUnits":  [
+                          {
+                              "number":  1,
+                              "title":  "Contracts module defined and compiles",
+                              "expectedBehavior":  "All TypeScript types and interfaces for WebSocket messages, tool contracts, and task orchestration are defined in src/runtime/contracts.ts, and the module compiles without errors.",
+                              "proofType":  "smoke-command",
+                              "exactCommand":  "cd C:\\Users\\scott\\Code\\Polaris && npx tsc --noEmit src/runtime/contracts.ts",
+                              "expectedInitialFailure":  "File not found or TS compilation errors due to incomplete type definitions.",
+                              "expectedPassingEvidence":  "Command exits with code 0 (no errors); contracts.ts is well-formed and can be imported by other modules.",
+                              "waiverGuidance":  "N/A"
+                          },
+                          {
+                              "number":  2,
+                              "title":  "sessionStore module extracted and state persists",
+                              "expectedBehavior":  "Session state management is extracted into src/runtime/sessionStore.ts. Starting a session, storing state, and reloading shows the same state (round-trip verification).",
+                              "proofType":  "manual-script",
+                              "exactCommand":  "1. Start Polaris (npm start). 2. Create a session via the UI. 3. Note the session ID and state. 4. Reload Polaris. 5. Verify the session state persists and matches what was saved.",
+                              "expectedInitialFailure":  "sessionStore module does not exist or session state is lost on reload.",
+                              "expectedPassingEvidence":  "Session state persists correctly across reload; sessionStore is imported and used by server.js orchestration.",
+                              "waiverGuidance":  "If automated testing is not available, manual verification with clear step-by-step instructions and sign-off by Scott suffices."
+                          },
+                          {
+                              "number":  3,
+                              "title":  "agentRuntime extracts agent spawning logic",
+                              "expectedBehavior":  "Agent spawning and session loops are extracted into src/runtime/agentRuntime.ts. Agents can be spawned and respond to commands normally.",
+                              "proofType":  "smoke-command",
+                              "exactCommand":  "Manual test: Start Polaris and trigger an agent spawn. In Polaris UI: open a session, click Run Agent. Verify: Agent starts, accepts input, and returns output. Then check: grep agentRuntime server.js to confirm it's imported.",
+                              "expectedInitialFailure":  "agentRuntime does not exist or agents fail to spawn after extraction.",
+                              "expectedPassingEvidence":  "Agents spawn successfully and process commands. grep agentRuntime server.js shows the module is orchestrated.",
+                              "waiverGuidance":  "Manual testing of agent spawn and response flow, verified visually in the UI, counts as passing evidence."
+                          },
+                          {
+                              "number":  4,
+                              "title":  "toolRuntime extracts tool execution",
+                              "expectedBehavior":  "Tool execution and schema validation are extracted into src/runtime/toolRuntime.ts. Tools can be executed and return results normally.",
+                              "proofType":  "smoke-command",
+                              "exactCommand":  "Manual test: Start Polaris, trigger a tool execution (e.g., Read tool). In UI: attempt to read a file (triggers Read tool). Verify: Tool executes successfully, file content is returned. Check: grep toolRuntime server.js.",
+                              "expectedInitialFailure":  "toolRuntime does not exist or tools fail to execute after extraction.",
+                              "expectedPassingEvidence":  "Tool execution succeeds (file is read), tool returns proper result. grep toolRuntime server.js shows it's imported.",
+                              "waiverGuidance":  "Manual tool execution with visible output in the UI counts as passing evidence."
+                          },
+                          {
+                              "number":  5,
+                              "title":  "mcpGateway extracts MCP bridge logic",
+                              "expectedBehavior":  "MCP server bridge and tool envelope handling are extracted into src/runtime/mcpGateway.ts. MCP-exposed tools continue to work.",
+                              "proofType":  "smoke-command",
+                              "exactCommand":  "Manual test: Start Polaris, verify MCP tool list shows expected tools. Check: MCP tool schema is validated and tools respond. Command: curl -s http://localhost:40000/mcp/tools (or equivalent test call). Verify response is a valid tool list.",
+                              "expectedInitialFailure":  "mcpGateway does not exist or MCP tools are unavailable after extraction.",
+                              "expectedPassingEvidence":  "MCP tool list is available and valid. grep mcpGateway server.js shows it's imported.",
+                              "waiverGuidance":  "Manual inspection of MCP tool availability in the Polaris UI counts as passing evidence."
+                          },
+                          {
+                              "number":  6,
+                              "title":  "crossCheck module extracts approval logic",
+                              "expectedBehavior":  "Cross-Check approval/rejection logic is extracted into src/runtime/crossCheck.ts. Cross-Check gates can still approve or reject tasks.",
+                              "proofType":  "manual-script",
+                              "exactCommand":  "1. Start Polaris. 2. Initiate a task flow that reaches a Cross-Check gate. 3. Approve the Cross-Check gate. 4. Verify: Task transitions to next status. 5. Repeat with rejection; verify task is blocked.",
+                              "expectedInitialFailure":  "crossCheck does not exist or Cross-Check gates don't function after extraction.",
+                              "expectedPassingEvidence":  "Cross-Check approval and rejection work as expected. Task state changes correctly on gate decision.",
+                              "waiverGuidance":  "Manual cross-check gate testing with state verification suffices."
+                          },
+                          {
+                              "number":  7,
+                              "title":  "backlog module extracts task operations",
+                              "expectedBehavior":  "Backlog operations and task transitions are extracted into src/runtime/backlog.ts. Tasks can transition between states and changes persist.",
+                              "proofType":  "manual-script",
+                              "exactCommand":  "1. Start Polaris. 2. Open the backlog. 3. Transition a task status (e.g., backlog -> planned). 4. Reload Polaris. 5. Verify: Task status persists at the new state.",
+                              "expectedInitialFailure":  "backlog module does not exist or task transitions don't persist after extraction.",
+                              "expectedPassingEvidence":  "Task transitions work and persist across reload. grep backlog server.js shows it's imported.",
+                              "waiverGuidance":  "Manual task status transition with persistence verification counts as passing evidence."
+                          },
+                          {
+                              "number":  8,
+                              "title":  "httpRoutes module extracts endpoint logic",
+                              "expectedBehavior":  "HTTP endpoint routing and file serving are extracted into src/runtime/httpRoutes.ts. All endpoints respond normally.",
+                              "proofType":  "smoke-command",
+                              "exactCommand":  "Test key endpoints: curl -s http://localhost:40000/api/backlog | jq . (should return backlog JSON). curl -s http://localhost:40000/sessions | jq . (should return sessions). Check: All endpoints return 200 or expected status.",
+                              "expectedInitialFailure":  "httpRoutes module does not exist or endpoints return 500 or are unavailable after extraction.",
+                              "expectedPassingEvidence":  "All key endpoints respond with 200 and valid JSON. grep httpRoutes server.js shows it's imported.",
+                              "waiverGuidance":  "N/A — HTTP endpoints are testable via curl or fetch."
+                          },
+                          {
+                              "number":  9,
+                              "title":  "WebSocket adapter delegates to core services",
+                              "expectedBehavior":  "WebSocket server is refactored to be a thin adapter. All business logic has moved to core services. WebSocket handlers call core operations and relay responses.",
+                              "proofType":  "registry-diff",
+                              "exactCommand":  "git diff main -- src/websocket.ts. Verify: WebSocket handlers are small and delegate to core services. Example: ws.on('executeTool', async (msg) => { return await toolRuntime.execute(...) }).",
+                              "expectedInitialFailure":  "websocket.ts still contains business logic or doesn't delegate to core services.",
+                              "expectedPassingEvidence":  "Diff shows websocket.ts is significantly smaller and all handlers delegate to core service modules (agentRuntime, toolRuntime, etc.).",
+                              "waiverGuidance":  "N/A — Code review of websocket.ts diff is sufficient."
+                          },
+                          {
+                              "number":  10,
+                              "title":  "All modules have JSDoc and module documentation",
+                              "expectedBehavior":  "Every extracted module (contracts.ts, sessionStore.ts, agentRuntime.ts, toolRuntime.ts, mcpGateway.ts, crossCheck.ts, backlog.ts, httpRoutes.ts) has module-level comments and JSDoc on all exported functions and types.",
+                              "proofType":  "smoke-command",
+                              "exactCommand":  "Automated check: Count JSDoc comments in each module. grep -c '^\\s*\/\/' src/runtime/*.ts (should have >3 per file). Manual check: Open each module and verify module header and JSDoc exist.",
+                              "expectedInitialFailure":  "Modules lack JSDoc or have minimal documentation.",
+                              "expectedPassingEvidence":  "Each module has a module-level comment block at the top (purpose, responsibility, dependencies) and every exported function has JSDoc.",
+                              "waiverGuidance":  "Manual review of module files by Scott and approval counts as passing evidence if automated JSDoc tools are not available."
+                          },
+                          {
+                              "number":  11,
+                              "title":  "Architecture.md documents refactored system",
+                              "expectedBehavior":  "2-Architecture.md in Obsidian is updated to document the refactored module structure, dependencies, data flow, and design decisions.",
+                              "proofType":  "registry-diff",
+                              "exactCommand":  "Read Obsidian file: G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\2-Architecture.md. Verify: Sections exist for refactored module overview, module dependency graph, data flow between modules, design decisions and rationale.",
+                              "expectedInitialFailure":  "Architecture.md is not updated or lacks module documentation.",
+                              "expectedPassingEvidence":  "Architecture.md has clear sections documenting the 8 modules, their responsibilities, dependencies, and the WebSocket adapter pattern.",
+                              "waiverGuidance":  "N/A — Obsidian doc review is straightforward."
+                          },
+                          {
+                              "number":  12,
+                              "title":  "Module topology diagram exists",
+                              "expectedBehavior":  "A module dependency topology diagram or graph is documented (either in markdown, ASCII art, or as a referenced image) showing which modules depend on which.",
+                              "proofType":  "registry-diff",
+                              "exactCommand":  "Read C:\\Users\\scott\\Code\\Polaris\\docs\\module-topology.md. Verify: Diagram shows modules and arrows indicating dependencies. Expected pattern: contracts.ts (leaf, no dependencies), sessionStore.ts -> contracts.ts, agentRuntime.ts -> contracts.ts, sessionStore.ts, etc.",
+                              "expectedInitialFailure":  "module-topology.md does not exist or is incomplete.",
+                              "expectedPassingEvidence":  "Clear topology diagram or graph showing all 8 modules and their dependency relationships.",
+                              "waiverGuidance":  "N/A — Markdown topology is straightforward to create and verify."
+                          },
+                          {
+                              "number":  13,
+                              "title":  "Rollback capability verified",
+                              "expectedBehavior":  "Git history shows that each phase can be rolled back independently. Each commit is reversible, and no data loss occurs if a commit is reverted.",
+                              "proofType":  "manual-script",
+                              "exactCommand":  "1. Review git log for clean commit boundaries at each phase end. 2. Attempt to revert a phase commit: git revert <commit-hash>. 3. Verify: No conflicts, system remains stable. 4. Re-apply the commit: git cherry-pick <commit-hash>. 5. Verify: System is back to the refactored state.",
+                              "expectedInitialFailure":  "Git commits are not clean or reverting causes conflicts/data loss.",
+                              "expectedPassingEvidence":  "Each phase commit can be reverted and re-applied without conflicts. System state is preserved before and after the revert.",
+                              "waiverGuidance":  "Manual git history review + selective revert testing counts as passing evidence."
+                          },
+                          {
+                              "number":  14,
+                              "title":  "Full end-to-end system test passes",
+                              "expectedBehavior":  "Polaris runs end-to-end without errors. Sessions can be created, agents can be spawned, tools can be executed, backlog can be manipulated, Cross-Check gates function, and WebSocket communication works normally.",
+                              "proofType":  "manual-script",
+                              "exactCommand":  "1. Start Polaris (npm start). 2. Create a new session. 3. Spawn an agent. 4. Run a tool (Read, Write, etc.). 5. Transition a task status. 6. Trigger a Cross-Check gate. 7. Verify: All flows work, no errors in console. 8. Reload Polaris. 9. Verify: Persisted state is intact.",
+                              "expectedInitialFailure":  "Refactored system has runtime errors or critical flows fail.",
+                              "expectedPassingEvidence":  "All flows execute successfully. Console has no error messages. System is stable after reload.",
+                              "waiverGuidance":  "Manual testing of all critical flows with sign-off by Scott counts as passing evidence if an automated e2e test suite doesn't exist."
+                          }
+                      ]
                   },
                   {
                       "number":  26,
