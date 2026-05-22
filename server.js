@@ -1,5 +1,33 @@
 ﻿'use strict';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODULE TOPOLOGY — server.js is the orchestrator; do NOT import from it.
+//
+// Typed boundaries live in src/runtime/ (TypeScript, compiled but not yet wired):
+//
+//   contracts      — all shared TS types (WebSocket messages, tools, sessions)
+//   sessionStore   — in-memory session Map, fork registry, persistence helpers
+//   agentRuntime   — backend resolution, session lifecycle, pending-turn queue
+//   toolRuntime    — native tool dispatch, worktree guard, MCP routing entry point
+//   mcpGateway     — MCP stdio/HTTP transport, tool discovery, result formatting
+//   crossCheck     — pre-approval and post-hoc change gates, audit JSONL trail
+//   backlog        — task CRUD, status lifecycle, archive, auto-commit
+//   httpRoutes     — HTTP route table, request dispatcher, response utilities
+//   wsAdapter      — WebSocket dispatch, broadcast helpers, 130-type handler map
+//
+// Dependency order (leaf → hub):
+//   contracts ← sessionStore ← agentRuntime
+//                            ← toolRuntime ← mcpGateway
+//                            ← crossCheck
+//                            ← backlog
+//                            ← httpRoutes
+//                            ← wsAdapter   (hub — depends on all of the above)
+//
+// Each module is initialized via its init*() function at startup (see bottom of
+// this file). Implementations (handler bodies) remain here during the incremental
+// migration; typed wrappers are injected via the init*() opts objects.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
