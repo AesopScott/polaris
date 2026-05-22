@@ -223,11 +223,116 @@
             "category": "feature",
             "priority": 95,
             "impact": "major",
-            "status": "backlog",
+            "status": "planned",
             "created_at": "2026-05-22",
             "completed_at": null,
             "dependencies": [
                 24
+            ],
+            "branch": null,
+            "pr_url": null,
+            "plan": "## Overview\n\nTask #24 shipped LangGraph stubs (state.py, task_graph.py, task_executor.py). Task #26 makes the state machine authoritative: formal preconditions, real HITL pause/resume, proof gate verification, retry paths, failure recovery, and a sync contract with backlog.json so both existing skills and new LangGraph nodes stay in sync.\n\n## Phases\n\n1. Extend TaskState — add proof_units, proof_results, human_gate_signal, retry_count, error_log, StatusLiteral matching backlog enum\n2. Formal Transition Table — transitions.py with preconditions and mutations for each (from, to) pair\n3. Real HITL Pause/Resume — executor actually suspends at interrupt nodes; /signal unblocks; stall timeout sets status=stalled\n4. Proof Gates and Retry Paths — finish_build_node validates proof units; codex_review retry edge; failed_smoke dead-end node\n5. Failure Recovery — @safe_node decorator snapshots state and sets status=failed on exception\n6. backlog.json Sync Contract — executor writes status back after each node; /sync-state endpoint in server.js\n\n## First Proof Unit\n\nTaskState schema extended: `python -c \"from state import TaskState; ts = {'task_number': 1, 'current_node': 'START', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; print('OK')\"` exits 0.",
+            "proofUnits": [
+                {
+                    "number": 1,
+                    "title": "TaskState schema extended with new fields",
+                    "expectedBehavior": "state.py defines TaskState with proof_units, proof_results, human_gate_signal, retry_count, error_log, and StatusLiteral includes stalled, cba-complete, planned.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from state import TaskState, StatusLiteral; ts = {'task_number': 1, 'current_node': 'START', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; print('OK')\"",
+                    "expectedInitialFailure": "TypeError or KeyError if fields are missing from the TypedDict definition.",
+                    "expectedPassingEvidence": "Prints OK with exit code 0.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 2,
+                    "title": "SQLite migration preserves existing data and persists new fields",
+                    "expectedBehavior": "Running task_executor.py against an existing task_state.db adds new columns without dropping rows; proof_units, retry_count, and error_log round-trip correctly.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_executor import init_db, save_state, load_state; init_db(); save_state({'task_number': 999, 'current_node': 'plan', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [{'number': 1}], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 2, 'error_log': ['err1'], 'review_evidence': {}, 'checkpoint_data': {}}); s = load_state(999); assert s['retry_count'] == 2; assert s['error_log'] == ['err1']; print('OK')\"",
+                    "expectedInitialFailure": "KeyError on retry_count or error_log, or OperationalError on missing column.",
+                    "expectedPassingEvidence": "Prints OK; no assertion errors.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 3,
+                    "title": "Transition table rejects invalid preconditions",
+                    "expectedBehavior": "validate_transition('build-started', 'build-finished', state_missing_proof) returns (False, [failures]) when required preconditions are not met.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from transitions import validate_transition; ok, failures = validate_transition('build-started', 'build-finished', {'proof_units': [{'number': 1}], 'proof_results': {}}); assert ok == False; assert len(failures) > 0; print('PASS:', failures)\"",
+                    "expectedInitialFailure": "ModuleNotFoundError — transitions.py does not exist yet.",
+                    "expectedPassingEvidence": "Prints PASS: with at least one failure reason.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 4,
+                    "title": "HITL pause genuinely suspends execution",
+                    "expectedBehavior": "POST /advance on a task reaching the build node returns with paused status and does NOT advance until POST /signal {signal: code_done} is called.",
+                    "proofType": "manual-script",
+                    "exactCommand": "1. cd C:\\Users\\scott\\Code\\Polaris\\agents && python task_executor.py\n2. curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 99}\" → Expect status contains paused\n3. curl -s http://localhost:4001/state?task_number=99 → Verify current_node=build, status=paused\n4. curl -s -X POST \"http://localhost:4001/signal?task_number=99\" -H \"Content-Type: application/json\" -d \"{\\\"signal\\\": \\\"code_done\\\"}\"\n5. curl -s http://localhost:4001/state?task_number=99 → Verify current_node=finish_build",
+                    "expectedInitialFailure": "After step 2, task immediately advances past build without waiting for signal.",
+                    "expectedPassingEvidence": "Step 3 shows task paused at build. Step 5 shows finish_build only after signal.",
+                    "waiverGuidance": "Code review: confirm advance_graph() checks human_gate_signal before advancing past interrupt nodes, and /signal calls advance_graph() after setting the signal."
+                },
+                {
+                    "number": 5,
+                    "title": "Stall timeout sets status to stalled",
+                    "expectedBehavior": "When a task is paused at a human gate and no signal arrives within STALL_TIMEOUT_SECONDS, the next /advance call sets status=stalled.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"import time, asyncio, os; os.environ['STALL_TIMEOUT_SECONDS'] = '2'; from task_executor import init_db, save_state, load_state, advance_graph; init_db(); save_state({'task_number': 88, 'current_node': 'build', 'status': 'paused_at_build', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {'paused_at_timestamp': time.time() - 10}}); asyncio.run(advance_graph(88)); s = load_state(88); assert s['status'] == 'stalled', s['status']; print('OK')\"",
+                    "expectedInitialFailure": "Task stays at paused_at_build; no stall detection logic.",
+                    "expectedPassingEvidence": "Prints OK; state has status=stalled.",
+                    "waiverGuidance": "Code review: confirm advance_graph() checks paused_at_timestamp against STALL_TIMEOUT_SECONDS."
+                },
+                {
+                    "number": 6,
+                    "title": "Proof gate blocks finish_build when proof units unverified",
+                    "expectedBehavior": "finish_build_node routes to start_build retry when proof_units is non-empty and no matching proof_results exist.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import finish_build_node; state = {'task_number': 77, 'current_node': 'finish_build', 'status': 'build-started', 'branch_name': 'task/77', 'pr_url': None, 'proof_units': [{'number': 1, 'title': 'test'}], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; result = finish_build_node(state); assert result.get('checkpoint_data', {}).get('proof_gate_failures'); print('PASS - routed to:', result['current_node'])\"",
+                    "expectedInitialFailure": "finish_build_node advances normally regardless of proof status (current stub behavior).",
+                    "expectedPassingEvidence": "Prints PASS - routed to: start_build.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 7,
+                    "title": "Failed node snapshots state with status=failed",
+                    "expectedBehavior": "@safe_node decorator sets status=failed, appends to error_log, and persists checkpoint before re-raising on uncaught exception.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_executor import init_db, save_state, load_state; from node_utils import safe_node; init_db(); @safe_node\\ndef bad_node(state): raise RuntimeError('test'); state = {'task_number': 55, 'current_node': 'bad', 'status': 'build-started', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; save_state(state); [None for _ in [1] if not __import__('builtins').setattr(__import__('builtins'), '_', None)]; exec('try:\\n bad_node(state)\\nexcept RuntimeError: pass'); s = load_state(55); assert s['status'] == 'failed'; assert len(s['error_log']) > 0; print('OK')\"",
+                    "expectedInitialFailure": "load_state(55) returns original status; no error_log entry.",
+                    "expectedPassingEvidence": "Prints OK; state has status=failed and error_log has at least one entry.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 8,
+                    "title": "backlog.json status syncs after node advance",
+                    "expectedBehavior": "After POST /advance successfully transitions a task, docs/backlog.json has the matching task status updated to match the executor state.",
+                    "proofType": "manual-script",
+                    "exactCommand": "1. Start sidecar: cd C:\\Users\\scott\\Code\\Polaris\\agents && python task_executor.py\n2. Note task #26 status: node -e \"const b=require('./docs/backlog.json'); console.log(b.tasks.find(t=>t.number===26).status)\"\n3. POST /advance: curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 26}\"\n4. Read backlog.json again — status should match\n5. Compare with GET /state: curl -s \"http://localhost:4001/state?task_number=26\"",
+                    "expectedInitialFailure": "backlog.json status unchanged after /advance.",
+                    "expectedPassingEvidence": "Steps 4 and 5 show the same status value; backlog.json reflects new state.",
+                    "waiverGuidance": "Code review: confirm advance_graph() calls backlog_sync.write_task_status() after save_state()."
+                },
+                {
+                    "number": 9,
+                    "title": "/sync-state endpoint responds and updates backlog",
+                    "expectedBehavior": "POST /sync-state with {task_number, status, current_node} updates backlog.json and returns HTTP 200.",
+                    "proofType": "smoke-command",
+                    "exactCommand": "curl -s -X POST http://localhost:40000/sync-state -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 26, \\\"status\\\": \\\"planned\\\", \\\"current_node\\\": \\\"plan\\\"}\"",
+                    "expectedInitialFailure": "HTTP 404 — endpoint does not exist.",
+                    "expectedPassingEvidence": "HTTP 200 with {\"ok\": true}; task #26 status in backlog.json is planned.",
+                    "waiverGuidance": "N/A"
+                },
+                {
+                    "number": 10,
+                    "title": "Paused task survives sidecar restart and resumes correctly",
+                    "expectedBehavior": "A task paused at a human gate survives a sidecar process restart; after restart, /signal resumes execution from the correct node.",
+                    "proofType": "manual-script",
+                    "exactCommand": "1. Start sidecar. POST /advance task_number:26 → confirm paused at build\n2. Kill sidecar (Ctrl+C)\n3. Restart sidecar: python task_executor.py\n4. GET /state?task_number=26 → confirm status still paused_at_build\n5. POST /signal?task_number=26 body {signal: code_done}\n6. GET /state?task_number=26 → confirm current_node=finish_build\n7. Check docs/backlog.json → task #26 status matches executor state",
+                    "expectedInitialFailure": "After restart, state is gone or reset to START.",
+                    "expectedPassingEvidence": "Step 4 shows paused state intact. Step 6 shows finish_build after signal. Step 7 shows backlog in sync.",
+                    "waiverGuidance": "Code review: confirm init_db() and load_state() round-trip all new fields; confirm advance_graph() checks human_gate_signal on entry."
+                }
             ]
         },
         {
