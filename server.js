@@ -7953,15 +7953,53 @@ const httpServer = http.createServer((req, res) => {
     req.on('data', c => { body += c; });
     req.on('end', () => {
       try {
-        const { sourceBranch, targetBranch, cleanup = true } = JSON.parse(body);
+        const { sourceBranch, targetBranch, repoPath: callerRepoPath, cleanup = true } = JSON.parse(body);
         if (!sourceBranch || !targetBranch) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'sourceBranch and targetBranch required' }));
           return;
         }
-        // Phase 2 will replace this stub with real git merge --no-commit --no-ff logic.
+        // Resolve repo: use caller-supplied repoPath or fall back to any active session's repoWorkDir.
+        const repoPath = callerRepoPath ||
+          [...sessions.values()].find(s => s.repoWorkDir && fs.existsSync(s.repoWorkDir))?.repoWorkDir;
+        if (!repoPath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No repo path available — pass repoPath or have an active session' }));
+          return;
+        }
+
+        const dryBranch = `dry-run-${Date.now()}`;
+        let conflictFiles = [];
+        let mergeStatus = 'clean';
+        try {
+          // Create throwaway branch off targetBranch
+          execSync(`git checkout -b "${dryBranch}" "${targetBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+          try {
+            execSync(`git merge --no-commit --no-ff "${sourceBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+            // No exception = clean merge
+          } catch {
+            // Conflicts present — parse git status for conflicted files
+            const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+            conflictFiles = statusOut
+              .split('\n')
+              .filter(l => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('DD') || l.startsWith('AU') || l.startsWith('UA'))
+              .map(l => l.slice(3).trim())
+              .filter(Boolean);
+            mergeStatus = 'conflict';
+          }
+        } finally {
+          // Always abort merge and delete throwaway branch
+          try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
+          try { execSync(`git checkout "${targetBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+          try { execSync(`git branch -D "${dryBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'clean' }));
+        res.end(JSON.stringify(
+          mergeStatus === 'clean'
+            ? { status: 'clean' }
+            : { status: 'conflict', conflictFiles }
+        ));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
