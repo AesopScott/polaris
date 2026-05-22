@@ -102,12 +102,21 @@ async function runProofs() {
     assert('PU3 request succeeded', false, e.message);
   }
 
-  // ── Proof Unit 4: POST /dry-run-merge (stub) ─────────────────────────────
-  console.log('\nPU4  POST /dry-run-merge — stub returns clean (Phase 2 will implement real merge)');
+  // ── Proof Unit 4: POST /dry-run-merge ───────────────────────────────────
+  // Requires repoPath pointing to a valid git repo with the named branches.
+  // Provide REPO_PATH env var or the test will check for a 400 (no-repo fallback).
+  console.log('\nPU4  POST /dry-run-merge — real git dry-run or graceful 400 without active sessions');
   try {
-    const r = await request('POST', '/dry-run-merge', { sourceBranch: 'task/99-test', targetBranch: 'stage' });
-    assert('HTTP 200', r.status === 200, `got ${r.status}`);
-    assert('status=clean', r.body.status === 'clean', JSON.stringify(r.body));
+    const repoPath = process.env.REPO_PATH || null;
+    const payload = { sourceBranch: 'task/99-nonexistent', targetBranch: 'main' };
+    if (repoPath) payload.repoPath = repoPath;
+    const r = await request('POST', '/dry-run-merge', payload);
+    // With no active session and no repoPath, expect 400. With repoPath or active session, expect 200.
+    const acceptable = r.status === 200 || (r.status === 400 && !repoPath);
+    assert('HTTP 200 (with session) or 400 (no session/no repoPath)', acceptable, `got ${r.status}: ${JSON.stringify(r.body)}`);
+    if (r.status === 200) {
+      assert('status is clean or conflict', r.body.status === 'clean' || r.body.status === 'conflict', JSON.stringify(r.body));
+    }
   } catch (e) {
     assert('PU4 request succeeded', false, e.message);
   }
