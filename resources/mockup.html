@@ -74,6 +74,40 @@
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
   .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; position: relative; }
+  /* Locked nav slots: add new buttons by assigning a free grid cell; do not rely on auto-placement. */
+  .nav-spacer { min-width: 0; min-height: 38px; }
+  .nav-spacer-row-1 { grid-row: 1; grid-column: 1; }
+  .nav-spacer-row-2 { grid-row: 2; grid-column: 1; }
+  #btn-course-creator { grid-row: 1; grid-column: 2; }
+  #btn-factory { grid-row: 1; grid-column: 3; }
+  #btn-build { grid-row: 1; grid-column: 4; }
+  #btn-files { grid-row: 1; grid-column: 5; }
+  #btn-restart { grid-row: 1; grid-column: 6; }
+  #btn-routines { grid-row: 1; grid-column: 7; }
+  #btn-settings { grid-row: 1; grid-column: 8; }
+  #btn-diamond { grid-row: 2; grid-column: 2; }
+  #btn-manifest { grid-row: 2; grid-column: 3; }
+  #btn-cross-check { grid-row: 2; grid-column: 4; }
+  #btn-archive { grid-row: 2; grid-column: 5; }
+  #btn-reload { grid-row: 2; grid-column: 6; }
+  #btn-projects { grid-row: 2; grid-column: 7; }
+  #btn-walkthrough { grid-row: 2; grid-column: 8; }
+  #btn-summary { grid-row: 3; grid-column: 1; }
+  #btn-skills { grid-row: 3; grid-column: 2; }
+  #btn-web { grid-row: 3; grid-column: 3; }
+  #btn-code-health { grid-row: 3; grid-column: 4; }
+  #btn-versions { grid-row: 3; grid-column: 5; }
+  #btn-reset { grid-row: 3; grid-column: 6; }
+  #btn-connect { grid-row: 3; grid-column: 7; }
+  #btn-docs { grid-row: 3; grid-column: 8; }
+  #btn-review { grid-row: 4; grid-column: 1; }
+  #btn-backlog { grid-row: 4; grid-column: 2; }
+  #btn-preview { grid-row: 4; grid-column: 3; }
+  #btn-monaco { grid-row: 4; grid-column: 4; }
+  #btn-obsidian { grid-row: 4; grid-column: 5; }
+  #btn-close { grid-row: 4; grid-column: 6; }
+  #btn-balance { grid-row: 4; grid-column: 7; }
+  #btn-support { grid-row: 4; grid-column: 8; }
   #nav-divider-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
@@ -1369,7 +1403,7 @@
       <div class="btn-grid">
         <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
-        <div class="nav-spacer"></div>
+        <div class="nav-spacer nav-spacer-row-1"></div>
         <button id="btn-course-creator" class="hbtn btn-interface" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
@@ -1378,6 +1412,7 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
+        <div class="nav-spacer nav-spacer-row-2"></div>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
@@ -6346,7 +6381,7 @@
       .filter(Boolean)
       .sort((a, b) => b.length - a.length)
       .map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const regex = names.length ? new RegExp(`/(${names.join('|')})(?=$|[\\s.,:;!?)])`, 'g') : null;
+    const regex = names.length ? new RegExp(`/(${names.join('|')})(?=$|[\\s.,:;!?)'"\`])`, 'g') : null;
     _skillLinkRegexCache = { source: knownSkills, regex };
     return regex;
   }
