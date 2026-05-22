@@ -6147,6 +6147,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
 
   proc.on('close', async code => {
     if (watchdogKilled) return;
+    if (session.aborted) return;
     if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
     if (rateInterval) clearInterval(rateInterval);
@@ -6495,6 +6496,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   });
 
   proc.on('close', async code => {
+    if (session.aborted) return;
     dlog('CLOSE', `code=${code} events=${eventCount}`);
     if (rateInterval) clearInterval(rateInterval);
     const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
