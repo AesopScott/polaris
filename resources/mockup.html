@@ -5869,7 +5869,7 @@
       const projectMismatch = focusedProject && s.projectName !== focusedProject;
       if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
       cols[idx].appendChild(card);
-      colHeights[idx] += (s.minimized || hiddenCards.has(s.id) || projectMismatch) ? 0 : (parseInt(s.height) || 260) + 12;
+      colHeights[idx] += (s.minimized || hiddenCards.has(s.id) || projectMismatch) ? 1 : (parseInt(s.height) || 260) + 12;
     });
     grid.appendChild(colsRow);
 
@@ -7079,6 +7079,7 @@
       if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       const s = sessionStore[sid];
       if (s && s.minimized) { card.style.display = 'none'; return; }
+      if (focusedProject && s && s.projectName !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
       const isWaiting = s.status === 'waiting';
