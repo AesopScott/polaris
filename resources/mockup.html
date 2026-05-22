@@ -7111,7 +7111,8 @@
         const chip = document.createElement('div');
         chip.className = 'mini-card';
         chip.style.cursor = 'pointer';
-        const color = s.isChat ? '#a78bfa' : (window.getProjectColorByName ? window.getProjectColorByName(s.projectName) || '#60a5fa' : '#60a5fa');
+        const projectColor = s.projectName && window.getProjectColorByName ? window.getProjectColorByName(s.projectName) : null;
+        const color = projectColor || (s.isChat ? '#a78bfa' : '#60a5fa');
         chip.style.background = color;
         chip.style.color = '#000';
         chip.title = `Click to restore: ${s.name}`;
