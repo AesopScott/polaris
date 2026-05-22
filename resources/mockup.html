@@ -6528,19 +6528,24 @@
     if (!YN_RE.test(text)) return;
     const row = document.createElement('div');
     row.className = 'yn-btn-row';
-    const send = answer => {
+    const send = (displayPrompt, actualPrompt) => {
       row.remove();
       const s = sessionStore[sessionId];
       if (!s) return;
-      appendLineToCard(sessionId, { text: answer, role: 'user' });
-      if (s.lines) s.lines.push({ text: answer, role: 'user' });
-      wsSend({ type: 'resume', sessionId, prompt: answer, displayPrompt: answer, resumeId: s.resumeId, model: null });
+      appendLineToCard(sessionId, { text: displayPrompt, role: 'user' });
+      if (s.lines) s.lines.push({ text: displayPrompt, role: 'user' });
+      wsSend({ type: 'resume', sessionId, prompt: actualPrompt, displayPrompt: displayPrompt, resumeId: s.resumeId, model: null });
     };
-    ['Yes', 'No'].forEach(label => {
+    const buttonConfig = [
+      { label: 'Yes', prompt: 'Yes' },
+      { label: 'No', prompt: 'No' },
+      { label: 'Write', prompt: 'Write an update to Git and Obsidian and then continue' }
+    ];
+    buttonConfig.forEach(config => {
       const btn = document.createElement('button');
       btn.className = 'yn-btn';
-      btn.textContent = label;
-      btn.onclick = () => send(label);
+      btn.textContent = config.label;
+      btn.onclick = () => send(config.label, config.prompt);
       row.appendChild(btn);
     });
     lastAssistant.insertAdjacentElement('afterend', row);
