@@ -1369,7 +1369,6 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
-        <div class="nav-spacer"></div>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
@@ -4153,7 +4152,7 @@
   // ── Connection ────────────────────────────────────────────────────────────────
   function wsConnect() {
     ws = new WebSocket('ws://localhost:40000');
-    ws.onopen  = () => { setConnIndicator(true);  pushDebugLog('[ws] connected'); };
+    ws.onopen  = () => { setConnIndicator(true);  pushDebugLog('[ws] connected'); wsSend({ type: 'list-skills' }); };
     ws.onclose = () => { setConnIndicator(false); pushDebugLog('[ws] disconnected — reconnecting in 2s', true); setTimeout(wsConnect, 2000); };
     ws.onerror = () => { setConnIndicator(false); pushDebugLog('[ws] connection error', true); };
     ws.onmessage = e => { try { onWsMessage(JSON.parse(e.data)); } catch {} };
@@ -4802,6 +4801,9 @@
         _skillsTree = msg.tree || { global: {}, project: {} };
         _skillsCategoryOrder = msg.categoryOrder || [];
         _skillsTotal = msg.total || 0;
+        if (Array.isArray(msg.flat)) {
+          window._knownSkillNames = new Set(msg.flat.map(s => s.name));
+        }
         if (typeof renderSkillsTree === 'function') renderSkillsTree(_skillsTree, _skillsCategoryOrder, _skillsTotal);
         break;
 
@@ -6323,16 +6325,19 @@
 
   function convertSkillReferencesToLinks(text) {
     const div = document.createElement('div');
-    const skillPattern = /\/([a-z-]+)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
+    const knownSkills = window._knownSkillNames;
+    const skillPattern = /\/([a-z][a-z0-9-]*)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
     let lastIndex = 0;
     let match;
 
     while ((match = skillPattern.exec(text)) !== null) {
+      const skillName = match[1];
+      if (knownSkills && !knownSkills.has(skillName)) continue;
+
       if (match.index > lastIndex) {
         div.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
       }
 
-      const skillName = match[1];
       const args = match[2] ? match[2].trim() : '';
       const fullSkill = match[0].trim();
 
