@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, exec, execFile, execSync } = require('child_process');
+const { spawn, exec, execFile, execSync, spawnSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -54,6 +54,135 @@ const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
+
+// ─── Video utilities (frame extraction) ────────────────────────────────────────
+const VIDEO_TEMP_DIR   = path.join(POLARIS_DIR, 'video-temp');
+const VIDEO_FRAME_COUNT = 6;
+
+// Detect installed binary — checks PATH first, then winget install location.
+function detectBin(name) {
+  const candidates = [name];
+  if (process.platform === 'win32') {
+    // Common winget / scoop install locations on Windows
+    const localApp = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    candidates.push(
+      path.join(localApp, 'Microsoft', 'WinGet', 'Packages', `Gyan.FFmpeg_*`, 'ffmpeg-*-full_build', 'bin', 'ffmpeg.exe'),
+      path.join(localApp, 'Programs', 'yt-dlp', 'yt-dlp.exe'),
+      path.join('C:\\', 'ffmpeg', 'bin', name + '.exe'),
+      path.join('C:\\', 'tools', name + '.exe'),
+    );
+  }
+  for (const candidate of candidates) {
+    try {
+      spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 3000 });
+      return candidate; // found — the spawn didn't throw
+    } catch {}
+    try {
+      execSync(`${candidate} -version`, { stdio: 'ignore', timeout: 3000 });
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+const videoDeps = { ffmpeg: null, ytdlp: null, checked: false };
+
+function checkVideoDeps() {
+  videoDeps.ffmpeg = detectBin('ffmpeg');
+  videoDeps.ytdlp  = detectBin('yt-dlp');
+  videoDeps.checked = true;
+  console.log(`[video-deps] ffmpeg=${videoDeps.ffmpeg || 'NOT FOUND'} yt-dlp=${videoDeps.ytdlp || 'NOT FOUND'}`);
+}
+
+function ensureVideoTempDir() {
+  if (!fs.existsSync(VIDEO_TEMP_DIR)) fs.mkdirSync(VIDEO_TEMP_DIR, { recursive: true });
+}
+
+function extractFramesFromFile(videoPath, frameDir, ffmpegBin) {
+  const cmd = `"${ffmpegBin}" -i "${videoPath}" -vf "fps=1/${VIDEO_FRAME_COUNT}" -vframes ${VIDEO_FRAME_COUNT} "${frameDir}/frame_%03d.jpg" -y -hide_banner -loglevel error`;
+  try { execSync(cmd, { encoding: 'utf8', timeout: 60000 }); } catch (e) {
+    console.error('[video] ffmpeg extraction error:', e.message.slice(0, 300));
+  }
+  const frames = [];
+  for (let i = 1; i <= VIDEO_FRAME_COUNT; i++) {
+    const fp = path.join(frameDir, `frame_${String(i).padStart(3, '0')}.jpg`);
+    if (fs.existsSync(fp)) {
+      try { frames.push(fs.readFileSync(fp).toString('base64')); } catch {}
+    }
+  }
+  return frames;
+}
+
+async function extractVideoFrames(dataUrl, videoName) {
+  if (!videoDeps.checked) checkVideoDeps();
+  if (!videoDeps.ffmpeg) return [];
+
+  try {
+    ensureVideoTempDir();
+    const id      = crypto.randomBytes(8).toString('hex');
+    const vidPath = path.join(VIDEO_TEMP_DIR, `${id}.mp4`);
+    const frmDir  = path.join(VIDEO_TEMP_DIR, `${id}_frames`);
+    fs.mkdirSync(frmDir, { recursive: true });
+
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!match) return [];
+    fs.writeFileSync(vidPath, Buffer.from(match[2], 'base64'));
+
+    const b64Frames = extractFramesFromFile(vidPath, frmDir, videoDeps.ffmpeg);
+    try { fs.rmSync(vidPath); } catch {}
+    try { fs.rmSync(frmDir, { recursive: true }); } catch {}
+
+    return b64Frames.map((b64, i) => ({
+      name: `${videoName}-frame-${i + 1}.jpg`,
+      dataUrl: `data:image/jpeg;base64,${b64}`,
+    }));
+  } catch (e) {
+    console.error('[video] extractVideoFrames failed:', e.message);
+    return [];
+  }
+}
+
+async function downloadYouTubeVideo(videoId) {
+  if (!videoDeps.checked) checkVideoDeps();
+  if (!videoDeps.ytdlp && !videoDeps.ffmpeg) return [];
+
+  try {
+    ensureVideoTempDir();
+    const id      = crypto.randomBytes(8).toString('hex');
+    const vidPath = path.join(VIDEO_TEMP_DIR, `${id}.mp4`);
+    const frmDir  = path.join(VIDEO_TEMP_DIR, `${id}_frames`);
+    fs.mkdirSync(frmDir, { recursive: true });
+
+    const ytUrl = `https://youtu.be/${videoId}`;
+    let downloaded = false;
+
+    if (videoDeps.ytdlp) {
+      try {
+        execSync(`"${videoDeps.ytdlp}" -f "best[ext=mp4]/best" -o "${vidPath}" "${ytUrl}"`, { encoding: 'utf8', timeout: 120000 });
+        downloaded = fs.existsSync(vidPath);
+      } catch (e) { console.error('[youtube] yt-dlp failed:', e.message.slice(0, 300)); }
+    }
+    if (!downloaded && videoDeps.ffmpeg) {
+      try {
+        execSync(`"${videoDeps.ffmpeg}" -i "${ytUrl}" -c copy "${vidPath}" -y -hide_banner -loglevel error`, { encoding: 'utf8', timeout: 120000 });
+        downloaded = fs.existsSync(vidPath);
+      } catch (e) { console.error('[youtube] ffmpeg download failed:', e.message.slice(0, 300)); }
+    }
+    if (!downloaded) return [];
+
+    const b64Frames = extractFramesFromFile(vidPath, frmDir, videoDeps.ffmpeg || videoDeps.ytdlp);
+    try { fs.rmSync(vidPath); } catch {}
+    try { fs.rmSync(frmDir, { recursive: true }); } catch {}
+
+    return b64Frames.map((b64, i) => ({
+      name: `youtube-${videoId}-frame-${i + 1}.jpg`,
+      dataUrl: `data:image/jpeg;base64,${b64}`,
+    }));
+  } catch (e) {
+    console.error('[youtube] downloadYouTubeVideo failed:', e.message);
+    return [];
+  }
+}
 
 // User-global Claude Code skills (~/.claude/skills/). Each subdirectory is a
 // skill with a SKILL.md file. Discovered at session start, exposed to the
@@ -645,18 +774,64 @@ function saveSessions() {
   } catch {}
 }
 
+// Maps backlog task status → the last skill that produced it.
+// Covers both the older Aesop scheme and the newer Polaris ship-task scheme.
+const BACKLOG_STATUS_TO_LAST_SKILL = {
+  'planned':       'plan-task',
+  'ready':         'plan-task',
+  'build-started': 'start-build',
+  'in-progress':   'start-build',
+  'build-finished':'finish-build',
+  'in-review':     'finish-build',
+  'review-blocked':'codex-review',
+  'pr-reviewed':   'review-pr',
+  'staged':        'promote-stage',
+  'production':    'promote-to-prod',
+  'complete':      'mark-tasks-complete',
+  'done':          'promote-stage',
+};
+
+function inferTaskState(session) {
+  const match = (session.name || '').match(/^Task #(\d+):/);
+  if (!match) return null;
+  const taskNumber = parseInt(match[1], 10);
+  const workDir = session.workDir;
+  if (!workDir) return null;
+  const backlogPath = path.join(workDir, 'docs', 'backlog.json');
+  try {
+    const backlog = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
+    const tasks = Array.isArray(backlog) ? backlog : (backlog.tasks || []);
+    const task = tasks.find(t => t.number === taskNumber);
+    if (!task || !task.status) return null;
+    return {
+      taskNumber,
+      taskState: task.status,
+      lastSkill: BACKLOG_STATUS_TO_LAST_SKILL[task.status] || null,
+    };
+  } catch { return null; }
+}
+
 function loadPersistedSessions() {
   try {
     const arr = JSON.parse(fs.readFileSync(SESSIONS_PERSIST_PATH, 'utf8'));
     if (!Array.isArray(arr)) return;
     for (const s of arr) {
       if (!s.id) continue;
-      sessions.set(s.id, {
+      const loaded = {
         ...s,
         status: s.status === 'running' ? 'done' : s.status,
         proc: null, watcher: null, timeout: null,
         lines: s.lines || [],
-      });
+      };
+      if (!loaded.taskNumber) {
+        const inferred = inferTaskState(loaded);
+        if (inferred) {
+          loaded.taskNumber = inferred.taskNumber;
+          loaded.taskState  = loaded.taskState  || inferred.taskState;
+          loaded.lastSkill  = loaded.lastSkill  || inferred.lastSkill;
+        }
+      }
+      sessions.set(s.id, loaded);
     }
     // Rebuild forkMap from persisted sessions
     for (const s of arr) {
@@ -1509,10 +1684,16 @@ ${transcript}`;
 }
 
 // Analyze a session transcript and return a structured knowledge preview (no writes).
-async function analyzeSessionForKnowledgePreview(content, projectName) {
+async function analyzeSessionForKnowledgePreview(content, projectName, options = {}) {
   const config = readConfig();
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath || !config.deepSeekApiKey) return null;
+
+  const isDeep = options.depth === 'deep';
+  const contextTailChars = isDeep ? 5000 : 2000;
+  const backlogChars     = isDeep ? 4000 : 1500;
+  const lastNoteChars    = isDeep ? 1800 : 800;
+  const transcriptChars  = isDeep ? 20000 : 8000;
 
   const proj = (config.projects || []).find(p => p.name === projectName);
   const obsDir = proj?.obsidianDir
@@ -1523,7 +1704,7 @@ async function analyzeSessionForKnowledgePreview(content, projectName) {
   const lastNoteIn = dir => {
     try {
       const files = fs.readdirSync(dir).filter(f => /^\d{4}\.md$/.test(f)).sort();
-      return files.length ? safeRead(path.join(dir, files[files.length - 1])).slice(0, 800) : '';
+      return files.length ? safeRead(path.join(dir, files[files.length - 1])).slice(0, lastNoteChars) : '';
     } catch { return ''; }
   };
   const nextNumIn = dir => {
@@ -1534,9 +1715,9 @@ async function analyzeSessionForKnowledgePreview(content, projectName) {
     } catch { return '0001'; }
   };
 
-  const arch      = obsDir ? safeRead(path.join(obsDir, '2-Architecture.md')).slice(-2000) : '';
-  const buildPlan = obsDir ? safeRead(path.join(obsDir, '3-Build-Plan.md')).slice(-2000) : '';
-  const projBacklog = proj?.workDir ? safeRead(path.join(proj.workDir, 'docs', 'backlog.json')).slice(0, 1500) : '';
+  const arch      = obsDir ? safeRead(path.join(obsDir, '2-Architecture.md')).slice(-contextTailChars) : '';
+  const buildPlan = obsDir ? safeRead(path.join(obsDir, '3-Build-Plan.md')).slice(-contextTailChars) : '';
+  const projBacklog = proj?.workDir ? safeRead(path.join(proj.workDir, 'docs', 'backlog.json')).slice(0, backlogChars) : '';
 
   const decisionsDir = path.join(vaultPath, 'Decisions');
   const patternsDir  = path.join(vaultPath, 'Patterns');
@@ -1544,11 +1725,14 @@ async function analyzeSessionForKnowledgePreview(content, projectName) {
   const backlogDir   = path.join(vaultPath, 'Backlog');
 
   const today = new Date().toISOString().slice(0, 10);
-  const transcript = content.length > 8000 ? content.slice(0, 8000) + '\n...[truncated]' : content;
+  const transcript = content.length > transcriptChars ? content.slice(0, transcriptChars) + '\n...[truncated]' : content;
+  const depthInstructions = isDeep
+    ? `\n\nThis is a second-pass deep review. The user believes the first analysis missed something. Treat that as a serious signal: audit for omissions, quiet decisions, deferred work, implicit project knowledge, risks, workflow lessons, and reusable patterns that a quick summary would skip. Compare the transcript against the existing notes and backlog context before deciding each field. Prefer specific, standalone entries over generic summaries. If the first pass was already complete, return null fields rather than inventing content.`
+    : '';
 
   const prompt = `You are a knowledge extractor for a software project called "${projectName || 'Project'}". Today is ${today}.
 
-Analyze this session transcript and determine what knowledge should be updated or created. Return ONLY valid JSON with these exact keys (set a key to null if nothing relevant):
+Analyze this session transcript and determine what knowledge should be updated or created.${depthInstructions} Return ONLY valid JSON with these exact keys (set a key to null if nothing relevant):
 
 {
   "architecture": "new architectural decisions or patterns to append to the Architecture doc, or null",
@@ -1586,7 +1770,12 @@ ${transcript}`;
     const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.deepSeekApiKey}` },
-      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: 1500 })
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: isDeep ? 0.1 : 0.2,
+        max_tokens: isDeep ? 3000 : 1500
+      })
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data?.error?.message || `HTTP ${resp.status}`);
@@ -2647,17 +2836,29 @@ function discoverAllSkills(workDir = null) {
 // per Scott's rule: "All updates to backlog.json are automatically committed."
 // v1 commits on current branch; full "always to main" with stash/checkout dance is deferred.
 // ============================================================
+let backlogCache = null;
+let backlogCacheAt = 0;
+const BACKLOG_CACHE_TTL_MS = 5000;
+
+function invalidateBacklogCache() {
+  backlogCache = null;
+  backlogCacheAt = 0;
+}
+
 function loadAllBacklogs() {
+  if (backlogCache && Date.now() - backlogCacheAt < BACKLOG_CACHE_TTL_MS) {
+    return backlogCache;
+  }
+
   const cfg = readConfig();
   const result = { global: null, projects: [], archive: { global: null, projects: [] } };
+  // Strip UTF-8 BOM that PowerShell adds by default — JSON.parse rejects BOM-prefixed text
+  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, ''));
 
   if (cfg.obsidianVaultPath) {
     const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
     try {
-      const text = fs.readFileSync(globalPath, 'utf8');
-      result.global = JSON.parse(text);
-      const statuses = (result.global.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
-      console.log(`[backlog] loaded global: ${statuses || '(no tasks)'}`);
+      result.global = readJson(globalPath);
     } catch (e) {
       console.warn('[backlog] global backlog not readable:', e.message);
     }
@@ -2665,10 +2866,7 @@ function loadAllBacklogs() {
     // Load global archive
     const globalArchivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
     try {
-      const text = fs.readFileSync(globalArchivePath, 'utf8');
-      result.archive.global = JSON.parse(text);
-      const count = (result.archive.global.tasks || []).length;
-      console.log(`[backlog] loaded global archive: ${count} archived tasks`);
+      result.archive.global = readJson(globalArchivePath);
     } catch (e) {
       // Archive file doesn't exist yet - not an error
       result.archive.global = { tasks: [] };
@@ -2680,13 +2878,10 @@ function loadAllBacklogs() {
   // file is created on first task add via addBacklogTask().
   const projects = (cfg.projects || []).filter(p => p.workDir && p.name);
   for (const proj of projects) {
-    const backlogPath = ensureProjectBacklogFile(proj, { commit: true }) || path.join(proj.workDir, 'docs', 'backlog.json');
+    const backlogPath = ensureProjectBacklogFile(proj) || path.join(proj.workDir, 'docs', 'backlog.json');
     let backlog = null;
     try {
-      const text = fs.readFileSync(backlogPath, 'utf8');
-      backlog = JSON.parse(text);
-      const statuses = (backlog.tasks || []).map(t => `#${t.number}=${t.status}`).join(', ');
-      console.log(`[backlog] loaded ${proj.name}: ${statuses || '(no tasks)'}`);
+      backlog = readJson(backlogPath);
     } catch (e) {
       console.warn(`[backlog] ${proj.name} backlog not readable:`, e.message);
     }
@@ -2696,10 +2891,7 @@ function loadAllBacklogs() {
     const archivePath = path.join(proj.workDir, 'docs', 'backlog-archive.json');
     let archive = null;
     try {
-      const text = fs.readFileSync(archivePath, 'utf8');
-      archive = JSON.parse(text);
-      const count = (archive.tasks || []).length;
-      console.log(`[backlog] loaded ${proj.name} archive: ${count} archived tasks`);
+      archive = readJson(archivePath);
     } catch (e) {
       // Archive file doesn't exist yet - not an error
       archive = { tasks: [] };
@@ -2707,6 +2899,14 @@ function loadAllBacklogs() {
     result.archive.projects.push({ name: proj.name, workDir: proj.workDir, archive });
   }
 
+  const globalTasks = result.global?.tasks?.length || 0;
+  const projectTasks = result.projects.reduce((sum, p) => sum + ((p.backlog?.tasks || []).length), 0);
+  const archiveTasks = (result.archive.global?.tasks?.length || 0)
+    + result.archive.projects.reduce((sum, p) => sum + ((p.archive?.tasks || []).length), 0);
+  console.log(`[backlog] loaded ${projects.length} projects, ${globalTasks + projectTasks} active tasks, ${archiveTasks} archived tasks`);
+
+  backlogCache = result;
+  backlogCacheAt = Date.now();
   return result;
 }
 
@@ -2715,9 +2915,13 @@ function _validImpact(v) {
   return ['minor', 'standard', 'major'].includes(s) ? s : 'standard';
 }
 
-function _nextBacklogTaskNumber(tasks) {
-  if (!Array.isArray(tasks) || tasks.length === 0) return 1;
-  return tasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
+function _nextBacklogTaskNumber(currentTasks, archivedTasks) {
+  const allTasks = [
+    ...(Array.isArray(currentTasks) ? currentTasks : []),
+    ...(Array.isArray(archivedTasks) ? archivedTasks : [])
+  ];
+  if (allTasks.length === 0) return 1;
+  return allTasks.reduce((max, t) => Math.max(max, t.number || 0), 0) + 1;
 }
 
 function addBacklogTask(scope, taskInput) {
@@ -2741,6 +2945,7 @@ function addBacklogTask(scope, taskInput) {
   if (scope === 'global') {
     if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured in Polaris settings.');
     const filePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    const archivePath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
     let data;
     try {
       data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -2748,7 +2953,14 @@ function addBacklogTask(scope, taskInput) {
       throw new Error('Could not read global backlog at ' + filePath + ': ' + e.message);
     }
     if (!Array.isArray(data.tasks)) data.tasks = [];
-    baseTask.number = _nextBacklogTaskNumber(data.tasks);
+    let archivedTasks = [];
+    try {
+      const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+      if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
+    } catch (e) {
+      // Archive file doesn't exist yet or can't be read — that's fine
+    }
+    baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
     baseTask.scope = 'global';
     data.tasks.push(baseTask);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
@@ -2761,6 +2973,7 @@ function addBacklogTask(scope, taskInput) {
   if (!project) throw new Error('Project not found in config: ' + scope);
   if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir configured.');
   const filePath = path.join(project.workDir, 'docs', 'backlog.json');
+  const archivePath = path.join(project.workDir, 'docs', 'backlog-archive.json');
   let data;
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -2774,7 +2987,14 @@ function addBacklogTask(scope, taskInput) {
     }
   }
   if (!Array.isArray(data.tasks)) data.tasks = [];
-  baseTask.number = _nextBacklogTaskNumber(data.tasks);
+  let archivedTasks = [];
+  try {
+    const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+    if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
+  } catch (e) {
+    // Archive file doesn't exist yet or can't be read — that's fine
+  }
+  baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
   data.tasks.push(baseTask);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
 
@@ -2829,7 +3049,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
     const remainingTasks = [];
 
     for (const task of (backlog.tasks || [])) {
-      if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
+      if (taskNums.includes(task.number) && (task.status === 'production' || task.status === 'cancelled')) {
         const archiveEntry = { ...task, project_source: 'global', promoted_via_pr: promotionPRNumber };
         tasksToArchive.push(archiveEntry);
       } else {
@@ -2867,7 +3087,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
   const remainingTasks = [];
 
   for (const task of (backlog.tasks || [])) {
-    if (taskNums.includes(task.number) && task.status === 'complete' || task.status === 'production') {
+    if (taskNums.includes(task.number) && (task.status === 'production' || task.status === 'cancelled')) {
       const archiveEntry = { ...task, project_source: project.name, promoted_via_pr: promotionPRNumber };
       tasksToArchive.push(archiveEntry);
     } else {
@@ -2887,7 +3107,9 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
 
 const VALID_BACKLOG_STATUSES = new Set([
   // Skill-written statuses (plan-task → start-build → finish-build → codex-review → promote-stage → promote-to-prod)
-  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'staged', 'production',
+  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'review-blocked', 'staged', 'production',
+  // Manual post-production status: set when smoke tests fail after production deployment
+  'failed-smoke-test',
   // Special states
   'blocked', 'on-hold', 'cancelled',
   // Legacy/deprecated statuses (still allowed for backward compatibility)
@@ -3773,7 +3995,55 @@ Review for:
 If the diff is non-empty and the changes look intentional and consistent with the task, verdict is PASS.
 Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
-  const result = await callOpenRouterOnce(useModel, apiKey, [{ role: 'user', content: reviewPrompt }], 800);
+  // Use Codex CLI if model is set to "codex"
+  let result;
+  if (useModel === 'codex') {
+    const cfg = readConfig();
+    const codexBin = cfg.codexBinaryPath || 'codex';
+    try {
+      const proc = spawnSync(codexBin, ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', '-'], {
+        input: reviewPrompt,
+        encoding: 'utf8',
+        timeout: 60000,
+        maxBuffer: 10 * 1024 * 1024,
+        shell: true,
+      });
+      if (proc.error) {
+        return { verdict: 'ERROR', summary: `Codex CLI failed: ${proc.error.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+      if (proc.status !== 0) {
+        return { verdict: 'ERROR', summary: `Codex CLI exited with code ${proc.status}: ${proc.stderr || '(no stderr)'}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+      const codexOutput = proc.stdout || '';
+      // Extract JSON from Codex response (may contain additional text)
+      const jsonStr = extractFirstJson(codexOutput);
+      if (!jsonStr) {
+        return { verdict: 'ERROR', summary: 'Codex: no JSON in response', issues: [codexOutput.slice(0, 200) || ''], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const rawVerdict = String(parsed.verdict || '').toUpperCase();
+        const verdict = (rawVerdict === 'PASS' || rawVerdict === 'FAIL' || rawVerdict === 'ERROR')
+          ? rawVerdict
+          : 'ERROR';
+        return {
+          verdict,
+          summary: parsed.summary || (verdict === 'ERROR' ? `Unrecognized verdict: ${parsed.verdict}` : '(no summary)'),
+          issues:  Array.isArray(parsed.issues) ? parsed.issues : [],
+          model:   useModel,
+          ms:      Date.now() - startMs,
+          usage:   null,
+        };
+      } catch (e) {
+        return { verdict: 'ERROR', summary: `JSON parse failed: ${e.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+      }
+    } catch (e) {
+      return { verdict: 'ERROR', summary: `Codex CLI error: ${e.message}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
+    }
+  }
+
+  // Default: use OpenRouter API
+  result = await callOpenRouterOnce(useModel, apiKey, [{ role: 'user', content: reviewPrompt }], 800);
   const ms = Date.now() - startMs;
 
   if (result.error) {
@@ -4671,7 +4941,64 @@ async function callMcpTool(serverName, toolName, args) {
   return formatMcpResult(result);
 }
 
+// ── Per-session git worktrees ─────────────────────────────────────────────────
+// Each agent/chat session with a git project gets an isolated linked worktree
+// so concurrent sessions never share branch state. The session's workDir is
+// replaced with the worktree path; repoWorkDir retains the original project root.
+
+const WORKTREES_DIR = path.join(os.tmpdir(), 'polaris-wt');
+
+function createSessionWorktree(sessionId, repoWorkDir) {
+  if (!repoWorkDir || !fs.existsSync(repoWorkDir)) return null;
+  try { execSync('git rev-parse --git-dir', { cwd: repoWorkDir, stdio: 'ignore' }); }
+  catch { return null; }
+  const wtDir = path.join(WORKTREES_DIR, sessionId);
+  try {
+    fs.mkdirSync(WORKTREES_DIR, { recursive: true });
+    execSync(`git worktree add --detach "${wtDir}"`, { cwd: repoWorkDir, stdio: ['ignore', 'pipe', 'pipe'] });
+    return wtDir;
+  } catch (e) {
+    console.error(`[worktree] create failed for ${sessionId}:`, e.stderr?.toString().trim() || e.message);
+    return null;
+  }
+}
+
+function verifyWorktreeOwnership(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s?.worktreePath) return null;
+  const wtPath = s.worktreePath;
+  for (const [id, sess] of sessions) {
+    if (id !== sessionId && sess.worktreePath === wtPath)
+      return `Worktree conflict: session ${id} also claims this path`;
+  }
+  try {
+    const raw = execSync('git worktree list --porcelain', { cwd: wtPath, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+    const wtNorm = path.normalize(wtPath).toLowerCase();
+    const found = raw.split('\n')
+      .filter(l => l.startsWith('worktree '))
+      .some(l => path.normalize(l.slice('worktree '.length).trim()).toLowerCase() === wtNorm);
+    if (!found) return 'Session worktree is no longer registered — isolation may be compromised';
+  } catch (e) {
+    return `Worktree verification failed: ${e.message}`;
+  }
+  return null;
+}
+
+function removeSessionWorktree(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s?.worktreePath) return;
+  const { worktreePath, repoWorkDir } = s;
+  s.worktreePath = null;
+  try {
+    const repo = repoWorkDir && fs.existsSync(repoWorkDir) ? repoWorkDir : worktreePath;
+    execSync(`git worktree remove --force "${worktreePath}"`, { cwd: repo, stdio: 'ignore' });
+  } catch {}
+  try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'Bash', 'PowerShell']);
 
 async function executeDirectTool(name, input, workDir, sessionId) {
   if (name.startsWith('mcp__')) {
@@ -4679,6 +5006,10 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     const serverName = parts[1];
     const toolName = parts.slice(2).join('__');
     return await callMcpTool(serverName, toolName, input);
+  }
+  if (WRITE_TOOLS.has(name)) {
+    const wtErr = verifyWorktreeOwnership(sessionId);
+    if (wtErr) return `[Worktree guard] ${wtErr}. Write blocked to prevent cross-session contamination.`;
   }
   switch (name) {
     case 'Read':       return toolRead(input, sessionId, workDir);
@@ -4936,9 +5267,41 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     }
   }
 
-  // Build user message content: attach images and audio as multimodal content blocks.
-  const agentImages = session.pendingImages || [];
+  // Process videos and extract frames to images
+  const agentVideos = session.pendingVideos || [];
+  session.pendingVideos = [];
+  let agentImages = session.pendingImages || [];
   session.pendingImages = [];
+
+  for (const video of agentVideos) {
+    if (video && video.dataUrl) {
+      try {
+        const frames = await extractVideoFrames(video.dataUrl, video.name);
+        agentImages = agentImages.concat(frames);
+        if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[video: ${video.name} → ${frames.length} frames extracted]`, role: 'system' });
+      } catch (e) {
+        console.error('[video] frame extraction failed:', e.message);
+        broadcast({ type: 'line', sessionId, text: `[video: ${video.name} — extraction failed]`, role: 'system' });
+      }
+    }
+  }
+
+  // Detect YouTube URLs in prompt and extract frames
+  const youtubePattern = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+  let youtubeMatch;
+  while ((youtubeMatch = youtubePattern.exec(effectiveMessage || '')) !== null) {
+    const videoId = youtubeMatch[1];
+    try {
+      const frames = await downloadYouTubeVideo(videoId);
+      agentImages = agentImages.concat(frames);
+      if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} → ${frames.length} frames extracted]`, role: 'system' });
+    } catch (e) {
+      console.error('[youtube] extraction failed:', e.message);
+      broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} — extraction failed]`, role: 'system' });
+    }
+  }
+
+  // Build user message content: attach images and audio as multimodal content blocks.
   let messageContent = effectiveMessage;
   if (agentImages.length || agentAudio.length) {
     const blocks = [];
@@ -5246,6 +5609,7 @@ function releaseSessionMemory(sessionId) {
     try { s.watcher.close(); } catch {}
     s.watcher = null;
   }
+  removeSessionWorktree(sessionId);
 }
 
 async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
@@ -5796,6 +6160,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
 
   proc.on('close', async code => {
     if (watchdogKilled) return;
+    if (session.aborted) return;
     if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
     if (rateInterval) clearInterval(rateInterval);
@@ -6144,6 +6509,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   });
 
   proc.on('close', async code => {
+    if (session.aborted) return;
     dlog('CLOSE', `code=${code} events=${eventCount}`);
     if (rateInterval) clearInterval(rateInterval);
     const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
@@ -6705,49 +7071,206 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // ─── LangGraph dispatch-agent endpoint ────────────────────────────────────────
-  // Python sidecar nodes invoke this to run UI-selected agents (Claude, Codex, etc.)
-  // Proof Unit 4: /dispatch-agent handler works from Python nodes
-  if (req.method === 'POST' && req.url === '/dispatch-agent') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', async () => {
-      const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
-      try {
-        const data = JSON.parse(body);
-        const { agent, prompt, task_number } = data;
+  if (req.method === 'GET' && req.url === '/video-deps') {
+    if (!videoDeps.checked) checkVideoDeps();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ffmpeg: !!videoDeps.ffmpeg,
+      ytdlp:  !!videoDeps.ytdlp,
+      ffmpegPath: videoDeps.ffmpeg || null,
+      ytdlpPath:  videoDeps.ytdlp  || null,
+    }));
+    return;
+  }
 
-        if (!agent || !prompt || !task_number) {
-          res.writeHead(400, CORS);
-          res.end(JSON.stringify({ ok: false, error: 'Missing required fields: agent, prompt, task_number' }));
-          return;
-        }
-
-        // Dispatch to the selected agent (async, fire-and-forget for now in spike)
-        // In Phase 4+, this will tie into the full /ship-task orchestration
-        let response = '';
+  if (req.method === 'POST' && req.url === '/video-deps/install') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    // Fire-and-forget winget installs; broadcast progress over WS so the UI can show it.
+    (async () => {
+      const tools = [
+        { id: 'Gyan.FFmpeg',  label: 'ffmpeg' },
+        { id: 'yt-dlp.yt-dlp', label: 'yt-dlp' },
+      ];
+      broadcast({ type: 'video-deps-install', status: 'started', message: 'Installing ffmpeg and yt-dlp via winget…' });
+      let allOk = true;
+      for (const tool of tools) {
+        broadcast({ type: 'video-deps-install', status: 'progress', message: `Installing ${tool.label}…` });
         try {
-          // For spike: invoke a simple max agent response
-          // In production, this would route to runDirectAgent or spawn appropriate agent session
-          response = `[Agent: ${agent}] Acknowledged prompt for Task #${task_number}: "${prompt.slice(0, 50)}...". Running in background.`;
+          execSync(`winget install --id ${tool.id} --silent --accept-package-agreements --accept-source-agreements`, { encoding: 'utf8', timeout: 120000 });
+          broadcast({ type: 'video-deps-install', status: 'progress', message: `${tool.label} installed.` });
         } catch (e) {
-          response = `Error invoking agent: ${e.message}`;
+          broadcast({ type: 'video-deps-install', status: 'progress', message: `${tool.label} install failed: ${e.message.slice(0, 200)}` });
+          allOk = false;
         }
-
-        res.writeHead(200, CORS);
-        res.end(JSON.stringify({
-          ok: true,
-          response: response,
-          agent: agent,
-          task_number: task_number,
-          tokens: 0, // Would be populated by actual agent invocation
-          model: agent === 'codex' ? 'gpt-5' : 'claude-opus-4.7',
-        }));
-      } catch (e) {
-        res.writeHead(400, CORS);
-        res.end(JSON.stringify({ ok: false, error: e.message }));
       }
-    });
+      // Re-detect after install
+      videoDeps.checked = false;
+      checkVideoDeps();
+      broadcast({
+        type: 'video-deps-install',
+        status: allOk ? 'done' : 'done-partial',
+        message: allOk ? 'Video analysis ready. Restart Polaris if ffmpeg/yt-dlp are not yet in PATH.' : 'Some tools failed to install. Check terminal for details.',
+        ffmpeg: !!videoDeps.ffmpeg,
+        ytdlp:  !!videoDeps.ytdlp,
+      });
+    })();
+    res.end(JSON.stringify({ started: true }));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/run-summary') {
+    try {
+      const cfg = readConfig();
+
+      // Resolve repo root from config — first project with docs/backlog.json
+      const polarisProj = (cfg.projects || []).find(p =>
+        p.workDir && fs.existsSync(path.join(p.workDir, 'docs', 'backlog.json'))
+      );
+      const repoRoot = polarisProj?.workDir || process.cwd();
+
+      const run = (cmd, fallback = '') => {
+        try { return execSync(cmd, { encoding: 'utf-8', cwd: repoRoot, timeout: 10000 }).trim(); }
+        catch { return fallback; }
+      };
+
+      const safeJSON = p => {
+        try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
+      };
+
+      // ── Backlog tasks keyed by branch ──────────────────────────────────────
+      const backlog = safeJSON(path.join(repoRoot, 'docs', 'backlog.json'));
+      const archive = safeJSON(path.join(repoRoot, 'docs', 'backlog-archive.json'));
+      const allTasks = [...(backlog.tasks || []), ...(archive.tasks || [])];
+      const tasksByBranch = {};
+      allTasks.forEach(t => {
+        if (!t.branch) return;
+        (tasksByBranch[t.branch] = tasksByBranch[t.branch] || []).push(t);
+      });
+
+      // ── All open PRs in one query ──────────────────────────────────────────
+      const prsByBranch = {};
+      try {
+        const prRaw = run('gh pr list --state open --json number,title,url,headRefName --limit 50');
+        if (prRaw) JSON.parse(prRaw).forEach(pr => { prsByBranch[pr.headRefName] = pr; });
+      } catch { /* gh not available */ }
+
+      // ── Worktrees — filter out detached session temps ──────────────────────
+      const wtRaw = run('git worktree list --porcelain');
+      const worktrees = [];
+      if (wtRaw) {
+        const blocks = wtRaw.split('\n\n').filter(Boolean);
+        blocks.forEach(block => {
+          const wtPath  = (block.match(/^worktree (.+)$/m) || [])[1] || '';
+          const head    = (block.match(/^HEAD ([a-f0-9]+)$/m) || [])[1] || '';
+          const brRef   = (block.match(/^branch (.+)$/m) || [])[1] || '';
+          const branch  = brRef.replace('refs/heads/', '');
+          const isTemp  = wtPath.includes('polaris-wt') || wtPath.includes('AppData\\Local\\Temp');
+          const detached = block.includes('\ndetached');
+          if (!isTemp && !detached) worktrees.push({ path: wtPath, branch, head });
+        });
+      }
+
+      // ── All local branches ─────────────────────────────────────────────────
+      const allBranchRaw = run('git branch --format=%(refname:short)');
+      const allBranches = allBranchRaw.split('\n').filter(Boolean);
+
+      // Active work branches: task/* and task-* and wip/*, excluding backup/* and already-merged
+      // (ahead === 0 means fully merged into main — skip those)
+      const workBranches = allBranches.filter(b =>
+        (b.startsWith('task/') || b.startsWith('task-') || b.startsWith('wip/')) &&
+        !b.startsWith('backup/')
+      ).filter(b => {
+        const n = run(`git rev-list main..${b} --count`);
+        return parseInt(n, 10) > 0;
+      });
+
+      // Helper: last N commits on a branch vs main
+      const recentCommits = (branch, n = 3) => {
+        const log = run(`git log ${branch} -${n} --oneline --no-decorate`);
+        return log ? log.split('\n').filter(Boolean) : [];
+      };
+
+      const aheadCount = branch => {
+        const n = run(`git rev-list main..${branch} --count`);
+        return parseInt(n, 10) || 0;
+      };
+
+      const lines = [];
+      const hr = '─'.repeat(60);
+
+      // ── MAIN ──────────────────────────────────────────────────────────────
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  MAIN  (production)');
+      lines.push(`${'━'.repeat(60)}`);
+      recentCommits('main').forEach(c => lines.push(`  ${c}`));
+
+      // ── STAGE ─────────────────────────────────────────────────────────────
+      const stageExists = allBranches.includes('stage');
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  STAGE  (ready for prod)');
+      lines.push(`${'━'.repeat(60)}`);
+      if (stageExists) {
+        const ahead = aheadCount('stage');
+        lines.push(ahead > 0 ? `  ${ahead} commit(s) ahead of main` : '  (even with main)');
+        recentCommits('stage').forEach(c => lines.push(`  ${c}`));
+        const stagePR = prsByBranch['stage'];
+        if (stagePR) lines.push(`  PR #${stagePR.number} OPEN — ${stagePR.title}\n  ${stagePR.url}`);
+      } else {
+        lines.push('  (branch does not exist)');
+      }
+
+      // ── ACTIVE WORK BRANCHES ──────────────────────────────────────────────
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  ACTIVE BRANCHES');
+      lines.push(`${'━'.repeat(60)}`);
+      if (workBranches.length === 0) {
+        lines.push('  (none)');
+      } else {
+        const worktreeByBranch = {};
+        worktrees.forEach(w => { worktreeByBranch[w.branch] = w; });
+
+        workBranches.forEach(branch => {
+          const ahead = aheadCount(branch);
+          const pr    = prsByBranch[branch];
+          const tasks = tasksByBranch[branch] || [];
+          const wt    = worktreeByBranch[branch];
+          lines.push(`\n  ${branch}${wt ? '  [worktree active]' : ''}`);
+          lines.push(`  ${hr}`);
+          lines.push(`  ${ahead} commit(s) ahead of main`);
+          if (wt) lines.push(`  Worktree: ${wt.path}`);
+          recentCommits(branch, 3).forEach(c => lines.push(`    ${c}`));
+          if (pr) lines.push(`  PR #${pr.number} OPEN — ${pr.title}\n  ${pr.url}`);
+          if (tasks.length > 0) {
+            tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] — ${t.title}`));
+          }
+        });
+      }
+
+      // ── NAMED WORKTREES ───────────────────────────────────────────────────
+      const namedWTs = worktrees.filter(w => w.branch !== 'main' && w.branch !== 'stage');
+      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push('  WORKTREES');
+      lines.push(`${'━'.repeat(60)}`);
+      if (namedWTs.length === 0) {
+        lines.push('  (none besides main)');
+      } else {
+        namedWTs.forEach(wt => {
+          lines.push(`\n  ${wt.branch}`);
+          lines.push(`  Path: ${wt.path}`);
+          lines.push(`  HEAD: ${wt.head.slice(0, 7)}`);
+          const tasks = tasksByBranch[wt.branch] || [];
+          if (tasks.length > 0) tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] — ${t.title}`));
+        });
+      }
+
+      lines.push('');
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ output: lines.join('\n') }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
     return;
   }
 
@@ -6777,6 +7300,61 @@ const httpServer = http.createServer((req, res) => {
       } catch {
         res.writeHead(400);
         res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
+  // ─── Cross-check endpoint — triggered by PostToolUse hooks from Chat sessions ──
+  if (req.method === 'POST' && req.url === '/api/cross-check-from-hook') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+      try {
+        const data = JSON.parse(body);
+        const { filePath } = data;
+        if (!filePath) { res.writeHead(400, CORS); res.end(JSON.stringify({ ok: false, error: 'Missing filePath' })); return; }
+
+        // Read new content from disk
+        let newContent = '';
+        try {
+          newContent = fs.readFileSync(filePath, 'utf8');
+        } catch {
+          res.writeHead(400, CORS);
+          res.end(JSON.stringify({ ok: false, error: 'Cannot read file' }));
+          return;
+        }
+
+        // Try to get original content from git HEAD
+        let originalContent = '';
+        try {
+          const workDir = path.dirname(filePath);
+          const relPath = path.relative(workDir, filePath);
+          originalContent = execSync(`git show HEAD:${relPath}`, {
+            cwd: workDir,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+          });
+        } catch {
+          // File is new or not in git; use empty string as original
+          originalContent = '';
+        }
+
+        // Run cross-check and return verdict
+        const verdict = await runCrossCheckAndApproval({
+          sessionId: 'hook-cross-check',
+          filePath,
+          operation: 'Write',
+          originalContent,
+          newContent,
+        });
+
+        res.writeHead(200, CORS);
+        res.end(JSON.stringify({ ok: true, verdict }));
+      } catch (e) {
+        res.writeHead(500, CORS);
+        res.end(JSON.stringify({ ok: false, error: e.message }));
       }
     });
     return;
@@ -6916,6 +7494,25 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/set-focused-project') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { focusedProject } = JSON.parse(body);
+        const cfg = readConfig();
+        cfg.focusedProject = focusedProject;
+        writeJSON(CONFIG_PATH, cfg);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/api/launch-routine') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -6960,6 +7557,78 @@ const httpServer = http.createServer((req, res) => {
         );
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, sessionId: id }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/dispatch-agent') {
+    // Dispatch an agent from a Python LangGraph node.
+    // Called by agents/spike/sidecar_spike.py and agents/task_executor.py to invoke
+    // UI-selected agents (max, sonnet, haiku, deepseek) and return their text response.
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { agent, prompt, task_number } = JSON.parse(body);
+        if (!agent || !prompt || task_number === undefined) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: false, error: 'agent, prompt, and task_number are required' }));
+        }
+
+        // Create a temporary session for this agent invocation
+        const id = `lang_dispatch_${Date.now()}`;
+        const name = `[LangGraph #${task_number}] ${agent} agent`;
+        const cfg = readConfig();
+        const projectName = cfg.focusedProject || null;
+        const projectEntry = projectName ? (cfg.projects || []).find(p => p.name === projectName) : null;
+        const workDir = projectEntry?.workDir || CHAT_DIR;
+
+        // Map agent name to model
+        const agentToModel = {
+          'max': 'claude-opus-4-7',
+          'sonnet': 'claude-sonnet-4-6',
+          'haiku': 'claude-haiku-4-5-20251001',
+          'deepseek': 'deepseek/deepseek-chat',
+        };
+        const model = agentToModel[agent] || 'claude-sonnet-4-6';
+
+        sessions.set(id, {
+          id, name, workDir, projectName, model, tier: 'balanced',
+          isChat: false, status: 'running', startAt: Date.now(),
+          proc: null, watcher: null, timeout: null, lines: [],
+          lastPrompt: prompt, claudeSessionId: null,
+          pendingImages: [], pendingDocs: [], pendingAudio: [],
+        });
+
+        // Run the agent and capture output
+        const responses = [];
+        const originalBroadcast = broadcast;
+        let captureOutput = (msg) => {
+          if (msg.type === 'session-line' && msg.sessionId === id) {
+            responses.push(msg.content);
+          }
+          originalBroadcast(msg);
+        };
+        broadcast = captureOutput;
+
+        runDirectAgent(id, prompt, workDir)
+          .then(() => {
+            broadcast = originalBroadcast;
+            const response = responses.join('\n');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, response }));
+            sessions.delete(id);
+          })
+          .catch(err => {
+            broadcast = originalBroadcast;
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+            sessions.delete(id);
+          });
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message }));
@@ -7323,7 +7992,7 @@ function broadcastInitialUserPrompt(sessionId, prompt, displayPrompt) {
 function executeResumeTurn(sessionId, turn) {
   const session = sessions.get(sessionId);
   if (!session) return;
-  const { prompt, displayPrompt, projectName, images, docs, audio } = turn;
+  const { prompt, displayPrompt, projectName, images, docs, audio, videos } = turn;
   session.status = 'running';
   session.lastActivityAt = Date.now();
   session.stallCount = 0;
@@ -7339,6 +8008,7 @@ function executeResumeTurn(sessionId, turn) {
   if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
   if (Array.isArray(docs)   && docs.length)   session.pendingDocs   = docs.filter(d => d && typeof d.dataUrl === 'string');
   if (Array.isArray(audio)  && audio.length)  session.pendingAudio  = audio.filter(a => a && typeof a.dataUrl === 'string');
+  if (Array.isArray(videos) && videos.length) session.pendingVideos = videos.filter(v => v && typeof v.dataUrl === 'string');
   if (session.isChat) {
     const resumeAttachments = [
       ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
@@ -7401,8 +8071,8 @@ async function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, displayPrompt, workDir, tier, images, docs, audio, chipLabel, chipColor, model: overrideModel } = msg;
-    if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+    const { prompt, displayPrompt, workDir, tier, images, docs, audio, videos, chipLabel, chipColor, model: overrideModel } = msg;
+    if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length) && !(videos && videos.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
     // Skip detection when chipLabel is set (e.g. "Cross Check") — the label wins and
@@ -7451,7 +8121,15 @@ async function handleMessage(ws, raw) {
       pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
       pendingDocs:   Array.isArray(docs)   ? docs.filter(d => d && typeof d.dataUrl === 'string')   : [],
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
+      pendingVideos: Array.isArray(videos) ? videos.filter(v => v && typeof v.dataUrl === 'string') : [],
     });
+    if (effectiveWorkDir) {
+      const wtPath = createSessionWorktree(id, effectiveWorkDir);
+      if (wtPath) {
+        const s = sessions.get(id);
+        if (s) { s.repoWorkDir = effectiveWorkDir; s.worktreePath = wtPath; s.workDir = wtPath; }
+      }
+    }
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, chipLabel: chipLabel || null, chipColor: chipColor || null, model: chatModel, isChat: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     const launchAttachments = [
@@ -7511,13 +8189,14 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
+    const launchVideos = Array.isArray(msg.videos) ? msg.videos.filter(v => v && typeof v.dataUrl === 'string') : [];
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       isChat: true, isCodex: true, model: 'openai/codex-1 (Codex CLI)', tier: codexTier,
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, codexThreadId: null,
-      pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio,
+      pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
@@ -7528,7 +8207,7 @@ async function handleMessage(ws, raw) {
 
   if (type === 'launch') {
     const { prompt, displayPrompt, workDir, sessionId } = msg;
-    if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+    if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length) && !(msg.videos && msg.videos.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
     const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
@@ -7544,15 +8223,34 @@ async function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Image');
+    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Video');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
-    sessions.set(id, { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null });
+    const launchVideos = Array.isArray(msg.videos) ? msg.videos.filter(v => v && typeof v.dataUrl === 'string') : [];
+    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
+    if (newSession.taskNumber && !newSession.taskState) {
+      const inf = inferTaskState(newSession);
+      if (inf) { newSession.taskState = inf.taskState; newSession.lastSkill = inf.lastSkill; }
+    }
+    sessions.set(id, newSession);
 
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null });
+    // Provision an isolated git worktree so concurrent sessions on the same project
+    // never share branch state. Skips CHAT_DIR and non-git directories gracefully.
+    let sessionWorkDir = effectiveWorkDir;
+    if (effectiveWorkDir && effectiveWorkDir !== CHAT_DIR) {
+      const wtPath = createSessionWorktree(id, effectiveWorkDir);
+      if (wtPath) {
+        newSession.repoWorkDir = effectiveWorkDir;
+        newSession.worktreePath = wtPath;
+        newSession.workDir = wtPath;
+        sessionWorkDir = wtPath;
+      }
+    }
+
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
@@ -7583,7 +8281,7 @@ async function handleMessage(ws, raw) {
         const routeMsg = `[routing] eval session → runDirectAgent (model=${routineModel || 'default'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
-        runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[eval-agent] unhandled error:', err.stack || err.message));
+        runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[eval-agent] unhandled error:', err.stack || err.message));
       } else if (routineModel === 'chat') {
         const routeMsg = `[routing] routineTag="${routineTag}" model=chat → chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
         console.log(routeMsg);
@@ -7593,20 +8291,20 @@ async function handleMessage(ws, raw) {
         const routeMsg = `[routing] routineTag="${routineTag}" → runDirectAgent (model=${routineModel || 'default'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
-        runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[routine-agent] unhandled error:', err.stack || err.message));
+        runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[routine-agent] unhandled error:', err.stack || err.message));
       }
     } else {
       console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
-      runDirectAgent(id, prompt, effectiveWorkDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
+      runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
     }
     return;
   }
 
   if (type === 'resume') {
-    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio } = msg;
+    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
-    const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio };
+    const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos };
     // If the session is running, show the prompt in the transcript immediately and queue it
     // for immediate execution once the current task finishes — never kill the active task.
     // CLI sessions (chat/codex/gpt) can't receive mid-task injections, so go straight to
@@ -7854,6 +8552,7 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, task } = msg;
       addBacklogTask(scope, task);
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
@@ -7866,15 +8565,22 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, status: newStatus } = msg;
       updateBacklogTaskStatus(scope, taskNumber, newStatus);
-      if (newStatus === 'production') {
+      if (newStatus === 'production' || newStatus === 'cancelled') {
         try {
           archiveCompletedTasks(scope, [taskNumber], null);
         } catch (archiveErr) {
-          console.error('[backlog] archive failed after manual production status:', archiveErr.message);
+          console.error('[backlog] archive failed after manual status change:', archiveErr.message);
         }
       }
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+      for (const [, session] of sessions) {
+        if (session.taskNumber === taskNumber) {
+          session.taskState = newStatus;
+          broadcast({ type: 'session-status', sessionId: session.id, status: session.status, taskNumber: session.taskNumber, taskState: newStatus, lastSkill: session.lastSkill || null });
+        }
+      }
     } catch (e) {
       sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
     }
@@ -7885,6 +8591,7 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, updates } = msg;
       updateBacklogTask(scope, taskNumber, updates);
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
@@ -7897,6 +8604,7 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumbers, promotionPRNumber } = msg;
       archiveCompletedTasks(scope, taskNumbers, promotionPRNumber);
+      invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
     } catch (e) {
@@ -9710,11 +10418,11 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'obsidian-analyze') {
-    const { sessionName, content, projectName } = msg;
-    sendTo(ws, { type: 'obsidian-analysis-loading' });
+    const { sessionName, content, projectName, depth } = msg;
+    sendTo(ws, { type: 'obsidian-analysis-loading', depth });
     try {
-      const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName);
-      sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName });
+      const analysis = await analyzeSessionForKnowledgePreview(content || '', projectName, { depth });
+      sendTo(ws, { type: 'obsidian-analysis-result', analysis, sessionName, content, projectName, depth });
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Obsidian analysis failed: ${e?.message || String(e)}` });
     }
@@ -10454,6 +11162,7 @@ fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
+  checkVideoDeps(); // non-blocking — results cached in videoDeps
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();
@@ -10566,6 +11275,9 @@ wss.on('connection', (ws) => {
         totalCost: s.totalCost || 0,
         isForked: !!s.isForked,
         primarySessionId: s.primarySessionId || null,
+        taskNumber: s.taskNumber || null,
+        taskState: s.taskState || null,
+        lastSkill: s.lastSkill || null,
       })),
       history: readJSON(HISTORY_PATH, []),
       config:  (() => {

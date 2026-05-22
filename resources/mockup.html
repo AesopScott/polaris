@@ -32,7 +32,7 @@
   .pal-btn.active { border-color: #fff; }
 
   /* App Shell */
-  .app { min-height: 100vh; display: flex; flex-direction: column; }
+  .app { height: 100vh; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   /* Notification Banner */
   .notif-banner {
@@ -438,6 +438,9 @@
      regardless of card width or button count. (Earlier flex-wrap + max-width
      approach was replaced 1.0.123 because grid handles this more cleanly.) */
   .card-btn { width: 22px; height: 22px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+  .focus-btn { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid #60a5fa; color: #93c5fd; background: transparent; cursor: pointer; transition: all 0.15s; }
+  .focus-btn:hover { background: rgba(96,165,250,0.2); }
+  .focus-btn.focus-active { background: rgba(96,165,250,0.3); border-color: #3b82f6; color: #fff; font-weight: 700; }
   .terminal { flex: 1; padding: 8px 10px; font-family: 'CascadiaCode', 'Cascadia Code', 'Consolas', monospace; font-size: 11px; line-height: 1.5; overflow-y: auto; white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; }
   .context-bar-wrap { padding: 4px 10px; }
   .context-label-bar { font-size: 10px; opacity: 0.6; display: flex; justify-content: space-between; margin-bottom: 3px; }
@@ -523,7 +526,69 @@
 
   .palette {
     background: var(--bg); color: var(--text);
-    min-height: calc(100vh - 52px); display: flex; flex-direction: column;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+
+  .palette.projects-panel,
+  .palette.preview-panel {
+    background: var(--card-bg, #111827);
+    color: var(--text, #e2e8f0);
+    min-height: 0;
+    isolation: isolate;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .palette.projects-panel.hidden,
+  .palette.preview-panel.hidden {
+    display: none;
+  }
+
+  .palette.projects-panel .projects-panel-body,
+  .palette.preview-panel .projects-panel-body,
+  .palette.preview-panel .docs-body {
+    background: var(--card-bg, #111827);
+  }
+
+  #backlog-add-modal > div,
+  #backlog-edit-modal > div,
+  #task-session-picker > div {
+    background: var(--card-bg, #111827) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: var(--border, #1e293b) !important;
+    isolation: isolate;
+  }
+
+  #task-session-picker {
+    background: rgba(0,0,0,0.82) !important;
+  }
+
+  #task-session-picker .fbtn {
+    background: #111827 !important;
+    color: #e2e8f0 !important;
+    border-color: #1e293b !important;
+  }
+
+  #task-session-picker .fbtn:hover {
+    background: #1e293b !important;
+  }
+
+  #backlog-status-picker,
+  #backlog-impact-picker {
+    background: var(--card-bg, #111827) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: var(--border, #1e293b) !important;
+  }
+
+  #backlog-add-modal input,
+  #backlog-add-modal textarea,
+  #backlog-add-modal select,
+  #backlog-edit-modal input,
+  #backlog-edit-modal textarea,
+  #backlog-edit-modal select {
+    background: var(--input-bg, #1e293b) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: #444 !important;
   }
 
   /* Apply palette vars */
@@ -966,6 +1031,7 @@
     border-radius: 8px; overflow: hidden;
     border: 1px solid #444;
     box-shadow: 0 8px 40px rgba(0,0,0,0.85);
+    background: var(--card-bg, #111827);
   }
   .projects-panel.hidden { display: none; }
   .projects-panel-body { flex: 1; overflow-y: auto; padding: 16px; }
@@ -1099,6 +1165,7 @@
     border-radius: 8px; overflow: hidden;
     border: 1px solid #444;
     box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    background: var(--card-bg, #111827);
   }
   .preview-panel.hidden { display: none; }
   .preview-toolbar {
@@ -1302,16 +1369,16 @@
         <button id="btn-routines" class="hbtn btn-systems" data-tooltip="Manage saved prompt routines with scheduled or event-based triggers"><span class="lbl">Routines</span></button>
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
-        <div class="nav-spacer"></div>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
+        <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
         <button id="btn-archive" class="hbtn btn-danger" onclick="toggleArchivePanel()" data-tooltip="Browse, search, and reactivate archived sessions"><span class="lbl">Archive</span></button>
         <button id="btn-reload" class="hbtn btn-interface" data-tooltip="Reload the interface without restarting the server"><span class="lbl">Reload</span></button>
         <button id="btn-projects" class="hbtn btn-systems" onclick="toggleProjects()" data-tooltip="Manage named projects with working directories and remote git repos"><span class="lbl">Projects</span></button>
         <button id="btn-walkthrough" class="hbtn btn-config" onclick="openWalkthrough()" data-tooltip="Interactive guided tour of Polaris"><span class="lbl">Tour</span></button>
         <!-- Row 3 -->
-        <div class="nav-spacer"></div>
+        <button id="btn-summary" class="hbtn btn-config" onclick="openSummarySession()" data-tooltip="View workflow summary: tasks and PRs on Main, Stage, and all work-tree branches"><span class="lbl">Summary</span></button>
         <button id="btn-skills" class="hbtn btn-interface" onclick="toggleSkillsPanel()" data-tooltip="Browse all installed Claude Code skills (~/.claude/skills/). Click a skill to send /name to the currently focused session."><span class="lbl">Skills</span></button>
         <button id="btn-web" class="hbtn btn-gold" onclick="toggleWebPanel()" data-tooltip="Live Server — serve the selected project locally with auto-reload on file change"><span class="lbl">Web</span></button>
         <button id="btn-code-health" class="hbtn btn-tracking" onclick="toggleCodeHealth()" data-tooltip="Analyze code churn hotspots, complexity scores, and contributor ownership across your project"><span class="lbl">Code ✓</span></button>
@@ -1432,10 +1499,11 @@
       <div class="mini-card" style="opacity:0.4;">+ 2 more</div>
     </div>
 
-    <!-- Right column: Waiting + Running Sessions + Hidden count on one row -->
+    <!-- Right column: Waiting + Running Sessions + Testing + Hidden count on one row -->
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
+      <span id="stat-testing-wrap" class="stat" style="display:none;"><span data-stat-testing style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-testing" id="filter-testing-label" onclick="toggleTestingFilter()" style="cursor:pointer;" title="Hide/show testing sessions">Testing</span></span>
       <span id="stat-hidden-wrap" class="stat" style="display:none;"><span id="stat-hidden-count" style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span onclick="unhideAll()" style="cursor:pointer;color:#94a3b8;" title="Show all hidden sessions">Hidden · Show</span></span>
     </div>
 
@@ -1767,6 +1835,18 @@
           <div style="font-size:10px;opacity:0.5;margin-top:4px;">Path to the Codex CLI binary. Default: <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">codex</code> (uses npm global install). Change only if binary is not on PATH. Auth uses <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">~/.codex/auth.json</code> from your Codex desktop app login. MCP servers from the Connections panel are injected automatically into each session.</div>
         </div>
       </div>
+      <div class="panel-section">
+        <div class="context-label accent-label">VIDEO ANALYSIS</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <span id="video-deps-ffmpeg-dot" style="width:8px;height:8px;border-radius:50%;background:#374151;display:inline-block;flex-shrink:0;"></span>
+          <span style="font-size:11px;opacity:0.75;">ffmpeg</span>
+          <span id="video-deps-ytdlp-dot" style="width:8px;height:8px;border-radius:50%;background:#374151;display:inline-block;flex-shrink:0;margin-left:8px;"></span>
+          <span style="font-size:11px;opacity:0.75;">yt-dlp</span>
+          <button id="video-deps-install-btn" class="fbtn" style="margin-left:auto;padding:3px 12px;font-size:11px;" onclick="installVideoDeps()">Install</button>
+        </div>
+        <div id="video-deps-status-msg" style="font-size:10px;opacity:0.55;"></div>
+        <div style="font-size:10px;opacity:0.45;margin-top:4px;">Required for MP4/MOV uploads and YouTube URL analysis. Installed via winget.</div>
+      </div>
     </div>
     <div class="projects-footer">
       <button class="fbtn" style="background:#6366f1;color:#fff;font-weight:700;" onclick="syncGlobalFiles()">↺ Sync Global Files</button>
@@ -2010,6 +2090,8 @@
   <!-- Add Backlog Task Modal -->
   <!-- Backlog Status Picker (popover anchored under a clicked status badge) -->
   <div id="backlog-status-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:170px;"></div>
+  <!-- Backlog Impact Picker (popover anchored under a clicked impact cell) -->
+  <div id="backlog-impact-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:120px;"></div>
 
   <div id="backlog-add-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
     <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:560px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
@@ -2735,7 +2817,7 @@
     <span class="text-muted" style="font-size:10px;font-weight:400;">· No entries yet</span>
     <span class="debug-chevron" style="margin-left:auto;font-size:10px;opacity:0.5;">▲ expand</span>
   </div>
-  <div class="debug-panel" style="margin-bottom:20px;">
+  <div class="debug-panel">
     <div class="debug-panel-inner"></div>
   </div>
 
@@ -4048,6 +4130,7 @@
   let phIdx = -1;
   let debugLogs = [];
   let resumeTarget = null; // { sessionId, name, resumeId, model } | null
+  let currentResumeSessionId = null; // Track which session's float prompt is active (draft persistence)
   let launchBarAutoMinimized = false;
   let floatScrollHandler = null;
   let sessionOrder = [];   // ordered array of session IDs for render sequence
@@ -4057,17 +4140,19 @@
   let protectedPatterns = ['*.md']; // file patterns requiring approval before modification
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
+  let focusedProject = null; // project name currently focused, or null if no focus
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
   const pendingDocs   = []; // [{ name, dataUrl }] — DOCX/PDF files (server extracts text)
   const pendingAudio  = []; // [{ name, dataUrl }] — MP3/MP4 audio files
+  const pendingVideos = []; // [{ name, dataUrl, type }] — MP4/MOV video files (server extracts frames)
   const pendingLineImages = {}; // sessionId → images[] buffered until the user line event arrives
 
   // ── Connection ────────────────────────────────────────────────────────────────
   function wsConnect() {
     ws = new WebSocket('ws://localhost:40000');
-    ws.onopen  = () => { setConnIndicator(true);  pushDebugLog('[ws] connected'); };
+    ws.onopen  = () => { setConnIndicator(true);  pushDebugLog('[ws] connected'); wsSend({ type: 'list-skills' }); };
     ws.onclose = () => { setConnIndicator(false); pushDebugLog('[ws] disconnected — reconnecting in 2s', true); setTimeout(wsConnect, 2000); };
     ws.onerror = () => { setConnIndicator(false); pushDebugLog('[ws] connection error', true); };
     ws.onmessage = e => { try { onWsMessage(JSON.parse(e.data)); } catch {} };
@@ -4260,6 +4345,17 @@
         break;
       }
 
+      case 'video-deps-install': {
+        const msg2 = document.getElementById('video-deps-status-msg');
+        const btn2 = document.getElementById('video-deps-install-btn');
+        if (msg2) msg2.textContent = msg.message || '';
+        if (msg.status === 'done' || msg.status === 'done-partial') {
+          if (btn2) { btn2.disabled = false; btn2.textContent = 'Install'; }
+          updateVideoDepsUI({ ffmpeg: !!msg.ffmpeg, ytdlp: !!msg.ytdlp });
+        }
+        break;
+      }
+
       case 'tts-audio': {
         const dot2 = document.getElementById('onb-audio-dot');
         const lbl2 = document.getElementById('onb-tts-label');
@@ -4346,6 +4442,9 @@
             pinned: !!s.pinned,
             isForked: !!s.isForked,
             primarySessionId: s.primarySessionId || null,
+            taskNumber: s.taskNumber || null,
+            taskState: s.taskState || null,
+            lastSkill: s.lastSkill || null,
           };
         });
         // Restore forkActive + forkSessionId on primary sessions from fork session data
@@ -4356,6 +4455,7 @@
           }
         });
         applyConfig(msg.config || {});
+        if (msg.config?.focusedProject) focusedProject = msg.config.focusedProject;
         if (msg.protectedPatterns) protectedPatterns = msg.protectedPatterns;
         if (msg.installId) {
           installIdStore = msg.installId;
@@ -4426,6 +4526,9 @@
           silent: isSilentRoutine,
           status: 'running', startAt: Date.now(),
           lines: [], lastPrompt: null, resumeId: null, usage: null, height: null, column: null, pinned: false,
+          taskNumber: msg.taskNumber || null,
+          taskState: msg.taskState || null,
+          lastSkill: msg.lastSkill || null,
         };
         if (pendingLineImages['__next__']) {
           pendingLineImages[msg.sessionId] = pendingLineImages['__next__'];
@@ -4433,6 +4536,9 @@
         }
         if (!sessionOrder.includes(msg.sessionId)) sessionOrder.push(msg.sessionId);
         renderGrid();
+        // Backlog-based inference fallback: if task fields weren't in the broadcast, fill from loaded backlog
+        const newSess = sessionStore[msg.sessionId];
+        if (newSess && !newSess.taskState && _backlogData) applyBacklogTaskStates();
         if (msg.projectName) applyNavProjectTheme(msg.projectName);
         const isCourseRoutine = msg.routineTag && msg.routineTag.match(/^ModGen(Dev|Activate|Scaffold)-/);
         if (!msg.isForked && !isCourseRoutine) enterResumeMode(msg.sessionId, null);
@@ -4497,7 +4603,15 @@
 
       case 'session-status': {
         const s = sessionStore[msg.sessionId];
-        if (s) { s.status = msg.status; updateCardStatus(msg.sessionId, msg.status); }
+        if (s) {
+          s.status = msg.status;
+          let taskChanged = false;
+          if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
+          if (msg.taskState  !== undefined) { s.taskState  = msg.taskState;  taskChanged = true; }
+          if (msg.lastSkill  !== undefined) { s.lastSkill  = msg.lastSkill;  taskChanged = true; }
+          updateCardStatus(msg.sessionId, msg.status);
+          if (taskChanged) updateCardTaskState(msg.sessionId);
+        }
         updateStats();
         updateMiniCards();
         const isErr = msg.status === 'error';
@@ -4687,6 +4801,9 @@
         _skillsTree = msg.tree || { global: {}, project: {} };
         _skillsCategoryOrder = msg.categoryOrder || [];
         _skillsTotal = msg.total || 0;
+        if (Array.isArray(msg.flat)) {
+          window._knownSkillNames = new Set(msg.flat.map(s => s.name));
+        }
         if (typeof renderSkillsTree === 'function') renderSkillsTree(_skillsTree, _skillsCategoryOrder, _skillsTotal);
         break;
 
@@ -5002,11 +5119,12 @@
       }
 
       case 'obsidian-analysis-loading':
+        if (msg.depth === 'deep') showObsidianAnalysisLoading();
         break;
 
       case 'obsidian-analysis-result':
         if (obsidianPendingSession) obsidianPendingSession._analysis = msg.analysis;
-        showObsidianAnalysisModal(msg.analysis, msg.sessionName, msg.content, msg.projectName);
+        showObsidianAnalysisModal(msg.analysis, msg.sessionName, msg.content, msg.projectName, msg.depth);
         if (camCurrentPushSid) {
           const sp = document.getElementById('cam-pushing-' + camCurrentPushSid);
           if (sp) sp.textContent = 'Review pending…';
@@ -5804,6 +5922,7 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
+    if (focusedProject) pushDebugLog(`[focus-dbg] renderGrid — focusedProject="${focusedProject}" sessionCount=${sessionOrder.length}`, true);
     grid.innerHTML = '';
     const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
@@ -5814,7 +5933,8 @@
       wideRow.className = 'session-wide-row';
       wideCards.forEach(s => {
         const card = buildCard(s);
-        if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
+        const projectMismatch = focusedProject && s.projectName !== focusedProject;
+        if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
         wideRow.appendChild(card);
       });
       grid.appendChild(wideRow);
@@ -5837,9 +5957,10 @@
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
       const card = buildCard(s);
-      if (s.minimized || hiddenCards.has(s.id)) card.style.display = 'none';
+      const projectMismatch = focusedProject && s.projectName !== focusedProject;
+      if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
       cols[idx].appendChild(card);
-      colHeights[idx] += (s.minimized || hiddenCards.has(s.id)) ? 0 : (parseInt(s.height) || 260) + 12;
+      colHeights[idx] += (s.minimized || hiddenCards.has(s.id) || projectMismatch) ? 1 : (parseInt(s.height) || 260) + 12;
     });
     grid.appendChild(colsRow);
 
@@ -5905,15 +6026,26 @@
     const headerChip = chipLabel
       ? `<span class="card-project-chip" style="background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;">${escHtml(chipLabel)}</span>`
       : '';
+    const focusButtonClass = focusedProject === chipLabel ? 'focus-active' : '';
+    const focusButtonTitle = focusedProject === chipLabel ? 'Click to show all sessions' : 'Click to show only this project';
+    const focusButton = chipLabel
+      ? `<button class="focus-btn ${focusButtonClass}" data-action="toggle-focus" data-project="${escHtmlAttr(chipLabel)}" title="${focusButtonTitle}">Focus</button>`
+      : '';
     const titleStyle = chipLabel ? 'margin-left:10px;' : '';
 
     el.innerHTML = `
       <div class="card-header">
         <span class="card-drag-handle" data-drag-handle title="Drag to reorder">⠿⠿</span>
-        ${headerChip}
+        <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
+          ${headerChip}
+          ${focusButton}
+        </div>
         <div class="card-title" style="${titleStyle}"><span class="card-title-text">${escHtml(s.name || 'Session')}</span></div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
+          <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
+            <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
+            <span data-task-state style="font-size:9px;color:var(--text-muted,#94a3b8);letter-spacing:0.03em;white-space:nowrap;${s.taskNumber ? '' : 'display:none;'}">${s.taskNumber ? '#' + s.taskNumber + (s.taskState ? ' \xB7 ' + escHtml(s.taskState) : '') + (s.lastSkill ? ' /' + escHtml(s.lastSkill) : '') : ''}</span>
+          </div>
           <span class="stall-badge" data-stall-badge></span>
           <div class="card-btns">
             <button class="card-btn" title="Diagnostic log" data-action="show-diag">📋</button>
@@ -5988,8 +6120,9 @@
           <span style="font-size:11px;font-weight:700;color:#f59e0b;" data-session-cost>—</span>
         </div>`}
         <div class="footer-btns">
-          <button class="fbtn" data-action="copy">Copy</button>
-          <button class="fbtn" data-action="clear">Clear</button>
+          <button class="fbtn" data-action="yes">Yes</button>
+          <button class="fbtn" data-action="no">No</button>
+          <button class="fbtn" data-action="write">Write</button>
           ${rerunSnippet}
         </div>
         <div class="color-controls">
@@ -6116,6 +6249,27 @@
     });
   }
 
+  function applySkillLinksToMarkdown(element) {
+    const skillPattern = /\/([a-z-]+)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+    const nodesToReplace = [];
+
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.parentElement.tagName === 'CODE' || node.parentElement.tagName === 'PRE') continue;
+      if (skillPattern.test(node.textContent)) {
+        nodesToReplace.push(node);
+      }
+    }
+
+    nodesToReplace.forEach(textNode => {
+      const span = document.createElement('span');
+      const nodes = convertSkillReferencesToLinks(textNode.textContent);
+      nodes.forEach(n => span.appendChild(n));
+      textNode.parentNode.replaceChild(span, textNode);
+    });
+  }
+
   function renderAssistantMarkdown(div) {
     if (typeof marked === 'undefined') return;
     const raw = div.dataset.rawText || div.textContent;
@@ -6132,6 +6286,7 @@
       if (typeof hljs !== 'undefined') {
         div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
       }
+      applySkillLinksToMarkdown(div);
       if (wasAtBottom) {
         const term = div.closest('[data-term]');
         if (term) term.scrollTop = term.scrollHeight;
@@ -6169,6 +6324,76 @@
     return merged;
   }
 
+  function convertSkillReferencesToLinks(text) {
+    const div = document.createElement('div');
+    const knownSkills = window._knownSkillNames;
+    const skillPattern = /\/([a-z][a-z0-9-]*)(?:\s+([^\s/][^\n/]*?))?(?=\s|$|[.,:;!?)])/gi;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = skillPattern.exec(text)) !== null) {
+      const skillName = match[1];
+      if (knownSkills && !knownSkills.has(skillName)) continue;
+
+      if (match.index > lastIndex) {
+        div.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+      }
+
+      const args = match[2] ? match[2].trim() : '';
+      const fullSkill = match[0].trim();
+
+      const skillLink = document.createElement('span');
+      skillLink.className = 'skill-link';
+      skillLink.dataset.skill = fullSkill;
+      skillLink.textContent = fullSkill;
+      skillLink.style.cssText = `
+        background: rgba(96, 165, 250, 0.15);
+        color: #60a5fa;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid rgba(96, 165, 250, 0.3);
+        cursor: pointer;
+        font-family: 'Consolas', monospace;
+        font-size: 0.95em;
+        display: inline-block;
+        white-space: nowrap;
+        transition: all 0.2s ease;
+        user-select: none;
+      `;
+      skillLink.title = `Click to add "${fullSkill}" to the prompt`;
+      skillLink.onclick = (e) => {
+        e.stopPropagation();
+        const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+        const floatPrompt = document.getElementById('float-prompt-area');
+        const targetInput = floatPrompt?.offsetParent ? floatPrompt : promptEl;
+        if (targetInput) {
+          const currentText = targetInput.value;
+          targetInput.value = currentText ? (currentText + ' ' + fullSkill) : fullSkill;
+          targetInput.focus();
+          targetInput.scrollTop = targetInput.scrollHeight;
+          updateTokenCount(targetInput);
+        }
+      };
+      skillLink.onmouseover = (e) => {
+        e.target.style.background = 'rgba(96, 165, 250, 0.25)';
+        e.target.style.borderColor = 'rgba(96, 165, 250, 0.6)';
+      };
+      skillLink.onmouseout = (e) => {
+        e.target.style.background = 'rgba(96, 165, 250, 0.15)';
+        e.target.style.borderColor = 'rgba(96, 165, 250, 0.3)';
+      };
+
+      div.appendChild(skillLink);
+      lastIndex = skillPattern.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      div.appendChild(document.createTextNode(text.substring(lastIndex)));
+    }
+
+    return div.childNodes.length > 0 ? Array.from(div.childNodes) : [document.createTextNode(text)];
+  }
+
   function makeLineEl(line, sessionId) {
     line = { ...line, text: stripProcessCleanupNoise(line.text) };
     const div = document.createElement('div');
@@ -6183,7 +6408,8 @@
         div.appendChild(imgEl);
       }
     } else {
-      div.textContent = line.text;
+      const nodes = convertSkillReferencesToLinks(line.text);
+      nodes.forEach(node => div.appendChild(node));
     }
     if (sessionId) {
       const s = sessionStore[sessionId];
@@ -6277,6 +6503,26 @@
     }
   }
 
+  function updateCardTaskState(sessionId) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector('[data-sid="' + sessionId + '"]');
+    if (!card) return;
+    const s = sessionStore[sessionId];
+    if (!s) return;
+    const el = card.querySelector('[data-task-state]');
+    if (!el) return;
+    if (s.taskNumber) {
+      let text = '#' + s.taskNumber;
+      if (s.taskState) text += ' \xB7 ' + s.taskState;
+      if (s.lastSkill) text += ' /' + s.lastSkill;
+      el.textContent = text;
+      el.style.display = '';
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
   const YN_RE = /\b(do you|would you|should i|shall i|can i|want me|is this|are you|are we|shall we|would this|does this|want to|ready to|proceed|confirm|ok\?|okay\?|sound good)\b/i;
 
   function maybeAddYesNoButtons(sessionId, term) {
@@ -6288,19 +6534,24 @@
     if (!YN_RE.test(text)) return;
     const row = document.createElement('div');
     row.className = 'yn-btn-row';
-    const send = answer => {
+    const send = (displayPrompt, actualPrompt) => {
       row.remove();
       const s = sessionStore[sessionId];
       if (!s) return;
-      appendLineToCard(sessionId, { text: answer, role: 'user' });
-      if (s.lines) s.lines.push({ text: answer, role: 'user' });
-      wsSend({ type: 'resume', sessionId, prompt: answer, displayPrompt: answer, resumeId: s.resumeId, model: null });
+      appendLineToCard(sessionId, { text: displayPrompt, role: 'user' });
+      if (s.lines) s.lines.push({ text: displayPrompt, role: 'user' });
+      wsSend({ type: 'resume', sessionId, prompt: actualPrompt, displayPrompt: displayPrompt, resumeId: s.resumeId, model: null });
     };
-    ['Yes', 'No'].forEach(label => {
+    const buttonConfig = [
+      { label: 'Yes', prompt: 'Yes' },
+      { label: 'No', prompt: 'No' },
+      { label: 'Write', prompt: 'Write an update to Git and Obsidian and then continue' }
+    ];
+    buttonConfig.forEach(config => {
       const btn = document.createElement('button');
       btn.className = 'yn-btn';
-      btn.textContent = label;
-      btn.onclick = () => send(label);
+      btn.textContent = config.label;
+      btn.onclick = () => send(config.label, config.prompt);
       row.appendChild(btn);
     });
     lastAssistant.insertAdjacentElement('afterend', row);
@@ -6433,6 +6684,24 @@
       case 'clear':
         if (s) { s.lines = []; const t = cardEl.querySelector('[data-term]'); if (t) t.innerHTML = ''; }
         break;
+      case 'yes':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'Yes', displayPrompt: 'Yes', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'no':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'No', displayPrompt: 'No', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'write':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'Write an update to Git and Obsidian and then continue', displayPrompt: 'Write', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
       case 'cycle-span': {
         if (!s) break;
         s.columnSpan = (s.columnSpan || 1) > 1 ? 1 : 3;
@@ -6478,6 +6747,24 @@
         const isOn = cardEl.classList.toggle('verbose-on');
         const btn = cardEl.querySelector('[data-verb-btn]');
         if (btn) btn.classList.toggle('verb-active', isOn);
+        break;
+      }
+      case 'toggle-focus': {
+        const projectName = cardEl.dataset.project || (s?.projectName);
+        pushDebugLog(`[focus-dbg] clicked — btn.data-project="${cardEl.dataset.project}" s.projectName="${s?.projectName}" resolved="${projectName}"`, true);
+        if (!projectName) break;
+        if (focusedProject === projectName) {
+          focusedProject = null;
+        } else {
+          focusedProject = projectName;
+        }
+        pushDebugLog(`[focus-dbg] focusedProject now="${focusedProject}" sessions=${Object.values(sessionStore).map(x=>x.projectName+'('+x.id.slice(-4)+')').join(',')}`, true);
+        fetch('/set-focused-project', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ focusedProject })
+        }).catch(e => pushDebugLog('[focus-dbg] fetch error: ' + e.message, true));
+        renderGrid();
         break;
       }
     }
@@ -6868,8 +7155,12 @@
     const vals = Object.values(sessionStore);
     const running  = vals.filter(s => s.status === 'running').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
+    const testing  = vals.filter(s => s.status === 'test').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
+    document.querySelectorAll('[data-stat-testing]').forEach(el => el.textContent = testing);
+    const testingWrap = document.getElementById('stat-testing-wrap');
+    if (testingWrap) testingWrap.style.display = testing > 0 ? '' : 'none';
     applySessionFilter();
     updateHiddenCount();
     updateGridNewSessionBar();
@@ -6925,6 +7216,22 @@
     saveHiddenCards();
   };
 
+  window.toggleTestingFilter = function() {
+    const testSessions = Object.values(sessionStore).filter(s => s.status === 'test').map(s => s.id);
+    const allHidden = testSessions.every(sid => hiddenCards.has(sid));
+
+    if (allHidden) {
+      testSessions.forEach(sid => hiddenCards.delete(sid));
+    } else {
+      testSessions.forEach(sid => hiddenCards.add(sid));
+    }
+
+    updateMiniCards();
+    updateHiddenCount();
+    applySessionFilter();
+    saveHiddenCards();
+  };
+
   function updateHiddenCount() {
     const n = [...hiddenCards].filter(id => sessionStore[id]).length;
     const wrap = document.getElementById('stat-hidden-wrap');
@@ -6968,6 +7275,7 @@
       if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       const s = sessionStore[sid];
       if (s && s.minimized) { card.style.display = 'none'; return; }
+      if (focusedProject && s && s.projectName !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
       const isWaiting = s.status === 'waiting';
@@ -6999,7 +7307,10 @@
         const chip = document.createElement('div');
         chip.className = 'mini-card';
         chip.style.cursor = 'pointer';
-        chip.style.color = s.isChat ? '#a78bfa' : (window.getProjectColorByName ? window.getProjectColorByName(s.projectName) || '#60a5fa' : '#60a5fa');
+        const projectColor = s.projectName && window.getProjectColorByName ? window.getProjectColorByName(s.projectName) : null;
+        const color = projectColor || (s.isChat ? '#a78bfa' : '#60a5fa');
+        chip.style.background = color;
+        chip.style.color = '#000';
         chip.title = `Click to restore: ${s.name}`;
         chip.textContent = (s.name || 'Session').split(' ').slice(0, 3).join(' ');
         chip.onclick = () => restoreCard(s.id);
@@ -7011,6 +7322,8 @@
         chip.className = 'mini-card';
         chip.style.opacity = '0.6';
         chip.style.cursor = 'pointer';
+        chip.style.background = '#60a5fa';
+        chip.style.color = '#000';
         chip.title = 'Click to cycle through more minimized sessions';
         chip.textContent = `+${remaining} more`;
         chip.onclick = () => { miniCardOffsets.min = (miniCardOffsets.min + 1) % minimized.length; updateMiniCards(); };
@@ -7106,6 +7419,7 @@
   // ── Debug log ─────────────────────────────────────────────────────────────────
   let _cachedDebugBars = null;
   function pushDebugLog(text, isError = false) {
+    if (!isError) return;
     const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
     const entry = `[${ts}] ${text}`;
     debugLogs.unshift(entry);
@@ -7147,7 +7461,9 @@
   const DOC_EXT    = /\.(pdf|docx?)$/i;
   const AUDIO_MIME = new Set(['audio/mpeg','audio/mp4','audio/wav','audio/ogg','audio/webm','audio/x-m4a','audio/aac']);
   const AUDIO_EXT  = /\.(mp3|wav|m4a|ogg|webm|aac)$/i;
-  const VIDEO_MIME = /^video\//;
+  const VIDEO_MIME = new Set(['video/mp4','video/quicktime']);
+  const VIDEO_EXT  = /\.(mp4|mov)$/i;
+  const YOUTUBE_URL_PATTERN = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 
   function makeChip(className, label, onRemove) {
     const chip = document.createElement('div');
@@ -7159,13 +7475,10 @@
 
   function attachFile(file, sourceEl) {
     const name = file.name || 'file';
-    if (VIDEO_MIME.test(file.type)) {
-      alert(`Video files are not supported.\n\nPolaris accepts images (JPEG, PNG, GIF, WebP), audio files (MP3, WAV, M4A, OGG, WebM, AAC), PDFs, and Word documents.`);
-      return;
-    }
     const isImage = IMAGE_MIME.has(file.type) || IMAGE_EXT.test(name);
     const isDoc   = !isImage && (DOC_MIME.has(file.type) || DOC_EXT.test(name));
     const isAudio = !isImage && !isDoc && (AUDIO_MIME.has(file.type) || AUDIO_EXT.test(name));
+    const isVideo = !isImage && !isDoc && !isAudio && (VIDEO_MIME.has(file.type) || VIDEO_EXT.test(name));
 
     const inFloat = !!(sourceEl && sourceEl.closest('#float-launcher'));
     const getChipsContainers = () => inFloat
@@ -7175,7 +7488,7 @@
       ? document.getElementById('float-prompt-area')
       : document.querySelector('.palette:not(.hidden) .prompt-area');
 
-    if (isImage || isDoc || isAudio) {
+    if (isImage || isDoc || isAudio || isVideo) {
       const reader = new FileReader();
       reader.onload = ev => {
         let item, chipClass, label;
@@ -7187,10 +7500,14 @@
           item = { name, dataUrl: ev.target.result };
           pendingDocs.push(item);
           chipClass = 'file-chip'; label = `📄 ${name}`;
-        } else {
+        } else if (isAudio) {
           item = { name, dataUrl: ev.target.result };
           pendingAudio.push(item);
           chipClass = 'file-chip'; label = `🎵 ${name}`;
+        } else if (isVideo) {
+          item = { name, dataUrl: ev.target.result, type: file.type };
+          pendingVideos.push(item);
+          chipClass = 'file-chip'; label = `🎬 ${name}`;
         }
         const arr = isImage ? pendingImages : isDoc ? pendingDocs : pendingAudio;
         getChipsContainers().forEach(container => {
@@ -7360,7 +7677,7 @@
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,.webm,.aac';
+    fileInput.accept = '.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.html,.css,.sh,.ps1,.yaml,.yml,.toml,.xml,.csv,.log,.env,.ini,.cfg,.rs,.go,.java,.cpp,.c,.h,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg,.webm,.aac,.mp4,.mov';
     fileInput.onchange = () => { for (const f of fileInput.files) attachFile(f, sourceEl); };
     fileInput.click();
   }
@@ -7463,7 +7780,13 @@
     const floatEl2 = document.getElementById('float-launcher');
     const useFloat2 = floatEl2 && floatEl2.classList.contains('visible');
     const promptEl = useFloat2 ? floatEl2.querySelector('.prompt-area') : document.querySelector('.palette:not(.hidden) .prompt-area');
-    if (promptEl) { promptEl.value = ''; promptEl.focus(); }
+    if (promptEl) {
+      currentResumeSessionId = sessionId;
+      const saved = localStorage.getItem(`polaris_draft_${sessionId}`);
+      promptEl.value = saved || '';
+      updateTokenCount(promptEl);
+      promptEl.focus();
+    }
   }
 
   window.clearResumeMode = function () {
@@ -7536,16 +7859,18 @@
     const imagePayload = pendingImages.map(i => ({ name: i.name, dataUrl: i.dataUrl }));
     const docPayload   = pendingDocs.map(d => ({ name: d.name, dataUrl: d.dataUrl }));
     const audioPayload = pendingAudio.map(a => ({ name: a.name, dataUrl: a.dataUrl }));
+    const videoPayload = pendingVideos.map(v => ({ name: v.name, dataUrl: v.dataUrl, type: v.type }));
     pendingImages.length = 0;
     pendingDocs.length   = 0;
     pendingAudio.length  = 0;
+    pendingVideos.length = 0;
     document.querySelectorAll('.file-chips').forEach(c => c.innerHTML = '');
     const mode = getLaunchMode();
     if (resumeTarget) {
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
       pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
@@ -7553,18 +7878,21 @@
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch-chat', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch-chat', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
     } else if (mode === 'gpt') {
       wsSend({ type: 'launch-gpt', prompt: fullPrompt, displayPrompt: f.prompt, projectName: f.projectName, tier: f.tier });
     } else if (mode === 'codex') {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch-codex', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch-codex', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
     } else {
       if (imagePayload.length) pendingLineImages['__next__'] = imagePayload;
-      wsSend({ type: 'launch', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload });
+      wsSend({ type: 'launch', prompt: fullPrompt, displayPrompt: f.prompt, workDir: f.workDir, projectName: f.projectName, model: f.model, tier: f.tier, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
     }
     phIdx = -1;
     if (f.promptEl) { f.promptEl.value = ''; updateTokenCount(f.promptEl); }
+    if (currentResumeSessionId) {
+      localStorage.removeItem(`polaris_draft_${currentResumeSessionId}`);
+    }
   }
 
   function setPrompt(text) {
@@ -8196,6 +8524,44 @@
   window.openSettings  = openSettings;
   window.closeSettings = closeSettings;
   window.saveSettings  = saveSettings;
+
+  // ── Video deps status ─────────────────────────────────────────────────────────
+  function updateVideoDepsUI(data) {
+    const ffDot = document.getElementById('video-deps-ffmpeg-dot');
+    const ytDot = document.getElementById('video-deps-ytdlp-dot');
+    const btn   = document.getElementById('video-deps-install-btn');
+    if (ffDot) ffDot.style.background = data.ffmpeg ? '#22c55e' : '#ef4444';
+    if (ytDot) ytDot.style.background = data.ytdlp  ? '#22c55e' : '#ef4444';
+    if (btn) btn.style.display = (data.ffmpeg && data.ytdlp) ? 'none' : '';
+  }
+
+  async function fetchVideoDeps() {
+    try {
+      const r = await fetch('/video-deps');
+      if (r.ok) updateVideoDepsUI(await r.json());
+    } catch {}
+  }
+
+  async function installVideoDeps() {
+    const btn = document.getElementById('video-deps-install-btn');
+    const msg = document.getElementById('video-deps-status-msg');
+    if (btn) { btn.disabled = true; btn.textContent = 'Installing…'; }
+    if (msg) msg.textContent = 'Starting install via winget…';
+    try {
+      await fetch('/video-deps/install', { method: 'POST' });
+    } catch (e) {
+      if (msg) msg.textContent = `Error: ${e.message}`;
+      if (btn) { btn.disabled = false; btn.textContent = 'Install'; }
+    }
+  }
+  window.installVideoDeps = installVideoDeps;
+
+  // Refresh when settings panel opens and handle WS events
+  const _origOpenSettings = window.openSettings;
+  window.openSettings = function(...args) {
+    _origOpenSettings(...args);
+    fetchVideoDeps();
+  };
 
   async function syncTimeNow() {
     const btn = document.getElementById('settings-sync-time-btn');
@@ -9004,6 +9370,57 @@ Then run /clear to initialize the review session.`;
   }
   window.openReviewSession = openReviewSession;
 
+  async function openSummarySession() {
+    const f = getLaunchFields();
+
+    try {
+      // Summary is Polaris-wide — no project selection required.
+      // The server always resolves summary.js from its own directory.
+      const response = await fetch('/run-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+      const data = await response.json();
+
+      const summaryOutput = data.output || 'No summary available';
+      const summaryPrompt = `## Workflow Summary for ${f.projectName}
+
+\`\`\`
+${summaryOutput}
+\`\`\`
+
+This is your current workflow status across all branches. Review the tasks and PRs by status.`;
+
+      const mode = getLaunchMode();
+      const basePayload = {
+        prompt: summaryPrompt,
+        displayPrompt: 'Workflow Summary',
+        workDir: f?.workDir || '',
+        projectName: f?.projectName || 'Polaris',
+        tier: f?.tier || 'balanced'
+      };
+
+      if (mode === 'chat') {
+        wsSend({ type: 'launch-chat', ...basePayload });
+      } else if (mode === 'gpt') {
+        wsSend({ type: 'launch-gpt', ...basePayload });
+      } else if (mode === 'codex') {
+        wsSend({ type: 'launch-codex', ...basePayload });
+      } else {
+        wsSend({ type: 'launch', ...basePayload, model: f.model });
+      }
+
+      pushDebugLog('[summary] Launched summary session for ' + f.projectName);
+    } catch (err) {
+      pushDebugLog('[summary] Error: ' + err.message, true);
+      alert('Failed to generate summary: ' + err.message);
+    }
+  }
+  window.openSummarySession = openSummarySession;
+
   function toggleBacklogPanel() {
     const panel = document.getElementById('backlog-panel');
     if (panel.classList.contains('hidden')) openBacklogPanel();
@@ -9069,8 +9486,43 @@ Then run /clear to initialize the review session.`;
     if (_backlogData) renderBacklog(_backlogData);
   }
 
+  const BACKLOG_LAST_SKILL_MAP = {
+    'planned': 'plan-task', 'ready': 'plan-task',
+    'build-started': 'start-build', 'in-progress': 'start-build',
+    'build-finished': 'finish-build', 'in-review': 'finish-build',
+    'pr-reviewed': 'review-pr',
+    'staged': 'promote-stage',
+    'production': 'promote-to-prod',
+    'complete': 'mark-tasks-complete', 'done': 'promote-stage',
+  };
+
+  function applyBacklogTaskStates() {
+    Object.values(sessionStore).forEach(s => {
+      if (s.taskNumber && s.taskState) return; // already set
+      const match = (s.name || '').match(/^Task #(\d+):/);
+      if (!match) return;
+      const taskNum = parseInt(match[1], 10);
+      let task = null;
+      if (_backlogData.global && _backlogData.global.tasks) {
+        task = _backlogData.global.tasks.find(t => t.number === taskNum);
+      }
+      if (!task) {
+        for (const p of (_backlogData.projects || [])) {
+          const found = (p.backlog && p.backlog.tasks || []).find(t => t.number === taskNum);
+          if (found) { task = found; break; }
+        }
+      }
+      if (!task || !task.status) return;
+      s.taskNumber = taskNum;
+      s.taskState  = task.status;
+      s.lastSkill  = BACKLOG_LAST_SKILL_MAP[task.status] || null;
+      updateCardTaskState(s.id);
+    });
+  }
+
   function renderBacklog(data) {
     _backlogData = data;
+    applyBacklogTaskStates();
     const body  = document.getElementById('backlog-panel-body');
     const count = document.getElementById('backlog-panel-count');
     if (!body) return;
@@ -9151,10 +9603,11 @@ Then run /clear to initialize the review session.`;
       });
     });
     // Task row → launch a new session to work on it (skip if clicking
-    // the status badge or edit button — those open pickers/modals instead)
+    // the status badge, impact cell, or edit button — those open pickers/modals instead)
     body.querySelectorAll('.backlog-task-row').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.backlog-status-badge')) return;
+        if (e.target.closest('.backlog-impact-cell')) return;
         if (e.target.closest('.backlog-edit-btn')) return;
         const scope = row.dataset.scope;
         const num = parseInt(row.dataset.taskNumber, 10);
@@ -9166,6 +9619,18 @@ Then run /clear to initialize the review session.`;
       badge.addEventListener('click', (e) => {
         e.stopPropagation();
         showStatusPicker(badge, badge.dataset.scope, parseInt(badge.dataset.taskNumber, 10), badge.dataset.status);
+      });
+    });
+    // Impact cell → cycle minor → standard → major → minor
+    body.querySelectorAll('.backlog-impact-cell').forEach(cell => {
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const order = ['minor', 'standard', 'major'];
+        const cur = cell.dataset.impact || 'standard';
+        const next = order[(order.indexOf(cur) + 1) % order.length];
+        const scope = cell.dataset.scope;
+        const taskNumber = parseInt(cell.dataset.taskNumber, 10);
+        wsSend({ type: 'update-backlog-task', scope: scope, taskNumber: taskNumber, updates: { impact: next } });
       });
     });
     // Edit button → open edit modal
@@ -9201,8 +9666,9 @@ Then run /clear to initialize the review session.`;
       'planned':           'background:rgba(96,165,250,0.25);color:#93c5fd;',
       'build-started':     'background:rgba(96,165,250,0.25);color:#93c5fd;',
       'cba-complete':      'background:rgba(96,165,250,0.25);color:#93c5fd;',
-      'cba-half-complete': 'background:rgba(251,146,60,0.25);color:#fdba74;',
+      'cba-half-complete': 'background:rgba(239,68,68,0.25);color:#fca5a5;',
       'build-finished':    'background:rgba(96,165,250,0.25);color:#93c5fd;',
+      'review-blocked':    'background:rgba(251,146,60,0.25);color:#fdba74;',
       'pr-reviewed':       'background:rgba(74,222,128,0.25);color:#86efac;',
       'staged':            'background:rgba(74,222,128,0.25);color:#86efac;',
       'smoke-tested':      'background:rgba(74,222,128,0.25);color:#86efac;',
@@ -9221,6 +9687,14 @@ Then run /clear to initialize the review session.`;
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;">PRI</th>'
       + '<th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.08em;opacity:0.5;width:40px;"></th>'
     + '</tr>';
+    const hexToRgba = (hex, alpha) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+    const projectColor = getProjectColorByName(scopeKey);
+    const rowBg = projectColor ? 'background:' + hexToRgba(projectColor, 0.08) + ';' : '';
     const rows = tasks.length === 0
       ? '<tr><td colspan="8" style="padding:14px;text-align:center;opacity:0.4;font-size:11px;">No tasks yet — click <strong>+ Add task</strong> above.</td></tr>'
       : tasks.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0)).map(t => {
@@ -9237,14 +9711,14 @@ Then run /clear to initialize the review session.`;
           if (impact === 'minor') impactStyle = 'color:#86efac;';
           else if (impact === 'major') impactStyle = 'color:#f97316;';
           else impactStyle = 'color:#aaa;';
-          return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;" title="Click to launch a new session to work on this task">'
+          return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;' + rowBg + '" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
             + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
             + '<td style="padding:8px 12px;font-size:11px;' + categoryStyle + '">' + escHtml(t.category || 'feature') + '</td>'
-            + '<td style="padding:8px 12px;font-size:11px;' + impactStyle + '">' + escHtml(impact) + '</td>'
+            + '<td class="backlog-impact-cell" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-impact="' + escHtmlAttr(impact) + '" style="padding:8px 12px;font-size:11px;cursor:pointer;' + impactStyle + '" title="Click to change impact">' + escHtml(impact) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.55;width:90px;">' + escHtml(depsStr) + '</td>'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.5;width:40px;text-align:right;">' + (t.priority || '') + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:40px;">'
@@ -9471,20 +9945,23 @@ Then run /clear to initialize the review session.`;
   // Status picker popover — anchored under a clicked status badge
   const BACKLOG_STATUS_OPTIONS = [
     'backlog', 'planned', 'build-started', 'cba-complete', 'cba-half-complete',
-    'build-finished', 'pr-reviewed', 'staged', 'smoke-tested', 'production',
-    'blocked', 'on-hold', 'cancelled'
+    'build-finished', 'review-blocked', 'pr-reviewed', 'staged', 'main', 'smoke-tested', 'production',
+    'failed-smoke-test', 'blocked', 'on-hold', 'cancelled'
   ];
   const BACKLOG_STATUS_COLORS = {
     'backlog':           'background:rgba(120,120,120,0.25);color:#aaa;',
     'planned':           'background:rgba(96,165,250,0.25);color:#93c5fd;',
     'build-started':     'background:rgba(96,165,250,0.25);color:#93c5fd;',
     'cba-complete':      'background:rgba(96,165,250,0.25);color:#93c5fd;',
-    'cba-half-complete': 'background:rgba(251,146,60,0.25);color:#fdba74;',
+    'cba-half-complete': 'background:rgba(239,68,68,0.25);color:#fca5a5;',
     'build-finished':    'background:rgba(96,165,250,0.25);color:#93c5fd;',
+    'review-blocked':    'background:rgba(251,146,60,0.25);color:#fdba74;',
     'pr-reviewed':       'background:rgba(74,222,128,0.25);color:#86efac;',
     'staged':            'background:rgba(74,222,128,0.25);color:#86efac;',
+    'main':              'background:rgba(74,222,128,0.25);color:#86efac;',
     'smoke-tested':      'background:rgba(74,222,128,0.25);color:#86efac;',
     'production':        'background:rgba(34,197,94,0.35);color:#bbf7d0;',
+    'failed-smoke-test': 'background:rgba(239,68,68,0.25);color:#fca5a5;',
     'blocked':           'background:rgba(239,68,68,0.25);color:#fca5a5;',
     'on-hold':           'background:rgba(250,204,21,0.25);color:#fde047;',
     'cancelled':         'background:rgba(120,120,120,0.25);color:#888;',
@@ -9532,6 +10009,54 @@ Then run /clear to initialize the review session.`;
     hideStatusPicker();
   });
 
+  // Impact picker popover — anchored under a clicked impact cell
+  const BACKLOG_IMPACT_OPTIONS = ['minor', 'standard', 'major'];
+  const BACKLOG_IMPACT_COLORS = {
+    'minor':    'background:rgba(74,222,128,0.25);color:#86efac;',
+    'standard': 'background:rgba(120,120,120,0.25);color:#aaa;',
+    'major':    'background:rgba(249,115,22,0.25);color:#f97316;',
+  };
+
+  function showImpactPicker(cellEl, scope, taskNumber, currentImpact) {
+    const picker = document.getElementById('backlog-impact-picker');
+    if (!picker) return;
+    const rect = cellEl.getBoundingClientRect();
+    const pickerHeight = 110;
+    let top = rect.bottom + 4;
+    if (top + pickerHeight > window.innerHeight) top = Math.max(8, rect.top - pickerHeight - 4);
+    picker.style.left = Math.max(8, Math.min(window.innerWidth - 150, rect.left)) + 'px';
+    picker.style.top = top + 'px';
+    picker.innerHTML = BACKLOG_IMPACT_OPTIONS.map(i => {
+      const style = BACKLOG_IMPACT_COLORS[i] || BACKLOG_IMPACT_COLORS['standard'];
+      const selectedRing = i === currentImpact ? 'box-shadow:inset 0 0 0 1px var(--accent);' : '';
+      return '<button data-impact="' + i + '" style="text-align:left;padding:5px 12px;border:none;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + style + selectedRing + '">' + i + '</button>';
+    }).join('');
+    picker.style.display = 'flex';
+    picker.dataset.scope = scope;
+    picker.dataset.taskNumber = String(taskNumber);
+    picker.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        wsSend({ type: 'update-backlog-task', scope: scope, taskNumber: taskNumber, updates: { impact: btn.dataset.impact } });
+        hideImpactPicker();
+      });
+    });
+  }
+
+  function hideImpactPicker() {
+    const picker = document.getElementById('backlog-impact-picker');
+    if (picker) picker.style.display = 'none';
+  }
+
+  // Hide impact picker on outside click
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('backlog-impact-picker');
+    if (!picker || picker.style.display === 'none') return;
+    if (e.target.closest('#backlog-impact-picker')) return;
+    if (e.target.classList && e.target.classList.contains('backlog-impact-cell')) return;
+    hideImpactPicker();
+  });
+
   window.openBacklogPanel       = openBacklogPanel;
   window.closeBacklogPanel      = closeBacklogPanel;
   window.toggleBacklogPanel     = toggleBacklogPanel;
@@ -9549,6 +10074,8 @@ Then run /clear to initialize the review session.`;
   window.filterBacklogTasks   = filterBacklogTasks;
   window.showStatusPicker          = showStatusPicker;
   window.hideStatusPicker          = hideStatusPicker;
+  window.showImpactPicker          = showImpactPicker;
+  window.hideImpactPicker          = hideImpactPicker;
   window.cancelTaskSessionPicker   = cancelTaskSessionPicker;
   window.confirmTaskSessionType    = confirmTaskSessionType;
 
@@ -13209,9 +13736,29 @@ Then run /clear to initialize the review session.`;
   }
 
   // ── Obsidian Analysis Preview ─────────────────────────────────────────────────
-  function showObsidianAnalysisModal(analysis, sessionName) {
+  function showObsidianAnalysisLoading() {
     const modal = document.getElementById('obsidian-analysis-modal');
     if (!modal) return;
+    modal.innerHTML = `<div>
+      <div class="oa-header">
+        <span>Knowledge Preview <span style="font-size:10px;font-weight:400;color:var(--text-muted,#9ca3af);margin-left:6px;padding:2px 6px;background:rgba(255,255,255,0.06);border-radius:4px;letter-spacing:0.02em;">DeepSeek deep review</span></span>
+        <button onclick="obsidianAnalysisReject()" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+      <div class="oa-body">
+        <p class="oa-intro">Rerunning the analysis with a deeper missed-something review…</p>
+      </div>
+      <div class="oa-footer">
+        <button disabled class="oa-btn-reject" style="opacity:0.45;cursor:default;">Reject</button>
+        <button disabled class="oa-btn-accept" style="opacity:0.45;cursor:default;">Thinking…</button>
+      </div>
+    </div>`;
+    modal.style.display = 'flex';
+  }
+
+  function showObsidianAnalysisModal(analysis, sessionName, content, projectName, depth) {
+    const modal = document.getElementById('obsidian-analysis-modal');
+    if (!modal) return;
+    const isDeep = depth === 'deep';
     const hasAny = analysis && (analysis.architecture || analysis.buildPlan || analysis.backlog ||
       analysis.decision || analysis.pattern || analysis.lesson);
 
@@ -13224,14 +13771,18 @@ Then run /clear to initialize the review session.`;
       </div>`;
     };
 
+    const badge = isDeep
+      ? `<span style="font-size:10px;font-weight:400;color:var(--text-muted,#9ca3af);margin-left:6px;padding:2px 6px;background:rgba(255,255,255,0.06);border-radius:4px;letter-spacing:0.02em;">DeepSeek deep review</span>`
+      : `<span style="font-size:10px;font-weight:400;color:var(--text-muted,#9ca3af);margin-left:6px;padding:2px 6px;background:rgba(255,255,255,0.06);border-radius:4px;letter-spacing:0.02em;">via DeepSeek</span>`;
+
     modal.innerHTML = `<div>
       <div class="oa-header">
-        <span>Knowledge Preview — ${escHtml(sessionName || 'Session')} <span style="font-size:10px;font-weight:400;color:var(--text-muted,#9ca3af);margin-left:6px;padding:2px 6px;background:rgba(255,255,255,0.06);border-radius:4px;letter-spacing:0.02em;">via DeepSeek</span></span>
+        <span>Knowledge Preview — ${escHtml(sessionName || 'Session')} ${badge}</span>
         <button onclick="obsidianAnalysisReject()" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;line-height:1;">✕</button>
       </div>
       <div class="oa-body">
         ${hasAny ? `
-          <p class="oa-intro">The following content will be written to your Obsidian knowledge base. Review, then accept or reject.</p>
+          <p class="oa-intro">${isDeep ? 'Deep review complete.' : ''} The following content will be written to your Obsidian knowledge base. Review, then accept or reject.</p>
           ${renderSection('Architecture', analysis.architecture)}
           ${renderSection('Build Plan', analysis.buildPlan)}
           ${renderSection('Backlog', analysis.backlog, analysis._nextBacklog)}
@@ -13242,6 +13793,7 @@ Then run /clear to initialize the review session.`;
       </div>
       <div class="oa-footer">
         <button onclick="obsidianAnalysisReject()" class="oa-btn-reject">Reject</button>
+        ${!isDeep ? `<button onclick="obsidianAnalysisThinkDeeper()" class="oa-btn-reject">Think Deeper</button>` : ''}
         <button onclick="obsidianAnalysisAccept()" class="oa-btn-accept">Accept &amp; Push</button>
       </div>
     </div>`;
@@ -13282,8 +13834,16 @@ Then run /clear to initialize the review session.`;
     pushDebugLog('[obsidian] Analysis rejected — no writes made.');
   }
 
-  window.obsidianAnalysisAccept = obsidianAnalysisAccept;
-  window.obsidianAnalysisReject = obsidianAnalysisReject;
+  function obsidianAnalysisThinkDeeper() {
+    if (!obsidianPendingSession) return;
+    const { sessionName, content, projectName } = obsidianPendingSession;
+    showObsidianAnalysisLoading();
+    wsSend({ type: 'obsidian-analyze', sessionName, content, projectName, depth: 'deep' });
+  }
+
+  window.obsidianAnalysisAccept      = obsidianAnalysisAccept;
+  window.obsidianAnalysisReject      = obsidianAnalysisReject;
+  window.obsidianAnalysisThinkDeeper = obsidianAnalysisThinkDeeper;
 
   window.closeAllSessions = closeAllSessions;
   window.camRowPush       = camRowPush;
@@ -13396,6 +13956,9 @@ Then run /clear to initialize the review session.`;
     document.querySelectorAll('.prompt-area').forEach(el => {
       el.addEventListener('input', () => {
         updateTokenCount(el);
+        if (currentResumeSessionId && el.id === 'float-prompt-area') {
+          localStorage.setItem(`polaris_draft_${currentResumeSessionId}`, el.value);
+        }
         if (el.id === 'float-prompt-area') {
           el.style.height = 'auto';
           el.style.height = el.scrollHeight + 'px';

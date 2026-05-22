@@ -310,21 +310,22 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-20 (by /promote-to-main cross-boundary audit for task #19 — line refs post _validImpact extraction verified)
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
 
-**Boundaries checked:** Backlog task schema fields — impact field verified against actual code at current line numbers
+**Task:** #25 — Split server.js into bounded runtime services
+
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), and skills
 
 **Evidence recorded:**
 - 14 entries documented
 - 11 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
 - 3 entries with orphan producers (dependencies, branch, pr_url) ⚠
-- 0 entries with pending implementation ✓
-- `impact` field: server.js producers verified at lines 2726/2964/2983 (post `_validImpact` helper extraction); mockup.html consumers verified at lines 2052/2097/9182/9219/9235/9247/9251/9389/9421; enum validation extracted to `_validImpact()` helper at line 2705
+- 0 entries with shape mismatches
+- New identifiers introduced on task #25: none (pure internal refactoring)
+- Registries match current code diff: yes
+- Task #25 adds new fields: `plan` (narrative) and `proofUnits` (array) to backlog entry for task #25 itself; existing schema unchanged
 
-**Gaps identified:**
-- `dependencies` field: producers but no consumer (no enforcement)
-- `branch` field: producer but no consumer (never used)
-- `pr_url` field: producer but no consumer (never used)
+**Gaps identified:** 3 pre-existing orphan producers (dependencies, branch, pr_url) — defer to future tasks
 
-**Status:** Audit current — line references verified against code after task #19 implementation fixes
+**Status:** Audit complete — registries valid for task #25 scope. Internal refactoring preserves backlog contract. Task #25 itself uses plan and proofUnits fields as already-documented contract.
