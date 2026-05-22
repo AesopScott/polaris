@@ -12,6 +12,133 @@ const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 
+// ─── Video utilities (frame extraction) ────────────────────────────────────────
+const VIDEO_TEMP_DIR = path.join(APPDATA, '.claude', 'polaris', 'video-temp');
+const VIDEO_FRAME_COUNT = 6; // Extract N keyframes from video
+
+function ensureVideoTempDir() {
+  if (!fs.existsSync(VIDEO_TEMP_DIR)) fs.mkdirSync(VIDEO_TEMP_DIR, { recursive: true });
+}
+
+async function extractVideoFrames(dataUrl, videoName) {
+  // Extract frames from a video (base64 dataUrl) using ffmpeg
+  // Returns array of base64 JPEG images
+  return new Promise(async (resolve) => {
+    try {
+      ensureVideoTempDir();
+      const videoId = crypto.randomBytes(8).toString('hex');
+      const videoPath = path.join(VIDEO_TEMP_DIR, `${videoId}.mp4`);
+      const frameDir = path.join(VIDEO_TEMP_DIR, `${videoId}_frames`);
+
+      if (!fs.existsSync(frameDir)) fs.mkdirSync(frameDir, { recursive: true });
+
+      // Write video file from dataUrl
+      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+      if (!match) return resolve([]);
+
+      const videoBuffer = Buffer.from(match[2], 'base64');
+      fs.writeFileSync(videoPath, videoBuffer);
+
+      // Use ffmpeg to extract frames
+      const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf fps=1/${Math.ceil(VIDEO_FRAME_COUNT)} -vframes ${VIDEO_FRAME_COUNT} "${frameDir}/frame_%03d.jpg" -y -hide_banner -loglevel error 2>&1`;
+
+      execSync(ffmpegCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 30000 }).catch(() => {});
+
+      // Read extracted frames and convert to base64
+      const frames = [];
+      for (let i = 1; i <= VIDEO_FRAME_COUNT; i++) {
+        const framePath = path.join(frameDir, `frame_${String(i).padStart(3, '0')}.jpg`);
+        if (fs.existsSync(framePath)) {
+          try {
+            const frameBuffer = fs.readFileSync(framePath);
+            const base64 = frameBuffer.toString('base64');
+            frames.push({
+              name: `${videoName}-frame-${i}.jpg`,
+              dataUrl: `data:image/jpeg;base64,${base64}`
+            });
+          } catch (e) {}
+        }
+      }
+
+      // Cleanup
+      try { fs.rmSync(videoPath); } catch (e) {}
+      try { fs.rmSync(frameDir, { recursive: true }); } catch (e) {}
+
+      resolve(frames);
+    } catch (e) {
+      console.error('[video] frame extraction failed:', e.message);
+      resolve([]);
+    }
+  });
+}
+
+async function downloadYouTubeVideo(urlOrId) {
+  // Download a YouTube video and extract frames
+  // Returns array of base64 JPEG images
+  return new Promise(async (resolve) => {
+    try {
+      const videoId = typeof urlOrId === 'string' && urlOrId.length === 11
+        ? urlOrId
+        : (urlOrId.match(/[a-zA-Z0-9_-]{11}/) || [])[0];
+
+      if (!videoId || videoId.length !== 11) return resolve([]);
+
+      ensureVideoTempDir();
+      const tempId = crypto.randomBytes(8).toString('hex');
+      const videoPath = path.join(VIDEO_TEMP_DIR, `${tempId}.mp4`);
+      const frameDir = path.join(VIDEO_TEMP_DIR, `${tempId}_frames`);
+
+      if (!fs.existsSync(frameDir)) fs.mkdirSync(frameDir, { recursive: true });
+
+      // Use yt-dlp or youtube-dl if available; otherwise use ffmpeg's built-in youtube support
+      const dlCmd = `yt-dlp -f "best[ext=mp4]" -o "${videoPath}" "https://youtu.be/${videoId}" 2>&1`;
+
+      try {
+        execSync(dlCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 60000 });
+      } catch (e) {
+        // Fallback to ffmpeg's youtube support
+        try {
+          const ffmpegDlCmd = `ffmpeg -i "https://youtu.be/${videoId}" -c copy "${videoPath}" -y -hide_banner -loglevel error 2>&1`;
+          execSync(ffmpegDlCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 60000 });
+        } catch (e2) {
+          console.error('[youtube] download failed:', e2.message);
+          return resolve([]);
+        }
+      }
+
+      // Extract frames using same logic as local video
+      const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf fps=1/${Math.ceil(VIDEO_FRAME_COUNT)} -vframes ${VIDEO_FRAME_COUNT} "${frameDir}/frame_%03d.jpg" -y -hide_banner -loglevel error 2>&1`;
+
+      try {
+        execSync(ffmpegCmd, { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
+      } catch (e) {}
+
+      const frames = [];
+      for (let i = 1; i <= VIDEO_FRAME_COUNT; i++) {
+        const framePath = path.join(frameDir, `frame_${String(i).padStart(3, '0')}.jpg`);
+        if (fs.existsSync(framePath)) {
+          try {
+            const frameBuffer = fs.readFileSync(framePath);
+            const base64 = frameBuffer.toString('base64');
+            frames.push({
+              name: `youtube-${videoId}-frame-${i}.jpg`,
+              dataUrl: `data:image/jpeg;base64,${base64}`
+            });
+          } catch (e) {}
+        }
+      }
+
+      try { fs.rmSync(videoPath); } catch (e) {}
+      try { fs.rmSync(frameDir, { recursive: true }); } catch (e) {}
+
+      resolve(frames);
+    } catch (e) {
+      console.error('[youtube] video download failed:', e.message);
+      resolve([]);
+    }
+  });
+}
+
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const APPDATA      = process.env.APPDATA || os.homedir();
 const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', 'polaris');
@@ -5104,9 +5231,41 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     }
   }
 
-  // Build user message content: attach images and audio as multimodal content blocks.
-  const agentImages = session.pendingImages || [];
+  // Process videos and extract frames to images
+  const agentVideos = session.pendingVideos || [];
+  session.pendingVideos = [];
+  let agentImages = session.pendingImages || [];
   session.pendingImages = [];
+
+  for (const video of agentVideos) {
+    if (video && video.dataUrl) {
+      try {
+        const frames = await extractVideoFrames(video.dataUrl, video.name);
+        agentImages = agentImages.concat(frames);
+        if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[video: ${video.name} → ${frames.length} frames extracted]`, role: 'system' });
+      } catch (e) {
+        console.error('[video] frame extraction failed:', e.message);
+        broadcast({ type: 'line', sessionId, text: `[video: ${video.name} — extraction failed]`, role: 'system' });
+      }
+    }
+  }
+
+  // Detect YouTube URLs in prompt and extract frames
+  const youtubePattern = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+  let youtubeMatch;
+  while ((youtubeMatch = youtubePattern.exec(effectiveMessage || '')) !== null) {
+    const videoId = youtubeMatch[1];
+    try {
+      const frames = await downloadYouTubeVideo(videoId);
+      agentImages = agentImages.concat(frames);
+      if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} → ${frames.length} frames extracted]`, role: 'system' });
+    } catch (e) {
+      console.error('[youtube] extraction failed:', e.message);
+      broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} — extraction failed]`, role: 'system' });
+    }
+  }
+
+  // Build user message content: attach images and audio as multimodal content blocks.
   let messageContent = effectiveMessage;
   if (agentImages.length || agentAudio.length) {
     const blocks = [];
@@ -7520,7 +7679,7 @@ function broadcastInitialUserPrompt(sessionId, prompt, displayPrompt) {
 function executeResumeTurn(sessionId, turn) {
   const session = sessions.get(sessionId);
   if (!session) return;
-  const { prompt, displayPrompt, projectName, images, docs, audio } = turn;
+  const { prompt, displayPrompt, projectName, images, docs, audio, videos } = turn;
   session.status = 'running';
   session.lastActivityAt = Date.now();
   session.stallCount = 0;
@@ -7536,6 +7695,7 @@ function executeResumeTurn(sessionId, turn) {
   if (Array.isArray(images) && images.length) session.pendingImages = images.filter(i => i && typeof i.dataUrl === 'string');
   if (Array.isArray(docs)   && docs.length)   session.pendingDocs   = docs.filter(d => d && typeof d.dataUrl === 'string');
   if (Array.isArray(audio)  && audio.length)  session.pendingAudio  = audio.filter(a => a && typeof a.dataUrl === 'string');
+  if (Array.isArray(videos) && videos.length) session.pendingVideos = videos.filter(v => v && typeof v.dataUrl === 'string');
   if (session.isChat) {
     const resumeAttachments = [
       ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
@@ -7598,8 +7758,8 @@ async function handleMessage(ws, raw) {
   const { type } = msg;
 
   if (type === 'launch-chat') {
-    const { prompt, displayPrompt, workDir, tier, images, docs, audio, chipLabel, chipColor, model: overrideModel } = msg;
-    if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+    const { prompt, displayPrompt, workDir, tier, images, docs, audio, videos, chipLabel, chipColor, model: overrideModel } = msg;
+    if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length) && !(videos && videos.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
     // Skip detection when chipLabel is set (e.g. "Cross Check") — the label wins and
@@ -7648,6 +7808,7 @@ async function handleMessage(ws, raw) {
       pendingImages: Array.isArray(images) ? images.filter(i => i && typeof i.dataUrl === 'string') : [],
       pendingDocs:   Array.isArray(docs)   ? docs.filter(d => d && typeof d.dataUrl === 'string')   : [],
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
+      pendingVideos: Array.isArray(videos) ? videos.filter(v => v && typeof v.dataUrl === 'string') : [],
     });
     if (effectiveWorkDir) {
       const wtPath = createSessionWorktree(id, effectiveWorkDir);
@@ -7715,13 +7876,14 @@ async function handleMessage(ws, raw) {
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
+    const launchVideos = Array.isArray(msg.videos) ? msg.videos.filter(v => v && typeof v.dataUrl === 'string') : [];
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       isChat: true, isCodex: true, model: 'openai/codex-1 (Codex CLI)', tier: codexTier,
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       proc: null, watcher: null, timeout: null,
       lines: [], lastPrompt: prompt, codexThreadId: null,
-      pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio,
+      pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos,
     });
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
@@ -7732,7 +7894,7 @@ async function handleMessage(ws, raw) {
 
   if (type === 'launch') {
     const { prompt, displayPrompt, workDir, sessionId } = msg;
-    if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
+    if (!prompt && !(msg.images && msg.images.length) && !(msg.docs && msg.docs.length) && !(msg.audio && msg.audio.length) && !(msg.videos && msg.videos.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
     const detectedProject = !msg.projectName ? detectProjectFromPrompt(prompt) : null;
@@ -7748,13 +7910,14 @@ async function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Image');
+    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Video');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
-    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
+    const launchVideos = Array.isArray(msg.videos) ? msg.videos.filter(v => v && typeof v.dataUrl === 'string') : [];
+    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
     if (newSession.taskNumber && !newSession.taskState) {
       const inf = inferTaskState(newSession);
       if (inf) { newSession.taskState = inf.taskState; newSession.lastSkill = inf.lastSkill; }
@@ -7825,10 +7988,10 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'resume') {
-    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio } = msg;
+    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
-    const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio };
+    const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos };
     // If the session is running, show the prompt in the transcript immediately and queue it
     // for immediate execution once the current task finishes — never kill the active task.
     // CLI sessions (chat/codex/gpt) can't receive mid-task injections, so go straight to
