@@ -1,411 +1,373 @@
 {
-    "tasks":  [
-                  {
-                      "number":  4,
-                      "title":  "Status button not updating from text entered after session close",
-                      "category":  "fix",
-                      "priority":  1,
-                      "status":  "on-hold",
-                      "dependencies":  [
-
-                                       ],
-                      "description":  "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it\u0027s submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
-                      "plan":  null,
-                      "branch":  null,
-                      "pr_url":  null
-                  },
-                  {
-                      "number":  14,
-                      "title":  "Move tasks between projects",
-                      "description":  "I need to be able to move tasks to other projects.",
-                      "category":  "feature",
-                      "priority":  90,
-                      "impact":  "minor",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-21",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  24,
-                      "title":  "LangGraph: Spike + Foundation (Phases 1-3)",
-                      "description":  "Validate the Python sidecar HTTP bridge pattern, build the /lang skill entry point and agent dispatch layer, define TaskState, and build the StateGraph stubs + FastAPI executor. This is the go/no-go spike before any node implementation. Reference: C:\\Users\\scott\\Code\\Polaris\\docs\\LANGGRAPH_IMPLEMENTATION_CONTEXT.md",
-                      "category":  "feature",
-                      "priority":  90,
-                      "impact":  "standard",
-                      "status":  "cba-complete",
-                      "created_at":  "2026-05-21",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ],
-                      "branch":  "task/24-langgraph-orchestration",
-                      "pr_url":  "https://github.com/AesopScott/polaris/pull/29",
-                      "plan":  "## Overview\n\nValidate the Python sidecar HTTP bridge pattern and build the LangGraph foundation. This is a parallel POC skill (/lang) that does not replace /ship-task.\n\n## Phases\n\n### Phase 1: Python Sidecar Spike\nBuild minimal FastAPI + LangGraph spike. Confirm server.js can start/stop the Python process and call /advance via HTTP. Validate SQLite checkpoint survival across a simulated process restart.\n\n### Phase 2: Skill Entry Point + Dispatch Layer\nCreate ~/.claude/commands/lang.md. Add /dispatch-agent HTTP POST handler in server.js for Python nodes to invoke UI-selected agent. Design and implement WebSocket pause/resume protocol (lang:pause, lang:signal, lang:state).\n\n### Phase 3: StateGraph + Executor\nDefine TaskState TypedDict. Build agents/task_graph.py (StateGraph with 9 stub nodes). Build agents/task_executor.py (FastAPI server, endpoints: POST /advance, POST /signal, GET /state, SQLite checkpoint). Wire server.js to start/stop sidecar lifecycle.\n\n## First Proof Unit\n\nPython sidecar HTTP bridge: POST localhost:4001/advance returns HTTP 200 with stub node result. Validates the core IPC bridge before any node logic is built.",
-                      "proofUnits":  [
-                                         {
-                                             "number":  1,
-                                             "title":  "Python sidecar HTTP bridge responds",
-                                             "expectedBehavior":  "Running sidecar_spike.py FastAPI server responds to a test HTTP POST /advance with 200 and a stub node result.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "cd C:\\Users\\scott\\Code\\Polaris-task-24 \u0026\u0026 python agents/spike/sidecar_spike.py \u0026 curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 99, \\\"node\\\": \\\"stub\\\"}\"",
-                                             "expectedInitialFailure":  "curl: (7) Failed to connect to localhost port 4001",
-                                             "expectedPassingEvidence":  "HTTP 200 with JSON body {\"status\": \"ok\", \"node\": \"stub\"}",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  2,
-                                             "title":  "SQLite checkpoint survives sidecar restart",
-                                             "expectedBehavior":  "After running to a pause point, killing Python process, and restarting, GET /state returns the last checkpointed node — not START.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "1. Start sidecar. 2. POST /advance task_number:99. 3. Kill process. 4. Restart sidecar. 5. GET /state?task_number=99 — confirm last node, not START.",
-                                             "expectedInitialFailure":  "GET /state returns empty or START node after restart",
-                                             "expectedPassingEvidence":  "GET /state returns last completed node and full TaskState matching pre-kill state",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  3,
-                                             "title":  "/lang skill file invokes executor",
-                                             "expectedBehavior":  "Running /lang 24 starts the Python sidecar and receives a response from POST /advance.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "/lang 24 then curl -s http://localhost:4001/state?task_number=24",
-                                             "expectedInitialFailure":  "/lang not found or no response from executor",
-                                             "expectedPassingEvidence":  "GET /state returns TaskState with task_number:24 and status:planning",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  4,
-                                             "title":  "Agent dispatch callback works from Python node",
-                                             "expectedBehavior":  "POST /dispatch-agent on server.js invokes the UI-selected agent and returns its text response.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "curl -s -X POST http://localhost:40000/dispatch-agent -H \"Content-Type: application/json\" -d \"{\\\"agent\\\": \\\"max\\\", \\\"prompt\\\": \\\"Say hello.\\\", \\\"task_number\\\": 24}\"",
-                                             "expectedInitialFailure":  "HTTP 404 — endpoint does not exist",
-                                             "expectedPassingEvidence":  "HTTP 200 with {\"response\": \"Hello...\"}",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  5,
-                                             "title":  "StateGraph compiles and runs to first node",
-                                             "expectedBehavior":  "task_graph.py compiles, StateGraph instantiates, and a test invoke runs plan_node stub without errors.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "python -c \"from agents.task_graph import build_graph; g = build_graph(); print(\u0027OK\u0027)\"",
-                                             "expectedInitialFailure":  "ImportError or AttributeError",
-                                             "expectedPassingEvidence":  "Prints OK without errors",
-                                             "waiverGuidance":  "N/A"
-                                         }
-                                     ]
-                  },
-                  {
-                      "number":  33,
-                      "title":  "LangGraph: Node Implementation + HITL (Phases 4-5)",
-                      "description":  "Build all 9 LangGraph node files (plan, start_build, build, finish_build, review, codex_review, stage_decision, promote_stage, promote_prod) and wire HITL pause/resume semantics with WebSocket signal forwarding. Depends on Task #24.",
-                      "category":  "feature",
-                      "priority":  90,
-                      "impact":  "standard",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-                                           24
-                                       ],
-                      "branch":  null,
-                      "pr_url":  null,
-                      "plan":  null,
-                      "proofUnits":  [
-
-                                     ]
-                  },
-                  {
-                      "number":  34,
-                      "title":  "LangGraph: Integration + POC Validation (Phases 6-7)",
-                      "description":  "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
-                      "category":  "feature",
-                      "priority":  90,
-                      "impact":  "standard",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-                                           33
-                                       ],
-                      "branch":  null,
-                      "pr_url":  null,
-                      "plan":  null,
-                      "proofUnits":  [
-
-                                     ]
-                  },
-                  {
-                      "number":  25,
-                      "title":  "Split server.js into bounded runtime services",
-                      "description":  "Polaris has strong local coherence, but server.js currently owns config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. Split the monolith into bounded modules such as agentRuntime, toolRuntime, sessionStore, contracts, mcpGateway, crossCheck, backlog, and httpRoutes. Keep the desktop-local architecture, but make the WebSocket server an adapter over typed core operations like launchSession, executeTool, transitionTask, recordCrossCheck, and loadMemory.",
-                      "category":  "refactor",
-                      "priority":  95,
-                      "impact":  "major",
-                      "status":  "build-started",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ],
-                      "plan":  "## Overview\n\nserver.js is a monolithic module handling config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. As features grow, the monolith becomes harder to test, debug, and maintain. This refactoring extracts 8 bounded modules with explicit dependencies and a WebSocket adapter pattern to improve stability and maintainability.\n\n## Architecture\n\nEight bounded modules will be created:\n- contracts.ts: Type definitions and schemas (single source of truth)\n- sessionStore.ts: Session state management and persistence\n- agentRuntime.ts: Agent spawning and session loops\n- toolRuntime.ts: Tool execution and schema validation\n- mcpGateway.ts: MCP bridge and tool envelope handling\n- crossCheck.ts: Cross-Check approval/rejection logic\n- backlog.ts: Task operations and transitions\n- httpRoutes.ts: HTTP endpoint routing and file serving\n\nWebSocket server becomes a thin adapter over typed core operations: launchSession, executeTool, transitionTask, recordCrossCheck, loadMemory.\n\n## Key Risks \u0026 Mitigations\n\nRisk: Mission-critical code breakage. server.js is the engine of the entire player system.\nMitigation: Incremental extraction with rollback gates. Clear commit boundaries. Smoke tests after each phase.\n\nRisk: Type boundary mismatch. Contracts module must capture all message shapes.\nMitigation: Audit server.js before extraction. Automated schema validation in WebSocket adapter.\n\nRisk: Circular dependencies. Modules may accidentally depend on each other.\nMitigation: Contracts is a leaf. Core services depend only on contracts. WebSocket is a hub.\n\n## Phases\n\n1. Foundation: Extract contracts module\n2. Core Services: Extract sessionStore, agentRuntime\n3. Core Services: Extract toolRuntime, mcpGateway\n4. Core Services: Extract crossCheck, backlog\n5. HTTP Routes: Extract httpRoutes\n6. WebSocket Adapter: Refactor websocket.ts as thin adapter\n7. Integration: Wire modules, test, verify rollback\n8. Documentation: Update Architecture.md, JSDoc, topology diagram\n\n## First Proof Unit\n\nContracts module defined and compiles. All TypeScript types for WebSocket messages, tool contracts, and task orchestration are in src/runtime/contracts.ts and compile without errors.\nProof: npx tsc --noEmit src/runtime/contracts.ts exits with code 0.",
-                      "proofUnits":  [
-                                         {
-                                             "number":  1,
-                                             "title":  "Contracts module defined and compiles",
-                                             "expectedBehavior":  "All TypeScript types and interfaces for WebSocket messages, tool contracts, and task orchestration are defined in src/runtime/contracts.ts, and the module compiles without errors.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "cd C:\\Users\\scott\\Code\\Polaris \u0026\u0026 npx tsc --noEmit src/runtime/contracts.ts",
-                                             "expectedInitialFailure":  "File not found or TS compilation errors due to incomplete type definitions.",
-                                             "expectedPassingEvidence":  "Command exits with code 0 (no errors); contracts.ts is well-formed and can be imported by other modules.",
-                                             "waiverGuidance":  "N/A"
-                                         },
-                                         {
-                                             "number":  2,
-                                             "title":  "sessionStore module extracted and state persists",
-                                             "expectedBehavior":  "Session state management is extracted into src/runtime/sessionStore.ts. Starting a session, storing state, and reloading shows the same state (round-trip verification).",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "1. Start Polaris (npm start). 2. Create a session via the UI. 3. Note the session ID and state. 4. Reload Polaris. 5. Verify the session state persists and matches what was saved.",
-                                             "expectedInitialFailure":  "sessionStore module does not exist or session state is lost on reload.",
-                                             "expectedPassingEvidence":  "Session state persists correctly across reload; sessionStore is imported and used by server.js orchestration.",
-                                             "waiverGuidance":  "If automated testing is not available, manual verification with clear step-by-step instructions and sign-off by Scott suffices."
-                                         },
-                                         {
-                                             "number":  3,
-                                             "title":  "agentRuntime extracts agent spawning logic",
-                                             "expectedBehavior":  "Agent spawning and session loops are extracted into src/runtime/agentRuntime.ts. Agents can be spawned and respond to commands normally.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "Manual test: Start Polaris and trigger an agent spawn. In Polaris UI: open a session, click Run Agent. Verify: Agent starts, accepts input, and returns output. Then check: grep agentRuntime server.js to confirm it\u0027s imported.",
-                                             "expectedInitialFailure":  "agentRuntime does not exist or agents fail to spawn after extraction.",
-                                             "expectedPassingEvidence":  "Agents spawn successfully and process commands. grep agentRuntime server.js shows the module is orchestrated.",
-                                             "waiverGuidance":  "Manual testing of agent spawn and response flow, verified visually in the UI, counts as passing evidence."
-                                         },
-                                         {
-                                             "number":  4,
-                                             "title":  "toolRuntime extracts tool execution",
-                                             "expectedBehavior":  "Tool execution and schema validation are extracted into src/runtime/toolRuntime.ts. Tools can be executed and return results normally.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "Manual test: Start Polaris, trigger a tool execution (e.g., Read tool). In UI: attempt to read a file (triggers Read tool). Verify: Tool executes successfully, file content is returned. Check: grep toolRuntime server.js.",
-                                             "expectedInitialFailure":  "toolRuntime does not exist or tools fail to execute after extraction.",
-                                             "expectedPassingEvidence":  "Tool execution succeeds (file is read), tool returns proper result. grep toolRuntime server.js shows it\u0027s imported.",
-                                             "waiverGuidance":  "Manual tool execution with visible output in the UI counts as passing evidence."
-                                         },
-                                         {
-                                             "number":  5,
-                                             "title":  "mcpGateway extracts MCP bridge logic",
-                                             "expectedBehavior":  "MCP server bridge and tool envelope handling are extracted into src/runtime/mcpGateway.ts. MCP-exposed tools continue to work.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "Manual test: Start Polaris, verify MCP tool list shows expected tools. Check: MCP tool schema is validated and tools respond. Command: curl -s http://localhost:40000/mcp/tools (or equivalent test call). Verify response is a valid tool list.",
-                                             "expectedInitialFailure":  "mcpGateway does not exist or MCP tools are unavailable after extraction.",
-                                             "expectedPassingEvidence":  "MCP tool list is available and valid. grep mcpGateway server.js shows it\u0027s imported.",
-                                             "waiverGuidance":  "Manual inspection of MCP tool availability in the Polaris UI counts as passing evidence."
-                                         },
-                                         {
-                                             "number":  6,
-                                             "title":  "crossCheck module extracts approval logic",
-                                             "expectedBehavior":  "Cross-Check approval/rejection logic is extracted into src/runtime/crossCheck.ts. Cross-Check gates can still approve or reject tasks.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "1. Start Polaris. 2. Initiate a task flow that reaches a Cross-Check gate. 3. Approve the Cross-Check gate. 4. Verify: Task transitions to next status. 5. Repeat with rejection; verify task is blocked.",
-                                             "expectedInitialFailure":  "crossCheck does not exist or Cross-Check gates don\u0027t function after extraction.",
-                                             "expectedPassingEvidence":  "Cross-Check approval and rejection work as expected. Task state changes correctly on gate decision.",
-                                             "waiverGuidance":  "Manual cross-check gate testing with state verification suffices."
-                                         },
-                                         {
-                                             "number":  7,
-                                             "title":  "backlog module extracts task operations",
-                                             "expectedBehavior":  "Backlog operations and task transitions are extracted into src/runtime/backlog.ts. Tasks can transition between states and changes persist.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "1. Start Polaris. 2. Open the backlog. 3. Transition a task status (e.g., backlog -\u003e planned). 4. Reload Polaris. 5. Verify: Task status persists at the new state.",
-                                             "expectedInitialFailure":  "backlog module does not exist or task transitions don\u0027t persist after extraction.",
-                                             "expectedPassingEvidence":  "Task transitions work and persist across reload. grep backlog server.js shows it\u0027s imported.",
-                                             "waiverGuidance":  "Manual task status transition with persistence verification counts as passing evidence."
-                                         },
-                                         {
-                                             "number":  8,
-                                             "title":  "httpRoutes module extracts endpoint logic",
-                                             "expectedBehavior":  "HTTP endpoint routing and file serving are extracted into src/runtime/httpRoutes.ts. All endpoints respond normally.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "Test key endpoints: curl -s http://localhost:40000/api/backlog | jq . (should return backlog JSON). curl -s http://localhost:40000/sessions | jq . (should return sessions). Check: All endpoints return 200 or expected status.",
-                                             "expectedInitialFailure":  "httpRoutes module does not exist or endpoints return 500 or are unavailable after extraction.",
-                                             "expectedPassingEvidence":  "All key endpoints respond with 200 and valid JSON. grep httpRoutes server.js shows it\u0027s imported.",
-                                             "waiverGuidance":  "N/A � HTTP endpoints are testable via curl or fetch."
-                                         },
-                                         {
-                                             "number":  9,
-                                             "title":  "WebSocket adapter delegates to core services",
-                                             "expectedBehavior":  "WebSocket server is refactored to be a thin adapter. All business logic has moved to core services. WebSocket handlers call core operations and relay responses.",
-                                             "proofType":  "registry-diff",
-                                             "exactCommand":  "git diff main -- src/websocket.ts. Verify: WebSocket handlers are small and delegate to core services. Example: ws.on(\u0027executeTool\u0027, async (msg) =\u003e { return await toolRuntime.execute(...) }).",
-                                             "expectedInitialFailure":  "websocket.ts still contains business logic or doesn\u0027t delegate to core services.",
-                                             "expectedPassingEvidence":  "Diff shows websocket.ts is significantly smaller and all handlers delegate to core service modules (agentRuntime, toolRuntime, etc.).",
-                                             "waiverGuidance":  "N/A � Code review of websocket.ts diff is sufficient."
-                                         },
-                                         {
-                                             "number":  10,
-                                             "title":  "All modules have JSDoc and module documentation",
-                                             "expectedBehavior":  "Every extracted module (contracts.ts, sessionStore.ts, agentRuntime.ts, toolRuntime.ts, mcpGateway.ts, crossCheck.ts, backlog.ts, httpRoutes.ts) has module-level comments and JSDoc on all exported functions and types.",
-                                             "proofType":  "smoke-command",
-                                             "exactCommand":  "Automated check: Count JSDoc comments in each module. grep -c \u0027^\\s*//\u0027 src/runtime/*.ts (should have \u003e3 per file). Manual check: Open each module and verify module header and JSDoc exist.",
-                                             "expectedInitialFailure":  "Modules lack JSDoc or have minimal documentation.",
-                                             "expectedPassingEvidence":  "Each module has a module-level comment block at the top (purpose, responsibility, dependencies) and every exported function has JSDoc.",
-                                             "waiverGuidance":  "Manual review of module files by Scott and approval counts as passing evidence if automated JSDoc tools are not available."
-                                         },
-                                         {
-                                             "number":  11,
-                                             "title":  "Architecture.md documents refactored system",
-                                             "expectedBehavior":  "2-Architecture.md in Obsidian is updated to document the refactored module structure, dependencies, data flow, and design decisions.",
-                                             "proofType":  "registry-diff",
-                                             "exactCommand":  "Read Obsidian file: G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\2-Architecture.md. Verify: Sections exist for refactored module overview, module dependency graph, data flow between modules, design decisions and rationale.",
-                                             "expectedInitialFailure":  "Architecture.md is not updated or lacks module documentation.",
-                                             "expectedPassingEvidence":  "Architecture.md has clear sections documenting the 8 modules, their responsibilities, dependencies, and the WebSocket adapter pattern.",
-                                             "waiverGuidance":  "N/A � Obsidian doc review is straightforward."
-                                         },
-                                         {
-                                             "number":  12,
-                                             "title":  "Module topology diagram exists",
-                                             "expectedBehavior":  "A module dependency topology diagram or graph is documented (either in markdown, ASCII art, or as a referenced image) showing which modules depend on which.",
-                                             "proofType":  "registry-diff",
-                                             "exactCommand":  "Read C:\\Users\\scott\\Code\\Polaris\\docs\\module-topology.md. Verify: Diagram shows modules and arrows indicating dependencies. Expected pattern: contracts.ts (leaf, no dependencies), sessionStore.ts -\u003e contracts.ts, agentRuntime.ts -\u003e contracts.ts, sessionStore.ts, etc.",
-                                             "expectedInitialFailure":  "module-topology.md does not exist or is incomplete.",
-                                             "expectedPassingEvidence":  "Clear topology diagram or graph showing all 8 modules and their dependency relationships.",
-                                             "waiverGuidance":  "N/A � Markdown topology is straightforward to create and verify."
-                                         },
-                                         {
-                                             "number":  13,
-                                             "title":  "Rollback capability verified",
-                                             "expectedBehavior":  "Git history shows that each phase can be rolled back independently. Each commit is reversible, and no data loss occurs if a commit is reverted.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "1. Review git log for clean commit boundaries at each phase end. 2. Attempt to revert a phase commit: git revert \u003ccommit-hash\u003e. 3. Verify: No conflicts, system remains stable. 4. Re-apply the commit: git cherry-pick \u003ccommit-hash\u003e. 5. Verify: System is back to the refactored state.",
-                                             "expectedInitialFailure":  "Git commits are not clean or reverting causes conflicts/data loss.",
-                                             "expectedPassingEvidence":  "Each phase commit can be reverted and re-applied without conflicts. System state is preserved before and after the revert.",
-                                             "waiverGuidance":  "Manual git history review + selective revert testing counts as passing evidence."
-                                         },
-                                         {
-                                             "number":  14,
-                                             "title":  "Full end-to-end system test passes",
-                                             "expectedBehavior":  "Polaris runs end-to-end without errors. Sessions can be created, agents can be spawned, tools can be executed, backlog can be manipulated, Cross-Check gates function, and WebSocket communication works normally.",
-                                             "proofType":  "manual-script",
-                                             "exactCommand":  "1. Start Polaris (npm start). 2. Create a new session. 3. Spawn an agent. 4. Run a tool (Read, Write, etc.). 5. Transition a task status. 6. Trigger a Cross-Check gate. 7. Verify: All flows work, no errors in console. 8. Reload Polaris. 9. Verify: Persisted state is intact.",
-                                             "expectedInitialFailure":  "Refactored system has runtime errors or critical flows fail.",
-                                             "expectedPassingEvidence":  "All flows execute successfully. Console has no error messages. System is stable after reload.",
-                                             "waiverGuidance":  "Manual testing of all critical flows with sign-off by Scott counts as passing evidence if an automated e2e test suite doesn\u0027t exist."
-                                         }
-                                     ],
-                      "branch":  "task/25-split-server-modules"
-                  },
-                  {
-                      "number":  26,
-                      "title":  "Make task orchestration an explicit state machine",
-                      "description":  "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -\u003e build-started -\u003e cba-complete -\u003e build-finished -\u003e PR-Reviewed-\u003e staged -\u003e production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
-                      "category":  "feature",
-                      "priority":  95,
-                      "impact":  "major",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-                                           24
-                                       ]
-                  },
-                  {
-                      "number":  27,
-                      "title":  "Create a single source of truth for tool and message contracts",
-                      "description":  "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
-                      "category":  "feature",
-                      "priority":  92,
-                      "impact":  "major",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  28,
-                      "title":  "Upgrade project memory into ranked retrieval",
-                      "description":  "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
-                      "category":  "feature",
-                      "priority":  90,
-                      "impact":  "major",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  29,
-                      "title":  "Replace regex-heavy tool safety with capability policies",
-                      "description":  "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
-                      "category":  "security",
-                      "priority":  92,
-                      "impact":  "major",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  30,
-                      "title":  "Expand agent evals into product-critical acceptance suites",
-                      "description":  "The existing agent eval harness is a strong seed, but it is too small to guard Polaris\u0027s behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
-                      "category":  "test",
-                      "priority":  88,
-                      "impact":  "standard",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  31,
-                      "title":  "Make trust, proof, cost, and recovery visible in the product",
-                      "description":  "Polaris\u0027s strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
-                      "category":  "feature",
-                      "priority":  90,
-                      "impact":  "major",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  35,
-                      "title":  "Project Orchestration",
-                      "description":  "I want to build an orchestration capability when there are multiple sessions running actively for a particular project. Reference these notes and let\u0027s build this process. \n\ndocs/orchestrator-design.md",
-                      "category":  "feature",
-                      "priority":  70,
-                      "impact":  "standard",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  },
-                  {
-                      "number":  36,
-                      "title":  "Add a ship task orchestration capability.",
-                      "description":  "I want to have an orchestration window that monitors all open active sessions for projects and ensures that coordination and conflicts are managed. Reference this file for more information.   docs/orchestrator-design.md",
-                      "category":  "feature",
-                      "priority":  70,
-                      "impact":  "standard",
-                      "status":  "backlog",
-                      "created_at":  "2026-05-22",
-                      "completed_at":  null,
-                      "dependencies":  [
-
-                                       ]
-                  }
-              ]
+  "tasks": [
+    {
+      "number": 4,
+      "title": "Status button not updating from text entered after session close",
+      "category": "fix",
+      "priority": 1,
+      "status": "on-hold",
+      "dependencies": [],
+      "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 14,
+      "title": "Move tasks between projects",
+      "description": "I need to be able to move tasks to other projects.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-21",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 24,
+      "title": "LangGraph: Spike + Foundation (Phases 1-3)",
+      "description": "Validate the Python sidecar HTTP bridge pattern, build the /lang skill entry point and agent dispatch layer, define TaskState, and build the StateGraph stubs + FastAPI executor. This is the go/no-go spike before any node implementation. Reference: C:\\Users\\scott\\Code\\Polaris\\docs\\LANGGRAPH_IMPLEMENTATION_CONTEXT.md",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "cba-complete",
+      "created_at": "2026-05-21",
+      "completed_at": null,
+      "dependencies": [],
+      "branch": "task/24-langgraph-orchestration",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/29",
+      "plan": "## Overview\n\nValidate the Python sidecar HTTP bridge pattern and build the LangGraph foundation. This is a parallel POC skill (/lang) that does not replace /ship-task.\n\n## Phases\n\n### Phase 1: Python Sidecar Spike\nBuild minimal FastAPI + LangGraph spike. Confirm server.js can start/stop the Python process and call /advance via HTTP. Validate SQLite checkpoint survival across a simulated process restart.\n\n### Phase 2: Skill Entry Point + Dispatch Layer\nCreate ~/.claude/commands/lang.md. Add /dispatch-agent HTTP POST handler in server.js for Python nodes to invoke UI-selected agent. Design and implement WebSocket pause/resume protocol (lang:pause, lang:signal, lang:state).\n\n### Phase 3: StateGraph + Executor\nDefine TaskState TypedDict. Build agents/task_graph.py (StateGraph with 9 stub nodes). Build agents/task_executor.py (FastAPI server, endpoints: POST /advance, POST /signal, GET /state, SQLite checkpoint). Wire server.js to start/stop sidecar lifecycle.\n\n## First Proof Unit\n\nPython sidecar HTTP bridge: POST localhost:4001/advance returns HTTP 200 with stub node result. Validates the core IPC bridge before any node logic is built.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Python sidecar HTTP bridge responds",
+          "expectedBehavior": "Running sidecar_spike.py FastAPI server responds to a test HTTP POST /advance with 200 and a stub node result.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris-task-24 && python agents/spike/sidecar_spike.py & curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 99, \\\"node\\\": \\\"stub\\\"}\"",
+          "expectedInitialFailure": "curl: (7) Failed to connect to localhost port 4001",
+          "expectedPassingEvidence": "HTTP 200 with JSON body {\"status\": \"ok\", \"node\": \"stub\"}",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "SQLite checkpoint survives sidecar restart",
+          "expectedBehavior": "After running to a pause point, killing Python process, and restarting, GET /state returns the last checkpointed node — not START.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start sidecar. 2. POST /advance task_number:99. 3. Kill process. 4. Restart sidecar. 5. GET /state?task_number=99 — confirm last node, not START.",
+          "expectedInitialFailure": "GET /state returns empty or START node after restart",
+          "expectedPassingEvidence": "GET /state returns last completed node and full TaskState matching pre-kill state",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "/lang skill file invokes executor",
+          "expectedBehavior": "Running /lang 24 starts the Python sidecar and receives a response from POST /advance.",
+          "proofType": "smoke-command",
+          "exactCommand": "/lang 24 then curl -s http://localhost:4001/state?task_number=24",
+          "expectedInitialFailure": "/lang not found or no response from executor",
+          "expectedPassingEvidence": "GET /state returns TaskState with task_number:24 and status:planning",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "Agent dispatch callback works from Python node",
+          "expectedBehavior": "POST /dispatch-agent on server.js invokes the UI-selected agent and returns its text response.",
+          "proofType": "smoke-command",
+          "exactCommand": "curl -s -X POST http://localhost:40000/dispatch-agent -H \"Content-Type: application/json\" -d \"{\\\"agent\\\": \\\"max\\\", \\\"prompt\\\": \\\"Say hello.\\\", \\\"task_number\\\": 24}\"",
+          "expectedInitialFailure": "HTTP 404 — endpoint does not exist",
+          "expectedPassingEvidence": "HTTP 200 with {\"response\": \"Hello...\"}",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 5,
+          "title": "StateGraph compiles and runs to first node",
+          "expectedBehavior": "task_graph.py compiles, StateGraph instantiates, and a test invoke runs plan_node stub without errors.",
+          "proofType": "smoke-command",
+          "exactCommand": "python -c \"from agents.task_graph import build_graph; g = build_graph(); print('OK')\"",
+          "expectedInitialFailure": "ImportError or AttributeError",
+          "expectedPassingEvidence": "Prints OK without errors",
+          "waiverGuidance": "N/A"
+        }
+      ]
+    },
+    {
+      "number": 33,
+      "title": "LangGraph: Node Implementation + HITL (Phases 4-5)",
+      "description": "Build all 9 LangGraph node files (plan, start_build, build, finish_build, review, codex_review, stage_decision, promote_stage, promote_prod) and wire HITL pause/resume semantics with WebSocket signal forwarding. Depends on Task #24.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        24
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 34,
+      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
+      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        33
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 25,
+      "title": "Split server.js into bounded runtime services",
+      "description": "Polaris has strong local coherence, but server.js currently owns config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. Split the monolith into bounded modules such as agentRuntime, toolRuntime, sessionStore, contracts, mcpGateway, crossCheck, backlog, and httpRoutes. Keep the desktop-local architecture, but make the WebSocket server an adapter over typed core operations like launchSession, executeTool, transitionTask, recordCrossCheck, and loadMemory.",
+      "category": "refactor",
+      "priority": 95,
+      "impact": "major",
+      "status": "build-started",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": "## Overview\n\nserver.js is a monolithic module handling config, secrets, WebSockets, agent loops, tool execution, MCP, backlog, evals, Cross-Check, file serving, and orchestration. As features grow, the monolith becomes harder to test, debug, and maintain. This refactoring extracts 8 bounded modules with explicit dependencies and a WebSocket adapter pattern to improve stability and maintainability.\n\n## Architecture\n\nEight bounded modules will be created:\n- contracts.ts: Type definitions and schemas (single source of truth)\n- sessionStore.ts: Session state management and persistence\n- agentRuntime.ts: Agent spawning and session loops\n- toolRuntime.ts: Tool execution and schema validation\n- mcpGateway.ts: MCP bridge and tool envelope handling\n- crossCheck.ts: Cross-Check approval/rejection logic\n- backlog.ts: Task operations and transitions\n- httpRoutes.ts: HTTP endpoint routing and file serving\n\nWebSocket server becomes a thin adapter over typed core operations: launchSession, executeTool, transitionTask, recordCrossCheck, loadMemory.\n\n## Key Risks & Mitigations\n\nRisk: Mission-critical code breakage. server.js is the engine of the entire player system.\nMitigation: Incremental extraction with rollback gates. Clear commit boundaries. Smoke tests after each phase.\n\nRisk: Type boundary mismatch. Contracts module must capture all message shapes.\nMitigation: Audit server.js before extraction. Automated schema validation in WebSocket adapter.\n\nRisk: Circular dependencies. Modules may accidentally depend on each other.\nMitigation: Contracts is a leaf. Core services depend only on contracts. WebSocket is a hub.\n\n## Phases\n\n1. Foundation: Extract contracts module\n2. Core Services: Extract sessionStore, agentRuntime\n3. Core Services: Extract toolRuntime, mcpGateway\n4. Core Services: Extract crossCheck, backlog\n5. HTTP Routes: Extract httpRoutes\n6. WebSocket Adapter: Refactor websocket.ts as thin adapter\n7. Integration: Wire modules, test, verify rollback\n8. Documentation: Update Architecture.md, JSDoc, topology diagram\n\n## First Proof Unit\n\nContracts module defined and compiles. All TypeScript types for WebSocket messages, tool contracts, and task orchestration are in src/runtime/contracts.ts and compile without errors.\nProof: npx tsc --noEmit src/runtime/contracts.ts exits with code 0.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Contracts module defined and compiles",
+          "expectedBehavior": "All TypeScript types and interfaces for WebSocket messages, tool contracts, and task orchestration are defined in src/runtime/contracts.ts, and the module compiles without errors.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris && npx tsc --noEmit src/runtime/contracts.ts",
+          "expectedInitialFailure": "File not found or TS compilation errors due to incomplete type definitions.",
+          "expectedPassingEvidence": "Command exits with code 0 (no errors); contracts.ts is well-formed and can be imported by other modules.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "sessionStore module extracted and state persists",
+          "expectedBehavior": "Session state management is extracted into src/runtime/sessionStore.ts. Starting a session, storing state, and reloading shows the same state (round-trip verification).",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start Polaris (npm start). 2. Create a session via the UI. 3. Note the session ID and state. 4. Reload Polaris. 5. Verify the session state persists and matches what was saved.",
+          "expectedInitialFailure": "sessionStore module does not exist or session state is lost on reload.",
+          "expectedPassingEvidence": "Session state persists correctly across reload; sessionStore is imported and used by server.js orchestration.",
+          "waiverGuidance": "If automated testing is not available, manual verification with clear step-by-step instructions and sign-off by Scott suffices."
+        },
+        {
+          "number": 3,
+          "title": "agentRuntime extracts agent spawning logic",
+          "expectedBehavior": "Agent spawning and session loops are extracted into src/runtime/agentRuntime.ts. Agents can be spawned and respond to commands normally.",
+          "proofType": "smoke-command",
+          "exactCommand": "Manual test: Start Polaris and trigger an agent spawn. In Polaris UI: open a session, click Run Agent. Verify: Agent starts, accepts input, and returns output. Then check: grep agentRuntime server.js to confirm it's imported.",
+          "expectedInitialFailure": "agentRuntime does not exist or agents fail to spawn after extraction.",
+          "expectedPassingEvidence": "Agents spawn successfully and process commands. grep agentRuntime server.js shows the module is orchestrated.",
+          "waiverGuidance": "Manual testing of agent spawn and response flow, verified visually in the UI, counts as passing evidence."
+        },
+        {
+          "number": 4,
+          "title": "toolRuntime extracts tool execution",
+          "expectedBehavior": "Tool execution and schema validation are extracted into src/runtime/toolRuntime.ts. Tools can be executed and return results normally.",
+          "proofType": "smoke-command",
+          "exactCommand": "Manual test: Start Polaris, trigger a tool execution (e.g., Read tool). In UI: attempt to read a file (triggers Read tool). Verify: Tool executes successfully, file content is returned. Check: grep toolRuntime server.js.",
+          "expectedInitialFailure": "toolRuntime does not exist or tools fail to execute after extraction.",
+          "expectedPassingEvidence": "Tool execution succeeds (file is read), tool returns proper result. grep toolRuntime server.js shows it's imported.",
+          "waiverGuidance": "Manual tool execution with visible output in the UI counts as passing evidence."
+        },
+        {
+          "number": 5,
+          "title": "mcpGateway extracts MCP bridge logic",
+          "expectedBehavior": "MCP server bridge and tool envelope handling are extracted into src/runtime/mcpGateway.ts. MCP-exposed tools continue to work.",
+          "proofType": "smoke-command",
+          "exactCommand": "Manual test: Start Polaris, verify MCP tool list shows expected tools. Check: MCP tool schema is validated and tools respond. Command: curl -s http://localhost:40000/mcp/tools (or equivalent test call). Verify response is a valid tool list.",
+          "expectedInitialFailure": "mcpGateway does not exist or MCP tools are unavailable after extraction.",
+          "expectedPassingEvidence": "MCP tool list is available and valid. grep mcpGateway server.js shows it's imported.",
+          "waiverGuidance": "Manual inspection of MCP tool availability in the Polaris UI counts as passing evidence."
+        },
+        {
+          "number": 6,
+          "title": "crossCheck module extracts approval logic",
+          "expectedBehavior": "Cross-Check approval/rejection logic is extracted into src/runtime/crossCheck.ts. Cross-Check gates can still approve or reject tasks.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start Polaris. 2. Initiate a task flow that reaches a Cross-Check gate. 3. Approve the Cross-Check gate. 4. Verify: Task transitions to next status. 5. Repeat with rejection; verify task is blocked.",
+          "expectedInitialFailure": "crossCheck does not exist or Cross-Check gates don't function after extraction.",
+          "expectedPassingEvidence": "Cross-Check approval and rejection work as expected. Task state changes correctly on gate decision.",
+          "waiverGuidance": "Manual cross-check gate testing with state verification suffices."
+        },
+        {
+          "number": 7,
+          "title": "backlog module extracts task operations",
+          "expectedBehavior": "Backlog operations and task transitions are extracted into src/runtime/backlog.ts. Tasks can transition between states and changes persist.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start Polaris. 2. Open the backlog. 3. Transition a task status (e.g., backlog -> planned). 4. Reload Polaris. 5. Verify: Task status persists at the new state.",
+          "expectedInitialFailure": "backlog module does not exist or task transitions don't persist after extraction.",
+          "expectedPassingEvidence": "Task transitions work and persist across reload. grep backlog server.js shows it's imported.",
+          "waiverGuidance": "Manual task status transition with persistence verification counts as passing evidence."
+        },
+        {
+          "number": 8,
+          "title": "httpRoutes module extracts endpoint logic",
+          "expectedBehavior": "HTTP endpoint routing and file serving are extracted into src/runtime/httpRoutes.ts. All endpoints respond normally.",
+          "proofType": "smoke-command",
+          "exactCommand": "Test key endpoints: curl -s http://localhost:40000/api/backlog | jq . (should return backlog JSON). curl -s http://localhost:40000/sessions | jq . (should return sessions). Check: All endpoints return 200 or expected status.",
+          "expectedInitialFailure": "httpRoutes module does not exist or endpoints return 500 or are unavailable after extraction.",
+          "expectedPassingEvidence": "All key endpoints respond with 200 and valid JSON. grep httpRoutes server.js shows it's imported.",
+          "waiverGuidance": "N/A � HTTP endpoints are testable via curl or fetch."
+        },
+        {
+          "number": 9,
+          "title": "WebSocket adapter delegates to core services",
+          "expectedBehavior": "WebSocket server is refactored to be a thin adapter. All business logic has moved to core services. WebSocket handlers call core operations and relay responses.",
+          "proofType": "registry-diff",
+          "exactCommand": "git diff main -- src/websocket.ts. Verify: WebSocket handlers are small and delegate to core services. Example: ws.on('executeTool', async (msg) => { return await toolRuntime.execute(...) }).",
+          "expectedInitialFailure": "websocket.ts still contains business logic or doesn't delegate to core services.",
+          "expectedPassingEvidence": "Diff shows websocket.ts is significantly smaller and all handlers delegate to core service modules (agentRuntime, toolRuntime, etc.).",
+          "waiverGuidance": "N/A � Code review of websocket.ts diff is sufficient."
+        },
+        {
+          "number": 10,
+          "title": "All modules have JSDoc and module documentation",
+          "expectedBehavior": "Every extracted module (contracts.ts, sessionStore.ts, agentRuntime.ts, toolRuntime.ts, mcpGateway.ts, crossCheck.ts, backlog.ts, httpRoutes.ts) has module-level comments and JSDoc on all exported functions and types.",
+          "proofType": "smoke-command",
+          "exactCommand": "Automated check: Count JSDoc comments in each module. grep -c '^\\s*//' src/runtime/*.ts (should have >3 per file). Manual check: Open each module and verify module header and JSDoc exist.",
+          "expectedInitialFailure": "Modules lack JSDoc or have minimal documentation.",
+          "expectedPassingEvidence": "Each module has a module-level comment block at the top (purpose, responsibility, dependencies) and every exported function has JSDoc.",
+          "waiverGuidance": "Manual review of module files by Scott and approval counts as passing evidence if automated JSDoc tools are not available."
+        },
+        {
+          "number": 11,
+          "title": "Architecture.md documents refactored system",
+          "expectedBehavior": "2-Architecture.md in Obsidian is updated to document the refactored module structure, dependencies, data flow, and design decisions.",
+          "proofType": "registry-diff",
+          "exactCommand": "Read Obsidian file: G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\2-Architecture.md. Verify: Sections exist for refactored module overview, module dependency graph, data flow between modules, design decisions and rationale.",
+          "expectedInitialFailure": "Architecture.md is not updated or lacks module documentation.",
+          "expectedPassingEvidence": "Architecture.md has clear sections documenting the 8 modules, their responsibilities, dependencies, and the WebSocket adapter pattern.",
+          "waiverGuidance": "N/A � Obsidian doc review is straightforward."
+        },
+        {
+          "number": 12,
+          "title": "Module topology diagram exists",
+          "expectedBehavior": "A module dependency topology diagram or graph is documented (either in markdown, ASCII art, or as a referenced image) showing which modules depend on which.",
+          "proofType": "registry-diff",
+          "exactCommand": "Read C:\\Users\\scott\\Code\\Polaris\\docs\\module-topology.md. Verify: Diagram shows modules and arrows indicating dependencies. Expected pattern: contracts.ts (leaf, no dependencies), sessionStore.ts -> contracts.ts, agentRuntime.ts -> contracts.ts, sessionStore.ts, etc.",
+          "expectedInitialFailure": "module-topology.md does not exist or is incomplete.",
+          "expectedPassingEvidence": "Clear topology diagram or graph showing all 8 modules and their dependency relationships.",
+          "waiverGuidance": "N/A � Markdown topology is straightforward to create and verify."
+        },
+        {
+          "number": 13,
+          "title": "Rollback capability verified",
+          "expectedBehavior": "Git history shows that each phase can be rolled back independently. Each commit is reversible, and no data loss occurs if a commit is reverted.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Review git log for clean commit boundaries at each phase end. 2. Attempt to revert a phase commit: git revert <commit-hash>. 3. Verify: No conflicts, system remains stable. 4. Re-apply the commit: git cherry-pick <commit-hash>. 5. Verify: System is back to the refactored state.",
+          "expectedInitialFailure": "Git commits are not clean or reverting causes conflicts/data loss.",
+          "expectedPassingEvidence": "Each phase commit can be reverted and re-applied without conflicts. System state is preserved before and after the revert.",
+          "waiverGuidance": "Manual git history review + selective revert testing counts as passing evidence."
+        },
+        {
+          "number": 14,
+          "title": "Full end-to-end system test passes",
+          "expectedBehavior": "Polaris runs end-to-end without errors. Sessions can be created, agents can be spawned, tools can be executed, backlog can be manipulated, Cross-Check gates function, and WebSocket communication works normally.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start Polaris (npm start). 2. Create a new session. 3. Spawn an agent. 4. Run a tool (Read, Write, etc.). 5. Transition a task status. 6. Trigger a Cross-Check gate. 7. Verify: All flows work, no errors in console. 8. Reload Polaris. 9. Verify: Persisted state is intact.",
+          "expectedInitialFailure": "Refactored system has runtime errors or critical flows fail.",
+          "expectedPassingEvidence": "All flows execute successfully. Console has no error messages. System is stable after reload.",
+          "waiverGuidance": "Manual testing of all critical flows with sign-off by Scott counts as passing evidence if an automated e2e test suite doesn't exist."
+        }
+      ],
+      "branch": "task/25-split-server-modules"
+    },
+    {
+      "number": 26,
+      "title": "Make task orchestration an explicit state machine",
+      "description": "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -> build-started -> cba-complete -> build-finished -> PR-Reviewed-> staged -> production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
+      "category": "feature",
+      "priority": 95,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        24
+      ]
+    },
+    {
+      "number": 27,
+      "title": "Create a single source of truth for tool and message contracts",
+      "description": "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
+      "category": "feature",
+      "priority": 92,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 28,
+      "title": "Upgrade project memory into ranked retrieval",
+      "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 29,
+      "title": "Replace regex-heavy tool safety with capability policies",
+      "description": "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
+      "category": "security",
+      "priority": 92,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 30,
+      "title": "Expand agent evals into product-critical acceptance suites",
+      "description": "The existing agent eval harness is a strong seed, but it is too small to guard Polaris's behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
+      "category": "test",
+      "priority": 88,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 31,
+      "title": "Make trust, proof, cost, and recovery visible in the product",
+      "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 36,
+      "title": "Add a ship task orchestration capability.",
+      "description": "I want to have an orchestration window that monitors all open active sessions for projects and ensures that coordination and conflicts are managed. Reference this file for more information.   docs/orchestrator-design.md",
+      "category": "feature",
+      "priority": 70,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    }
+  ]
 }
