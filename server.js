@@ -32,7 +32,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, exec, execFile, execSync, spawnSync } = require('child_process');
+const { spawn, exec, execFile, execFileSync, execSync, spawnSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -764,6 +764,10 @@ function watchGlobalFiles() {
 const sessions = new Map();   // sessionId → session object
 const forkMap  = new Map();   // primarySessionId → forkSessionId
 let   wss      = null;
+let healthSnapshotCache = null;
+let healthSnapshotCacheAt = 0;
+let healthSnapshotInFlight = false;
+const HEALTH_SNAPSHOT_TTL_MS = 30000;
 
 // Connect-tab write protection — token is generated at startup and sent only to the main UI window.
 // Any WebSocket message that modifies MCP server config must include this token; otherwise the
@@ -3981,9 +3985,28 @@ function extractFirstJson(text) {
 }
 
 // Finds the first JSON object that contains a "verdict" key, scanning all JSON
-// objects in the text plus any JSON embedded in their string values (for CLI
-// envelopes like {"output":"...{\"verdict\":...}..."} or JSONL event streams).
+// objects in the text. Recursively checks nested objects and string values so
+// Codex JSONL envelopes like {"item":{"type":"agent_message","text":"{\"verdict\":..."}}
+// are unwrapped correctly regardless of nesting depth.
 function extractReviewJson(text) {
+  function findInValue(val, depth) {
+    if (depth > 6) return null;
+    if (typeof val === 'string') {
+      const inner = extractFirstJson(val);
+      if (!inner) return null;
+      try { const p = JSON.parse(inner); if ('verdict' in p) return inner; } catch {}
+      return null;
+    }
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      if ('verdict' in val) return JSON.stringify(val);
+      for (const v of Object.values(val)) {
+        const found = findInValue(v, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
   let remaining = text;
   while (remaining.length) {
     const idx = remaining.indexOf('{');
@@ -3994,13 +4017,8 @@ function extractReviewJson(text) {
     try {
       const p = JSON.parse(candidate);
       if ('verdict' in p) return candidate;
-      // Outer JSON has no verdict — search inside string values (CLI envelopes)
-      for (const val of Object.values(p)) {
-        if (typeof val !== 'string') continue;
-        const inner = extractFirstJson(val);
-        if (!inner) continue;
-        try { const ip = JSON.parse(inner); if ('verdict' in ip) return inner; } catch {}
-      }
+      const found = findInValue(p, 0);
+      if (found) return found;
     } catch {}
     remaining = remaining.slice(candidate.length);
   }
@@ -4122,7 +4140,10 @@ async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalCo
     }
   }
 
-  const reviewPrompt = `You are reviewing a file change for the Polaris project.
+  const reviewPrompt = `TEXT-ONLY CODE REVIEW — DO NOT EXECUTE ANY COMMANDS OR USE ANY TOOLS.
+Your sole output must be one JSON object. No shell commands. No file reads. No tool calls. Just JSON.
+
+You are reviewing a file change for the Polaris project.
 
 TASK: ${sessionPrompt || '(not captured)'}
 FILE: ${filePath}
@@ -4136,7 +4157,8 @@ Review for:
 3. Quality — broken syntax, dead code, security issues, malformed HTML/JS/CSS
 
 If the diff is non-empty and the changes look intentional and consistent with the task, verdict is PASS.
-Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
+Output ONLY this JSON object with no other text:
+{"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
   // Use Codex CLI if model is set to "codex"
   let result;
@@ -7212,6 +7234,73 @@ const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', sessions: sessions.size }));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/api/health-snapshot') {
+    const now = Date.now();
+    if (healthSnapshotCache && now - healthSnapshotCacheAt < HEALTH_SNAPSHOT_TTL_MS) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ...healthSnapshotCache, cached: true }));
+      return;
+    }
+    if (healthSnapshotInFlight) {
+      const snapshot = healthSnapshotCache || { status: 'degraded', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: 'snapshot in progress' };
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ...snapshot, cached: !!healthSnapshotCache, inFlight: true }));
+      return;
+    }
+    healthSnapshotInFlight = true;
+    const snapshot = { status: 'ok', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: null };
+    try {
+      const ps = [
+        "$m=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' };",
+        "$c=@(Get-NetTCPConnection -LocalPort 40000 -State Established -ErrorAction SilentlyContinue);",
+        "$p=Get-Process -Name Polaris -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;",
+        "[pscustomobject]@{mcpHelpers=@($m).Count;connections=@($c).Count;topProcess=if($p){$p.ProcessName+':'+$p.Id+' cpu='+[math]::Round($p.CPU,1)+' memMB='+[math]::Round($p.WorkingSet/1MB,0)}else{$null}} | ConvertTo-Json -Compress"
+      ].join(' ');
+      const out = execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 3500 });
+      const parsed = JSON.parse(out);
+      snapshot.mcpHelpers = Number(parsed.mcpHelpers || 0);
+      snapshot.connections = Number(parsed.connections || 0);
+      snapshot.topProcess = parsed.topProcess || null;
+      if (snapshot.mcpHelpers >= 10) snapshot.status = 'critical';
+      else if (snapshot.connections >= 20) snapshot.status = 'critical';
+      else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) snapshot.status = 'degraded';
+    } catch (e) {
+      snapshot.status = 'degraded';
+      snapshot.error = e.message;
+    } finally {
+      healthSnapshotInFlight = false;
+    }
+    healthSnapshotCache = snapshot;
+    healthSnapshotCacheAt = Date.now();
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(snapshot));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/health-stop-mcp-helpers') {
+    const result = { ok: true, stopped: 0, remaining: null };
+    try {
+      const ps = [
+        "$targets=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' };",
+        "$count=@($targets).Count;",
+        "foreach($p in $targets){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} };",
+        "Start-Sleep -Milliseconds 500;",
+        "$remaining=@(Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' }).Count;",
+        "[pscustomobject]@{stopped=$count;remaining=$remaining} | ConvertTo-Json -Compress"
+      ].join(' ');
+      const out = execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 5000 });
+      const parsed = JSON.parse(out);
+      result.stopped = Number(parsed.stopped || 0);
+      result.remaining = Number(parsed.remaining || 0);
+    } catch (e) {
+      result.ok = false;
+      result.error = e.message;
+    }
+    res.writeHead(result.ok ? 200 : 500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(result));
     return;
   }
 
