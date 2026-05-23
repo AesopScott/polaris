@@ -32,6 +32,8 @@ export const VALID_BACKLOG_STATUSES = new Set([
   'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'review-blocked', 'staged', 'production',
   // Manual: set when smoke tests fail after production deployment
   'failed-smoke-test',
+  // State machine statuses written by LangGraph executor (task #26)
+  'stalled', 'failed',
   // Special states
   'blocked', 'on-hold', 'cancelled',
   // Legacy/deprecated — still accepted for backward compatibility
@@ -53,7 +55,8 @@ export type BacklogScope = 'global' | string;  // 'global' or a project name
 export type BacklogStatus =
   | 'backlog' | 'planned' | 'build-started' | 'build-finished'
   | 'cba-complete' | 'review-blocked' | 'staged' | 'production'
-  | 'failed-smoke-test' | 'blocked' | 'on-hold' | 'cancelled'
+  | 'failed-smoke-test' | 'stalled' | 'failed'
+  | 'blocked' | 'on-hold' | 'cancelled'
   | 'ready' | 'in-progress' | 'complete' | 'pr-reviewed'
   | 'cba-half-complete' | 'smoke-tested';
 
