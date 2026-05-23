@@ -4271,7 +4271,7 @@
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
   let focusedProject = null; // project name currently focused, or null if no focus
-  let sessionStateStore = {}; // sessionId → { scrollTop, scrollHeight } — viewport state for each session
+  const sessionStateStore = {}; // sessionId → { scrollTop } — persists terminal scroll across re-renders
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
@@ -4903,7 +4903,6 @@
         const s = sessionStore[msg.sessionId];
         if (s) {
           s.status = msg.status;
-          if (msg.projectName !== undefined) s.projectName = msg.projectName;
           let taskChanged = false;
           if (!ORCHESTRATION_QUIET_MODE) {
             if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
@@ -6275,47 +6274,31 @@
   }
   window._polarisRenderGrid = renderGrid;
 
+  // ── Session state persistence (scroll position) ───────────────────────────────
   function saveSessionState(sessionId) {
-    const grid = getActiveGrid();
-    if (!grid) return;
-    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
-    if (!card) return;
-    const term = card.querySelector('[data-term]');
-    if (!term) return;
-    sessionStateStore[sessionId] = {
-      scrollTop: term.scrollTop,
-      scrollHeight: term.scrollHeight,
-    };
+    const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
+    const term = card && card.querySelector('[data-term]');
+    if (term) sessionStateStore[sessionId] = { scrollTop: term.scrollTop };
   }
 
   function restoreSessionState(sessionId) {
-    const grid = getActiveGrid();
-    if (!grid) return;
-    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
-    if (!card) return;
-    const term = card.querySelector('[data-term]');
-    if (!term) return;
-    const state = sessionStateStore[sessionId];
-    if (state && state.scrollTop != null) {
-      setTimeout(() => {
-        term.scrollTop = state.scrollTop;
-      }, 0);
-    }
+    const saved = sessionStateStore[sessionId];
+    if (!saved || saved.scrollTop == null) return;
+    // Defer one tick — card is appended to DOM after buildCard() returns
+    setTimeout(() => {
+      const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
+      const term = card && card.querySelector('[data-term]');
+      if (term) term.scrollTop = saved.scrollTop;
+    }, 0);
   }
 
-  function wireSessionStateTracking(sessionId) {
-    const grid = getActiveGrid();
-    if (!grid) return;
-    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
-    if (!card) return;
-    const term = card.querySelector('[data-term]');
-    if (!term) return;
-    if (term.dataset.stateTracked) return;
-    term.dataset.stateTracked = '1';
-    term.addEventListener('scroll', () => {
-      saveSessionState(sessionId);
-    }, { passive: true });
-  }
+  // Single delegated listener — captures every terminal scroll via capture phase
+  document.addEventListener('scroll', e => {
+    const term = e.target;
+    if (!term || !term.hasAttribute('data-term')) return;
+    const card = term.closest('[data-sid]');
+    if (card) sessionStateStore[card.dataset.sid] = { scrollTop: term.scrollTop };
+  }, true);
 
   function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -6489,12 +6472,14 @@
 
     const taskStateSpan = el.querySelector('[data-task-state]');
     if (taskStateSpan && s.taskNumber && s.taskState) {
-      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState, s.projectName || 'global'));
+      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState));
     }
 
     const term = el.querySelector('[data-term]');
     mergeConsecutiveAssistantLines(s.lines).forEach(l => term.appendChild(makeLineEl(l, s.id)));
+    // Default to bottom; restoreSessionState overrides via setTimeout if a saved position exists
     term.scrollTop = term.scrollHeight;
+    restoreSessionState(s.id);
 
     el.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -6574,9 +6559,6 @@
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
-
-    wireSessionStateTracking(s.id);
-    restoreSessionState(s.id);
 
     return el;
   }
@@ -10464,7 +10446,7 @@ This is your current workflow status across all branches. Review the tasks and P
   });
 
   // Session Task State Picker
-  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState, scope) {
+  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState) {
     const picker = document.getElementById('session-task-state-picker');
     if (!picker) return;
     const rect = spanEl.getBoundingClientRect();
@@ -10481,12 +10463,11 @@ This is your current workflow status across all branches. Review the tasks and P
     picker.style.display = 'flex';
     picker.dataset.sessionId = sessionId;
     picker.dataset.taskNumber = String(taskNumber);
-    picker.dataset.scope = scope;
     picker.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const newTaskState = btn.dataset.taskState;
-        wsSend({ type: 'update-backlog-task-status', scope: scope, taskNumber: taskNumber, status: newTaskState });
+        wsSend({ type: 'set-task-state', sessionId: sessionId, taskNumber: taskNumber, taskState: newTaskState });
         hideSessionTaskStatePicker();
       });
     });
