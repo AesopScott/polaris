@@ -110,7 +110,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `server.js:2717` — `addBacklogTask()` sets status to 'backlog'
 - `server.js:2879` — `updateBacklogTaskStatus()` validates and updates status
 - `server.js:2914` — Sets completed_at when status is terminal
-- `src/contracts/backlog.ts:3` — Zod enum `BacklogStatus` (17 values; schema producer only — no consumers until task #38 wires validators)
+- `src/contracts/backlog.ts:3` — Zod enum `BacklogStatus` (20 values: 14 active + 6 legacy; schema producer only — no consumers until task #38 wires validators)
 
 **Consumers (read)**
 - `resources/mockup.html:9172` — Table renders status badge with styling

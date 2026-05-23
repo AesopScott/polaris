@@ -72,9 +72,9 @@ All ~50 WebSocket message types that transit the Polaris WS boundary now have co
 
 Notable exports:
 - `LaunchMessage`, `ResumeMessage`, `StopMessage`, `CloseSessionMessage` — session lifecycle
-- `AnyWebSocketMessage` — discriminated union over all ~50 types (replaces `AnyWebSocketMessage` interface in `src/runtime/contracts.ts` when task #38 wires it)
+- `AnyClientMessage` — discriminated union over all ~50 types (replaces `AnyClientMessage` interface in `src/runtime/contracts.ts` when task #38 wires it)
 
-**⚠ Divergence risk:** `AnyWebSocketMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union.
+**⚠ Divergence risk:** `AnyClientMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union.
 
 ---
 
@@ -119,9 +119,9 @@ Notable exports:
 
 **Evidence recorded:**
 - ~50 WebSocket message types now have Zod schemas — all intentional orphan producers (no consumers until task #38)
-- `AnyWebSocketMessage` discriminated union exported from `src/contracts/ws-messages.ts`
-- Divergence risk: `AnyWebSocketMessage` also defined at `src/runtime/contracts.ts:611` — separately maintained
+- `AnyClientMessage` discriminated union exported from `src/contracts/ws-messages.ts`
+- Divergence risk: `AnyClientMessage` also defined at `src/runtime/contracts.ts:611` — separately maintained
 
-**Gaps identified:** Two-way `AnyWebSocketMessage` divergence (Zod discriminated union vs TypeScript interface union) — pre-existing pattern, task #38 consolidation opportunity. No new broken pairs introduced.
+**Gaps identified:** Two-way `AnyClientMessage` divergence (Zod discriminated union vs TypeScript interface union) — pre-existing pattern, task #38 consolidation opportunity. No new broken pairs introduced.
 
 **Status:** Audit complete — registries valid for task #37 scope.
