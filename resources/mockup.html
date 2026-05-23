@@ -10465,7 +10465,7 @@ This is your current workflow status across all branches. Review the tasks and P
   });
 
   // Session Task State Picker
-  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState) {
+  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState, scope) {
     const picker = document.getElementById('session-task-state-picker');
     if (!picker) return;
     const rect = spanEl.getBoundingClientRect();
@@ -10482,11 +10482,16 @@ This is your current workflow status across all branches. Review the tasks and P
     picker.style.display = 'flex';
     picker.dataset.sessionId = sessionId;
     picker.dataset.taskNumber = String(taskNumber);
+    picker.dataset.scope = scope || 'global';
     picker.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const newTaskState = btn.dataset.taskState;
-        wsSend({ type: 'set-task-state', sessionId: sessionId, taskNumber: taskNumber, taskState: newTaskState });
+        const resolvedScope = picker.dataset.scope;
+        // Optimistic update — bypasses ORCHESTRATION_QUIET_MODE
+        const sess = sessionStore[sessionId];
+        if (sess) { sess.taskState = newTaskState; updateCardTaskState(sessionId); }
+        wsSend({ type: 'update-backlog-task-status', scope: resolvedScope, taskNumber: taskNumber, status: newTaskState });
         hideSessionTaskStatePicker();
       });
     });
