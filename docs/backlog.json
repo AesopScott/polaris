@@ -19,13 +19,13 @@
             "category": "feature",
             "priority": 90,
             "impact": "standard",
-            "status": "planned",
+            "status": "build-started",
             "created_at": "2026-05-22",
             "completed_at": null,
             "dependencies": [
                 24
             ],
-            "branch": null,
+            "branch": "task/33-langgraph-node-implementation-hitl-phase",
             "pr_url": null,
             "plan": "## Overview\n\nTask #24 shipped LangGraph stubs; Task #26 delivered the full state machine with all 9 nodes, HITL interrupt semantics, formal transitions, and backlog sync. Task #33 enriches those stub nodes with real /dispatch-agent skill invocations and adds the WebSocket bridge so the Polaris UI can advance and signal tasks.\n\n## Phases\n\n1. dispatch_agent helper — Add dispatch_agent() to task_graph.py for calling /dispatch-agent\n2. Enrich automation nodes — Wire real skill prompts into plan, start_build, finish_build, codex_review, promote_stage, promote_prod nodes\n3. WebSocket signal bridge — Add advance-task and send-lang-signal WS handlers to server.js\n4. UI controls — Add Advance/Signal controls to task card in mockup.html\n\n## First Proof Unit\n\ndispatch_agent helper: import dispatch_agent from task_graph; call dispatch_agent(99, \"Reply: PONG\", agent=\"haiku\"); assert non-empty response; exits 0. Requires server.js running on port 40000.",
             "proofUnits": [
