@@ -6253,10 +6253,9 @@
       return col;
     });
     const colHeights = [0, 0, 0];
-    let cardIndex = 0;
-    normalCards.forEach(s => {
+    normalCards.forEach((s, cardIndex) => {
       let idx = s.column;
-      if (idx == null || idx < 0 || idx >= cols.length) {
+      if (idx === null || idx < 0 || idx >= cols.length) {
         idx = cardIndex % 3;
         s.column = idx;
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
@@ -6266,7 +6265,6 @@
       if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
       cols[idx].appendChild(card);
       colHeights[idx] += (s.minimized || hiddenCards.has(s.id) || projectMismatch) ? 1 : (parseInt(s.height) || 260) + 12;
-      cardIndex++;
     });
     grid.appendChild(colsRow);
 
