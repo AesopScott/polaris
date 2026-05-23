@@ -240,63 +240,6 @@
       "dependencies": []
     },
     {
-      "number": 29,
-      "title": "Replace regex-heavy tool safety with capability policies",
-      "description": "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
-      "category": "security",
-      "priority": 92,
-      "impact": "major",
-      "status": "planned",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "pr_url": null,
-      "plan": "## Overview\n\nReplace scattered regex-based tool safety checks with a unified CapabilityPolicy system. Each agent session gets a frozen policy object at launch. Tool execution evaluates the policy before running any command or write. Privileged actions emit structured audit events to a JSONL file and the UI.\n\n## Phases\n\n1. Policy schema + session wiring — CapabilityPolicy type, buildDefaultPolicy() factory, session attachment\n2. Command class registry — replace SHELL_HARD_BLOCKED regex array with named class registry + structural detection\n3. evaluatePolicy unified enforcer — single function replacing assertWritable + assertSafeCommand + detectInstallerExe\n4. Audit emission — append events to audit.jsonl, emit tool-audit WebSocket message for blocks and grants\n5. Wire into tool execution — replace call sites in toolBash, toolPowerShell, toolWrite, toolEdit; consolidate duplicate shell precheck\n6. Unit test suite — one test per command class, write boundary check, and installer gate\n\n## Subtasks\n\nTask #41: Capability policy schema + session wiring\nTask #42: Command class registry\nTask #43: evaluatePolicy unified enforcer\nTask #44: Audit JSONL + WebSocket event\nTask #45: Wire policy into tool execution\nTask #46: Policy unit test suite",
-      "proofUnits": [],
-      "objective": {
-        "statement": "Replace scattered regex checks in tool execution with a unified CapabilityPolicy system — per-session policy objects, named command class registry, single evaluatePolicy enforcer, and structured audit events — so privileged actions are consistently gated and traceable.",
-        "successCriteria": [
-          "CapabilityPolicy type defined and attached to every session object at launch via buildDefaultPolicy()",
-          "COMMAND_CLASS_REGISTRY replaces SHELL_HARD_BLOCKED regex array with named, structurally-detected command classes",
-          "evaluatePolicy(action, context, policy) replaces assertWritable + assertSafeCommand + detectInstallerExe at all call sites",
-          "Audit events appended to audit.jsonl and emitted as tool-audit WebSocket message for every block and grant",
-          "toolBash, toolPowerShell, toolWrite, toolEdit all route through evaluatePolicy — no residual raw regex checks",
-          "Unit tests cover all command classes, write boundary checks, and installer gate"
-        ],
-        "nonGoals": [
-          "UI panel for browsing audit log",
-          "Network permission enforcement (field exists in schema, enforcement deferred)",
-          "MCP tool sandboxing",
-          "Per-project policy config file",
-          "Changes to Cross-Check approval flow"
-        ],
-        "proofMap": {
-          "Policy schema + session wiring": [
-            41
-          ],
-          "Command class registry": [
-            42
-          ],
-          "evaluatePolicy enforcer": [
-            43
-          ],
-          "Audit emission": [
-            44
-          ],
-          "Tool execution wiring": [
-            45
-          ],
-          "Unit tests": [
-            46
-          ]
-        },
-        "stopConditions": [
-          "src/runtime/toolRuntime.ts is already wired and tool execution no longer lives in server.js — confirm actual call sites before editing"
-        ]
-      }
-    },
-    {
       "number": 41,
       "title": "Capability policy schema + session wiring",
       "description": "Define the CapabilityPolicy TypeScript type with fields: allowedRoots (string[]), writeMode ('read-only'|'project-only'|'extended'), networkAllowed (boolean), installerAllowed (boolean), blockedCommandClasses (string[]), trustLevel ('restricted'|'standard'|'elevated'). Add a buildDefaultPolicy(session, config) factory that reads workDir, obsidianVaultPath, and downloadsDir once at session creation and returns a frozen policy object. Attach the policy to the session object at session launch.",
