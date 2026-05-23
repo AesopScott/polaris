@@ -19,10 +19,12 @@
             "category": "feature",
             "priority": 90,
             "impact": "minor",
-            "status": "backlog",
+            "status": "production",
             "created_at": "2026-05-21",
-            "completed_at": null,
-            "dependencies": []
+            "completed_at": "2026-05-22",
+            "dependencies": [],
+            "branch": "main",
+            "pr_url": null
         },
         {
             "number": 33,
