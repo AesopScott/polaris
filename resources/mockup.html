@@ -15211,12 +15211,16 @@ This is your current workflow status across all branches. Review the tasks and P
         const filesHtml = b.filesChanged.length > 0
           ? `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${b.filesChanged.slice(0, 5).join(', ')}${b.filesChanged.length > 5 ? ` +${b.filesChanged.length - 5} more` : ''}</div>`
           : '<div style="font-size:10px;opacity:0.3;margin-top:2px;">no changes</div>';
+        const sid = b.sessionId || '';
+        const btnBase = 'border:none;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;';
         return `<div style="padding:6px 0;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;gap:6px;">
             ${statusDot}
             <code style="font-size:11px;">${branch}</code>
             <span style="font-size:10px;opacity:0.5;">${b.head || ''}</span>
-            <span style="margin-left:auto;font-size:10px;opacity:0.5;">${b.sessionName || b.sessionId}</span>
+            <span style="margin-left:auto;font-size:10px;opacity:0.5;">${b.sessionName || sid}</span>
+            <button id="push-git-${sid}" style="${btnBase}background:#1e40af;color:#93c5fd;" onclick="window.orchPushGit('${sid}','${branch}','stage')">Push Git ↑</button>
+            <button id="push-obs-${sid}" style="${btnBase}background:#1e3a2f;color:#6ee7b7;" onclick="window.orchPushObsidian('${sid}')">Push Obsidian →</button>
           </div>
           ${filesHtml}
           ${contentionFiles.length > 0 ? `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">Contention: ${contentionFiles.join(', ')}</div>` : ''}
@@ -15256,6 +15260,54 @@ This is your current workflow status across all branches. Review the tasks and P
     feed.prepend(card);
   }
 
+  async function orchPushGit(sessionId, branch, targetBranch) {
+    const btn = document.getElementById(`push-git-${sessionId}`);
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'Pushing…';
+    try {
+      const r = await fetch('/push-git', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, targetBranch }),
+      });
+      const data = await r.json();
+      if (data.status === 'success') {
+        btn.textContent = '✓ Pushed'; btn.style.color = '#22c55e';
+      } else if (data.status === 'queued') {
+        btn.disabled = false; btn.textContent = `Queued #${data.position}`; btn.style.color = '#f59e0b';
+      } else if (data.status === 'conflict') {
+        btn.disabled = false; btn.textContent = '⚠ Conflict'; btn.style.color = '#f59e0b';
+      } else {
+        btn.disabled = false; btn.textContent = '✗ Failed'; btn.style.color = '#ef4444';
+      }
+    } catch {
+      if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; btn.style.color = '#ef4444'; }
+    }
+  }
+
+  async function orchPushObsidian(sessionId) {
+    const btn = document.getElementById(`push-obs-${sessionId}`);
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'Writing…';
+    try {
+      const r = await fetch('/push-obsidian', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        btn.textContent = '✓ Written'; btn.style.color = '#6ee7b7';
+      } else {
+        btn.disabled = false; btn.textContent = '✗ Failed'; btn.style.color = '#ef4444';
+      }
+    } catch {
+      if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; btn.style.color = '#ef4444'; }
+    }
+  }
+
   // Expose to global scope for nav button and WS handler
   window.toggleOrchestratorPanel = function () {
     const panel = document.getElementById('orchestrator-panel');
@@ -15269,9 +15321,11 @@ This is your current workflow status across all branches. Review the tasks and P
     if (panel) panel.classList.add('hidden');
     stopOrchPoll();
   };
-  window.renderOrchConflict = renderOrchConflict;
-  window.renderOrchAmber    = renderOrchAmber;
-  window.checkAutoActivate  = checkAutoActivate;
+  window.renderOrchConflict  = renderOrchConflict;
+  window.renderOrchAmber     = renderOrchAmber;
+  window.checkAutoActivate   = checkAutoActivate;
+  window.orchPushGit         = orchPushGit;
+  window.orchPushObsidian    = orchPushObsidian;
 })();
 
 </script>

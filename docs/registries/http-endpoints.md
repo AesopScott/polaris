@@ -240,6 +240,70 @@ Attempt merge on a throwaway branch to detect conflicts before any real merge.
 
 ---
 
+### `POST /push-git`
+
+Execute a full serialized push flow for a session: reserve slot → dry-run merge → git push → release slot. Broadcasts `orchConflict` on conflict (slot held); broadcasts `orchAmber` on push failure after retries.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — `orchPushGit()` called from "Push Git ↑" button in orchestrator panel
+**Consumer:** `server.js` — inline slot/dry-run/push/release flow
+
+**Request Payload:**
+```json
+{ "sessionId": "string", "targetBranch": "string (default: 'stage')" }
+```
+
+**Response Payload (clean push):**
+```json
+{ "status": "success", "branch": "string", "targetBranch": "string" }
+```
+
+**Response Payload (queued — slot held by another push):**
+```json
+{ "status": "queued", "slotId": "string", "position": number }
+```
+
+**Response Payload (conflict — slot held, orchConflict broadcast):**
+```json
+{ "status": "conflict", "conflictFiles": ["string"], "slotId": "string" }
+```
+
+**Response Payload (push failed after retries — orchAmber broadcast):**
+```json
+{ "status": "error", "error": "string" }
+```
+
+**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; retries 3× with exponential backoff; slot always released unless conflict holds it for user resolution
+
+---
+
+### `POST /push-obsidian`
+
+Append a timestamped session summary (branch, worktree, modified files, contention) to the project's Build Plan in the Obsidian vault.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — `orchPushObsidian()` called from "Push Obsidian →" button in orchestrator panel
+**Consumer:** `server.js` — looks up project obsidianDir, locates `3-Build_Plan.md` or `Build Plan.md`, appends summary
+
+**Request Payload:**
+```json
+{ "sessionId": "string" }
+```
+
+**Response Payload (success):**
+```json
+{ "ok": true, "filePath": "string — absolute path written" }
+```
+
+**Response Payload (error):**
+```json
+{ "error": "string" }
+```
+
+**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; falls back to `3-Build_Plan.md` if canonical file not found; creates Build folder if missing
+
+---
+
 ## Maintenance Rule
 
 Every PR that adds, removes, or modifies an HTTP endpoint **must update this registry in the same commit**. Changes include:

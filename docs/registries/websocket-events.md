@@ -223,12 +223,12 @@ Server broadcast when `POST /dry-run-merge` detects a merge conflict. Holds the 
 ```
 
 **Producers (Server sends)**
-- `server.js` — `/dry-run-merge` handler emits when conflict detected (task #36, Phase 4 — server-side emission pending Phase 4 push flow wiring)
+- `server.js` — `POST /push-git` handler broadcasts when dry-run detects conflict (task #36, Phase 4) ✓
 
 **Consumers (Client receives)**
-- `resources/mockup.html:orchConflict case` — `renderOrchConflict()` appends alert card and auto-opens orchestrator panel (task #36, Phase 3) ✓
+- `resources/mockup.html:4678` — `renderOrchConflict()` appends amber alert card and auto-opens orchestrator panel ✓
 
-**Status:** ⚠ partial (task #36) — consumer implemented (Phase 3); producer wired in Phase 4 push flow
+**Status:** ✓ Fully wired (task #36, Phase 4) — producer in `/push-git` handler; consumer in `orchConflict` WS case
 
 ---
 
@@ -249,12 +249,12 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 ```
 
 **Producers (Server sends)**
-- `server.js` — push flow emits after max retries exceeded or permanent failure (task #36, Phase 4 — pending Phase 4 push flow wiring)
+- `server.js` — `POST /push-git` handler broadcasts after 3 failed push attempts (task #36, Phase 4) ✓
 
 **Consumers (Client receives)**
-- `resources/mockup.html:orchAmber case` — `renderOrchAmber()` appends red failure card and auto-opens orchestrator panel (task #36, Phase 3) ✓
+- `resources/mockup.html:4688` — `renderOrchAmber()` appends red failure card and auto-opens orchestrator panel ✓
 
-**Status:** ⚠ partial (task #36) — consumer implemented (Phase 3); producer wired in Phase 4 push flow
+**Status:** ✓ Fully wired (task #36, Phase 4) — producer in `/push-git` retry-exhausted path; consumer in `orchAmber` WS case
 
 ---
 
@@ -270,8 +270,8 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
 | `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
-| `orchConflict` | 1 (server, Phase 4) | 1 (client ✓) | ⚠ partial — consumer done, producer Phase 4 |
-| `orchAmber` | 1 (server, Phase 4) | 1 (client ✓) | ⚠ partial — consumer done, producer Phase 4 |
+| `orchConflict` | 1 (server ✓) | 1 (client ✓) | ✓ fully wired (Phase 4) |
+| `orchAmber` | 1 (server ✓) | 1 (client ✓) | ✓ fully wired (Phase 4) |
 
 ---
 

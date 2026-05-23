@@ -8008,6 +8008,181 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // POST /push-git — slot reserve → dry-run → git push + retry → release slot
+  if (req.method === 'POST' && req.url === '/push-git') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      try {
+        const { sessionId, targetBranch = 'stage' } = JSON.parse(body);
+        if (!sessionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'sessionId required' }));
+        }
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'session not found' }));
+        }
+        const repoPath = session.repoWorkDir;
+        if (!repoPath || !fs.existsSync(repoPath)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'session has no associated git repo' }));
+        }
+        const info = getWorktreeBranchInfo(session.worktreePath);
+        if (!info || !info.branch) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'could not determine session branch' }));
+        }
+        const { branch } = info;
+
+        // Reserve merge slot (FIFO, same logic as /reserve-merge-slot)
+        const slotId = `slot-${sessionId}-${Date.now()}`;
+        const activeSlot = Object.values(mergeSlots.slots).find(sl => sl.targetBranch === targetBranch && sl.status === 'active');
+        if (activeSlot) {
+          const position = mergeSlots.queue.filter(q => q.targetBranch === targetBranch).length + 1;
+          mergeSlots.queue.push({ slotId, sessionId, targetBranch, queuedAt: Date.now() });
+          saveOrchestratorState();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'queued', slotId, position }));
+        }
+        mergeSlots.slots[slotId] = { slotId, sessionId, targetBranch, status: 'active', acquiredAt: Date.now() };
+        saveOrchestratorState();
+
+        // Dry-run merge: check if branch would cleanly merge into targetBranch
+        const dryBranch = `dry-run-${Date.now()}`;
+        let conflictFiles = [];
+        let mergeStatus = 'clean';
+        try {
+          execSync(`git checkout -b "${dryBranch}" "${targetBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+          try {
+            execSync(`git merge --no-commit --no-ff "${branch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+          } catch {
+            const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+            conflictFiles = statusOut.split('\n')
+              .filter(l => /^(UU|AA|DD|AU|UA)/.test(l))
+              .map(l => l.slice(3).trim())
+              .filter(Boolean);
+            mergeStatus = 'conflict';
+          }
+        } finally {
+          try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
+          try { execSync(`git checkout "${targetBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+          try { execSync(`git branch -D "${dryBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+        }
+
+        if (mergeStatus === 'conflict') {
+          // Hold slot — user must resolve conflict and release manually via /release-merge-slot
+          broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles, slotId });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'conflict', conflictFiles, slotId }));
+        }
+
+        // Push to origin with retry (up to 3 attempts, exponential backoff)
+        let pushOk = false;
+        let pushError = '';
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            execSync(`git push origin "${branch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+            pushOk = true;
+            break;
+          } catch (e) {
+            pushError = (e.stderr ? e.stderr.toString().trim() : e.message) || 'push failed';
+            if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+          }
+        }
+
+        // Release slot and promote next in queue
+        delete mergeSlots.slots[slotId];
+        const nextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
+        if (nextIdx !== -1) {
+          const next = mergeSlots.queue.splice(nextIdx, 1)[0];
+          mergeSlots.slots[next.slotId] = { ...next, status: 'active', acquiredAt: Date.now() };
+        }
+        saveOrchestratorState();
+
+        if (!pushOk) {
+          broadcast({ type: 'orchAmber', sessionId, reason: 'git push failed after 3 attempts', detail: pushError, retryCount: 3, slotId: null });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'error', error: pushError }));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'success', branch, targetBranch }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /push-obsidian — append timestamped session summary to project Build Plan in Obsidian
+  if (req.method === 'POST' && req.url === '/push-obsidian') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const { sessionId } = JSON.parse(body);
+        if (!sessionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'sessionId required' }));
+        }
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'session not found' }));
+        }
+        const config = readConfig();
+        const vaultPath = config.obsidianVaultPath || '';
+        if (!vaultPath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Obsidian vault path not configured in Settings' }));
+        }
+        const projects = config.projects || [];
+        const proj = projects.find(p => p.name === session.projectName);
+        const obsDir = proj?.obsidianDir
+          ? (path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir))
+          : path.join(vaultPath, `${(session.projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_')}_Build`);
+
+        // Locate the Build Plan file
+        const candidates = ['3-Build_Plan.md', 'Build Plan.md', 'Build-Plan.md'];
+        let planPath = null;
+        for (const name of candidates) {
+          const c = path.join(obsDir, name);
+          if (fs.existsSync(c)) { planPath = c; break; }
+        }
+        if (!planPath) {
+          planPath = path.join(obsDir, '3-Build_Plan.md');
+          if (!fs.existsSync(obsDir)) fs.mkdirSync(obsDir, { recursive: true });
+          fs.writeFileSync(planPath, `# Build Plan\n`, 'utf8');
+        }
+
+        const info = getWorktreeBranchInfo(session.worktreePath);
+        const filesChanged = info?.filesChanged || [];
+        const activeSessions = [...sessions.values()].filter(s => s.projectName === session.projectName && s.id !== session.id);
+        const contention = Object.keys(detectFileContention([session, ...activeSessions]));
+        const ts = new Date().toISOString();
+
+        const summary = `\n---\n\n## Session Summary — ${ts}\n\n` +
+          `**Session:** ${session.name || session.id}  \n` +
+          `**Branch:** ${info?.branch || '(unknown)'}  \n` +
+          `**Worktree:** ${session.worktreePath || '(none)'}  \n` +
+          `**Modified (${filesChanged.length}):** ${filesChanged.length ? filesChanged.join(', ') : 'none'}  \n` +
+          `**Contention:** ${contention.length ? contention.join(', ') : 'none'}  \n` +
+          `**Status:** ${session.status}\n`;
+
+        fs.appendFileSync(planPath, summary, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, filePath: planPath }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
