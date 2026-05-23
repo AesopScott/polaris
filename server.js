@@ -776,6 +776,63 @@ const HEALTH_SNAPSHOT_TTL_MS = 30000;
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
 const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
 
+// ── Capability Policy ────────────────────────────────────────────────────────
+// Per-session policy object created once at launch and frozen. Tasks #42-#45
+// build on this foundation: command class registry, unified enforcer, audit
+// emission, and wiring into tool execution.
+
+/**
+ * @typedef {Object} CapabilityPolicy
+ * @property {string[]} allowedRoots    - Absolute paths the session may write to.
+ * @property {'read-only'|'project-only'|'extended'} writeMode
+ *   - read-only:    no writes permitted
+ *   - project-only: workDir only
+ *   - extended:     workDir + Obsidian vault + Downloads
+ * @property {boolean} networkAllowed   - WebFetch/WebSearch permitted (enforcement deferred to task #43).
+ * @property {boolean} installerAllowed - .exe installer execution pre-approved for this session.
+ * @property {string[]} blockedCommandClasses - Named command classes blocked at this trust level.
+ *   Valid class names: GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT,
+ *   RM_RECURSIVE_ROOT, RD_FULL_DRIVE.
+ * @property {'restricted'|'standard'|'elevated'} trustLevel
+ *   - restricted: no workDir configured; writes and shell blocked by default
+ *   - standard:   normal agent session
+ *   - elevated:   explicitly granted by user (installer allowed, fewer class blocks)
+ */
+
+const DEFAULT_BLOCKED_CLASSES = Object.freeze([
+  'GIT_FORCE_PUSH',
+  'GIT_RESET_HARD',
+  'GIT_CLEAN',
+  'DRIVE_FORMAT',
+  'RM_RECURSIVE_ROOT',
+  'RD_FULL_DRIVE',
+]);
+
+/**
+ * Build a frozen CapabilityPolicy for a session. Called once at session launch.
+ * @param {{ workDir?: string }} session
+ * @param {{ obsidianVaultPath?: string }} config
+ * @returns {CapabilityPolicy}
+ */
+function buildDefaultPolicy(session, config) {
+  const wd = session.workDir ? path.resolve(session.workDir) : null;
+  const roots = wd ? [wd] : [];
+  if (wd) {
+    const obsidian = config && config.obsidianVaultPath ? config.obsidianVaultPath : null;
+    const downloads = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Downloads') : null;
+    if (obsidian) roots.push(obsidian);
+    if (downloads) roots.push(downloads);
+  }
+  return Object.freeze({
+    allowedRoots:          roots,
+    writeMode:             wd ? 'extended' : 'read-only',
+    networkAllowed:        true,
+    installerAllowed:      false,
+    blockedCommandClasses: DEFAULT_BLOCKED_CLASSES,
+    trustLevel:            wd ? 'standard' : 'restricted',
+  });
+}
+
 // ─── Session persistence ──────────────────────────────────────────────────────
 function serializeSession(s) {
   return {
@@ -864,6 +921,7 @@ function loadPersistedSessions() {
           loaded.lastSkill  = loaded.lastSkill  || inferred.lastSkill;
         }
       }
+      if (!loaded.policy) loaded.policy = buildDefaultPolicy(loaded, readConfig());
       sessions.set(s.id, loaded);
     }
     // Rebuild forkMap from persisted sessions
@@ -3555,7 +3613,7 @@ function toolSetStatus({ status } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
   session.status = status;
-  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   return `Status set to "${status}".`;
 }
 
@@ -3566,7 +3624,7 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) 
   if (taskNumber !== undefined) session.taskNumber = taskNumber;
   if (taskState  !== undefined) session.taskState  = taskState;
   if (lastSkill  !== undefined) session.lastSkill  = lastSkill;
-  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
@@ -8601,6 +8659,8 @@ async function handleMessage(ws, raw) {
         sessionWorkDir = wtPath;
       }
     }
+
+    newSession.policy = buildDefaultPolicy(newSession, readConfig());
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);

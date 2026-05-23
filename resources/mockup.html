@@ -4877,6 +4877,7 @@
         const s = sessionStore[msg.sessionId];
         if (s) {
           s.status = msg.status;
+          if (msg.projectName !== undefined) s.projectName = msg.projectName;
           let taskChanged = false;
           if (!ORCHESTRATION_QUIET_MODE) {
             if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
@@ -6420,7 +6421,7 @@
 
     const taskStateSpan = el.querySelector('[data-task-state]');
     if (taskStateSpan && s.taskNumber && s.taskState) {
-      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState));
+      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState, s.projectName || 'global'));
     }
 
     const term = el.querySelector('[data-term]');
@@ -10390,7 +10391,7 @@ This is your current workflow status across all branches. Review the tasks and P
   });
 
   // Session Task State Picker
-  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState) {
+  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState, scope) {
     const picker = document.getElementById('session-task-state-picker');
     if (!picker) return;
     const rect = spanEl.getBoundingClientRect();
@@ -10407,11 +10408,12 @@ This is your current workflow status across all branches. Review the tasks and P
     picker.style.display = 'flex';
     picker.dataset.sessionId = sessionId;
     picker.dataset.taskNumber = String(taskNumber);
+    picker.dataset.scope = scope;
     picker.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const newTaskState = btn.dataset.taskState;
-        wsSend({ type: 'set-task-state', sessionId: sessionId, taskNumber: taskNumber, taskState: newTaskState });
+        wsSend({ type: 'update-backlog-task-status', scope: scope, taskNumber: taskNumber, status: newTaskState });
         hideSessionTaskStatePicker();
       });
     });
