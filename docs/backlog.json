@@ -246,11 +246,11 @@
       "category": "security",
       "priority": 92,
       "impact": "standard",
-      "status": "planned",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
-      "branch": null,
+      "branch": "task/41-capability-policy-schema-session-wiring",
       "pr_url": null,
       "plan": "## Overview\n\nAdd a CapabilityPolicy object to every Polaris agent session. The policy is a frozen JS object created once at session launch. It consolidates the allowed write roots, write mode, network flag, installer flag, blocked command class list, and trust level into a single queryable contract — the foundation that tasks #42, #43, #44, and #45 build on.\n\n## Phases\n\n1. JSDoc typedef — add @typedef CapabilityPolicy block to server.js constants section\n2. buildDefaultPolicy factory — function that reads session.workDir + config once and returns Object.freeze({...})\n3. Session wiring — attach policy in the launch and resume WS handlers\n\n## Key Decisions\n\n- Lives in server.js (no TypeScript modules wired yet; tasks #25/#37 still in backlog)\n- Frozen object prevents mid-session mutation\n- Default writeMode is 'extended' to preserve existing behavior (workDir + Obsidian + Downloads all allowed)\n- Default trustLevel is 'standard'; default installerAllowed is false\n- Edge case: null workDir → allowedRoots=[], trustLevel='restricted'\n- No enforcement in this task — policy exists but is not evaluated yet (that is task #43)",
       "proofUnits": [
