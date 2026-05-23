@@ -3217,7 +3217,7 @@ const VALID_BACKLOG_STATUSES = new Set([
   'ready', 'in-progress', 'complete', 'pr-reviewed', 'cba-half-complete', 'smoke-tested'
 ]);
 
-function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
+function updateBacklogTaskStatus(scope, taskNumber, newStatus, extraFields = {}) {
   console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
   if (!VALID_BACKLOG_STATUSES.has(newStatus)) {
     console.warn(`[backlog] REJECTED status "${newStatus}" — not in VALID_BACKLOG_STATUSES`);
@@ -3237,6 +3237,7 @@ function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
     task.completed_at = (newStatus === 'production' || newStatus === 'cancelled')
       ? new Date().toISOString().split('T')[0]
       : null;
+    Object.assign(task, extraFields);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
     return task;
   }
@@ -3257,6 +3258,7 @@ function updateBacklogTaskStatus(scope, taskNumber, newStatus) {
   } else {
     task.completed_at = null;
   }
+  Object.assign(task, extraFields);
   console.log(`[backlog] task #${taskNum} in ${scope}: ${prevStatus} → ${newStatus}`);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {
@@ -8459,7 +8461,7 @@ const httpServer = http.createServer((req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
         }
-        updateBacklogTaskStatus('global', task_number, status);
+        updateBacklogTaskStatus('global', task_number, status, { current_node });
         // Broadcast UI refresh
         const { global: globalTasks, projects } = loadAllBacklogs();
         const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
@@ -9510,6 +9512,46 @@ async function handleMessage(ws, raw) {
       broadcast(debugMsg);
       // Optionally log to server console for audit trail (comment out if too noisy)
       // console.log(`[DEBUG${isError ? ' ERROR' : ''}] ${message}`);
+    }
+    return;
+  }
+
+  if (type === 'advance-task') {
+    // Proxy to LangGraph executor POST /advance — advances the task graph one step.
+    // Suspends at HITL interrupt nodes; returns immediately on completion or pause.
+    const { taskNumber } = msg;
+    if (!taskNumber) { sendTo(ws, { type: 'advance-task-result', error: 'taskNumber required' }); return; }
+    const EXECUTOR_URL = 'http://localhost:4001';
+    try {
+      const res = await fetch(`${EXECUTOR_URL}/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_number: taskNumber }),
+      });
+      const data = await res.json();
+      sendTo(ws, { type: 'advance-task-result', taskNumber, ...data });
+    } catch (e) {
+      sendTo(ws, { type: 'advance-task-result', taskNumber, error: e.message });
+    }
+    return;
+  }
+
+  if (type === 'send-lang-signal') {
+    // Proxy to LangGraph executor POST /signal — delivers a human resume signal to unblock
+    // a paused HITL node (e.g. code_done, approved, request_changes).
+    const { taskNumber, signal } = msg;
+    if (!taskNumber || !signal) { sendTo(ws, { type: 'lang-signal-result', error: 'taskNumber and signal required' }); return; }
+    const EXECUTOR_URL = 'http://localhost:4001';
+    try {
+      const res = await fetch(`${EXECUTOR_URL}/signal?task_number=${taskNumber}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signal }),
+      });
+      const data = await res.json();
+      sendTo(ws, { type: 'lang-signal-result', taskNumber, signal, ...data });
+    } catch (e) {
+      sendTo(ws, { type: 'lang-signal-result', taskNumber, signal, error: e.message });
     }
     return;
   }

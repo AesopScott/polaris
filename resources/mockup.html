@@ -5151,6 +5151,30 @@
         if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived(msg, null);
         break;
 
+      case 'advance-task-result': {
+        // Result from server proxying to executor POST /advance
+        const advBtn = document.querySelector(`.lang-advance-btn[data-task-number="${msg.taskNumber}"]`);
+        if (advBtn) { advBtn.disabled = false; advBtn.textContent = '▶ Advance'; }
+        if (msg.error) {
+          pushDebugLog(`[lang] advance #${msg.taskNumber} failed: ${msg.error}`, true);
+        } else {
+          pushDebugLog(`[lang] advance #${msg.taskNumber} → ${msg.status || '?'} @ ${msg.current_node || '?'}`);
+        }
+        break;
+      }
+
+      case 'lang-signal-result': {
+        // Result from server proxying to executor POST /signal
+        const sigBtn = document.querySelector(`.lang-signal-btn[data-task-number="${msg.taskNumber}"]`);
+        if (sigBtn) { sigBtn.disabled = false; sigBtn.textContent = '⇥ Signal'; }
+        if (msg.error) {
+          pushDebugLog(`[lang] signal #${msg.taskNumber} "${msg.signal}" failed: ${msg.error}`, true);
+        } else {
+          pushDebugLog(`[lang] signal #${msg.taskNumber} "${msg.signal}" → ${msg.status || '?'}`);
+        }
+        break;
+      }
+
       case 'backlog-error':
         if (typeof showBacklogError === 'function') showBacklogError(msg.error || 'Unknown error');
         else console.error('[backlog]', msg.error);
@@ -10034,6 +10058,7 @@ This is your current workflow status across all branches. Review the tasks and P
         if (e.target.closest('.backlog-status-badge')) return;
         if (e.target.closest('.backlog-impact-cell')) return;
         if (e.target.closest('.backlog-edit-btn')) return;
+        if (e.target.closest('.lang-controls')) return;
         const scope = row.dataset.scope;
         const num = parseInt(row.dataset.taskNumber, 10);
         launchTaskSession(scope, num);
@@ -10071,6 +10096,30 @@ This is your current workflow status across all branches. Review the tasks and P
           btn.dataset.category,
           btn.dataset.impact
         );
+      });
+    });
+    // LangGraph Advance button → send advance-task WS message
+    body.querySelectorAll('.lang-advance-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const taskNumber = parseInt(btn.dataset.taskNumber, 10);
+        btn.disabled = true;
+        btn.textContent = '…';
+        wsSend({ type: 'advance-task', taskNumber });
+      });
+    });
+    // LangGraph Signal button → send send-lang-signal WS message
+    body.querySelectorAll('.lang-signal-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const taskNumber = parseInt(btn.dataset.taskNumber, 10);
+        const controls = btn.closest('.lang-controls');
+        const input = controls ? controls.querySelector('.lang-signal-input') : null;
+        const signal = input ? input.value.trim() : '';
+        if (!signal) { if (input) input.focus(); return; }
+        btn.disabled = true;
+        btn.textContent = '…';
+        wsSend({ type: 'send-lang-signal', taskNumber, signal });
       });
     });
     // Re-apply current search filter so it survives re-renders
@@ -10136,9 +10185,17 @@ This is your current workflow status across all branches. Review the tasks and P
           if (impact === 'minor') impactStyle = 'color:#86efac;';
           else if (impact === 'major') impactStyle = 'color:#f97316;';
           else impactStyle = 'color:#aaa;';
+          const langControls = t.current_node
+            ? '<div class="lang-controls" data-task-number="' + (t.number || 0) + '" style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;" onclick="event.stopPropagation()">'
+                + '<button class="lang-advance-btn fbtn" data-task-number="' + (t.number || 0) + '" style="padding:2px 8px;font-size:9px;background:rgba(96,165,250,0.2);border:1px solid rgba(96,165,250,0.4);border-radius:3px;cursor:pointer;color:#93c5fd;" title="Advance LangGraph task one step">▶ Advance</button>'
+                + '<input class="lang-signal-input" data-task-number="' + (t.number || 0) + '" placeholder="signal…" style="width:80px;padding:2px 5px;font-size:9px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:3px;color:inherit;" title="Signal to send (code_done, approved, request_changes)">'
+                + '<button class="lang-signal-btn fbtn" data-task-number="' + (t.number || 0) + '" style="padding:2px 8px;font-size:9px;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.3);border-radius:3px;cursor:pointer;color:#86efac;" title="Send signal to paused HITL node">⇥ Signal</button>'
+                + '<span style="font-size:9px;opacity:0.45;font-family:monospace;">@' + escHtml(t.current_node) + '</span>'
+              + '</div>'
+            : '';
           return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;' + rowBg + '" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
-            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
+            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + langControls + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
