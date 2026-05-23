@@ -30,23 +30,21 @@ Invoke a UI-selected agent from within a Python LangGraph node.
 **Response Payload (Success):**
 ```json
 {
-  "response": "string — agent's text output",
-  "tokens": number,
-  "model": "string",
-  "agent": "string"
+  "ok": true,
+  "response": "string — agent's text output"
 }
 ```
 
 **Response Payload (Error):**
 ```json
 {
-  "error": "string — error message",
-  "status": 400 | 500
+  "ok": false,
+  "error": "string — error message"
 }
 ```
 
-**Status:** ✓ Documented (Task #24)
-**Audit Trail:** Task #24 Phase 2, commit 42bfb1d (feat: LangGraph sidecar spike), commit a81318 (feat: /lang skill and /dispatch-agent handler)
+**Status:** ✓ Documented (Task #24); shape corrected (Task #33)
+**Audit Trail:** Task #24 Phase 2, commit 42bfb1d (feat: LangGraph sidecar spike), commit a81318 (feat: /lang skill and /dispatch-agent handler). Shape mismatch corrected in task #33 audit — actual server.js handler returns `{ok, response}`, not `{response, tokens, model, agent}`. The `dispatch_agent()` helper in `agents/task_graph.py` reads `ok` and `response` fields (matches corrected shape).
 
 ---
 
@@ -187,6 +185,23 @@ Health check for the executor process.
 - `/branch-state`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge` remain planned (task #36)
 
 **Status:** ✓ Audit current — all task #26 planned endpoints implemented and documented
+
+---
+
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #33)
+
+**Task:** #33 — LangGraph node implementation + HITL
+
+**Boundaries checked:** HTTP endpoints in server.js and agents/ callers
+
+**Evidence recorded:**
+- `/dispatch-agent` response shape corrected: was `{response, tokens, model, agent}`, actual code returns `{ok: true, response: string}` — mismatch introduced at task #24; corrected here
+- `dispatch_agent()` helper in `agents/task_graph.py:35` confirmed reading `ok` and `response` (matches corrected shape)
+- `/sync-state` handler extended to write `current_node` alongside `status` via `updateBacklogTaskStatus(..., { current_node })` — no shape change to the endpoint itself
+
+**Gaps identified:** None new.
+
+**Status:** ✓ Audit complete — `/dispatch-agent` shape mismatch resolved for task #33 scope.
 
 ---
 

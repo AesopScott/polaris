@@ -73,11 +73,12 @@
   #filter-waiting-label:hover, #filter-running-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
-  .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; position: relative; }
-  /* Locked nav slots: add new buttons by assigning a free grid cell; do not rely on auto-placement. */
+  .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(4, minmax(38px, auto)); grid-auto-rows: 0; gap: 8px; position: relative; }
+  /* Locked nav manifest: four rows only. Add buttons by assigning a fixed slot here. */
+  .btn-grid > .hbtn { display: none; }
   .nav-spacer { min-width: 0; min-height: 38px; }
   .nav-spacer-row-1 { grid-row: 1; grid-column: 1; }
-  .nav-spacer-row-2 { grid-row: 2; grid-column: 1; }
+  .nav-spacer-row-2 { display: none; }
   #btn-course-creator { grid-row: 1; grid-column: 2; }
   #btn-factory { grid-row: 1; grid-column: 3; }
   #btn-build { grid-row: 1; grid-column: 4; }
@@ -85,6 +86,7 @@
   #btn-restart { grid-row: 1; grid-column: 6; }
   #btn-routines { grid-row: 1; grid-column: 7; }
   #btn-settings { grid-row: 1; grid-column: 8; }
+  #btn-orchestrator { grid-row: 2; grid-column: 1; }
   #btn-diamond { grid-row: 2; grid-column: 2; }
   #btn-manifest { grid-row: 2; grid-column: 3; }
   #btn-cross-check { grid-row: 2; grid-column: 4; }
@@ -108,6 +110,10 @@
   #btn-close { grid-row: 4; grid-column: 6; }
   #btn-balance { grid-row: 4; grid-column: 7; }
   #btn-support { grid-row: 4; grid-column: 8; }
+  #btn-course-creator, #btn-factory, #btn-build, #btn-files, #btn-restart, #btn-routines, #btn-settings,
+  #btn-orchestrator, #btn-diamond, #btn-manifest, #btn-cross-check, #btn-archive, #btn-reload, #btn-projects, #btn-walkthrough,
+  #btn-summary, #btn-skills, #btn-web, #btn-code-health, #btn-versions, #btn-reset, #btn-connect, #btn-docs,
+  #btn-review, #btn-backlog, #btn-preview, #btn-monaco, #btn-obsidian, #btn-close, #btn-balance, #btn-support { display: flex; }
   #nav-divider-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
   .hbtn {
     background: linear-gradient(145deg, #1a2030, #0d1117);
@@ -1447,6 +1453,7 @@
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
         <div class="nav-spacer nav-spacer-row-2"></div>
+        <button id="btn-orchestrator" class="hbtn btn-config" onclick="toggleOrchestratorPanel()" data-tooltip="Orchestrator — monitor concurrent sessions, detect file contention, and coordinate branch pushes"><span class="lbl">Orch</span></button>
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
@@ -1472,7 +1479,6 @@
         <button id="btn-close" class="hbtn btn-interface" onclick="closeAllSessions()" data-tooltip="Close all open sessions. Prompts per session to push output to Obsidian before closing."><span class="lbl">Close</span></button>
         <button id="btn-balance" class="hbtn btn-systems" data-tooltip="Check your live OpenRouter credit balance and view API usage"><span class="lbl">Balance</span></button>
         <button id="btn-support" class="hbtn btn-config" onclick="toggleSupport()" data-tooltip="Submit a support ticket — bug report, feature request, or question"><span class="lbl">Support</span></button>
-        <button id="btn-orchestrator" class="hbtn btn-tracking" onclick="toggleOrchestratorPanel()" data-tooltip="Orchestrator — monitor concurrent sessions, detect file contention, and coordinate branch pushes"><span class="lbl">Orch</span></button>
       </div>
     </div>
 
@@ -5145,6 +5151,30 @@
         if (typeof _onBacklogDataReceived === 'function') _onBacklogDataReceived(msg, null);
         break;
 
+      case 'advance-task-result': {
+        // Result from server proxying to executor POST /advance
+        const advBtn = document.querySelector(`.lang-advance-btn[data-task-number="${msg.taskNumber}"]`);
+        if (advBtn) { advBtn.disabled = false; advBtn.textContent = '▶ Advance'; }
+        if (msg.error) {
+          pushDebugLog(`[lang] advance #${msg.taskNumber} failed: ${msg.error}`, true);
+        } else {
+          pushDebugLog(`[lang] advance #${msg.taskNumber} → ${msg.status || '?'} @ ${msg.current_node || '?'}`);
+        }
+        break;
+      }
+
+      case 'lang-signal-result': {
+        // Result from server proxying to executor POST /signal
+        const sigBtn = document.querySelector(`.lang-signal-btn[data-task-number="${msg.taskNumber}"]`);
+        if (sigBtn) { sigBtn.disabled = false; sigBtn.textContent = '⇥ Signal'; }
+        if (msg.error) {
+          pushDebugLog(`[lang] signal #${msg.taskNumber} "${msg.signal}" failed: ${msg.error}`, true);
+        } else {
+          pushDebugLog(`[lang] signal #${msg.taskNumber} "${msg.signal}" → ${msg.status || '?'}`);
+        }
+        break;
+      }
+
       case 'backlog-error':
         if (typeof showBacklogError === 'function') showBacklogError(msg.error || 'Unknown error');
         else console.error('[backlog]', msg.error);
@@ -7095,7 +7125,7 @@
         break;
       case 'write':
         if (s) {
-          wsSend({ type: 'resume', sessionId, prompt: 'Write an update to Git and Obsidian and then continue', displayPrompt: 'Write', resumeId: s.resumeId, model: null });
+          wsSend({ type: 'resume', sessionId, prompt: 'Write an update to Git and Obsidian and then continue', displayPrompt: 'Continue', resumeId: s.resumeId, model: null });
           enterResumeMode(sessionId, null);
         }
         break;
@@ -10028,6 +10058,7 @@ This is your current workflow status across all branches. Review the tasks and P
         if (e.target.closest('.backlog-status-badge')) return;
         if (e.target.closest('.backlog-impact-cell')) return;
         if (e.target.closest('.backlog-edit-btn')) return;
+        if (e.target.closest('.lang-controls')) return;
         const scope = row.dataset.scope;
         const num = parseInt(row.dataset.taskNumber, 10);
         launchTaskSession(scope, num);
@@ -10065,6 +10096,30 @@ This is your current workflow status across all branches. Review the tasks and P
           btn.dataset.category,
           btn.dataset.impact
         );
+      });
+    });
+    // LangGraph Advance button → send advance-task WS message
+    body.querySelectorAll('.lang-advance-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const taskNumber = parseInt(btn.dataset.taskNumber, 10);
+        btn.disabled = true;
+        btn.textContent = '…';
+        wsSend({ type: 'advance-task', taskNumber });
+      });
+    });
+    // LangGraph Signal button → send send-lang-signal WS message
+    body.querySelectorAll('.lang-signal-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const taskNumber = parseInt(btn.dataset.taskNumber, 10);
+        const controls = btn.closest('.lang-controls');
+        const input = controls ? controls.querySelector('.lang-signal-input') : null;
+        const signal = input ? input.value.trim() : '';
+        if (!signal) { if (input) input.focus(); return; }
+        btn.disabled = true;
+        btn.textContent = '…';
+        wsSend({ type: 'send-lang-signal', taskNumber, signal });
       });
     });
     // Re-apply current search filter so it survives re-renders
@@ -10130,9 +10185,17 @@ This is your current workflow status across all branches. Review the tasks and P
           if (impact === 'minor') impactStyle = 'color:#86efac;';
           else if (impact === 'major') impactStyle = 'color:#f97316;';
           else impactStyle = 'color:#aaa;';
+          const langControls = t.current_node
+            ? '<div class="lang-controls" data-task-number="' + (t.number || 0) + '" style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;" onclick="event.stopPropagation()">'
+                + '<button class="lang-advance-btn fbtn" data-task-number="' + (t.number || 0) + '" style="padding:2px 8px;font-size:9px;background:rgba(96,165,250,0.2);border:1px solid rgba(96,165,250,0.4);border-radius:3px;cursor:pointer;color:#93c5fd;" title="Advance LangGraph task one step">▶ Advance</button>'
+                + '<input class="lang-signal-input" data-task-number="' + (t.number || 0) + '" placeholder="signal…" style="width:80px;padding:2px 5px;font-size:9px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:3px;color:inherit;" title="Signal to send (code_done, approved, request_changes)">'
+                + '<button class="lang-signal-btn fbtn" data-task-number="' + (t.number || 0) + '" style="padding:2px 8px;font-size:9px;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.3);border-radius:3px;cursor:pointer;color:#86efac;" title="Send signal to paused HITL node">⇥ Signal</button>'
+                + '<span style="font-size:9px;opacity:0.45;font-family:monospace;">@' + escHtml(t.current_node) + '</span>'
+              + '</div>'
+            : '';
           return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;' + rowBg + '" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
-            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + '</td>'
+            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + langControls + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
@@ -14529,6 +14592,19 @@ This is your current workflow status across all branches. Review the tasks and P
       };
       sessionSearchEl.addEventListener('input', runSessionSearch);
     }
+
+    const NAV_BUTTON_MANIFEST = new Set([
+      'btn-course-creator', 'btn-factory', 'btn-build', 'btn-files', 'btn-restart', 'btn-routines', 'btn-settings',
+      'btn-orchestrator', 'btn-diamond', 'btn-manifest', 'btn-cross-check', 'btn-archive', 'btn-reload', 'btn-projects', 'btn-walkthrough',
+      'btn-summary', 'btn-skills', 'btn-web', 'btn-code-health', 'btn-versions', 'btn-reset', 'btn-connect', 'btn-docs',
+      'btn-review', 'btn-backlog', 'btn-preview', 'btn-monaco', 'btn-obsidian', 'btn-close', 'btn-balance', 'btn-support'
+    ]);
+    document.querySelectorAll('.btn-grid > .hbtn').forEach(btn => {
+      if (!NAV_BUTTON_MANIFEST.has(btn.id)) {
+        btn.hidden = true;
+        console.warn(`[nav] Hiding unmanifested nav button "${btn.id || btn.textContent.trim()}"; add it to the fixed 4x8 nav manifest before rendering.`);
+      }
+    });
 
     // Header buttons
     document.querySelectorAll('.hbtn').forEach(btn => {

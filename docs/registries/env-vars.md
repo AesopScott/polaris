@@ -13,7 +13,7 @@ Windows user application data directory.
 - OS environment (Windows): always present  
 
 **Consumers**
-- `server.js:16` — fallback base for `POLARIS_DIR` derivation
+- `server.js:44` — fallback base for `POLARIS_DIR` derivation
 
 **Status:** ✓
 
@@ -28,7 +28,8 @@ Windows local (non-roaming) application data directory.
 - OS environment (Windows): always present  
 
 **Consumers**
-- `server.js:9342` — Chrome executable path construction
+- `server.js:97` — Chrome executable path construction (primary — fallback to `path.join(os.homedir(), 'AppData', 'Local')`)
+- `server.js:11227` — Chrome binary path string (`LOCALAPPDATA + '\\Google\\Chrome\\...'`)
 
 **Status:** ✓
 
@@ -43,7 +44,7 @@ Override path for where `mockup.html` is copied at first run.
 - `main.js` — set before forking `server.js`
 
 **Consumers**
-- `server.js:18` — resolved to `MOCKUP_DEST` constant
+- `server.js:46` — resolved to `MOCKUP_DEST` constant
 
 **Status:** ✓
 
@@ -58,7 +59,7 @@ Root runtime data directory (`%APPDATA%\.claude\polaris`).
 - `main.js` — set before forking `server.js`
 
 **Consumers**
-- `server.js:17` — resolved to `POLARIS_DIR` constant; used for config, locks, archives
+- `server.js:45` — resolved to `POLARIS_DIR` constant; used for config, locks, archives
 
 **Status:** ✓
 
@@ -73,7 +74,7 @@ Override path for user global skills directory.
 - `main.js` — set before forking `server.js`
 
 **Consumers**
-- `server.js:62` — resolved to `SKILLS_DIR` constant
+- `server.js:221` — resolved to `SKILLS_DIR` constant
 
 **Status:** ✓
 
@@ -88,9 +89,27 @@ Path to the `resources/` directory inside the installed app.
 - `main.js` — set before forking `server.js`
 
 **Consumers**
-- `server.js:71` — resolved to `RESOURCES_PATH` constant
+- `server.js:230` — resolved to `RESOURCES_PATH` constant
 
 **Status:** ✓
+
+---
+
+## `POLARIS_ORCHESTRATION_QUIET_MODE`
+
+Suppresses non-essential console output during orchestration runs. When set to `'0'`, verbose orchestration logs are enabled; any other value (or absent) = quiet mode on.
+
+**Set by:** Operator (manual env var)  
+**Default:** Quiet mode on (truthy unless `=== '0'`)
+
+**Producers**
+- Operator shell — set `POLARIS_ORCHESTRATION_QUIET_MODE=0` before starting server to enable verbose logs
+- `resources/mockup.html:4264` — hardcodes `true` for the UI context (no env var read; quiet mode always on in renderer)
+
+**Consumers**
+- `server.js:769` — `const ORCHESTRATION_QUIET_MODE = process.env.POLARIS_ORCHESTRATION_QUIET_MODE !== '0'`; used to gate orchestration log output
+
+**Status:** ✓ Implemented (task #33) — undocumented until this audit; server reads env var; UI hardcodes quiet=true
 
 ---
 
@@ -103,7 +122,9 @@ WebSocket/HTTP server port (default 40000).
 - `main.js` — set before forking `server.js`
 
 **Consumers**
-- `server.js:19` — resolved to `PORT` constant
+- `server.js:47` — resolved to `PORT` constant
+- `agents/backlog_sync.py:15` — `_SERVER_PORT = int(os.environ.get("SERVER_PORT", "40000"))` — used to build `/sync-state` URL
+- `agents/task_graph.py:41` — `server_port = int(os.environ.get("SERVER_PORT", "40000"))` — used in `dispatch_agent()` to build `/dispatch-agent` URL
 
 **Status:** ✓
 
@@ -118,11 +139,11 @@ Windows user home directory.
 - OS environment (Windows): always present
 
 **Consumers**
-- `server.js:823` — Downloads directory path in `buildDefaultPolicy` (capability policy extended roots)
-- `server.js:3647` — Downloads directory path (session metadata)
-- `server.js:9930` — The Card project path
-- `server.js:9948` — Diamond project path
-- `server.js:9968` — AIFactory project path
+- `server.js:824` — Downloads directory path in `buildDefaultPolicy` (capability policy extended roots)
+- `server.js:3566` — Downloads directory path (session metadata)
+- `server.js:10431` — The Card project path
+- `server.js:10449` — Diamond project path
+- `server.js:10469` — AIFactory project path
 
 **Status:** ✓
 
@@ -139,9 +160,10 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 - Operator shell / test harness — sets before starting `task_executor.py`
 
 **Consumers**
-- `agents/task_executor.py` — read via `os.environ.get('STALL_TIMEOUT_SECONDS', '3600')` (task #26, Task 3.3)
+- `agents/task_executor.py:43` — `STALL_TIMEOUT_SECONDS = int(os.environ.get("STALL_TIMEOUT_SECONDS", "3600"))` — constant used in `_stall_watchdog()` timeout
+- `agents/test_task26_proof.py:13` — `os.environ.setdefault("STALL_TIMEOUT_SECONDS", "2")` — overrides to 2s for fast proof tests
 
-**Status:** ⚠ planned (task #26) — not yet consumed; variable has no producer in current codebase (operator must set manually)
+**Status:** ✓ Implemented (task #26) — operator-settable; defaults to 3600s when absent
 
 ---
 
@@ -149,15 +171,16 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 
 | Variable | Set by | Consumers | Status |
 |----------|--------|-----------|--------|
-| `APPDATA` | OS | server.js:16 | ✓ |
-| `LOCALAPPDATA` | OS | server.js:9342 | ✓ |
-| `MOCKUP_DEST` | main.js | server.js:18 | ✓ |
-| `POLARIS_DIR` | main.js | server.js:17 | ✓ |
-| `POLARIS_SKILLS_DIR` | main.js | server.js:62 | ✓ |
-| `RESOURCES_PATH` | main.js | server.js:71 | ✓ |
-| `SERVER_PORT` | main.js | server.js:19 | ✓ |
-| `STALL_TIMEOUT_SECONDS` | Operator | task_executor.py (planned) | ⚠ planned |
-| `USERPROFILE` | OS | server.js:823, 3647, 9930, 9948, 9968 | ✓ |
+| `APPDATA` | OS | server.js:44 | ✓ |
+| `LOCALAPPDATA` | OS | server.js:97, 11227 | ✓ |
+| `MOCKUP_DEST` | main.js | server.js:46 | ✓ |
+| `POLARIS_DIR` | main.js | server.js:45 | ✓ |
+| `POLARIS_ORCHESTRATION_QUIET_MODE` | Operator | server.js:769; mockup.html:4264 (hardcoded) | ✓ (task #33) |
+| `POLARIS_SKILLS_DIR` | main.js | server.js:221 | ✓ |
+| `RESOURCES_PATH` | main.js | server.js:230 | ✓ |
+| `SERVER_PORT` | main.js | server.js:47; backlog_sync.py:15; task_graph.py:41 | ✓ |
+| `STALL_TIMEOUT_SECONDS` | Operator | task_executor.py:43; test_task26_proof.py:13 | ✓ (task #26) |
+| `USERPROFILE` | OS | server.js:824, 3566, 10431, 10449, 10469 | ✓ |
 
 ---
 
@@ -182,3 +205,29 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 **Note — intentional orphan producer:** `session.policy` field is set at server.js:925 and server.js:8641 but has no consumers yet. Tasks #43-#45 will wire enforcement. Not a cross-boundary env var so not listed here — noted in audit for completeness.
 
 **Status:** Audit complete
+
+---
+
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #33)
+
+**Task:** #33 — LangGraph: Node Implementation + HITL (Phases 4-5)
+
+**Boundaries checked:** Environment variables (`process.env.*`) in server.js; Python `os.environ.get()` in agents/
+
+**Evidence recorded:**
+- 10 entries (9 previous + 1 new)
+- 9 entries with complete producer/consumer pairs ✓
+- 1 new entry: `POLARIS_ORCHESTRATION_QUIET_MODE` — previously unregistered, consumed at server.js:769 and hardcoded in mockup.html:4264
+- 6 stale line refs corrected: APPDATA :16→:44, POLARIS_DIR :17→:45, MOCKUP_DEST :18→:46, SERVER_PORT :19→:47, POLARIS_SKILLS_DIR :62→:221, RESOURCES_PATH :71→:230
+- 1 stale line ref corrected: LOCALAPPDATA :9342 — split to :97 (primary) and :11227 (Chrome path); second line ref added
+- 5 stale line refs corrected: USERPROFILE :823→:824, :3647→:3566, :9930→:10431, :9948→:10449, :9968→:10469
+- 2 Python consumers added to SERVER_PORT: backlog_sync.py:15, task_graph.py:41
+- 1 Python consumer added to STALL_TIMEOUT_SECONDS: test_task26_proof.py:13 (test harness override)
+- STALL_TIMEOUT_SECONDS status corrected: was "⚠ planned", now "✓ Implemented (task #26)"
+
+**Gaps identified:**
+- 6 stale line refs (corrected above)
+- `POLARIS_ORCHESTRATION_QUIET_MODE` unregistered — now added
+- SERVER_PORT Python consumers missing — now added
+
+**Status:** ✓ Audit current — all task #33 env-var changes registered

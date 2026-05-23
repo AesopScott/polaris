@@ -12,7 +12,11 @@ HITL_NODES: set of node names where interrupt() suspends execution until
             /signal delivers a Command(resume=...) value.
 """
 
+import json
+import os
+import urllib.request
 from typing import Any, Dict, Optional, Set
+
 from langgraph.graph import StateGraph, END
 from langgraph.types import interrupt
 from state import TaskState
@@ -25,25 +29,64 @@ HITL_NODES: Set[str] = {"build", "review"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# dispatch_agent — send a prompt to a Polaris agent via /dispatch-agent
+# ─────────────────────────────────────────────────────────────────────────────
+
+def dispatch_agent(task_number: int, prompt: str, agent: str = "sonnet", timeout: int = 300) -> str:
+    """Call server.js POST /dispatch-agent to run a real agent session.
+
+    Returns the agent's text response.
+    Raises RuntimeError if the HTTP request fails or the server returns an error.
+    """
+    server_port = int(os.environ.get("SERVER_PORT", "40000"))
+    payload = json.dumps(
+        {"agent": agent, "prompt": prompt, "task_number": task_number}
+    ).encode()
+    req = urllib.request.Request(
+        f"http://localhost:{server_port}/dispatch-agent",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read())
+    if not data.get("ok"):
+        raise RuntimeError(f"/dispatch-agent failed: {data.get('error', 'unknown error')}")
+    return data.get("response", "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Node functions — each returns an updated TaskState slice
 # ─────────────────────────────────────────────────────────────────────────────
 
 @safe_node
 def plan_node(state: TaskState) -> Dict[str, Any]:
+    task_number = state["task_number"]
+    response = dispatch_agent(task_number, f"/plan-task {task_number}", agent="sonnet")
     return {
         "current_node": "plan",
         "status": "planned",
-        "checkpoint_data": {**state.get("checkpoint_data", {}), "plan_complete": True},
+        "checkpoint_data": {
+            **state.get("checkpoint_data", {}),
+            "plan_complete": True,
+            "plan_response": response[:500],
+        },
     }
 
 
 @safe_node
 def start_build_node(state: TaskState) -> Dict[str, Any]:
+    task_number = state["task_number"]
+    response = dispatch_agent(task_number, f"/start-build {task_number}", agent="sonnet")
     return {
         "current_node": "start_build",
         "status": "build-started",
-        "branch_name": state.get("branch_name") or f"task/{state['task_number']}-orchestration",
-        "checkpoint_data": {**state.get("checkpoint_data", {}), "branch_created": True},
+        "branch_name": state.get("branch_name") or f"task/{task_number}-orchestration",
+        "checkpoint_data": {
+            **state.get("checkpoint_data", {}),
+            "branch_created": True,
+            "start_build_response": response[:500],
+        },
     }
 
 
@@ -86,6 +129,9 @@ def finish_build_node(state: TaskState) -> Dict[str, Any]:
     if not ok:
         raise ValueError(f"Precondition failed for build-finished: {failures}")
 
+    task_number = state["task_number"]
+    response = dispatch_agent(task_number, "/finish-build", agent="sonnet")
+
     # Clear stale proof-gate flags so _route_finish_build won't re-route on re-check
     clean_checkpoint = {
         k: v for k, v in state.get("checkpoint_data", {}).items()
@@ -95,7 +141,11 @@ def finish_build_node(state: TaskState) -> Dict[str, Any]:
         "current_node": "finish_build",
         "status": "build-finished",
         "pr_url": state.get("pr_url"),
-        "checkpoint_data": {**clean_checkpoint, "pr_opened": True},
+        "checkpoint_data": {
+            **clean_checkpoint,
+            "pr_opened": True,
+            "finish_build_response": response[:500],
+        },
     }
 
 
@@ -116,10 +166,16 @@ def codex_review_node(state: TaskState) -> Dict[str, Any]:
     ok, failures = validate_transition(state.get("status", ""), "cba-complete", state)
     if not ok:
         raise ValueError(f"Precondition failed for cba-complete: {failures}")
+    task_number = state["task_number"]
+    response = dispatch_agent(task_number, "/codex-review", agent="codex")
     return {
         "current_node": "codex_review",
         "status": "cba-complete",
-        "review_evidence": {**state.get("review_evidence", {}), "codex_reviewed": True},
+        "review_evidence": {
+            **state.get("review_evidence", {}),
+            "codex_reviewed": True,
+            "codex_response": response[:500],
+        },
     }
 
 
@@ -134,19 +190,31 @@ def promote_stage_node(state: TaskState) -> Dict[str, Any]:
     ok, failures = validate_transition(state.get("status", ""), "staged", state)
     if not ok:
         raise ValueError(f"Precondition failed for staged: {failures}")
+    task_number = state["task_number"]
+    response = dispatch_agent(task_number, "/promote-stage", agent="sonnet")
     return {
         "current_node": "promote_stage",
         "status": "staged",
-        "checkpoint_data": {**state.get("checkpoint_data", {}), "promoted_to_stage": True},
+        "checkpoint_data": {
+            **state.get("checkpoint_data", {}),
+            "promoted_to_stage": True,
+            "promote_stage_response": response[:500],
+        },
     }
 
 
 @safe_node
 def promote_prod_node(state: TaskState) -> Dict[str, Any]:
+    task_number = state["task_number"]
+    response = dispatch_agent(task_number, "/promote-to-prod", agent="sonnet")
     return {
         "current_node": "promote_prod",
         "status": "production",
-        "checkpoint_data": {**state.get("checkpoint_data", {}), "promoted_to_prod": True},
+        "checkpoint_data": {
+            **state.get("checkpoint_data", {}),
+            "promoted_to_prod": True,
+            "promote_prod_response": response[:500],
+        },
     }
 
 
