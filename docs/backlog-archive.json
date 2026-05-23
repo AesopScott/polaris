@@ -1281,6 +1281,22 @@
       },
       "project_source": "Polaris",
       "promoted_via_pr": null
+    },
+    {
+      "number": 42,
+      "title": "Command class registry for shell safety",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [41],
+      "description": "Replace the SHELL_HARD_BLOCKED regex array in server.js with a COMMAND_CLASS_REGISTRY map. Each entry has a name (e.g. GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT, RM_RECURSIVE_ROOT, RD_FULL_DRIVE), a detect(command) function that may combine regex with structural path analysis, and a minimumTrustLevel field. The registry is the single source of truth for what constitutes a destructive command class.",
+      "branch": "task/42-command-class-registry",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/39",
+      "project_source": "Polaris",
+      "promoted_via_pr": "https://github.com/AesopScott/polaris/pull/40"
     }
   ]
 }
