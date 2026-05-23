@@ -4234,6 +4234,26 @@
 
   let ws = null;
   let wsReconnectTimer = null;
+  const uiWsClientId = (() => {
+    const key = 'polaris.uiClientId';
+    try {
+      let id = localStorage.getItem(key);
+      if (!id) {
+        id = (globalThis.crypto && globalThis.crypto.randomUUID) ? globalThis.crypto.randomUUID() : `ui_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        localStorage.setItem(key, id);
+      }
+      return id;
+    } catch {
+      return `ui_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  })();
+  const uiWsTabId = (() => {
+    try {
+      return (globalThis.crypto && globalThis.crypto.randomUUID) ? globalThis.crypto.randomUUID() : `tab_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    } catch {
+      return `tab_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  })();
   const ORCHESTRATION_QUIET_MODE = true;
   const sessionStore = {};   // id → { id, name, workDir, projectName, status, startAt, lines, lastPrompt, resumeId, usage }
   let promptHistoryStore = [];
@@ -4251,6 +4271,7 @@
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
   let focusedProject = null; // project name currently focused, or null if no focus
+  let sessionStateStore = {}; // sessionId → { scrollTop, scrollHeight } — viewport state for each session
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
@@ -4266,9 +4287,14 @@
       clearTimeout(wsReconnectTimer);
       wsReconnectTimer = null;
     }
-    ws = new WebSocket('ws://localhost:40000');
-    ws.onopen  = () => { setConnIndicator(true);  pushDebugLog('[ws] connected'); };
+    ws = new WebSocket(`ws://localhost:40000?clientId=${encodeURIComponent(uiWsClientId)}`);
+    ws.onopen  = () => {
+      setConnIndicator(true);
+      pushDebugLog('[ws] connected');
+      wsSend({ type: 'ui-client-hello', clientId: uiWsClientId, tabId: uiWsTabId });
+    };
     ws.onclose = () => {
+      ws = null;
       setConnIndicator(false);
       pushDebugLog('[ws] disconnected — reconnecting in 2s', true);
       if (!wsReconnectTimer) {
@@ -6249,6 +6275,48 @@
   }
   window._polarisRenderGrid = renderGrid;
 
+  function saveSessionState(sessionId) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
+    if (!card) return;
+    const term = card.querySelector('[data-term]');
+    if (!term) return;
+    sessionStateStore[sessionId] = {
+      scrollTop: term.scrollTop,
+      scrollHeight: term.scrollHeight,
+    };
+  }
+
+  function restoreSessionState(sessionId) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
+    if (!card) return;
+    const term = card.querySelector('[data-term]');
+    if (!term) return;
+    const state = sessionStateStore[sessionId];
+    if (state && state.scrollTop != null) {
+      setTimeout(() => {
+        term.scrollTop = state.scrollTop;
+      }, 0);
+    }
+  }
+
+  function wireSessionStateTracking(sessionId) {
+    const grid = getActiveGrid();
+    if (!grid) return;
+    const card = grid.querySelector(`[data-sid="${sessionId}"]`);
+    if (!card) return;
+    const term = card.querySelector('[data-term]');
+    if (!term) return;
+    if (term.dataset.stateTracked) return;
+    term.dataset.stateTracked = '1';
+    term.addEventListener('scroll', () => {
+      saveSessionState(sessionId);
+    }, { passive: true });
+  }
+
   function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -6506,6 +6574,9 @@
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
+
+    wireSessionStateTracking(s.id);
+    restoreSessionState(s.id);
 
     return el;
   }
@@ -6901,8 +6972,8 @@
     const s = sessionStore[sessionId];
     switch (action) {
       case 'stop':       wsSend({ type: 'stop', sessionId }); break;
-      case 'hide-card':  hideCard(sessionId); break;
-      case 'close':      wsSend({ type: 'close-session', sessionId }); break;
+      case 'hide-card':  saveSessionState(sessionId); hideCard(sessionId); break;
+      case 'close':      saveSessionState(sessionId); wsSend({ type: 'close-session', sessionId }); break;
       case 'toggle-locks': {
         const drawer = cardEl.querySelector('[data-locks-drawer]');
         if (drawer) {
@@ -6924,6 +6995,7 @@
         cardEl.style.height = ''; if (sessionStore[sessionId]) sessionStore[sessionId].height = null; wsSend({ type: 'session-height', sessionId, height: null }); break;
       case 'minimize': {
         if (!s) break;
+        saveSessionState(sessionId);
         s.minimized = true; s.column = null;
         cardEl.style.display = 'none';
         updateMiniCards();
@@ -7020,6 +7092,7 @@
       }
       case 'archive': {
         if (!s) break;
+        saveSessionState(sessionId);
         showInlineConfirm(cardEl, `Archive "${s.name || 'session'}"? It will be removed from the grid and saved for later.`, () => {
           wsSend({ type: 'archive-session', sessionId });
         });
