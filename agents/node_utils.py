@@ -15,12 +15,19 @@ _LANGGRAPH_INTERRUPT_NAMES = frozenset({"GraphInterrupt", "NodeInterrupt"})
 def safe_node(fn: Callable) -> Callable:
     """Wrap a graph node: on unhandled exception return failed state instead of raising.
 
-    The returned failed state is picked up by advance_graph() which persists
-    it and validates the implicit status=failed transition (always allowed).
-    LangGraph control-flow exceptions (interrupt()) are re-raised unconditionally.
+    Two guarantees:
+    - If state["status"] is already "failed" when this node is entered, pass
+      through without executing — prevents later nodes on unconditional edges
+      from overwriting the failed status.
+    - LangGraph control-flow exceptions (interrupt()) are re-raised so that
+      HITL suspension works correctly through the wrapper.
     """
     @functools.wraps(fn)
     def wrapper(state: Dict[str, Any]) -> Dict[str, Any]:
+        # Short-circuit: once the graph is in failed state, all subsequent
+        # nodes are no-ops so the final saved state keeps status=failed.
+        if state.get("status") == "failed":
+            return state
         try:
             return fn(state)
         except Exception as exc:

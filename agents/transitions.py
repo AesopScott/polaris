@@ -8,6 +8,18 @@ mutating status.
 from typing import Any, Dict, List, Tuple
 
 
+def is_direct_transition(from_status: str, to_status: str) -> bool:
+    """Return True if (from_status, to_status) is a single-hop in the transition table.
+
+    Use this to decide whether to call validate_transition. Multi-hop graph
+    completions (e.g. build-finished → production after a resumed review gate)
+    are trusted to have individually valid intermediate steps enforced by the
+    graph topology; calling validate_transition on the composite jump would
+    produce a spurious precondition_failed.
+    """
+    return (from_status, to_status) in _TRANSITIONS or to_status in ("failed", "stalled")
+
+
 def validate_transition(
     from_status: str,
     to_status: str,

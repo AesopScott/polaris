@@ -67,28 +67,71 @@ class TaskStatePydantic(BaseModel):
 
 ---
 
-## `task_graph.build_graph`
+## `node_utils.safe_node`
 
-Factory function that compiles the LangGraph StateGraph with 9 stub nodes.
+Decorator that wraps a graph node: on unhandled exception returns failed state instead of raising. Re-raises LangGraph control-flow exceptions (GraphInterrupt/NodeInterrupt) so HITL suspension works correctly. Also short-circuits if `state["status"] == "failed"` on entry, preventing later unconditional-edge nodes from overwriting the failed status.
 
 **Schema / shape:**
 ```python
-def build_graph() -> StateGraph:
-    # Returns a compiled LangGraph StateGraph
-    # Entry point: "plan" node
-    # Exit: END after promote_prod
+def safe_node(fn: Callable) -> Callable:
+    # Returns a wrapper that: passes through if status==failed,
+    # re-raises GraphInterrupt/NodeInterrupt, catches other exceptions
+    # and returns {status: "failed", error_log: [...], retry_count: n+1}
 ```
 
 **Producers (define)**
-- `agents/task_graph.py:96` — function definition
+- `agents/node_utils.py:15` — function definition
+
+**Consumers (import)**
+- `agents/task_graph.py` — `from node_utils import safe_node` — used as `@safe_node` decorator on all 10 graph nodes
+
+**Status:** ✓ Implemented (task #26)
+
+---
+
+## `task_graph.build_graph`
+
+Factory function that compiles the LangGraph StateGraph with 10 nodes decorated with `@safe_node`.
+
+**Schema / shape:**
+```python
+def build_graph(checkpointer=None) -> StateGraph:
+    # Returns a compiled LangGraph StateGraph
+    # Entry point: "plan" node
+    # Exit: END after promote_prod
+    # checkpointer=None → no persistence; pass MemorySaver() for HITL interrupt support
+```
+
+**Producers (define)**
+- `agents/task_graph.py:170` — function definition
 
 **Consumers (call)**
-- `agents/task_executor.py:21` — `from task_graph import build_graph` — module-level import
-- `agents/task_executor.py:104` — `GRAPH = build_graph()` — compiled at module load
-- `agents/task_executor.py:133` — `graph = build_graph()` — called inside `advance_graph()` (redundant rebuild — pre-existing)
+- `agents/task_executor.py:32` — `from task_graph import build_graph, HITL_NODES` — module-level import
+- `agents/task_executor.py` — `_GRAPH = build_graph(checkpointer=_CHECKPOINTER)` — compiled at module load with MemorySaver
 - `agents/test_executor.py:103` — `from task_graph import build_graph; graph = build_graph()` — Proof Unit 5
 
 **Status:** ✓ Balanced
+
+---
+
+## `transitions.is_direct_transition`
+
+Returns True if `(from_status, to_status)` is a single-hop in the transition table. Used to distinguish direct transitions (validate preconditions) from multi-hop graph completions (trust graph topology).
+
+**Schema / shape:**
+```python
+def is_direct_transition(from_status: str, to_status: str) -> bool:
+    ...
+```
+
+**Producers (define)**
+- `agents/transitions.py:11` — function definition
+
+**Consumers (call)**
+- `agents/task_executor.py:34` — `from transitions import validate_transition, is_direct_transition` — import
+- `agents/task_executor.py:265` — `_validate_if_direct()` helper calls `is_direct_transition()` to decide whether to validate
+
+**Status:** ✓ Implemented (task #26)
 
 ---
 
@@ -107,11 +150,11 @@ def validate_transition(
 ```
 
 **Producers (define)**
-- `agents/transitions.py:11` — function definition
+- `agents/transitions.py:23` — function definition
 
 **Consumers (call)**
-- `agents/task_executor.py:29` — `from transitions import validate_transition` — import
-- `agents/task_executor.py` — called inside `advance_graph()` after `graph.invoke()` to validate the transition that just occurred (task #26)
+- `agents/task_executor.py:34` — `from transitions import validate_transition, is_direct_transition` — import
+- `agents/task_executor.py:265` — called inside `_validate_if_direct()` for direct transitions only (task #26)
 
 **Status:** ✓ Implemented (task #26)
 
@@ -143,31 +186,35 @@ def sync_status(task_number: int, status: str, current_node: str) -> None:
 
 | Symbol | Producer | Consumers | Status |
 |--------|----------|-----------|--------|
-| `state.TaskState` | state.py:13 | task_graph.py:11, task_executor.py:22 | ✓ |
-| `state.TaskStatePydantic` | state.py:26 | task_executor.py:22 | ⚠ orphan producer |
-| `task_graph.build_graph` | task_graph.py:96 | task_executor.py:21,104,133; test_executor.py:103 | ✓ |
-| `transitions.validate_transition` | transitions.py:11 | task_executor.py (advance_graph post-invoke) | ✓ |
-| `backlog_sync.sync_status` | backlog_sync.py:19 | task_executor.py (advance_graph, _stall_watchdog) | ✓ |
+| `state.TaskState` | state.py:13 | task_graph.py:11, task_executor.py:33 | ✓ |
+| `state.TaskStatePydantic` | state.py:26 | task_executor.py:33 | ⚠ orphan producer |
+| `node_utils.safe_node` | node_utils.py:15 | task_graph.py (all 10 nodes) | ✓ |
+| `task_graph.build_graph` | task_graph.py:170 | task_executor.py:32; test_executor.py:103 | ✓ |
+| `transitions.is_direct_transition` | transitions.py:11 | task_executor.py:265 (_validate_if_direct) | ✓ |
+| `transitions.validate_transition` | transitions.py:23 | task_executor.py:265 (_validate_if_direct) | ✓ |
+| `backlog_sync.sync_status` | backlog_sync.py:19 | task_executor.py (_sync_status_safe wrapper) | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-23T03:50:00Z (post-build update by /review-pr for task #26)
+**Last audit:** 2026-05-22T00:00:00Z (post-fix update for task #26 second Codex review)
 
 **Task:** #26 — Make task orchestration an explicit state machine
 
 **Boundaries checked:** Python module exports and imports within `agents/` package
 
 **Evidence recorded:**
-- 5 entries documented
-- 4 entries with complete producer/consumer pairs ✓
+- 7 entries documented
+- 6 entries with complete producer/consumer pairs ✓
 - 1 pre-existing orphan producer (TaskStatePydantic — imported, unused in handlers)
 - 0 planned/pending entries
 - 0 shape mismatches between paired producer/consumer
-- `transitions.validate_transition` and `backlog_sync.sync_status` shipped in task #26
+- `transitions.is_direct_transition` added in second-pass fix (multi-hop transition collapse bug)
+- `node_utils.safe_node` added as new registered symbol (was missing from registry)
+- `build_graph` signature corrected: `checkpointer=None` param added, line refs updated
 
 **Gaps identified:**
 - `TaskStatePydantic` imported but not used as a response_model — pre-existing, low risk (scope: task #27 contracts)
 
-**Status:** ✓ Audit current — all task #26 planned entries implemented
+**Status:** ✓ Audit current — all task #26 symbols registered with correct line refs
