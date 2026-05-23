@@ -94,9 +94,9 @@ Notable exports:
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #41)
+**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #42)
 
-**Task:** #41 — Capability policy schema + session wiring
+**Tasks audited:** #41 — Capability policy schema + session wiring; #42 — Command class registry for shell safety
 
 **Boundaries checked:** WebSocket `type` message types between client (resources/mockup.html) and server (server.js)
 
@@ -105,6 +105,7 @@ Notable exports:
 - 4 entries with gaps (orphan server handlers) ⚠ (pre-existing, unchanged)
 - 0 entries with shape mismatches
 - New identifiers introduced on task #41: `ui-client-hello` (client→server, client ID handshake), `ui-client-ack` (server→client, handshake response) — both balanced ✓
+- New identifiers introduced on task #42: none (pure internal refactor — no WS messages added or removed)
 - Registries match current code diff: yes
 
 **Gaps identified:** 4 pre-existing orphan handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged since task #25.
