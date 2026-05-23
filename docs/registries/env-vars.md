@@ -118,10 +118,11 @@ Windows user home directory.
 - OS environment (Windows): always present
 
 **Consumers**
-- `server.js:2991` — Downloads directory path
-- `server.js:8558` — The Card project path
-- `server.js:8576` — Diamond project path
-- `server.js:8596` — AIFactory project path
+- `server.js:823` — Downloads directory path in `buildDefaultPolicy` (capability policy extended roots)
+- `server.js:3647` — Downloads directory path (session metadata)
+- `server.js:9930` — The Card project path
+- `server.js:9948` — Diamond project path
+- `server.js:9968` — AIFactory project path
 
 **Status:** ✓
 
@@ -156,25 +157,28 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 | `RESOURCES_PATH` | main.js | server.js:71 | ✓ |
 | `SERVER_PORT` | main.js | server.js:19 | ✓ |
 | `STALL_TIMEOUT_SECONDS` | Operator | task_executor.py (planned) | ⚠ planned |
-| `USERPROFILE` | OS | server.js:2991, 8558, 8576, 8596 | ✓ |
+| `USERPROFILE` | OS | server.js:823, 3647, 9930, 9948, 9968 | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #42)
 
-**Task:** #26 — Make task orchestration an explicit state machine
+**Tasks audited:** #41 — Capability policy schema + session wiring; #42 — Command class registry for shell safety
 
-**Boundaries checked:** Environment variables (`process.env.*`) read in server.js, main.js, and agents/task_executor.py
+**Boundaries checked:** Environment variables (`process.env.*`) read in server.js, main.js
 
 **Evidence recorded:**
 - 8 entries with complete producer/consumer pairs ✓
 - 1 entry planned/pending (STALL_TIMEOUT_SECONDS) ⚠
 - 0 entries with shape mismatches
-- New identifiers introduced on task #26: `STALL_TIMEOUT_SECONDS`
-- Registries match current code diff: yes (new entry is pre-registered for build)
+- New identifiers introduced on task #41: none (USERPROFILE line refs updated — server.js:823 added for buildDefaultPolicy)
+- New identifiers introduced on task #42: none (pure internal refactor — COMMAND_CLASS_REGISTRY is not an env var)
+- Registries match current code diff: yes
 
 **Gaps identified:** STALL_TIMEOUT_SECONDS has no automated producer — operator must set manually or leave at default (3600s). Acceptable; documented with default.
 
-**Status:** Audit complete — registries updated for task #26 scope.
+**Note — intentional orphan producer:** `session.policy` field is set at server.js:925 and server.js:8641 but has no consumers yet. Tasks #43-#45 will wire enforcement. Not a cross-boundary env var so not listed here — noted in audit for completeness.
+
+**Status:** Audit complete

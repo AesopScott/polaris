@@ -110,6 +110,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `server.js:2717` — `addBacklogTask()` sets status to 'backlog'
 - `server.js:2879` — `updateBacklogTaskStatus()` validates and updates status
 - `server.js:2914` — Sets completed_at when status is terminal
+- `src/contracts/backlog.ts:3` — Zod enum `BacklogStatus` (20 values: 14 active + 6 legacy; schema producer only — no consumers until task #38 wires validators)
 
 **Consumers (read)**
 - `resources/mockup.html:9172` — Table renders status badge with styling
@@ -118,7 +119,13 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 
 **Validation:** VALID_BACKLOG_STATUSES set at server.js:3194 — backlog, planned, build-started, build-finished, cba-complete, review-blocked, staged, production, failed-smoke-test, stalled, failed, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).** `stalled` and `failed` are written by the LangGraph executor (task #26) when a human gate times out or a node throws an unhandled exception.
 
-**Status:** ✓ Balanced (validation enforced server-side)
+**⚠ Divergence risk — BacklogStatus defined independently in three places:**
+- `src/contracts/backlog.ts:3` — Zod enum (20 values: 14 active + 6 legacy, task #37; fixed in /review-pr)
+- `src/runtime/backlog.ts:30` — `VALID_BACKLOG_STATUSES` Set (14 active + 6 legacy = 20 values)
+- `src/runtime/backlog.ts:53` — TypeScript union type (20 values)
+All three now in sync. Maintained separately — drift possible. Task #38 should consolidate to derive runtime validation from the Zod enum.
+
+**Status:** ✓ Balanced (validation enforced server-side) — ⚠ three-way status enum divergence risk (see above)
 
 ---
 
@@ -289,7 +296,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## `objective`
 
-Reviewer-facing definition of done for the task — read by `/review-pr` to gate merge decisions.
+Structured goal contract written by `/plan-task` when planning a task. Contains the task's objective statement, success criteria, non-goals, proof map, and stop conditions. Only present on tasks that have been through `/plan-task`.
 
 **Schema / shape:**
 ```javascript
@@ -307,14 +314,20 @@ Reviewer-facing definition of done for the task — read by `/review-pr` to gate
 Optional, null initially.
 
 **Producers (write)**
-- `/plan-task` skill — generates and writes `objective` to `docs/backlog.json` during planning phase
-- Direct commit (build session) — may write objective manually alongside plan
+- `/plan-task` skill - writes `objective` block to `docs/backlog.json` after design discussion phase; committed directly to main branch on task branch or in planning commit
+- `/write-plan` sub-skill - constructs the objective object as part of plan finalization
+- Direct commit (build session) - may write objective manually alongside plan
 
 **Consumers (read)**
-- `/review-pr` skill — loads all sub-fields at Step 4a; verifies each `successCriteria` item against diff; checks for non-goal drift; flags missing fields as proof/planning gap
-- `/codex-review` skill — reads same fields for independent Codex review comparison
+- `/review-pr` skill - loads all sub-fields at Step 4a; verifies each `successCriteria` item against diff; checks for non-goal drift; flags missing fields as proof/planning gap
+- `/codex-review` skill - reads same fields for independent Codex review comparison
+- `/start-build` skill - loads `objective.successCriteria` and `objective.nonGoals` to gate implementation scope
+- `/finish-build` skill - verifies build work maps to `objective.successCriteria`; flags out-of-scope drift against `objective.nonGoals`
+- `/ship-task` orchestrator - displays objective statement and success criteria at each gate; stops if `objective` is missing on a non-backlog task
 
-**Status:** ⚠ orphan producer in UI — field is written by skills and committed; not exposed in Add Task or Edit Task modals. Intentional: objective is planning-phase output, not a UI-editable field.
+**Note:** `server.js` does not read or write this field - it lives purely in the skills layer and backlog.json. UI does not display it.
+
+**Status:** Intentional skill-side field - pre-existing gap from task #36 now registered (2026-05-23)
 
 ---
 
@@ -327,12 +340,13 @@ Optional, null initially.
 | `description` | 2 (create/update) | 2 (display) | ✓ |
 | `category` | 2 (create/update) | 3 (display/sort) | ✓ |
 | `priority` | 2 (create/update) | 4 (display/sort) | ✓ |
-| `status` | 3 (create/status-update) | 3 (display/validate) | ✓ |
+| `status` | 4 (create/status-update/Zod) | 3 (display/validate) | ✓ ⚠ 3-way enum divergence |
 | `created_at` | 1 (auto) | 0 (stored) | ✓ |
 | `completed_at` | 2 (auto-update) | 1 (display) | ✓ |
 | `dependencies` | 1 (create) | 1 (display) | ⚠ orphan producer |
 | `plan` | 1 (null init) | 3 (skills read) | ✓ intentional |
 | `proofUnits` | 1 (null init) | 3 (skills read) | ✓ intentional |
+| `objective` | 1 (/plan-task skill) | 3 (skills read) | ✓ intentional |
 | `branch` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `pr_url` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `impact` | 3 (create/update) | 5 (display/modal/skills) | ✓ |
@@ -342,6 +356,27 @@ Optional, null initially.
 
 ## Audit Trail — Proof of Registry Verification
 
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #29 planning)
+
+**Task:** #29 — Replace regex-heavy tool safety with capability policies
+
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and docs/backlog.json
+
+**Evidence recorded:**
+- 15 entries documented (14 previous + `objective` added)
+- 12 entries with complete producer/consumer pairs ✓
+- 3 entries with intentional skill-side wiring (plan, proofUnits, objective) ✓
+- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠ pre-existing, deferred
+- 0 entries with shape mismatches
+- New identifiers introduced on task #29 planning: `objective` field registered (pre-existing gap from task #36)
+- Registries match current code diff: yes
+
+**Gaps identified:** Pre-existing orphan producers (dependencies, branch, pr_url) remain deferred. `objective` gap from task #36 now resolved.
+
+**Status:** Audit complete — registries valid for task #29 planning scope.
+
+---
+
 **Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
 
 **Task:** #36 — Add a ship task orchestration capability
@@ -349,6 +384,7 @@ Optional, null initially.
 **Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and docs/backlog.json
 
 **Evidence recorded:**
+
 - 15 entries documented (14 prior + 1 new)
 - 11 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
@@ -362,3 +398,23 @@ Optional, null initially.
 **Gaps identified:** `objective` was unregistered — now added. Pre-existing orphan producers (dependencies, branch, pr_url) unchanged.
 
 **Status:** Audit complete — objective field registered for task #36 scope.
+
+---
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #37)
+
+**Task:** #37 — Contracts foundation: Zod schemas in src/contracts/
+
+**Boundaries checked:** `status` field — new Zod schema producer in `src/contracts/backlog.ts`
+
+**Evidence recorded:**
+- New producer: `src/contracts/backlog.ts:3` — `BacklogStatus` Zod enum (20 values: 14 active + 6 legacy)
+- Orphan producer: intentional — no consumers until task #38 wires runtime validators
+- Three independent `BacklogStatus` definitions exist; now aligned after /review-pr fixes:
+  - `src/contracts/backlog.ts:3` — Zod enum (20 values: all 14 active + 6 legacy; `review-blocked` in active group)
+  - `src/runtime/backlog.ts:30` — `VALID_BACKLOG_STATUSES` Set (14 active + 6 legacy = 20 values)
+  - `src/runtime/backlog.ts:53` — TypeScript union type (same 20 values)
+
+**Gaps identified:** Three-way status enum divergence risk — definitions now in sync after review fixes (`stalled`, `failed` added; `review-blocked` moved to active group). Task #38 consolidation opportunity remains.
+
+**Status:** Audit complete — registries valid for task #37 scope.

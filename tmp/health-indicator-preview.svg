@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="420" viewBox="0 0 1180 420">
+  <rect width="1180" height="420" fill="#080d16"/>
+  <rect x="0" y="0" width="1180" height="30" fill="#0f172a"/>
+  <text x="22" y="20" fill="#60a5fa" font-family="Segoe UI,Arial" font-size="12" font-weight="800">★ POLARIS</text>
+  <rect x="0" y="30" width="1180" height="130" fill="#0d1117"/>
+  <line x1="0" y1="160" x2="1180" y2="160" stroke="#26364f"/>
+
+  <text x="120" y="82" fill="#e5e7eb" font-family="Segoe UI,Arial" font-size="44" font-weight="800">Polaris</text>
+  <text x="118" y="110" fill="#93c5fd" font-family="Segoe UI,Arial" font-size="16">Your AI Command Center</text>
+  <rect x="152" y="122" width="96" height="34" rx="12" fill="#172033"/>
+  <text x="200" y="144" fill="#fb923c" font-family="Segoe UI,Arial" font-size="14" font-weight="800" text-anchor="middle">Status</text>
+
+  <g transform="translate(442 48)">
+    <rect x="0" y="0" width="180" height="28" rx="14" fill="#132238" stroke="#3b82f6"/>
+    <text x="90" y="18" fill="#93c5fd" font-family="Segoe UI,Arial" font-size="12" font-weight="800" text-anchor="middle">v1.0.538</text>
+    <rect x="0" y="38" width="180" height="28" rx="5" fill="#101827" stroke="#475569"/>
+    <text x="14" y="56" fill="#64748b" font-family="Segoe UI,Arial" font-size="12">Search sessions...</text>
+
+    <g transform="translate(0 76)">
+      <rect width="180" height="28" rx="14" fill="#111827" stroke="#f59e0b"/>
+      <circle cx="18" cy="14" r="4" fill="#f59e0b"/>
+      <text x="98" y="18" fill="#fcd34d" font-family="Segoe UI,Arial" font-size="11" font-weight="800" text-anchor="middle">Health Degraded</text>
+    </g>
+    <text x="90" y="126" fill="#86efac" font-family="Consolas,monospace" font-size="13" font-weight="700" text-anchor="middle">15:17:42</text>
+  </g>
+
+  <g transform="translate(690 54)">
+    <rect x="0" y="0" width="92" height="42" rx="12" fill="#151c2b"/><text x="46" y="27" fill="#86efac" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Courses</text>
+    <rect x="100" y="0" width="92" height="42" rx="12" fill="#151c2b"/><text x="146" y="27" fill="#fbbf24" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Factory</text>
+    <rect x="200" y="0" width="92" height="42" rx="12" fill="#151c2b"/><text x="246" y="27" fill="#8b7cf6" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Build</text>
+    <rect x="300" y="0" width="92" height="42" rx="12" fill="#151c2b"/><text x="346" y="27" fill="#fb923c" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Files</text>
+
+    <rect x="0" y="50" width="92" height="42" rx="12" fill="#151c2b"/><text x="46" y="77" fill="#86efac" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Diamond</text>
+    <rect x="100" y="50" width="92" height="42" rx="12" fill="#151c2b"/><text x="146" y="77" fill="#fbbf24" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Manifest</text>
+    <rect x="200" y="50" width="92" height="42" rx="12" fill="#151c2b"/><text x="246" y="77" fill="#8b7cf6" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Cross ✓</text>
+    <rect x="300" y="50" width="92" height="42" rx="12" fill="#151c2b"/><text x="346" y="77" fill="#fb923c" font-family="Segoe UI,Arial" font-size="18" font-weight="800" text-anchor="middle">Archive</text>
+  </g>
+
+  <g transform="translate(410 176)">
+    <rect x="0" y="0" width="360" height="214" rx="8" fill="#080d16" stroke="#3b82f6" opacity="0.98"/>
+    <rect x="0" y="0" width="360" height="42" rx="8" fill="#102033"/>
+    <text x="16" y="26" fill="#e5e7eb" font-family="Segoe UI,Arial" font-size="13" font-weight="800">POLARIS HEALTH</text>
+    <text x="338" y="26" fill="#94a3b8" font-family="Segoe UI,Arial" font-size="16" font-weight="800" text-anchor="middle">×</text>
+    <g font-family="Segoe UI,Arial" font-size="12">
+      <text x="16" y="68" fill="#94a3b8">Status</text><text x="344" y="68" fill="#fcd34d" text-anchor="end">DEGRADED</text>
+      <text x="16" y="94" fill="#94a3b8">Server heartbeat</text><text x="344" y="94" fill="#e5e7eb" text-anchor="end">431 ms</text>
+      <text x="16" y="120" fill="#94a3b8">MCP helpers</text><text x="344" y="120" fill="#fca5a5" text-anchor="end">24</text>
+      <text x="16" y="146" fill="#94a3b8">Sessions</text><text x="344" y="146" fill="#e5e7eb" text-anchor="end">25</text>
+      <text x="16" y="172" fill="#94a3b8">Issue</text><text x="344" y="172" fill="#fca5a5" text-anchor="end">MCP helper storm detected</text>
+    </g>
+    <rect x="16" y="184" width="154" height="24" rx="5" fill="#172033" stroke="#334155"/>
+    <text x="93" y="201" fill="#93c5fd" font-family="Segoe UI,Arial" font-size="11" font-weight="800" text-anchor="middle">Run Health</text>
+    <rect x="190" y="184" width="154" height="24" rx="5" fill="#172033" stroke="#334155"/>
+    <text x="267" y="201" fill="#93c5fd" font-family="Segoe UI,Arial" font-size="11" font-weight="800" text-anchor="middle">Use Skill</text>
+  </g>
+</svg>

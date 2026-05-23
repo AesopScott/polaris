@@ -285,6 +285,36 @@ Server broadcast when a queued `/push-git` slot becomes active after the previou
 
 ---
 
+## `tool-audit`
+
+Server broadcast emitted for every `evaluatePolicy()` call that results in a block or an installer grant. Provides real-time visibility of privileged actions in the session card.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'tool-audit',
+  ts: String,              // ISO 8601 timestamp
+  sessionId: String,       // Session that triggered the action
+  action: String,          // 'shell-command' | 'file-write' | 'installer-exec'
+  tool: String,            // 'Bash' | 'PowerShell' | 'Write' | 'Edit'
+  allowed: Boolean,        // Whether the action was permitted
+  reason: String | null,   // Block reason (present when allowed=false)
+  commandSnippet: String   // First 120 chars of command or file path
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — `evaluatePolicy()` emits on every block (`allowed=false`) and every installer grant (`action='installer-exec', allowed=true`) (task #44, planned)
+
+**Consumers (Client receives)**
+- `resources/mockup.html` — session card surfaces blocks/grants as inline audit badges (task #44, planned — exact line TBD)
+
+**Note:** Allowed non-installer actions do NOT emit this event to avoid noise. Only blocks and explicit grants are broadcast.
+
+**Status:** ⚠ planned (task #29/#44) — pre-registered so build session has contract to implement against
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -297,9 +327,10 @@ Server broadcast when a queued `/push-git` slot becomes active after the previou
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
 | `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
-| `orchConflict` | 1 (server ✓) | 1 (client ✓) | ✓ fully wired (Phase 4) |
-| `orchAmber` | 1 (server ✓) | 1 (client ✓) | ✓ fully wired (Phase 4) |
-| `orchSlotReady` | 2 (server ✓) | 1 (client ✓) | ✓ fully wired (review fixes) |
+| `orchConflict` | 1 (server checked) | 1 (client checked) | fully wired (Phase 4) |
+| `orchAmber` | 1 (server checked) | 1 (client checked) | fully wired (Phase 4) |
+| `orchSlotReady` | 2 (server checked) | 1 (client checked) | fully wired (review fixes) |
+| `tool-audit` | 1 (server, planned) | 1 (client, planned) | planned (task #29/#44) |
 
 ---
 
@@ -323,3 +354,25 @@ Server broadcast when a queued `/push-git` slot becomes active after the previou
 **Gaps identified:** `backlogs-data` planned producer (task #26) still pending /sync-state implementation. All task #36 orch events are now fully wired.
 
 **Status:** Audit complete — WS events registry verified for task #36 scope. All Phase 4 events fully wired.
+
+---
+
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #29 planning)
+
+**Task:** #29 — Replace regex-heavy tool safety with capability policies
+
+**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js)
+
+**Evidence recorded:**
+- 11 entries documented (10 previous + `tool-audit` added)
+- 6 entries with complete producer/consumer pairs ✓
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log, debug-log for task #20)
+- 2 entries planned/pending from task #36 (orchConflict, orchAmber) ⚠
+- 1 new entry pre-registered as planned ⚠ (tool-audit, task #29/#44)
+- 0 entries with shape mismatches
+- New identifiers introduced on task #29: `tool-audit` event pre-registered
+- Registries match current code diff: yes (new entry marked planned)
+
+**Gaps identified:** `tool-audit` is an orphan producer until task #44 builds it. Intentional — pre-registered so build session has contract to implement against.
+
+**Status:** Audit complete — registries updated for task #29 planning scope.

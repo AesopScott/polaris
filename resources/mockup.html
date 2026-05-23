@@ -133,7 +133,7 @@
     background-size: 200% 200%;
     -webkit-background-clip: text; background-clip: text;
     color: transparent;
-    animation: holoShift 6s ease infinite;
+    animation: none;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     max-width: 100%;
   }
@@ -151,7 +151,7 @@
   .status-card-edit { align-self: flex-end; background: #374151; color: #9ca3af; border: none; border-radius: 5px; padding: 4px 12px; font-size: 11px; font-weight: 600; cursor: pointer; }
   .status-card-edit:hover { background: #4b5563; color: #e2e8f0; }
   .status-card-empty { font-size: 11px; opacity: 0.35; font-style: italic; }
-  .btn-gold .lbl { background: linear-gradient(90deg, #f59e0b, #fde68a, #f59e0b, #fb923c, #f59e0b); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: holoShift 6s ease infinite; }
+  .btn-gold .lbl { background: linear-gradient(90deg, #f59e0b, #fde68a, #f59e0b, #fb923c, #f59e0b); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: none; }
 
   /* Launch Bar — compact stacked layout */
   .launch-bar { padding: 0 16px; min-height: 160px; display: flex; flex-direction: column; justify-content: center; gap: 12px; position: relative; }
@@ -1342,6 +1342,39 @@
   .docs-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .docs-body blockquote { border-left: 3px solid #60a5fa; margin: 0 0 10px; padding: 4px 12px; opacity: 0.8; }
   .docs-body a { color: #60a5fa; }
+
+  /* Always-on health indicator */
+  .health-pill {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 24px; padding: 3px 11px; border-radius: 999px;
+    border: 1px solid rgba(96,165,250,0.28);
+    background: linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.95));
+    color: #93c5fd; font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+    cursor: pointer; white-space: nowrap; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .health-dot { width: 7px; height: 7px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 8px currentColor; }
+  .health-pill.ok { color: #86efac; border-color: rgba(34,197,94,0.4); }
+  .health-pill.ok .health-dot { background: #22c55e; }
+  .health-pill.degraded { color: #fcd34d; border-color: rgba(245,158,11,0.55); }
+  .health-pill.degraded .health-dot { background: #f59e0b; }
+  .health-pill.critical { color: #fca5a5; border-color: rgba(239,68,68,0.65); box-shadow: 0 0 16px rgba(239,68,68,0.25), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .health-pill.critical .health-dot { background: #ef4444; animation: healthPulse 1.2s ease-in-out infinite; }
+  @keyframes healthPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(1.35); } }
+  .health-panel {
+    position: fixed; top: 92px; left: 50%; transform: translateX(-50%);
+    width: 360px; z-index: 2600; display: none; border: 1px solid rgba(96,165,250,0.35);
+    border-radius: 8px; background: rgba(8,13,22,0.98); box-shadow: 0 18px 48px rgba(0,0,0,0.65);
+    color: var(--text); overflow: hidden;
+  }
+  .health-panel.open { display: block; }
+  .health-panel-head { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(96,165,250,0.08); border-bottom:1px solid rgba(96,165,250,0.2); }
+  .health-panel-title { font-size:12px; font-weight:800; letter-spacing:0.08em; }
+  .health-panel-body { padding:10px 12px; display:flex; flex-direction:column; gap:7px; font-size:11px; }
+  .health-row { display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid rgba(148,163,184,0.12); padding-bottom:5px; }
+  .health-row span:first-child { color:#94a3b8; }
+  .health-row span:last-child { color:#e5e7eb; text-align:right; }
+  .health-actions { display:flex; gap:8px; padding:10px 12px; border-top:1px solid rgba(96,165,250,0.18); }
+  .health-actions .fbtn { flex:1; padding:6px 8px; font-size:11px; }
 </style>
 </head>
 <body>
@@ -1394,6 +1427,7 @@
           <input type="text" id="session-search" placeholder="Search sessions..." style="width:100%;padding:5px 28px 5px 10px;border-radius:5px;border:1px solid #444;font-size:12px;background:var(--input-bg);color:var(--text);box-sizing:border-box;" />
           <button id="session-search-clear" onclick="clearSessionSearch()" style="display:none;position:absolute;right:6px;background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;line-height:1;padding:0;">✕</button>
         </div>
+        <button id="health-pill" class="health-pill degraded" onclick="toggleHealthPanel()" title="Polaris health monitor"><span class="health-dot"></span><span id="health-pill-text">Health Checking</span></button>
         <div id="header-clock" style="text-align:center;font-family:Consolas,monospace;font-size:13px;font-weight:700;color:var(--tag-text);letter-spacing:0.04em;">--:--:--</div>
       </div>
     </div>
@@ -1531,6 +1565,28 @@
 
     </div>
 
+  </div>
+
+  <div id="health-panel" class="health-panel">
+    <div class="health-panel-head">
+      <div class="health-panel-title">POLARIS HEALTH</div>
+      <button class="card-corner-btn" onclick="toggleHealthPanel(false)" title="Close">×</button>
+    </div>
+    <div class="health-panel-body">
+      <div class="health-row"><span>Status</span><span id="health-detail-status">Checking</span></div>
+      <div class="health-row"><span>Server heartbeat</span><span id="health-detail-latency">--</span></div>
+      <div class="health-row"><span>MCP helpers</span><span id="health-detail-mcp">--</span></div>
+      <div class="health-row"><span>Port 40000 connections</span><span id="health-detail-connections">--</span></div>
+      <div class="health-row"><span>Sessions</span><span id="health-detail-sessions">--</span></div>
+      <div class="health-row"><span>Top process</span><span id="health-detail-process">--</span></div>
+      <div class="health-row"><span>Last checked</span><span id="health-detail-time">--</span></div>
+      <div class="health-row"><span>Issue</span><span id="health-detail-issue">No data yet</span></div>
+    </div>
+    <div class="health-actions">
+      <button class="fbtn" onclick="runHealthCheck(true)">Run Health</button>
+      <button class="fbtn" onclick="openHealthSkillPrompt()">Use Skill</button>
+      <button class="fbtn" onclick="stopMcpHelpersFromHealth()">Stop MCP</button>
+    </div>
   </div>
 
   <!-- Minimized / Stats Row -->
@@ -2136,6 +2192,8 @@
   <div id="backlog-status-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:170px;"></div>
   <!-- Backlog Impact Picker (popover anchored under a clicked impact cell) -->
   <div id="backlog-impact-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:120px;"></div>
+  <!-- Session Task State Picker (popover anchored under clicked task state) -->
+  <div id="session-task-state-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:180px;"></div>
 
   <div id="backlog-add-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
     <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:560px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
@@ -2225,6 +2283,13 @@
             <option value="standard">standard</option>
             <option value="major">major</option>
           </select>
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.1em;margin-bottom:5px;opacity:0.7;">MOVE TO</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="backlog-edit-move-to" style="flex:1;padding:8px;background:var(--input-bg);color:var(--text);border:1px solid #444;border-radius:4px;font-size:12px;"></select>
+          <button class="fbtn" style="background:#374151;color:#e2e8f0;white-space:nowrap;" onclick="submitBacklogMove()">Move Task</button>
         </div>
       </div>
       <div id="backlog-edit-error" style="display:none;color:#fca5a5;font-size:11px;margin-bottom:12px;background:rgba(239,68,68,0.12);padding:8px 12px;border-radius:4px;"></div>
@@ -4169,6 +4234,28 @@
   'use strict';
 
   let ws = null;
+  let wsReconnectTimer = null;
+  const uiWsClientId = (() => {
+    const key = 'polaris.uiClientId';
+    try {
+      let id = localStorage.getItem(key);
+      if (!id) {
+        id = (globalThis.crypto && globalThis.crypto.randomUUID) ? globalThis.crypto.randomUUID() : `ui_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        localStorage.setItem(key, id);
+      }
+      return id;
+    } catch {
+      return `ui_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  })();
+  const uiWsTabId = (() => {
+    try {
+      return (globalThis.crypto && globalThis.crypto.randomUUID) ? globalThis.crypto.randomUUID() : `tab_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    } catch {
+      return `tab_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  })();
+  const ORCHESTRATION_QUIET_MODE = true;
   const sessionStore = {};   // id → { id, name, workDir, projectName, status, startAt, lines, lastPrompt, resumeId, usage }
   let promptHistoryStore = [];
   let phIdx = -1;
@@ -4185,6 +4272,7 @@
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
   let focusedProject = null; // project name currently focused, or null if no focus
+  const sessionStateStore = {}; // sessionId → { scrollTop } — persists terminal scroll across re-renders
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
   const pendingImages = []; // [{ name, dataUrl }] — image files passed to vision-capable models
@@ -4195,17 +4283,184 @@
 
   // ── Connection ────────────────────────────────────────────────────────────────
   function wsConnect() {
-    ws = new WebSocket('ws://localhost:40000');
-    ws.onopen  = () => { setConnIndicator(true);  pushDebugLog('[ws] connected'); wsSend({ type: 'list-skills' }); };
-    ws.onclose = () => { setConnIndicator(false); pushDebugLog('[ws] disconnected — reconnecting in 2s', true); setTimeout(wsConnect, 2000); };
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
+    ws = new WebSocket(`ws://localhost:40000?clientId=${encodeURIComponent(uiWsClientId)}`);
+    ws.onopen  = () => {
+      setConnIndicator(true);
+      pushDebugLog('[ws] connected');
+      wsSend({ type: 'ui-client-hello', clientId: uiWsClientId, tabId: uiWsTabId });
+    };
+    ws.onclose = () => {
+      ws = null;
+      setConnIndicator(false);
+      pushDebugLog('[ws] disconnected — reconnecting in 2s', true);
+      if (!wsReconnectTimer) {
+        wsReconnectTimer = setTimeout(() => {
+          wsReconnectTimer = null;
+          wsConnect();
+        }, 2000);
+      }
+    };
     ws.onerror = () => { setConnIndicator(false); pushDebugLog('[ws] connection error', true); };
     ws.onmessage = e => { try { onWsMessage(JSON.parse(e.data)); } catch {} };
   }
+
+  window.addEventListener('beforeunload', () => {
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'renderer unload');
+  });
 
   function wsSend(obj) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
   }
   window.wsSend = wsSend;
+
+  const healthState = {
+    status: 'degraded',
+    latencyMs: null,
+    mcpHelpers: null,
+    connections: null,
+    sessions: null,
+    topProcess: null,
+    issue: 'Checking health...',
+    lastChecked: null,
+    lastDeepCheck: 0,
+  };
+  let healthCheckInFlight = null;
+
+  function setHealthText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function classifyHealth() {
+    if (healthState.latencyMs === null) return { status: 'critical', issue: 'Server heartbeat timed out' };
+    if (healthState.mcpHelpers != null && healthState.mcpHelpers >= 10) return { status: 'critical', issue: `${healthState.mcpHelpers} MCP helper processes detected` };
+    if (healthState.connections != null && healthState.connections >= 20) return { status: 'critical', issue: `${healthState.connections} established connections on port 40000` };
+    if (healthState.latencyMs > 2000) return { status: 'critical', issue: `Server heartbeat is ${healthState.latencyMs} ms` };
+    if (healthState.mcpHelpers != null && healthState.mcpHelpers > 0) return { status: 'degraded', issue: `${healthState.mcpHelpers} MCP helper processes detected` };
+    if (healthState.connections != null && healthState.connections >= 10) return { status: 'degraded', issue: `${healthState.connections} established connections on port 40000` };
+    if (healthState.latencyMs > 750) return { status: 'degraded', issue: `Server heartbeat is ${healthState.latencyMs} ms` };
+    return { status: 'ok', issue: 'No active issues detected' };
+  }
+
+  function renderHealthIndicator() {
+    const derived = classifyHealth();
+    healthState.status = derived.status;
+    healthState.issue = derived.issue;
+    const pill = document.getElementById('health-pill');
+    const text = document.getElementById('health-pill-text');
+    if (pill) {
+      pill.classList.remove('ok', 'degraded', 'critical');
+      pill.classList.add(healthState.status);
+    }
+    if (text) {
+      const label = healthState.status === 'ok' ? 'Health OK' : healthState.status === 'degraded' ? 'Health Degraded' : 'Health Critical';
+      text.textContent = label;
+    }
+    setHealthText('health-detail-status', healthState.status.toUpperCase());
+    setHealthText('health-detail-latency', healthState.latencyMs == null ? 'timeout' : `${healthState.latencyMs} ms`);
+    setHealthText('health-detail-mcp', healthState.mcpHelpers == null ? 'not checked' : String(healthState.mcpHelpers));
+    setHealthText('health-detail-connections', healthState.connections == null ? 'not checked' : String(healthState.connections));
+    setHealthText('health-detail-sessions', healthState.sessions == null ? '--' : String(healthState.sessions));
+    setHealthText('health-detail-process', healthState.topProcess || '--');
+    setHealthText('health-detail-time', healthState.lastChecked ? new Date(healthState.lastChecked).toLocaleTimeString() : '--');
+    setHealthText('health-detail-issue', healthState.issue);
+    if (pill) pill.title = healthState.issue;
+  }
+
+  async function fetchWithTimeout(url, timeoutMs) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const started = performance.now();
+      const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+      const ms = Math.round(performance.now() - started);
+      let data = null;
+      try { data = await res.json(); } catch {}
+      return { ok: res.ok, ms, data };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function runHealthCheck(forceDeep = false) {
+    if (healthCheckInFlight) return healthCheckInFlight;
+    healthCheckInFlight = (async () => {
+      try {
+        const heartbeat = await fetchWithTimeout('/health', 2500);
+        healthState.latencyMs = heartbeat.ok ? heartbeat.ms : null;
+        if (heartbeat.data && typeof heartbeat.data.sessions === 'number') healthState.sessions = heartbeat.data.sessions;
+      } catch {
+        healthState.latencyMs = null;
+      }
+      healthState.lastChecked = Date.now();
+
+      const shouldDeep = forceDeep || Date.now() - healthState.lastDeepCheck > 60000;
+      if (shouldDeep) {
+        healthState.lastDeepCheck = Date.now();
+        try {
+          const snapshot = await fetchWithTimeout('/api/health-snapshot', 4000);
+          if (snapshot.ok && snapshot.data) {
+          if (typeof snapshot.data.mcpHelpers === 'number') healthState.mcpHelpers = snapshot.data.mcpHelpers;
+          if (typeof snapshot.data.connections === 'number') healthState.connections = snapshot.data.connections;
+          if (typeof snapshot.data.sessions === 'number') healthState.sessions = snapshot.data.sessions;
+            if (snapshot.data.topProcess) healthState.topProcess = snapshot.data.topProcess;
+          }
+        } catch {
+          healthState.topProcess = 'snapshot unavailable';
+        }
+      }
+
+      renderHealthIndicator();
+    })().finally(() => {
+      healthCheckInFlight = null;
+    });
+    return healthCheckInFlight;
+  }
+
+  function toggleHealthPanel(force) {
+    const panel = document.getElementById('health-panel');
+    if (!panel) return;
+    const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
+    panel.classList.toggle('open', open);
+    if (open) runHealthCheck(true);
+  }
+
+  function openHealthSkillPrompt() {
+    const promptEl = document.querySelector('.palette:not(.hidden) .prompt-area');
+    const floatPrompt = document.getElementById('float-prompt-area');
+    const targetInput = floatPrompt?.offsetParent ? floatPrompt : promptEl;
+    if (!targetInput) return;
+    const text = 'Use the health skill to run a non-destructive Polaris health check and summarize the result.';
+    targetInput.value = targetInput.value ? `${targetInput.value}\n${text}` : text;
+    targetInput.focus();
+    updateTokenCount(targetInput);
+  }
+
+  async function stopMcpHelpersFromHealth() {
+    if (!confirm('Stop runaway MCP helper processes? This does not restart Polaris, but any active MCP tool calls using those helpers will fail.')) return;
+    try {
+      const res = await fetch('/api/health-stop-mcp-helpers', { method: 'POST', cache: 'no-store' });
+      const data = await res.json();
+      healthState.mcpHelpers = typeof data.remaining === 'number' ? data.remaining : healthState.mcpHelpers;
+      healthState.issue = data.ok ? `Stopped ${data.stopped || 0} MCP helpers` : (data.error || 'Failed to stop MCP helpers');
+      healthState.lastDeepCheck = 0;
+      await runHealthCheck(true);
+    } catch (e) {
+      healthState.issue = `Failed to stop MCP helpers: ${e.message}`;
+      renderHealthIndicator();
+    }
+  }
+
+  window.toggleHealthPanel = toggleHealthPanel;
+  window.runHealthCheck = runHealthCheck;
+  window.openHealthSkillPrompt = openHealthSkillPrompt;
+  window.stopMcpHelpersFromHealth = stopMcpHelpersFromHealth;
 
   // ── Message dispatcher ────────────────────────────────────────────────────────
   function onWsMessage(msg) {
@@ -4652,9 +4907,11 @@
         if (s) {
           s.status = msg.status;
           let taskChanged = false;
-          if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
-          if (msg.taskState  !== undefined) { s.taskState  = msg.taskState;  taskChanged = true; }
-          if (msg.lastSkill  !== undefined) { s.lastSkill  = msg.lastSkill;  taskChanged = true; }
+          if (!ORCHESTRATION_QUIET_MODE) {
+            if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
+            if (msg.taskState  !== undefined) { s.taskState  = msg.taskState;  taskChanged = true; }
+            if (msg.lastSkill  !== undefined) { s.lastSkill  = msg.lastSkill;  taskChanged = true; }
+          }
           updateCardStatus(msg.sessionId, msg.status);
           if (taskChanged) updateCardTaskState(msg.sessionId);
         }
@@ -6003,7 +6260,6 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
-    if (focusedProject) pushDebugLog(`[focus-dbg] renderGrid — focusedProject="${focusedProject}" sessionCount=${sessionOrder.length}`, true);
     grid.innerHTML = '';
     const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
@@ -6050,6 +6306,32 @@
     updateHiddenCount();
   }
   window._polarisRenderGrid = renderGrid;
+
+  // ── Session state persistence (scroll position) ───────────────────────────────
+  function saveSessionState(sessionId) {
+    const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
+    const term = card && card.querySelector('[data-term]');
+    if (term) sessionStateStore[sessionId] = { scrollTop: term.scrollTop };
+  }
+
+  function restoreSessionState(sessionId) {
+    const saved = sessionStateStore[sessionId];
+    if (!saved || saved.scrollTop == null) return;
+    // Defer one tick — card is appended to DOM after buildCard() returns
+    setTimeout(() => {
+      const card = document.querySelector(`.card[data-sid="${sessionId}"]`);
+      const term = card && card.querySelector('[data-term]');
+      if (term) term.scrollTop = saved.scrollTop;
+    }, 0);
+  }
+
+  // Single delegated listener — captures every terminal scroll via capture phase
+  document.addEventListener('scroll', e => {
+    const term = e.target;
+    if (!term || !term.hasAttribute('data-term')) return;
+    const card = term.closest('[data-sid]');
+    if (card) sessionStateStore[card.dataset.sid] = { scrollTop: term.scrollTop };
+  }, true);
 
   function escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -6126,7 +6408,7 @@
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
             <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
-            <span data-task-state style="font-size:9px;color:var(--text-muted,#94a3b8);letter-spacing:0.03em;white-space:nowrap;${s.taskNumber ? '' : 'display:none;'}">${s.taskNumber ? '#' + s.taskNumber + (s.taskState ? ' \xB7 ' + escHtml(s.taskState) : '') + (s.lastSkill ? ' /' + escHtml(s.lastSkill) : '') : ''}</span>
+            <span data-task-state style="font-size:9px;color:var(--text-muted,#94a3b8);letter-spacing:0.03em;white-space:nowrap;cursor:${s.taskState ? 'pointer' : 'default'};${s.taskNumber ? '' : 'display:none;'}">${s.taskNumber ? '#' + s.taskNumber + (s.taskState ? ' \xB7 ' + escHtml(s.taskState) : '') + (s.lastSkill ? ' /' + escHtml(s.lastSkill) : '') : ''}</span>
           </div>
           <span class="stall-badge" data-stall-badge></span>
           <div class="card-btns">
@@ -6221,9 +6503,16 @@
 
     el.querySelector('.status-badge').addEventListener('click', () => cycleSessionStatus(s.id));
 
+    const taskStateSpan = el.querySelector('[data-task-state]');
+    if (taskStateSpan && s.taskNumber && s.taskState) {
+      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState));
+    }
+
     const term = el.querySelector('[data-term]');
     mergeConsecutiveAssistantLines(s.lines).forEach(l => term.appendChild(makeLineEl(l, s.id)));
+    // Default to bottom; restoreSessionState overrides via setTimeout if a saved position exists
     term.scrollTop = term.scrollHeight;
+    restoreSessionState(s.id);
 
     el.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -6370,7 +6659,6 @@
       if (typeof hljs !== 'undefined') {
         div.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
       }
-      applySkillLinksToMarkdown(div);
       if (wasAtBottom) {
         const term = div.closest('[data-term]');
         if (term) term.scrollTop = term.scrollHeight;
@@ -6510,8 +6798,7 @@
         div.appendChild(imgEl);
       }
     } else {
-      const nodes = convertSkillReferencesToLinks(line.text);
-      nodes.forEach(node => div.appendChild(node));
+      div.appendChild(document.createTextNode(line.text));
     }
     if (sessionId) {
       const s = sessionStore[sessionId];
@@ -6700,8 +6987,8 @@
     const s = sessionStore[sessionId];
     switch (action) {
       case 'stop':       wsSend({ type: 'stop', sessionId }); break;
-      case 'hide-card':  hideCard(sessionId); break;
-      case 'close':      wsSend({ type: 'close-session', sessionId }); break;
+      case 'hide-card':  saveSessionState(sessionId); hideCard(sessionId); break;
+      case 'close':      saveSessionState(sessionId); wsSend({ type: 'close-session', sessionId }); break;
       case 'toggle-locks': {
         const drawer = cardEl.querySelector('[data-locks-drawer]');
         if (drawer) {
@@ -6723,6 +7010,7 @@
         cardEl.style.height = ''; if (sessionStore[sessionId]) sessionStore[sessionId].height = null; wsSend({ type: 'session-height', sessionId, height: null }); break;
       case 'minimize': {
         if (!s) break;
+        saveSessionState(sessionId);
         s.minimized = true; s.column = null;
         cardEl.style.display = 'none';
         updateMiniCards();
@@ -6819,6 +7107,7 @@
       }
       case 'archive': {
         if (!s) break;
+        saveSessionState(sessionId);
         showInlineConfirm(cardEl, `Archive "${s.name || 'session'}"? It will be removed from the grid and saved for later.`, () => {
           wsSend({ type: 'archive-session', sessionId });
         });
@@ -9607,6 +9896,7 @@ This is your current workflow status across all branches. Review the tasks and P
   };
 
   function applyBacklogTaskStates() {
+    if (ORCHESTRATION_QUIET_MODE) return;
     Object.values(sessionStore).forEach(s => {
       if (s.taskNumber && s.taskState) return; // already set
       const match = (s.name || '').match(/^Task #(\d+):/);
@@ -9632,7 +9922,7 @@ This is your current workflow status across all branches. Review the tasks and P
 
   function renderBacklog(data) {
     _backlogData = data;
-    applyBacklogTaskStates();
+    if (!ORCHESTRATION_QUIET_MODE) applyBacklogTaskStates();
     const body  = document.getElementById('backlog-panel-body');
     const count = document.getElementById('backlog-panel-count');
     if (!body) return;
@@ -9908,7 +10198,9 @@ This is your current workflow status across all branches. Review the tasks and P
       prompt += '**Depends on:** ' + task.dependencies.map(d => '#' + d).join(', ') + '\n\n';
     }
     prompt += '**Status:** ' + (task.status || 'backlog') + ' · **Priority:** ' + (task.priority || '?');
-    prompt += '\n\nWhen complete, run `/ship-task ' + taskNumber + '`.';
+    if (!ORCHESTRATION_QUIET_MODE) {
+      prompt += '\n\nWhen complete, run `/ship-task ' + taskNumber + '`.';
+    }
     _pendingTaskLaunch = {
       prompt: prompt,
       displayPrompt: prompt,
@@ -9935,9 +10227,11 @@ This is your current workflow status across all branches. Review the tasks and P
       workDir: workDir,
       projectName: projectName,
       tier: tier,
-      taskNumber: taskNumber,
-      taskTitle: taskTitle,
     };
+    if (!ORCHESTRATION_QUIET_MODE) {
+      msg.taskNumber = taskNumber;
+      msg.taskTitle = taskTitle;
+    }
     switch (sessionType) {
       case 'max':
         msg.type = 'launch-chat';
@@ -10003,12 +10297,29 @@ This is your current workflow status across all branches. Review the tasks and P
     document.getElementById('backlog-edit-priority').value = priority || 50;
     document.getElementById('backlog-edit-category').value = category || 'feature';
     document.getElementById('backlog-edit-impact').value = impact || 'standard';
+    const moveSel = document.getElementById('backlog-edit-move-to');
+    if (moveSel) {
+      const opts = [];
+      if (scope !== 'global') opts.push('<option value="global">global</option>');
+      for (const p of (_backlogData.projects || [])) {
+        if (p.name !== scope) opts.push('<option value="' + escHtmlAttr(p.name) + '">' + escHtml(p.name) + '</option>');
+      }
+      moveSel.innerHTML = opts.length ? opts.join('') : '<option value="">— no other scopes —</option>';
+    }
     const err = document.getElementById('backlog-edit-error');
     if (err) err.style.display = 'none';
     document.getElementById('backlog-edit-modal').style.display = 'flex';
   }
   function closeBacklogEditModal() {
     document.getElementById('backlog-edit-modal').style.display = 'none';
+  }
+  function submitBacklogMove() {
+    const moveSel = document.getElementById('backlog-edit-move-to');
+    const toScope = moveSel && moveSel.value;
+    if (!toScope) return;
+    const { scope: fromScope, taskNumber } = _backlogEditState;
+    wsSend({ type: 'move-backlog-task', fromScope, taskNumber, toScope });
+    closeBacklogEditModal();
   }
   function submitBacklogEdit() {
     const title = document.getElementById('backlog-edit-title').value.trim();
@@ -10167,6 +10478,48 @@ This is your current workflow status across all branches. Review the tasks and P
     hideImpactPicker();
   });
 
+  // Session Task State Picker
+  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState) {
+    const picker = document.getElementById('session-task-state-picker');
+    if (!picker) return;
+    const rect = spanEl.getBoundingClientRect();
+    const pickerHeight = 450;
+    let top = rect.bottom + 4;
+    if (top + pickerHeight > window.innerHeight) top = Math.max(8, rect.top - pickerHeight - 4);
+    picker.style.left = Math.max(8, Math.min(window.innerWidth - 200, rect.left)) + 'px';
+    picker.style.top = top + 'px';
+    picker.innerHTML = BACKLOG_STATUS_OPTIONS.map(s => {
+      const style = BACKLOG_STATUS_COLORS[s] || BACKLOG_STATUS_COLORS['backlog'];
+      const selectedRing = s === currentTaskState ? 'box-shadow:inset 0 0 0 1px var(--accent);' : '';
+      return '<button data-task-state="' + s + '" style="text-align:left;padding:5px 12px;border:none;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + style + selectedRing + '">' + s + '</button>';
+    }).join('');
+    picker.style.display = 'flex';
+    picker.dataset.sessionId = sessionId;
+    picker.dataset.taskNumber = String(taskNumber);
+    picker.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const newTaskState = btn.dataset.taskState;
+        wsSend({ type: 'set-task-state', sessionId: sessionId, taskNumber: taskNumber, taskState: newTaskState });
+        hideSessionTaskStatePicker();
+      });
+    });
+  }
+
+  function hideSessionTaskStatePicker() {
+    const picker = document.getElementById('session-task-state-picker');
+    if (picker) picker.style.display = 'none';
+  }
+
+  // Hide task state picker on outside click
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('session-task-state-picker');
+    if (!picker || picker.style.display === 'none') return;
+    if (e.target.closest('#session-task-state-picker')) return;
+    if (e.target.closest('[data-task-state]')) return;
+    hideSessionTaskStatePicker();
+  });
+
   window.openBacklogPanel       = openBacklogPanel;
   window.closeBacklogPanel      = closeBacklogPanel;
   window.toggleBacklogPanel     = toggleBacklogPanel;
@@ -10179,6 +10532,7 @@ This is your current workflow status across all branches. Review the tasks and P
   window.openBacklogEditModal  = openBacklogEditModal;
   window.closeBacklogEditModal = closeBacklogEditModal;
   window.submitBacklogEdit     = submitBacklogEdit;
+  window.submitBacklogMove     = submitBacklogMove;
   window.showBacklogError     = showBacklogError;
   window.launchTaskSession    = launchTaskSession;
   window.filterBacklogTasks   = filterBacklogTasks;
@@ -15022,6 +15376,7 @@ This is your current workflow status across all branches. Review the tasks and P
     wireUI();
     startTimers();
     wsConnect();
+    renderHealthIndicator();
   });
 
 })();
@@ -15143,11 +15498,12 @@ This is your current workflow status across all branches. Review the tasks and P
       drawRail(x - rail, pulse, glow);
       drawRail(x + rail, pulse, glow);
     });
-
-    requestAnimationFrame(draw);
   }
 
-  requestAnimationFrame(draw);
+  draw();
+  window.addEventListener('resize', function () {
+    draw();
+  });
 })();
 
 // ── Orchestrator Panel ────────────────────────────────────────────────────────
