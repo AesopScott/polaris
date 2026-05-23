@@ -867,6 +867,420 @@
       "pr_url": null,
       "project_source": "Polaris",
       "promoted_via_pr": null
+    },
+    {
+      "number": 37,
+      "title": "Contracts foundation: Zod schemas in src/contracts/",
+      "description": "Add Zod to package.json dependencies. Create src/contracts/ with four modules: ws-messages.ts (all WebSocket message types), backlog.ts (task schema + status enum), tools.ts (direct tool schemas for all 14 tools), and mcp.ts (MCP tool envelope schemas). Create src/contracts/index.ts as barrel export. Verify npx tsc --noEmit passes.",
+      "category": "feature",
+      "priority": 92,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [],
+      "branch": "task/37-contracts-foundation-zod-schemas-in-src",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/36",
+      "plan": "## Overview\n\nCreate the Zod contracts foundation for Polaris. Four modules in src/contracts/: ws-messages.ts (all WebSocket message types), backlog.ts (BacklogTask schema + BacklogStatus enum), tools.ts (all 14 native tool schemas), mcp.ts (MCPServer + MCPToolEnvelope). Barrel-exported via index.ts.\n\n## Phases\n\n1. Add zod to package.json dependencies and run npm install.\n2. Create src/contracts/backlog.ts - BacklogStatus enum and BacklogTask schema.\n3. Create src/contracts/tools.ts - schemas for all 14 native tools.\n4. Create src/contracts/mcp.ts - MCPServer, MCPToolEnvelope schemas.\n5. Create src/contracts/ws-messages.ts - Zod schemas for all WebSocket message types.\n6. Create src/contracts/index.ts - barrel re-export of all four modules.\n7. Run npx tsc --noEmit and fix any errors.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Zod installed and importable",
+          "expectedBehavior": "Zod is in package.json dependencies and node can require it.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const {z} = require('zod'); console.log(z.string().parse('ok'))\"",
+          "expectedInitialFailure": "Cannot find module zod",
+          "expectedPassingEvidence": "Prints ok with exit 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "All four schema modules compile without error",
+          "expectedBehavior": "npx tsc --noEmit exits 0 with no errors from src/contracts/.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:UsersscottCodePolaris && npx tsc --noEmit 2>&1",
+          "expectedInitialFailure": "TypeScript errors or Cannot find module zod.",
+          "expectedPassingEvidence": "No output; exit code 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Barrel export exposes named schemas",
+          "expectedBehavior": "src/contracts/index.ts re-exports all named schemas; tsc --noEmit passes.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:UsersscottCodePolaris && npx tsc --noEmit 2>&1",
+          "expectedInitialFailure": "Import errors if index.ts is missing.",
+          "expectedPassingEvidence": "No TypeScript errors; exit 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "Full src/ type-checks cleanly after contracts added",
+          "expectedBehavior": "npx tsc --noEmit passes with no errors across all of src/.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:UsersscottCodePolaris && npx tsc --noEmit",
+          "expectedInitialFailure": "Type errors if new schemas conflict with existing types.",
+          "expectedPassingEvidence": "Exit 0; no compiler output.",
+          "waiverGuidance": "N/A"
+        }
+      ],
+      "objective": {
+        "statement": "Create runtime-validatable Zod schemas as the contracts foundation for Polaris â€” four modules in src/contracts/ covering WebSocket messages, backlog tasks, native tools, and MCP envelopes â€” with a barrel export and a clean tsc --noEmit.",
+        "successCriteria": [
+          "Zod is in package.json dependencies and installed",
+          "src/contracts/ws-messages.ts exports Zod schemas for all WebSocket message types",
+          "src/contracts/backlog.ts exports BacklogTask schema and BacklogStatus enum as Zod",
+          "src/contracts/tools.ts exports all 14 native tool schemas as Zod",
+          "src/contracts/mcp.ts exports MCPServer and MCPToolEnvelope schemas as Zod",
+          "src/contracts/index.ts barrel-exports all schemas",
+          "npx tsc --noEmit passes with no errors"
+        ],
+        "nonGoals": [
+          "Wiring validators into server.js (task #38)",
+          "Generating registries from schemas (task #39)",
+          "Writing contract tests (task #40)",
+          "Replacing or modifying src/runtime/contracts.ts"
+        ],
+        "proofMap": {
+          "Zod is in package.json dependencies and installed": [
+            1
+          ],
+          "src/contracts/ws-messages.ts exports Zod schemas for all WebSocket message types": [
+            2
+          ],
+          "src/contracts/backlog.ts exports BacklogTask schema and BacklogStatus enum as Zod": [
+            2
+          ],
+          "src/contracts/tools.ts exports all 14 native tool schemas as Zod": [
+            2
+          ],
+          "src/contracts/mcp.ts exports MCPServer and MCPToolEnvelope schemas as Zod": [
+            2
+          ],
+          "src/contracts/index.ts barrel-exports all schemas": [
+            3
+          ],
+          "npx tsc --noEmit passes with no errors": [
+            4
+          ]
+        },
+        "stopConditions": [
+          "TypeScript version < 5.0",
+          "tsconfig.json rootDir does not include src/contracts/"
+        ]
+      },
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 42,
+      "title": "Command class registry for shell safety",
+      "description": "Replace the SHELL_HARD_BLOCKED regex array in server.js with a COMMAND_CLASS_REGISTRY map. Each entry has a name (e.g. GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT, RM_RECURSIVE_ROOT, RD_FULL_DRIVE), a detect(command) function that may combine regex with structural path analysis, and a minimumTrustLevel field. The registry is the single source of truth for what constitutes a destructive command class.",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [
+        41
+      ],
+      "branch": "task/42-command-class-registry",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/39",
+      "plan": "Phase A — Define COMMAND_CLASS_REGISTRY: Add CommandClassEntry JSDoc typedef immediately before the const. Define COMMAND_CLASS_REGISTRY as Object.freeze(new Map([...])) with 6 entries mirroring SHELL_HARD_BLOCKED — each entry has {name, commandClass, minimumTrustLevel: \"any\", reason, detect(command)}. commandClass values match DEFAULT_BLOCKED_CLASSES strings from task #41 (system-destructive, network-exfil, privilege-escalation, installer, registry-write, credential-access) — all 6 initial entries map to system-destructive. Phase B — Update assertSafeCommand: Replace for-of SHELL_HARD_BLOCKED with for-of COMMAND_CLASS_REGISTRY.values(). Call entry.detect(flat) instead of pattern.test(flat). Throw same error using entry.reason. Delete SHELL_HARD_BLOCKED const. SHELL_WRITE_VERBS and detectInstallerExe are untouched. Phase C — PU1 smoke proof: tmp/pu42-test.js copies registry + assertSafeCommand logic, asserts all 6 blocked patterns throw and 3 safe commands do not throw.",
+      "proofUnits": [
+        {
+          "id": 1,
+          "title": "Registry equivalence smoke test",
+          "expectedBehavior": "assertSafeCommand using COMMAND_CLASS_REGISTRY throws for all 6 historically-blocked patterns and does not throw for safe commands",
+          "exactCommand": "node tmp/pu42-test.js",
+          "expectedInitialFailure": "Script errors because COMMAND_CLASS_REGISTRY does not exist yet or assertSafeCommand still uses SHELL_HARD_BLOCKED",
+          "waiver": null
+        },
+        {
+          "id": 2,
+          "title": "Registry entry schema completeness",
+          "expectedBehavior": "Every entry in COMMAND_CLASS_REGISTRY has all 5 required fields: name, commandClass, minimumTrustLevel, reason, detect",
+          "exactCommand": null,
+          "expectedInitialFailure": null,
+          "waiver": "Code review — verified by inspecting the registry const definition"
+        }
+      ],
+      "objective": {
+        "statement": "Replace SHELL_HARD_BLOCKED with a structured COMMAND_CLASS_REGISTRY Map that associates each blocked command pattern with a named class, reason, and minimum trust level — making the registry the single source of truth for destructive command detection in assertSafeCommand.",
+        "successCriteria": [
+          "SHELL_HARD_BLOCKED is deleted; COMMAND_CLASS_REGISTRY is the sole source for blocked command patterns",
+          "All 6 existing patterns are preserved with equivalent detection behavior (no regressions)",
+          "assertSafeCommand iterates COMMAND_CLASS_REGISTRY — same enforcement behavior as before",
+          "Each registry entry has name, commandClass, minimumTrustLevel, reason, and detect(command) fields"
+        ],
+        "nonGoals": [
+          "Wiring COMMAND_CLASS_REGISTRY to CapabilityPolicy enforcement (task #44)",
+          "Adding new command classes beyond the 6 already in SHELL_HARD_BLOCKED",
+          "Changing enforcement behavior or error message format",
+          "Moving registry to a separate file or module"
+        ],
+        "proofMap": [
+          {
+            "criterion": "SHELL_HARD_BLOCKED is deleted; COMMAND_CLASS_REGISTRY is the sole source",
+            "proofUnit": 1,
+            "evidence": "grep confirms SHELL_HARD_BLOCKED absent; PU1 passes using COMMAND_CLASS_REGISTRY"
+          },
+          {
+            "criterion": "All 6 existing patterns preserved with equivalent detection",
+            "proofUnit": 1,
+            "evidence": "PU1 smoke test asserts each of the 6 patterns throws correctly"
+          },
+          {
+            "criterion": "assertSafeCommand iterates COMMAND_CLASS_REGISTRY",
+            "proofUnit": 1,
+            "evidence": "PU1 exercises assertSafeCommand end-to-end via the registry"
+          },
+          {
+            "criterion": "Each entry has all 5 required fields",
+            "proofUnit": 2,
+            "evidence": "Code review waiver — field completeness verified by inspection"
+          }
+        ],
+        "stopConditions": []
+      },
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 41,
+      "title": "Capability policy schema + session wiring",
+      "description": "Define the CapabilityPolicy TypeScript type with fields: allowedRoots (string[]), writeMode ('read-only'|'project-only'|'extended'), networkAllowed (boolean), installerAllowed (boolean), blockedCommandClasses (string[]), trustLevel ('restricted'|'standard'|'elevated'). Add a buildDefaultPolicy(session, config) factory that reads workDir, obsidianVaultPath, and downloadsDir once at session creation and returns a frozen policy object. Attach the policy to the session object at session launch.",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [],
+      "branch": "task/41-capability-policy-schema-session-wiring",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/37",
+      "plan": "## Overview\n\nAdd a CapabilityPolicy object to every Polaris agent session. The policy is a frozen JS object created once at session launch. It consolidates the allowed write roots, write mode, network flag, installer flag, blocked command class list, and trust level into a single queryable contract â€” the foundation that tasks #42, #43, #44, and #45 build on.\n\n## Phases\n\n1. JSDoc typedef â€” add @typedef CapabilityPolicy block to server.js constants section\n2. buildDefaultPolicy factory â€” function that reads session.workDir + config once and returns Object.freeze({...})\n3. Session wiring â€” attach policy in the launch and resume WS handlers\n\n## Key Decisions\n\n- Lives in server.js (no TypeScript modules wired yet; tasks #25/#37 still in backlog)\n- Frozen object prevents mid-session mutation\n- Default writeMode is 'extended' to preserve existing behavior (workDir + Obsidian + Downloads all allowed)\n- Default trustLevel is 'standard'; default installerAllowed is false\n- Edge case: null workDir â†’ allowedRoots=[], trustLevel='restricted'\n- No enforcement in this task â€” policy exists but is not evaluated yet (that is task #43)",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "buildDefaultPolicy returns correct shape",
+          "expectedBehavior": "buildDefaultPolicy({ workDir: 'C:\\test' }, { obsidianVaultPath: null }) returns a frozen object with all 6 CapabilityPolicy fields present and populated with sensible defaults.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const path=require('path'); function buildDefaultPolicy(session,config){const wd=session.workDir?path.resolve(session.workDir):null; const roots=wd?[wd]:[]; const obs=config&&config.obsidianVaultPath?config.obsidianVaultPath:null; if(obs)roots.push(obs); return Object.freeze({allowedRoots:roots,writeMode:'extended',networkAllowed:true,installerAllowed:false,blockedCommandClasses:['GIT_FORCE_PUSH','GIT_RESET_HARD','GIT_CLEAN','DRIVE_FORMAT','RM_RECURSIVE_ROOT','RD_FULL_DRIVE'],trustLevel:session.workDir?'standard':'restricted'});}; const p=buildDefaultPolicy({workDir:'C:\\\\\\\\test'},{obsidianVaultPath:null}); const fields=['allowedRoots','writeMode','networkAllowed','installerAllowed','blockedCommandClasses','trustLevel']; fields.forEach(f=>{if(!(f in p))throw new Error('missing: '+f);}); if(!Object.isFrozen(p))throw new Error('not frozen'); console.log('OK',JSON.stringify(p));\"",
+          "expectedInitialFailure": "buildDefaultPolicy is not defined â€” function does not exist in server.js yet.",
+          "expectedPassingEvidence": "Prints OK with JSON object containing all 6 fields; Object.isFrozen check passes.",
+          "waiverGuidance": "N/A â€” this is a pure function test, no external dependencies."
+        },
+        {
+          "number": 2,
+          "title": "Policy attached to session object at launch",
+          "expectedBehavior": "After buildDefaultPolicy is wired into the launch and resume handlers, every session object in the sessions Map has a non-null .policy field with the CapabilityPolicy shape.",
+          "proofType": "waiver",
+          "exactCommand": "Code review: confirm newSession.policy = buildDefaultPolicy(newSession, readConfig()) is present in the launch WS handler immediately after workDir is resolved. Confirm session.policy = session.policy || buildDefaultPolicy(session, readConfig()) is present in the resume handler.",
+          "expectedInitialFailure": "sessions.get(sessionId).policy is undefined before wiring.",
+          "expectedPassingEvidence": "Code review passes: both wiring lines present in correct positions.",
+          "waiverGuidance": "Waiver acceptable â€” session Map is internal state not exposed via a public API. Code review is the appropriate verification."
+        }
+      ],
+      "objective": {
+        "statement": "Add a frozen CapabilityPolicy object to every session at launch â€” the schema and factory that all subsequent capability policy tasks (#42-#45) depend on.",
+        "successCriteria": [
+          "CapabilityPolicy JSDoc typedef is defined in server.js with all 6 fields documented",
+          "buildDefaultPolicy(session, config) returns a frozen object with correct defaults for all 6 fields",
+          "Every session launched via the launch WS handler has .policy attached immediately after workDir is resolved",
+          "Sessions resumed via the resume handler receive .policy if not already present"
+        ],
+        "nonGoals": [
+          "Using the policy for enforcement (task #43)",
+          "Command class registry definition (task #42)",
+          "Audit emission (task #44)",
+          "Replacing existing assertWritable or assertSafeCommand (task #45)"
+        ],
+        "proofMap": {
+          "CapabilityPolicy typedef defined": [
+            1
+          ],
+          "buildDefaultPolicy returns correct shape": [
+            1
+          ],
+          "Session wiring â€” launch and resume handlers": [
+            2
+          ]
+        },
+        "stopConditions": [
+          "src/runtime/toolRuntime.ts is already wired and sessions are not managed in server.js â€” confirm sessions Map location before editing"
+        ]
+      },
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 26,
+      "title": "Make task orchestration an explicit state machine",
+      "description": "The planned LangGraph migration is directionally right, but the first implementation should stay tightly scoped to task lifecycle orchestration. Model planned -> build-started -> cba-complete -> build-finished -> PR-Reviewed-> staged -> production as persisted graph state with formal human gates, proof gates, retry paths, and failure recovery. Use this to replace implicit skill-driven transitions with explicit preconditions, transition rules, and resumable state.",
+      "category": "feature",
+      "priority": 95,
+      "impact": "major",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [
+        24
+      ],
+      "branch": "task/26-explicit-state-machine",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/35",
+      "plan": "## Overview\n\nTask #24 shipped LangGraph stubs (state.py, task_graph.py, task_executor.py). Task #26 makes the state machine authoritative: formal preconditions, real HITL pause/resume, proof gate verification, retry paths, failure recovery, and a sync contract with backlog.json so both existing skills and new LangGraph nodes stay in sync.\n\n## Phases\n\n1. Extend TaskState â€” add proof_units, proof_results, human_gate_signal, retry_count, error_log, StatusLiteral matching backlog enum\n2. Formal Transition Table â€” transitions.py with preconditions and mutations for each (from, to) pair\n3. Real HITL Pause/Resume â€” executor actually suspends at interrupt nodes; /signal unblocks; stall timeout sets status=stalled\n4. Proof Gates and Retry Paths â€” finish_build_node validates proof units; codex_review retry edge; failed_smoke dead-end node\n5. Failure Recovery â€” @safe_node decorator snapshots state and sets status=failed on exception\n6. backlog.json Sync Contract â€” executor writes status back after each node; /sync-state endpoint in server.js\n\n## First Proof Unit\n\nTaskState schema extended: `python -c \"from state import TaskState; ts = {'task_number': 1, 'current_node': 'START', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; print('OK')\"` exits 0.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "TaskState schema extended with new fields",
+          "expectedBehavior": "state.py defines TaskState with proof_units, proof_results, human_gate_signal, retry_count, error_log, and StatusLiteral includes stalled, cba-complete, planned.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from state import TaskState, StatusLiteral; ts = {'task_number': 1, 'current_node': 'START', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; print('OK')\"",
+          "expectedInitialFailure": "TypeError or KeyError if fields are missing from the TypedDict definition.",
+          "expectedPassingEvidence": "Prints OK with exit code 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "SQLite migration preserves existing data and persists new fields",
+          "expectedBehavior": "Running task_executor.py against an existing task_state.db adds new columns without dropping rows; proof_units, retry_count, and error_log round-trip correctly.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_executor import init_db, save_state, load_state; init_db(); save_state({'task_number': 999, 'current_node': 'plan', 'status': 'planned', 'branch_name': '', 'pr_url': None, 'proof_units': [{'number': 1}], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 2, 'error_log': ['err1'], 'review_evidence': {}, 'checkpoint_data': {}}); s = load_state(999); assert s['retry_count'] == 2; assert s['error_log'] == ['err1']; print('OK')\"",
+          "expectedInitialFailure": "KeyError on retry_count or error_log, or OperationalError on missing column.",
+          "expectedPassingEvidence": "Prints OK; no assertion errors.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Transition table rejects invalid preconditions",
+          "expectedBehavior": "validate_transition('build-started', 'build-finished', state_missing_proof) returns (False, [failures]) when required preconditions are not met.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from transitions import validate_transition; ok, failures = validate_transition('build-started', 'build-finished', {'proof_units': [{'number': 1}], 'proof_results': {}}); assert ok == False; assert len(failures) > 0; print('PASS:', failures)\"",
+          "expectedInitialFailure": "ModuleNotFoundError â€” transitions.py does not exist yet.",
+          "expectedPassingEvidence": "Prints PASS: with at least one failure reason.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "HITL pause genuinely suspends execution",
+          "expectedBehavior": "POST /advance on a task reaching the build node returns with paused status and does NOT advance until POST /signal {signal: code_done} is called.",
+          "proofType": "manual-script",
+          "exactCommand": "1. cd C:\\Users\\scott\\Code\\Polaris\\agents && python task_executor.py\n2. curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 99}\" â†’ Expect status contains paused\n3. curl -s http://localhost:4001/state?task_number=99 â†’ Verify current_node=build, status=paused\n4. curl -s -X POST \"http://localhost:4001/signal?task_number=99\" -H \"Content-Type: application/json\" -d \"{\\\"signal\\\": \\\"code_done\\\"}\"\n5. curl -s http://localhost:4001/state?task_number=99 â†’ Verify current_node=finish_build",
+          "expectedInitialFailure": "After step 2, task immediately advances past build without waiting for signal.",
+          "expectedPassingEvidence": "Step 3 shows task paused at build. Step 5 shows finish_build only after signal.",
+          "waiverGuidance": "Code review: confirm advance_graph() checks human_gate_signal before advancing past interrupt nodes, and /signal calls advance_graph() after setting the signal."
+        },
+        {
+          "number": 5,
+          "title": "Stall timeout sets status to stalled",
+          "expectedBehavior": "When a task is paused at a human gate and no signal arrives within STALL_TIMEOUT_SECONDS, the next /advance call sets status=stalled.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"import time, asyncio, os; os.environ['STALL_TIMEOUT_SECONDS'] = '2'; from task_executor import init_db, save_state, load_state, advance_graph; init_db(); save_state({'task_number': 88, 'current_node': 'build', 'status': 'paused_at_build', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {'paused_at_timestamp': time.time() - 10}}); asyncio.run(advance_graph(88)); s = load_state(88); assert s['status'] == 'stalled', s['status']; print('OK')\"",
+          "expectedInitialFailure": "Task stays at paused_at_build; no stall detection logic.",
+          "expectedPassingEvidence": "Prints OK; state has status=stalled.",
+          "waiverGuidance": "Code review: confirm advance_graph() checks paused_at_timestamp against STALL_TIMEOUT_SECONDS."
+        },
+        {
+          "number": 6,
+          "title": "Proof gate blocks finish_build when proof units unverified",
+          "expectedBehavior": "finish_build_node routes to start_build retry when proof_units is non-empty and no matching proof_results exist.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import finish_build_node; state = {'task_number': 77, 'current_node': 'finish_build', 'status': 'build-started', 'branch_name': 'task/77', 'pr_url': None, 'proof_units': [{'number': 1, 'title': 'test'}], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; result = finish_build_node(state); assert result.get('checkpoint_data', {}).get('proof_gate_failures'); print('PASS - routed to:', result['current_node'])\"",
+          "expectedInitialFailure": "finish_build_node advances normally regardless of proof status (current stub behavior).",
+          "expectedPassingEvidence": "Prints PASS - routed to: start_build.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 7,
+          "title": "Failed node snapshots state with status=failed",
+          "expectedBehavior": "@safe_node decorator sets status=failed, appends to error_log, and persists checkpoint before re-raising on uncaught exception.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_executor import init_db, save_state, load_state; from node_utils import safe_node; init_db(); @safe_node\\ndef bad_node(state): raise RuntimeError('test'); state = {'task_number': 55, 'current_node': 'bad', 'status': 'build-started', 'branch_name': '', 'pr_url': None, 'proof_units': [], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; save_state(state); [None for _ in [1] if not __import__('builtins').setattr(__import__('builtins'), '_', None)]; exec('try:\\n bad_node(state)\\nexcept RuntimeError: pass'); s = load_state(55); assert s['status'] == 'failed'; assert len(s['error_log']) > 0; print('OK')\"",
+          "expectedInitialFailure": "load_state(55) returns original status; no error_log entry.",
+          "expectedPassingEvidence": "Prints OK; state has status=failed and error_log has at least one entry.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 8,
+          "title": "backlog.json status syncs after node advance",
+          "expectedBehavior": "After POST /advance successfully transitions a task, docs/backlog.json has the matching task status updated to match the executor state.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start sidecar: cd C:\\Users\\scott\\Code\\Polaris\\agents && python task_executor.py\n2. Note task #26 status: node -e \"const b=require('./docs/backlog.json'); console.log(b.tasks.find(t=>t.number===26).status)\"\n3. POST /advance: curl -s -X POST http://localhost:4001/advance -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 26}\"\n4. Read backlog.json again â€” status should match\n5. Compare with GET /state: curl -s \"http://localhost:4001/state?task_number=26\"",
+          "expectedInitialFailure": "backlog.json status unchanged after /advance.",
+          "expectedPassingEvidence": "Steps 4 and 5 show the same status value; backlog.json reflects new state.",
+          "waiverGuidance": "Code review: confirm advance_graph() calls backlog_sync.write_task_status() after save_state()."
+        },
+        {
+          "number": 9,
+          "title": "/sync-state endpoint responds and updates backlog",
+          "expectedBehavior": "POST /sync-state with {task_number, status, current_node} updates backlog.json and returns HTTP 200.",
+          "proofType": "smoke-command",
+          "exactCommand": "curl -s -X POST http://localhost:40000/sync-state -H \"Content-Type: application/json\" -d \"{\\\"task_number\\\": 26, \\\"status\\\": \\\"planned\\\", \\\"current_node\\\": \\\"plan\\\"}\"",
+          "expectedInitialFailure": "HTTP 404 â€” endpoint does not exist.",
+          "expectedPassingEvidence": "HTTP 200 with {\"ok\": true}; task #26 status in backlog.json is planned.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 10,
+          "title": "Paused task survives sidecar restart and resumes correctly",
+          "expectedBehavior": "A task paused at a human gate survives a sidecar process restart; after restart, /signal resumes execution from the correct node.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start sidecar. POST /advance task_number:26 â†’ confirm paused at build\n2. Kill sidecar (Ctrl+C)\n3. Restart sidecar: python task_executor.py\n4. GET /state?task_number=26 â†’ confirm status still paused_at_build\n5. POST /signal?task_number=26 body {signal: code_done}\n6. GET /state?task_number=26 â†’ confirm current_node=finish_build\n7. Check docs/backlog.json â†’ task #26 status matches executor state",
+          "expectedInitialFailure": "After restart, state is gone or reset to START.",
+          "expectedPassingEvidence": "Step 4 shows paused state intact. Step 6 shows finish_build after signal. Step 7 shows backlog in sync.",
+          "waiverGuidance": "Code review: confirm init_db() and load_state() round-trip all new fields; confirm advance_graph() checks human_gate_signal on entry."
+        }
+      ],
+      "objective": {
+        "statement": "Replace implicit skill-driven task transitions with an explicit, authoritative state machine in the LangGraph executor â€” with formal preconditions, real HITL pause/resume, proof gates, retry paths, failure recovery, and a sync contract that keeps backlog.json aligned with executor state.",
+        "successCriteria": [
+          "TaskState schema extended with proof_units, proof_results, human_gate_signal, retry_count, error_log, and StatusLiteral matching the backlog enum",
+          "Formal transition table in transitions.py enforces preconditions for each valid (from, to) pair",
+          "HITL pause/resume genuinely suspends execution; /signal unblocks; stall timeout sets status=stalled",
+          "Proof gate in finish_build_node blocks advancement when proof units are unverified (no waiver)",
+          "@safe_node decorator snapshots state and sets status=failed on unhandled exception",
+          "backlog.json sync contract: executor writes status after each node via backlog_sync.py + /sync-state endpoint on server.js"
+        ],
+        "nonGoals": [
+          "Changes to existing skills (/plan-task, /finish-build, etc.) â€” they still write backlog.json directly",
+          "UI changes to the backlog panel",
+          "Graph topology changes (adding/removing nodes)",
+          "New agent dispatch capabilities"
+        ],
+        "proofMap": {
+          "TaskState schema extended": [
+            1,
+            2
+          ],
+          "Formal transition table enforces preconditions": [
+            3
+          ],
+          "HITL pause/resume with stall timeout": [
+            4,
+            5
+          ],
+          "Proof gate blocks finish_build": [
+            6
+          ],
+          "@safe_node snapshots and marks failed": [
+            7
+          ],
+          "backlog.json sync contract": [
+            8,
+            9,
+            10
+          ]
+        },
+        "stopConditions": [
+          "agents/state.py or agents/task_executor.py not found (task #24 delivery missing)",
+          "Python environment in agents/ does not have langgraph installed",
+          "SQLite checkpoint file from task #24 is corrupted and cannot be migrated"
+        ]
+      },
+      "project_source": "Polaris",
+      "promoted_via_pr": null
     }
   ]
 }
