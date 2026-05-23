@@ -61,6 +61,77 @@
       "dependencies": []
     },
     {
+      "number": 42,
+      "title": "Command class registry for shell safety",
+      "description": "Replace the SHELL_HARD_BLOCKED regex array in server.js with a COMMAND_CLASS_REGISTRY map. Each entry has a name (e.g. GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT, RM_RECURSIVE_ROOT, RD_FULL_DRIVE), a detect(command) function that may combine regex with structural path analysis, and a minimumTrustLevel field. The registry is the single source of truth for what constitutes a destructive command class.",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "cba-complete",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [41],
+      "branch": "task/42-command-class-registry",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/39",
+      "plan": "Phase A — Define COMMAND_CLASS_REGISTRY: Add CommandClassEntry JSDoc typedef immediately before the const. Define COMMAND_CLASS_REGISTRY as Object.freeze(new Map([...])) with 6 entries mirroring SHELL_HARD_BLOCKED — each entry has {name, commandClass, minimumTrustLevel: \"any\", reason, detect(command)}. commandClass values match DEFAULT_BLOCKED_CLASSES strings from task #41 (system-destructive, network-exfil, privilege-escalation, installer, registry-write, credential-access) — all 6 initial entries map to system-destructive. Phase B — Update assertSafeCommand: Replace for-of SHELL_HARD_BLOCKED with for-of COMMAND_CLASS_REGISTRY.values(). Call entry.detect(flat) instead of pattern.test(flat). Throw same error using entry.reason. Delete SHELL_HARD_BLOCKED const. Phase C — PU1 smoke proof: tmp/pu42-test.js copies registry + assertSafeCommand logic, asserts all 6 blocked patterns throw and 3 safe commands do not throw.",
+      "proofUnits": [
+        {
+          "id": 1,
+          "title": "Registry equivalence smoke test",
+          "expectedBehavior": "assertSafeCommand using COMMAND_CLASS_REGISTRY throws for all 6 historically-blocked patterns and does not throw for safe commands",
+          "exactCommand": "node tmp/pu42-test.js",
+          "expectedInitialFailure": "Script errors because COMMAND_CLASS_REGISTRY does not exist yet or assertSafeCommand still uses SHELL_HARD_BLOCKED",
+          "waiver": null
+        },
+        {
+          "id": 2,
+          "title": "Registry entry schema completeness",
+          "expectedBehavior": "Every entry in COMMAND_CLASS_REGISTRY has all 5 required fields: name, commandClass, minimumTrustLevel, reason, detect",
+          "exactCommand": null,
+          "expectedInitialFailure": null,
+          "waiver": "Code review — verified by inspecting the registry const definition"
+        }
+      ],
+      "objective": {
+        "statement": "Replace SHELL_HARD_BLOCKED with a structured COMMAND_CLASS_REGISTRY Map that associates each blocked command pattern with a named class, reason, and minimum trust level — making the registry the single source of truth for destructive command detection in assertSafeCommand.",
+        "successCriteria": [
+          "SHELL_HARD_BLOCKED is deleted; COMMAND_CLASS_REGISTRY is the sole source for blocked command patterns",
+          "All 6 existing patterns are preserved with equivalent detection behavior (no regressions)",
+          "assertSafeCommand iterates COMMAND_CLASS_REGISTRY — same enforcement behavior as before",
+          "Each registry entry has name, commandClass, minimumTrustLevel, reason, and detect(command) fields"
+        ],
+        "nonGoals": [
+          "Wiring COMMAND_CLASS_REGISTRY to CapabilityPolicy enforcement (task #44)",
+          "Adding new command classes beyond the 6 already in SHELL_HARD_BLOCKED",
+          "Changing enforcement behavior or error message format",
+          "Moving registry to a separate file or module"
+        ],
+        "proofMap": [
+          {
+            "criterion": "SHELL_HARD_BLOCKED is deleted; COMMAND_CLASS_REGISTRY is the sole source",
+            "proofUnit": 1,
+            "evidence": "grep confirms SHELL_HARD_BLOCKED absent; PU1 passes using COMMAND_CLASS_REGISTRY"
+          },
+          {
+            "criterion": "All 6 existing patterns preserved with equivalent detection",
+            "proofUnit": 1,
+            "evidence": "PU1 smoke test asserts each of the 6 patterns throws correctly"
+          },
+          {
+            "criterion": "assertSafeCommand iterates COMMAND_CLASS_REGISTRY",
+            "proofUnit": 1,
+            "evidence": "PU1 exercises assertSafeCommand end-to-end via the registry"
+          },
+          {
+            "criterion": "Each entry has all 5 required fields",
+            "proofUnit": 2,
+            "evidence": "Code review waiver — field completeness verified by inspection"
+          }
+        ],
+        "stopConditions": []
+      }
+    },
+    {
       "number": 43,
       "title": "evaluatePolicy unified enforcer",
       "description": "Write evaluatePolicy(action, context, policy): PolicyResult in server.js (or src/runtime/capabilityPolicy.ts if the toolRuntime module is wired). Handles: root boundary check (replaces assertWritable path logic), command class evaluation using COMMAND_CLASS_REGISTRY (replaces assertSafeCommand), installer gate (replaces detectInstallerExe + async approval prompt). Returns { allowed: boolean, reason?: string, auditEvent: AuditEvent }. Does not throw â€” callers inspect the result and throw if !allowed.",
