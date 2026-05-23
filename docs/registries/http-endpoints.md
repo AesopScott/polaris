@@ -190,6 +190,30 @@ Health check for the executor process.
 
 ---
 
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
+
+**Task:** #36 — Add a ship task orchestration capability
+
+**Boundaries checked:** HTTP endpoints in server.js and consumers in resources/mockup.html
+
+**Evidence recorded:**
+- 9 entries total (3 pre-existing + 6 new task #36 endpoints)
+- 7 entries with complete producer/consumer pairs ✓
+- 2 entries planned/deferred ⚠ (/sync-state, /recover — task #26 scope, unchanged)
+- 4 shape mismatches corrected:
+  - `GET /branch-state`: response shape now reflects project-name top-level wrap, `sessionCount`, `sessionId`, `sessionName`, `timestamp`
+  - `POST /reserve-merge-slot`: `position: 0` for acquired vs `1+` for queued now documented
+  - `POST /release-merge-slot`: `nextInQueue.slotId` added to response shape
+  - `POST /dry-run-merge`: optional `repoPath` request field added
+- New identifiers introduced on task #36: `/branch-state`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge`, `/push-git`, `/push-obsidian`
+- Registries match current code diff: yes (shapes corrected to match server.js:7825–8060)
+
+**Gaps identified:** 4 shape mismatches corrected above. `/sync-state` and `/recover` remain planned (task #26 scope). `orchConflict` and `orchAmber` are fully wired (see websocket-events.md ✓).
+
+**Status:** Audit complete — shape mismatches resolved for task #36 scope.
+
+---
+
 ### `/sync-state`
 
 Receive a canonical status update from the LangGraph executor and write it to `backlog.json`, then broadcast a `backlogs-data` WebSocket event to refresh the UI.
@@ -249,27 +273,35 @@ Query the LangGraph executor for a stalled or failed task's last checkpoint, and
 
 ### `GET /branch-state`
 
-Returns current branch/worktree state for all active sessions in a project.
+Returns current branch/worktree state for all active sessions grouped by project.
 
 **Method:** `GET`
-**Producer:** `server.js` HTTP handler — queries git + OrchestratorRegistry (task #36, Phase 1)
-**Consumer:** `resources/mockup.html` — orchestrator panel polls on interval
+**Query params:** `project=string` (optional — filter to a single project name)
+**Producer:** `server.js:7825` — groups `sessions` map by `projectName`, calls `getWorktreeBranchInfo()` per session, detects contention via `detectFileContention()`
+**Consumer:** `resources/mockup.html:15185` — `fetchAndRenderBranchState()` polls every 5 s; `renderBranchState()` at line 15192 reads all fields below
 
 **Response Payload:**
 ```json
 {
-  "featureBranches": {
-    "task/N-slug": {
-      "head": "string — HEAD SHA",
-      "worktreePath": "string",
-      "filesChanged": ["string"],
-      "contention": ["string — files touched by multiple sessions"]
-    }
+  "[projectName]": {
+    "sessionCount": "number — total active sessions for this project",
+    "featureBranches": {
+      "[branch | sessionId]": {
+        "sessionId": "string",
+        "sessionName": "string",
+        "head": "string — HEAD SHA",
+        "worktreePath": "string",
+        "filesChanged": ["string"],
+        "contention": ["string — files also modified by another session"]
+      }
+    },
+    "contention": { "[filename]": true },
+    "timestamp": "string — ISO 8601"
   }
 }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.2) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js:7825`; shape corrected in audit (task #36) — previous registry omitted project-name top-level wrap, `sessionId`, `sessionName`, `sessionCount`, and `timestamp`
 
 ---
 
@@ -278,7 +310,7 @@ Returns current branch/worktree state for all active sessions in a project.
 Acquire or queue a merge slot for a task promoting to a target branch. Serializes concurrent promotions.
 
 **Method:** `POST`
-**Producer:** `resources/mockup.html` — Push Git button handler (task #36, Phase 4)
+**Producer:** `proof/task-36-orchestrator.proof.js` — PU2 direct call; also callable for manual resolution. Note: the UI calls `/push-git` which handles slot reservation internally — `mockup.html` does NOT call this endpoint directly.
 **Consumer:** `server.js` — FIFO merge slot queue manager
 
 **Request Payload:**
@@ -291,7 +323,9 @@ Acquire or queue a merge slot for a task promoting to a target branch. Serialize
 { "status": "acquired" | "queued", "slotId": "string", "position": number }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.3) — not yet implemented
+**Position semantics:** `position: 0` when status is `acquired` (slot is immediately active); `position: 1+` when status is `queued` (1 = first in queue behind the active slot).
+
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js:7877` FIFO merge slot queue; persisted to `orchestrator-state.json`
 
 ---
 
@@ -300,7 +334,7 @@ Acquire or queue a merge slot for a task promoting to a target branch. Serialize
 Release a held merge slot after push completes or is cancelled.
 
 **Method:** `POST`
-**Producer:** `resources/mockup.html` — push completion handler (task #36, Phase 4)
+**Producer:** `proof/task-36-orchestrator.proof.js` — PU2b direct call; also callable for manual conflict resolution (e.g. after user resolves an `orchConflict` held slot). Note: `/push-git` handles slot release internally — `mockup.html` does NOT call this endpoint directly.
 **Consumer:** `server.js` — FIFO merge slot queue manager
 
 **Request Payload:**
@@ -310,10 +344,10 @@ Release a held merge slot after push completes or is cancelled.
 
 **Response Payload:**
 ```json
-{ "released": true, "nextInQueue": { "taskNumber": number } | null }
+{ "released": true, "status": "success" | "failed", "nextInQueue": { "taskNumber": number, "slotId": "string" } | null }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.3) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js:7912` releases slot, promotes next queued request, persists state; `nextInQueue.slotId` corrected in audit (was undocumented)
 
 ---
 
@@ -327,8 +361,10 @@ Attempt merge on a throwaway branch to detect conflicts before any real merge.
 
 **Request Payload:**
 ```json
-{ "sourceBranch": "string", "targetBranch": "string", "cleanup": boolean }
+{ "sourceBranch": "string", "targetBranch": "string", "repoPath": "string (optional)", "cleanup": boolean }
 ```
+
+**`repoPath`:** Optional override for the git repo root. When absent, server falls back to `repoWorkDir` of any active session (`server.js:7963`).
 
 **Response Payload (clean):**
 ```json
@@ -340,7 +376,71 @@ Attempt merge on a throwaway branch to detect conflicts before any real merge.
 { "status": "conflict", "conflictFiles": ["string"] }
 ```
 
-**Status:** ⚠ planned (task #36, Task 1.4 stub → Task 2.3 full impl) — not yet implemented
+**Status:** ✓ Implemented (task #36, Phase 2) — `server.js` creates throwaway branch, runs `git merge --no-commit --no-ff`, parses UU/AA/DD conflict markers, always aborts in `finally` block; optional `repoPath` in body
+
+---
+
+### `POST /push-git`
+
+Execute a full serialized push flow for a session: reserve slot → dry-run merge → git push → release slot. Broadcasts `orchConflict` on conflict (slot held); broadcasts `orchAmber` on push failure after retries.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — `orchPushGit()` called from "Push Git ↑" button in orchestrator panel
+**Consumer:** `server.js` — inline slot/dry-run/push/release flow
+
+**Request Payload:**
+```json
+{ "sessionId": "string", "targetBranch": "string (default: 'stage')", "slotId": "string (optional — pass when resuming via orchSlotReady to bypass re-queue)" }
+```
+
+**Response Payload (clean push):**
+```json
+{ "status": "success", "branch": "string", "targetBranch": "string" }
+```
+
+**Response Payload (queued — slot held by another push):**
+```json
+{ "status": "queued", "slotId": "string", "position": number }
+```
+
+**Response Payload (conflict — slot held, orchConflict broadcast):**
+```json
+{ "status": "conflict", "conflictFiles": ["string"], "slotId": "string" }
+```
+
+**Response Payload (push failed after retries — orchAmber broadcast):**
+```json
+{ "status": "error", "error": "string" }
+```
+
+**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; retries 3× with exponential backoff; slot always released unless conflict holds it for user resolution
+
+---
+
+### `POST /push-obsidian`
+
+Append a timestamped session summary (branch, worktree, modified files, contention) to the project's Build Plan in the Obsidian vault.
+
+**Method:** `POST`
+**Producer:** `resources/mockup.html` — `orchPushObsidian()` called from "Push Obsidian →" button in orchestrator panel
+**Consumer:** `server.js` — looks up project obsidianDir, locates `3-Build_Plan.md` or `Build Plan.md`, appends summary
+
+**Request Payload:**
+```json
+{ "sessionId": "string" }
+```
+
+**Response Payload (success):**
+```json
+{ "ok": true, "filePath": "string — absolute path written" }
+```
+
+**Response Payload (error):**
+```json
+{ "error": "string" }
+```
+
+**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; candidate list: `3-Build-Plan.md`, `3-Build_Plan.md`, `Build Plan.md`, `Build-Plan.md`; creates Build folder if missing
 
 ---
 
