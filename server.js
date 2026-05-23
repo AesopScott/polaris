@@ -5075,6 +5075,7 @@ function detectFileContention(projectSessions) {
 function runDryMerge(repoPath, sourceBranch, targetBranch) {
   const dryBranch = `dry-run-${Date.now()}`;
   let conflictFiles = [];
+  let diffExcerpt = '';
   let mergeStatus = 'clean';
   let originalBranch = targetBranch;
   let restoreFailed = false;
@@ -5093,6 +5094,9 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
         .map(l => l.slice(3).trim())
         .filter(Boolean);
       mergeStatus = 'conflict';
+      try {
+        diffExcerpt = execSync('git diff --stat HEAD', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().slice(0, 500);
+      } catch {}
     }
   } catch (setupErr) {
     // git checkout -b or other setup failure — normalize to error so caller handles it cleanly.
@@ -5108,7 +5112,7 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
     try { execFileSync('git', ['branch', '-D', dryBranch], { cwd: repoPath, stdio: 'ignore' }); } catch {}
   }
   if (restoreFailed) return { status: 'error', reason: 'branch-restore-failed' };
-  return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles };
+  return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles, diffExcerpt };
 }
 
 // Merge slot queue — serialises concurrent session push operations.
@@ -8002,7 +8006,7 @@ const httpServer = http.createServer((req, res) => {
         const dryResult = runDryMerge(repoPath, branch, targetBranch);
         if (dryResult.status === 'conflict') {
           // Hold slot — user must resolve conflict and release manually via /release-merge-slot
-          broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles: dryResult.conflictFiles, slotId });
+          broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles: dryResult.conflictFiles, diffExcerpt: dryResult.diffExcerpt || '', slotId });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ status: 'conflict', conflictFiles: dryResult.conflictFiles, slotId }));
         }

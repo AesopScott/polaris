@@ -218,6 +218,7 @@ Server broadcast when `POST /dry-run-merge` detects a merge conflict. Holds the 
   sourceBranch: String,
   targetBranch: String,
   conflictFiles: Array<String>,  // Files with conflict markers
+  diffExcerpt: String,     // git diff --stat HEAD output (≤500 chars) captured before cleanup
   slotId: String           // Held merge slot — must be released after resolution
 }
 ```

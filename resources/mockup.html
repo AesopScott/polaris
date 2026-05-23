@@ -15233,6 +15233,7 @@ This is your current workflow status across all branches. Review the tasks and P
             <button id="push-git-${escHtmlAttr(sid)}" data-sid="${escHtmlAttr(sid)}" data-branch="${escHtmlAttr(branch)}" style="${btnBase}background:#1e40af;color:#93c5fd;" onclick="window.orchPushGit(this.dataset.sid,this.dataset.branch,'stage')">Push Git ↑</button>
             <button id="push-obs-${escHtmlAttr(sid)}" data-sid="${escHtmlAttr(sid)}" style="${btnBase}background:#1e3a2f;color:#6ee7b7;" onclick="window.orchPushObsidian(this.dataset.sid)">Push Obsidian →</button>
           </div>
+          ${b.worktreePath ? `<div style="font-size:10px;opacity:0.3;margin-top:1px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.worktreePath)}</div>` : ''}
           ${filesHtml}
           ${contentionFiles.length > 0 ? `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">Contention: ${contentionFiles.map(escHtml).join(', ')}</div>` : ''}
         </div>`;
@@ -15255,6 +15256,7 @@ This is your current workflow status across all branches. Review the tasks and P
     card.innerHTML = `<div style="font-weight:700;color:#f59e0b;font-size:12px;">MERGE CONFLICT — Session ${escHtml(msg.sessionId)}</div>
       <div style="font-size:11px;margin-top:4px;opacity:0.8;">${escHtml(msg.sourceBranch)} → ${escHtml(msg.targetBranch)}</div>
       <div style="font-size:11px;margin-top:4px;">Conflicting files: <code>${(msg.conflictFiles || []).map(escHtml).join(', ')}</code></div>
+      ${msg.diffExcerpt ? `<pre style="font-size:10px;opacity:0.6;margin-top:4px;overflow:auto;max-height:80px;background:rgba(0,0,0,0.2);padding:4px;border-radius:4px;">${escHtml(msg.diffExcerpt)}</pre>` : ''}
       <div style="font-size:10px;opacity:0.5;margin-top:4px;">Slot held: ${escHtml(msg.slotId)} — resolve conflict then release slot.</div>`;
     feed.prepend(card);
   }
