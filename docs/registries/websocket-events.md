@@ -278,7 +278,7 @@ Server broadcast when a queued `/push-git` slot becomes active after the previou
 - `server.js` — `/release-merge-slot` handler broadcasts same when the promoted entry has a sessionId ✓
 
 **Consumers (Client receives)**
-- `resources/mockup.html` — `orchSlotReady` WS case calls `window.orchPushGit(sessionId, sourceBranch, targetBranch)` to auto-trigger ✓
+- `resources/mockup.html` — `orchSlotReady` WS case calls `window.orchPushGit(sessionId, sourceBranch, targetBranch, slotId)` to auto-trigger ✓
 
 **Status:** ✓ Fully wired (task #36, review fixes) — closes PU7 auto-trigger gap
 

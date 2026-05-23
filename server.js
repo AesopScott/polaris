@@ -5077,6 +5077,7 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
   let conflictFiles = [];
   let mergeStatus = 'clean';
   let originalBranch = targetBranch;
+  let restoreFailed = false;
   try {
     originalBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {}
@@ -5095,9 +5096,14 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
     }
   } finally {
     try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
-    try { execFileSync('git', ['checkout', originalBranch], { cwd: repoPath, stdio: 'ignore' }); } catch {}
+    try {
+      execFileSync('git', ['checkout', originalBranch], { cwd: repoPath, stdio: 'ignore' });
+    } catch {
+      restoreFailed = true;
+    }
     try { execFileSync('git', ['branch', '-D', dryBranch], { cwd: repoPath, stdio: 'ignore' }); } catch {}
   }
+  if (restoreFailed) return { status: 'error', reason: 'branch-restore-failed' };
   return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles };
 }
 
