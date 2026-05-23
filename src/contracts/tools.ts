@@ -87,14 +87,21 @@ export const WebSearchInput = z.object({
 
 // ─── AskUserQuestion ─────────────────────────────────────────────────────────
 
-export const AskUserQuestionChoice = z.object({
-  text: z.string(),
-  value: z.string(),
+export const AskUserQuestionOption = z.object({
+  label: z.string(),
+  description: z.string(),
+  preview: z.string().optional(),
+});
+
+export const AskUserQuestionItem = z.object({
+  question: z.string(),
+  header: z.string(),
+  options: z.array(AskUserQuestionOption).min(2).max(4),
+  multiSelect: z.boolean(),
 });
 
 export const AskUserQuestionInput = z.object({
-  question: z.string(),
-  choices: z.array(AskUserQuestionChoice).optional(),
+  questions: z.array(AskUserQuestionItem).min(1).max(4),
 });
 
 // ─── TodoWrite ───────────────────────────────────────────────────────────────

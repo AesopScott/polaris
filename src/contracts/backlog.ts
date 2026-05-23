@@ -6,20 +6,22 @@ export const BacklogStatus = z.enum([
   'build-started',
   'build-finished',
   'cba-complete',
+  'review-blocked',
   'staged',
   'production',
   'failed-smoke-test',
+  'stalled',
+  'failed',
   'blocked',
   'on-hold',
   'cancelled',
-  // legacy UI statuses
+  // legacy UI statuses (deprecated)
   'ready',
   'in-progress',
   'complete',
   'pr-reviewed',
   'cba-half-complete',
   'smoke-tested',
-  'review-blocked',
 ]);
 
 export type BacklogStatusType = z.infer<typeof BacklogStatus>;
