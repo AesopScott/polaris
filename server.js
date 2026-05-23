@@ -7959,6 +7959,36 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // POST /sync-state — receive canonical status update from LangGraph executor,
+  // write to backlog.json, then broadcast backlogs-data to refresh the UI.
+  if (req.method === 'POST' && req.url === '/sync-state') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { task_number, status, current_node } = JSON.parse(body);
+        if (!task_number || !status || !current_node) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
+        }
+        updateBacklogTaskStatus('global', task_number, status);
+        // Broadcast UI refresh
+        const { global: globalTasks, projects } = loadAllBacklogs();
+        const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
+        const archive = fs.existsSync(archivePath)
+          ? JSON.parse(fs.readFileSync(archivePath, 'utf8')).tasks || []
+          : [];
+        broadcast({ type: 'backlogs-data', global: globalTasks, projects, archive });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });

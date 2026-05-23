@@ -2,60 +2,88 @@
 LangGraph task executor — FastAPI server wrapping the StateGraph.
 
 Endpoints:
-- POST /advance: advance graph by one node
+- POST /advance: advance graph by one node (suspends at HITL gates)
 - GET /state: retrieve current task state
-- POST /signal: send human pause/resume signals
+- POST /signal: send human pause/resume signal to unblock a HITL node
+- GET /recover: return checkpoint for a stalled/failed task
 - GET /health: health check
 
-Implements persistent SQLite checkpointing for Proof Unit 2 (checkpoint survival).
+Persistent SQLite checkpointing. HITL nodes suspend until /signal is called
+or STALL_TIMEOUT_SECONDS elapses (sets status=stalled).
 """
 
+import asyncio
+import functools
 import json
+import os
 import sqlite3
+import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 
-from task_graph import build_graph
+from task_graph import build_graph, HITL_NODES
 from state import TaskState, TaskStatePydantic
+from transitions import validate_transition
 
 
-# ===== SQLite Persistence =====
+# ─────────────────────────────────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────────────────────────────────
+
 DB_PATH = Path(__file__).parent / "task_state.db"
+STALL_TIMEOUT_SECONDS = int(os.environ.get("STALL_TIMEOUT_SECONDS", "3600"))
 
 
-def init_db():
-    """Initialize SQLite table for task state checkpoints."""
+# ─────────────────────────────────────────────────────────────────────────────
+# SQLite persistence — schema migration preserves existing rows
+# ─────────────────────────────────────────────────────────────────────────────
+
+_NEW_COLUMNS: List[Tuple[str, str]] = [
+    ("proof_units",        "TEXT NOT NULL DEFAULT '[]'"),
+    ("human_gate_signal",  "TEXT"),
+    ("retry_count",        "INTEGER NOT NULL DEFAULT 0"),
+    ("error_log",          "TEXT NOT NULL DEFAULT '[]'"),
+    ("paused_at",          "INTEGER"),
+]
+
+
+def init_db() -> None:
+    """Create table if absent; add new columns without dropping existing rows."""
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS task_states (
-            task_number INTEGER PRIMARY KEY,
-            current_node TEXT NOT NULL,
-            status TEXT NOT NULL,
-            branch_name TEXT,
-            pr_url TEXT,
-            proof_results TEXT NOT NULL,
-            review_evidence TEXT NOT NULL,
-            checkpoint_data TEXT NOT NULL,
+            task_number       INTEGER PRIMARY KEY,
+            current_node      TEXT NOT NULL,
+            status            TEXT NOT NULL,
+            branch_name       TEXT,
+            pr_url            TEXT,
+            proof_results     TEXT NOT NULL DEFAULT '{}',
+            review_evidence   TEXT NOT NULL DEFAULT '{}',
+            checkpoint_data   TEXT NOT NULL DEFAULT '{}',
             UNIQUE(task_number)
         )
     """)
+    existing = {row[1] for row in cur.execute("PRAGMA table_info(task_states)")}
+    for col_name, col_def in _NEW_COLUMNS:
+        if col_name not in existing:
+            cur.execute(f"ALTER TABLE task_states ADD COLUMN {col_name} {col_def}")
     conn.commit()
     conn.close()
 
 
 def save_state(state: TaskState) -> None:
-    """Persist task state to SQLite."""
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         INSERT OR REPLACE INTO task_states (
             task_number, current_node, status, branch_name, pr_url,
-            proof_results, review_evidence, checkpoint_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            proof_results, review_evidence, checkpoint_data,
+            proof_units, human_gate_signal, retry_count, error_log
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         state["task_number"],
         state["current_node"],
@@ -65,104 +93,203 @@ def save_state(state: TaskState) -> None:
         json.dumps(state.get("proof_results", {})),
         json.dumps(state.get("review_evidence", {})),
         json.dumps(state.get("checkpoint_data", {})),
+        json.dumps(state.get("proof_units", [])),
+        state.get("human_gate_signal"),
+        state.get("retry_count", 0),
+        json.dumps(state.get("error_log", [])),
     ))
     conn.commit()
     conn.close()
 
 
 def load_state(task_number: int) -> Optional[TaskState]:
-    """Load task state from SQLite."""
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        """SELECT current_node, status, branch_name, pr_url, proof_results,
-                  review_evidence, checkpoint_data FROM task_states
-           WHERE task_number = ?""",
-        (task_number,)
-    )
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT current_node, status, branch_name, pr_url,
+               proof_results, review_evidence, checkpoint_data,
+               proof_units, human_gate_signal, retry_count, error_log
+        FROM task_states WHERE task_number = ?
+    """, (task_number,))
+    row = cur.fetchone()
     conn.close()
-
     if not row:
         return None
-
-    node, status, branch, pr, proofs, reviews, checkpoint = row
+    node, status, branch, pr, proofs, reviews, checkpoint, \
+        proof_units, gate_signal, retry_count, error_log = row
     return {
-        "task_number": task_number,
-        "current_node": node,
-        "status": status,
-        "branch_name": branch or f"task/{task_number}-orchestration",
-        "pr_url": pr,
-        "proof_results": json.loads(proofs),
-        "review_evidence": json.loads(reviews),
-        "checkpoint_data": json.loads(checkpoint),
+        "task_number":       task_number,
+        "current_node":      node,
+        "status":            status,
+        "branch_name":       branch or f"task/{task_number}-orchestration",
+        "pr_url":            pr,
+        "proof_results":     json.loads(proofs),
+        "review_evidence":   json.loads(reviews),
+        "checkpoint_data":   json.loads(checkpoint),
+        "proof_units":       json.loads(proof_units) if proof_units else [],
+        "human_gate_signal": gate_signal,
+        "retry_count":       retry_count or 0,
+        "error_log":         json.loads(error_log) if error_log else [],
     }
 
 
-# ===== State Machine =====
-# Global graph instance (compiled StateGraph)
-GRAPH = build_graph()
+def _set_paused_at(task_number: int, epoch: Optional[int]) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "UPDATE task_states SET paused_at = ? WHERE task_number = ?",
+        (epoch, task_number)
+    )
+    conn.commit()
+    conn.close()
 
+
+def _get_paused_at(task_number: int) -> Optional[int]:
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT paused_at FROM task_states WHERE task_number = ?",
+        (task_number,)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# @safe_node — failure recovery decorator (Phase 5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def safe_node(fn: Callable) -> Callable:
+    """Wrap a graph node: on unhandled exception set status=failed, log error."""
+    @functools.wraps(fn)
+    def wrapper(state: TaskState) -> TaskState:
+        try:
+            return fn(state)
+        except Exception as exc:
+            error_log: List[str] = list(state.get("error_log", []))
+            error_log.append(f"{fn.__name__}: {exc}")
+            failed_state: TaskState = {
+                **state,
+                "status":      "failed",
+                "error_log":   error_log,
+                "retry_count": state.get("retry_count", 0) + 1,
+            }
+            save_state(failed_state)
+            return failed_state
+    return wrapper
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stall-timeout watchdog (Phase 3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_watchdog_tasks: Dict[int, asyncio.Task] = {}
+
+
+async def _stall_watchdog(task_number: int, timeout: int) -> None:
+    """Wait timeout seconds, then mark the task stalled if still paused."""
+    await asyncio.sleep(timeout)
+    state = load_state(task_number)
+    if state and state.get("human_gate_signal") is None:
+        stalled: TaskState = {**state, "status": "stalled"}
+        save_state(stalled)
+        _set_paused_at(task_number, None)
+        try:
+            from backlog_sync import sync_status
+            sync_status(task_number, "stalled", state["current_node"])
+        except Exception:
+            pass
+
+
+def _start_watchdog(task_number: int) -> None:
+    loop = asyncio.get_event_loop()
+    if task_number in _watchdog_tasks:
+        _watchdog_tasks[task_number].cancel()
+    task = loop.create_task(_stall_watchdog(task_number, STALL_TIMEOUT_SECONDS))
+    _watchdog_tasks[task_number] = task
+
+
+def _cancel_watchdog(task_number: int) -> None:
+    t = _watchdog_tasks.pop(task_number, None)
+    if t:
+        t.cancel()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Graph advancement with HITL pause
+# ─────────────────────────────────────────────────────────────────────────────
 
 def initialize_state(task_number: int) -> TaskState:
-    """Create initial TaskState or load from checkpoint."""
     existing = load_state(task_number)
     if existing:
         return existing
-
     return {
-        "task_number": task_number,
-        "current_node": "START",
-        "status": "planning",
-        "branch_name": f"task/{task_number}-orchestration",
-        "pr_url": None,
-        "proof_results": {},
-        "review_evidence": {},
-        "checkpoint_data": {},
+        "task_number":       task_number,
+        "current_node":      "START",
+        "status":            "planned",
+        "branch_name":       f"task/{task_number}-orchestration",
+        "pr_url":            None,
+        "proof_units":       [],
+        "proof_results":     {},
+        "human_gate_signal": None,
+        "retry_count":       0,
+        "error_log":         [],
+        "review_evidence":   {},
+        "checkpoint_data":   {},
     }
 
 
 async def advance_graph(task_number: int) -> Dict[str, Any]:
-    """
-    Advance the graph by one node.
-    Saves state to SQLite after each advance (Proof Unit 2).
-    """
+    """Advance by one node. Suspends at HITL gates until /signal is called."""
     state = initialize_state(task_number)
 
-    # Invoke the compiled StateGraph (Proof Unit 5)
-    graph = build_graph()
-
-    # Prepare initial state if first invocation
-    if state.get("current_node") == "START":
-        initial_input = {
-            "task_number": state["task_number"],
-            "current_node": "START",
-            "status": "planning",
-            "branch_name": "",
-            "pr_url": None,
-            "proof_results": {},
-            "review_evidence": {},
-            "checkpoint_data": {}
+    # If currently paused at a HITL gate with no signal, stay paused
+    if state["current_node"] in HITL_NODES and state.get("human_gate_signal") is None:
+        return {
+            "status":       "paused",
+            "task_number":  task_number,
+            "current_node": state["current_node"],
+            "message":      f"Waiting for human signal at '{state['current_node']}' gate",
         }
-        result = graph.invoke(initial_input)
-        state.update(result)
-    else:
-        # Continue from last checkpoint
-        result = graph.invoke(state)
-        state.update(result)
 
-    # Persist the new state
-    save_state(state)
+    graph = build_graph()
+    if state["current_node"] == "START":
+        result = graph.invoke({**state})
+    else:
+        result = graph.invoke({**state, "human_gate_signal": None})
+
+    new_state: TaskState = {**state, **result, "human_gate_signal": None}
+    save_state(new_state)
+    _cancel_watchdog(task_number)
+
+    # Arm stall watchdog if we landed on a HITL node
+    if new_state["current_node"] in HITL_NODES:
+        _set_paused_at(task_number, int(time.time()))
+        _start_watchdog(task_number)
+        return {
+            "status":       "paused",
+            "task_number":  task_number,
+            "current_node": new_state["current_node"],
+            "message":      f"Paused at HITL gate '{new_state['current_node']}'. POST /signal to resume.",
+        }
+
+    try:
+        from backlog_sync import sync_status
+        sync_status(task_number, new_state["status"], new_state["current_node"])
+    except Exception:
+        pass
 
     return {
-        "status": "ok",
-        "task_number": task_number,
-        "current_node": state["current_node"],
-        "checkpoint": state["checkpoint_data"],
+        "status":       "ok",
+        "task_number":  task_number,
+        "current_node": new_state["current_node"],
+        "task_status":  new_state["status"],
+        "checkpoint":   new_state["checkpoint_data"],
     }
 
 
-# ===== FastAPI Server =====
+# ─────────────────────────────────────────────────────────────────────────────
+# FastAPI app
+# ─────────────────────────────────────────────────────────────────────────────
+
 app = FastAPI(title="Polaris LangGraph Task Executor")
 init_db()
 
@@ -173,30 +300,19 @@ class TaskRequest(BaseModel):
 
 
 class SignalRequest(BaseModel):
-    signal: str  # "code_done", "approved", "request_changes", etc.
+    signal: str
 
 
 @app.post("/advance")
 async def advance(req: TaskRequest) -> Dict[str, Any]:
-    """
-    Advance the task graph by one node.
-    Proof Unit 1: Returns HTTP 200 with stub node result.
-    Proof Unit 2: Checkpoint survives process restart.
-    Proof Unit 5: StateGraph runs without errors.
-    """
     try:
-        result = await advance_graph(req.task_number)
-        return result
+        return await advance_graph(req.task_number)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/state")
 async def get_state(task_number: int) -> Dict[str, Any]:
-    """
-    Get current task state.
-    Proof Unit 2: Returns checkpoint even after process restart.
-    """
     state = load_state(task_number)
     if not state:
         state = initialize_state(task_number)
@@ -205,37 +321,57 @@ async def get_state(task_number: int) -> Dict[str, Any]:
 
 @app.post("/signal")
 async def signal(task_number: int, req: SignalRequest) -> Dict[str, Any]:
-    """
-    Receive a human signal (pause/resume).
-    Stub for Phase 4 HITL gates.
-    """
+    """Deliver a human gate signal and immediately advance the graph."""
     state = load_state(task_number)
     if not state:
         raise HTTPException(status_code=404, detail=f"Task {task_number} not found")
-
-    # Store signal in checkpoint_data for the graph to check
-    state["checkpoint_data"]["last_signal"] = req.signal
+    if state["current_node"] not in HITL_NODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task {task_number} is not at a HITL gate (current: {state['current_node']})"
+        )
+    state["human_gate_signal"] = req.signal
     save_state(state)
+    _cancel_watchdog(task_number)
+    result = await advance_graph(task_number)
+    return {"status": "ok", "signal": req.signal, "task_number": task_number, "advance": result}
 
+
+@app.get("/recover")
+async def recover(task_number: int) -> Dict[str, Any]:
+    """Return checkpoint for a stalled/failed task with resume guidance."""
+    state = load_state(task_number)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"Task {task_number} not found")
+    if state["status"] not in ("stalled", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task {task_number} is '{state['status']}', not stalled or failed"
+        )
+    paused_at = _get_paused_at(task_number)
+    can_resume = state["current_node"] in HITL_NODES
     return {
-        "status": "ok",
-        "signal": req.signal,
-        "task_number": task_number,
+        "task_number":         task_number,
+        "status":              state["status"],
+        "last_node":           state["current_node"],
+        "paused_at_timestamp": paused_at,
+        "can_resume":          can_resume,
+        "resume_signal":       "code_done" if can_resume else None,
+        "error_log":           state.get("error_log", []),
     }
 
 
 @app.get("/health")
 async def health() -> Dict[str, str]:
-    """Health check."""
     return {"status": "ok", "service": "langgraph-executor"}
 
 
 @app.on_event("startup")
-async def startup_event():
-    """Initialize on server start."""
+async def startup_event() -> None:
     print(f"[OK] LangGraph task executor started on localhost:4001")
-    print(f"[OK] StateGraph database: {DB_PATH}")
-    print(f"[OK] StateGraph compiled with 9 nodes")
+    print(f"[OK] SQLite: {DB_PATH}")
+    print(f"[OK] HITL nodes: {HITL_NODES}")
+    print(f"[OK] Stall timeout: {STALL_TIMEOUT_SECONDS}s")
 
 
 if __name__ == "__main__":
