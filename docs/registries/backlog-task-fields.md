@@ -301,26 +301,33 @@ Structured goal contract written by `/plan-task` when planning a task. Contains 
 **Schema / shape:**
 ```javascript
 {
-  statement: String,           // One-sentence goal statement
-  successCriteria: String[],   // Measurable outcomes required for done
-  nonGoals: String[],          // Explicitly out of scope
-  proofMap: Object,            // Maps criteria strings → proof unit numbers
-  stopConditions: String[]     // Conditions that halt the workflow
+  statement: String,            // One-sentence objective
+  successCriteria: Array<String>,  // Each criterion mapped to a proof unit
+  nonGoals: Array<String>,      // Explicitly out-of-scope items
+  proofMap: Array<{
+    criterion: String,
+    proofUnit: Number           // Index into proofUnits[]
+  }>,
+  stopConditions: Array<String> // Hard blockers that abort the build
 }
 ```
+Optional, null initially.
 
 **Producers (write)**
-- `/plan-task` skill — writes `objective` block to `docs/backlog.json` after design discussion phase; committed directly to main branch on task branch or in planning commit
-- `/write-plan` sub-skill — constructs the objective object as part of plan finalization
+- `/plan-task` skill - writes `objective` block to `docs/backlog.json` after design discussion phase; committed directly to main branch on task branch or in planning commit
+- `/write-plan` sub-skill - constructs the objective object as part of plan finalization
+- Direct commit (build session) - may write objective manually alongside plan
 
 **Consumers (read)**
-- `/start-build` skill — loads `objective.successCriteria` and `objective.nonGoals` to gate implementation scope
-- `/finish-build` skill — verifies build work maps to `objective.successCriteria`; flags out-of-scope drift against `objective.nonGoals`
-- `/ship-task` orchestrator — displays objective statement and success criteria at each gate; stops if `objective` is missing on a non-backlog task
+- `/review-pr` skill - loads all sub-fields at Step 4a; verifies each `successCriteria` item against diff; checks for non-goal drift; flags missing fields as proof/planning gap
+- `/codex-review` skill - reads same fields for independent Codex review comparison
+- `/start-build` skill - loads `objective.successCriteria` and `objective.nonGoals` to gate implementation scope
+- `/finish-build` skill - verifies build work maps to `objective.successCriteria`; flags out-of-scope drift against `objective.nonGoals`
+- `/ship-task` orchestrator - displays objective statement and success criteria at each gate; stops if `objective` is missing on a non-backlog task
 
-**Note:** `server.js` does not read or write this field — it lives purely in the skills layer and backlog.json. UI does not display it.
+**Note:** `server.js` does not read or write this field - it lives purely in the skills layer and backlog.json. UI does not display it.
 
-**Status:** ✓ Intentional skill-side field — pre-existing gap from task #36 now registered (2026-05-23)
+**Status:** Intentional skill-side field - pre-existing gap from task #36 now registered (2026-05-23)
 
 ---
 
@@ -343,6 +350,7 @@ Structured goal contract written by `/plan-task` when planning a task. Contains 
 | `branch` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `pr_url` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `impact` | 3 (create/update) | 5 (display/modal/skills) | ✓ |
+| `objective` | skills (/plan-task) | 2 (/review-pr, /codex-review) | ⚠ UI orphan (intentional) |
 
 ---
 
@@ -366,6 +374,30 @@ Structured goal contract written by `/plan-task` when planning a task. Contains 
 **Gaps identified:** Pre-existing orphan producers (dependencies, branch, pr_url) remain deferred. `objective` gap from task #36 now resolved.
 
 **Status:** Audit complete — registries valid for task #29 planning scope.
+
+---
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
+
+**Task:** #36 — Add a ship task orchestration capability
+
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and docs/backlog.json
+
+**Evidence recorded:**
+
+- 15 entries documented (14 prior + 1 new)
+- 11 entries with complete producer/consumer pairs ✓
+- 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
+- 4 entries with orphan producers (dependencies, branch, pr_url, objective) ⚠
+  - dependencies/branch/pr_url: pre-existing, deferred
+  - objective: newly registered; intentionally skill-written, not UI-editable
+- 0 shape mismatches
+- New identifiers introduced on task #36: `objective` field (with sub-fields statement, successCriteria, nonGoals, proofMap, stopConditions) — present in backlog.json task #36, consumed by /review-pr and /codex-review skills
+- Registries match current code diff: yes
+
+**Gaps identified:** `objective` was unregistered — now added. Pre-existing orphan producers (dependencies, branch, pr_url) unchanged.
+
+**Status:** Audit complete — objective field registered for task #36 scope.
 
 ---
 

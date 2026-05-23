@@ -218,17 +218,18 @@ Server broadcast when `POST /dry-run-merge` detects a merge conflict. Holds the 
   sourceBranch: String,
   targetBranch: String,
   conflictFiles: Array<String>,  // Files with conflict markers
+  diffExcerpt: String,     // git diff --stat HEAD output (≤500 chars) captured before cleanup
   slotId: String           // Held merge slot — must be released after resolution
 }
 ```
 
 **Producers (Server sends)**
-- `server.js` — `/dry-run-merge` handler emits when conflict detected (task #36, Task 4.1, planned)
+- `server.js` — `POST /push-git` handler broadcasts when dry-run detects conflict (task #36, Phase 4) ✓
 
 **Consumers (Client receives)**
-- `resources/mockup.html` — orchestrator panel renders amber conflict alert card (task #36, Task 4.3, planned)
+- `resources/mockup.html:4678` — `renderOrchConflict()` appends amber alert card and auto-opens orchestrator panel ✓
 
-**Status:** ⚠ planned (task #36) — not yet implemented
+**Status:** ✓ Fully wired (task #36, Phase 4) — producer in `/push-git` handler; consumer in `orchConflict` WS case
 
 ---
 
@@ -249,12 +250,38 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 ```
 
 **Producers (Server sends)**
-- `server.js` — push flow emits after max retries exceeded or permanent failure (task #36, Task 4.3, planned)
+- `server.js` — `POST /push-git` handler broadcasts after 3 failed push attempts (task #36, Phase 4) ✓
 
 **Consumers (Client receives)**
-- `resources/mockup.html` — orchestrator panel renders amber decision card (task #36, Task 4.3, planned)
+- `resources/mockup.html:4688` — `renderOrchAmber()` appends red failure card and auto-opens orchestrator panel ✓
 
-**Status:** ⚠ planned (task #36) — not yet implemented
+**Status:** ✓ Fully wired (task #36, Phase 4) — producer in `/push-git` retry-exhausted path; consumer in `orchAmber` WS case
+
+---
+
+## `orchSlotReady`
+
+Server broadcast when a queued `/push-git` slot becomes active after the previous push completes. Triggers the UI to auto-retry the queued push without requiring user interaction.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'orchSlotReady',
+  sessionId: String,      // Session whose push is now ready to execute
+  sourceBranch: String,   // Branch to push
+  targetBranch: String,   // Merge target (e.g. 'stage')
+  slotId: String          // Now-active slot ID
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — `/push-git` handler broadcasts when slot is released and next queued push-git entry is promoted ✓
+- `server.js` — `/release-merge-slot` handler broadcasts same when the promoted entry has a sessionId ✓
+
+**Consumers (Client receives)**
+- `resources/mockup.html` — `orchSlotReady` WS case calls `window.orchPushGit(sessionId, sourceBranch, targetBranch, slotId)` to auto-trigger ✓
+
+**Status:** ✓ Fully wired (task #36, review fixes) — closes PU7 auto-trigger gap
 
 ---
 
@@ -300,13 +327,35 @@ Server broadcast emitted for every `evaluatePolicy()` call that results in a blo
 | `update-backlog-task-status` | 1 (client) | 1 (server) | ✓ |
 | `emit-debug-log` | 1 (agent) | 1 (server) | ⚠ (intentional) |
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
-| `orchConflict` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
-| `orchAmber` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
-| `tool-audit` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #29/#44) |
+| `orchConflict` | 1 (server checked) | 1 (client checked) | fully wired (Phase 4) |
+| `orchAmber` | 1 (server checked) | 1 (client checked) | fully wired (Phase 4) |
+| `orchSlotReady` | 2 (server checked) | 1 (client checked) | fully wired (review fixes) |
+| `tool-audit` | 1 (server, planned) | 1 (client, planned) | planned (task #29/#44) |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
+
+**Task:** #36 — Add a ship task orchestration capability
+
+**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js) for orchestrator events
+
+**Evidence recorded:**
+- 11 entries documented
+- 9 entries with complete producer/consumer pairs ✓
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log, debug-log — task #20 scope)
+- 0 entries with partial gaps (orchConflict, orchAmber, orchSlotReady all fully wired in Phase 4)
+- 0 shape mismatches
+- New identifiers introduced on task #36: `orchConflict`, `orchAmber`, `orchSlotReady` (all fully wired in Phase 4)
+- Registries match current code diff: yes — all orch events verified producer and consumer in Phase 4 + review fixes
+
+**Gaps identified:** `backlogs-data` planned producer (task #26) still pending /sync-state implementation. All task #36 orch events are now fully wired.
+
+**Status:** Audit complete — WS events registry verified for task #36 scope. All Phase 4 events fully wired.
+
+---
 
 **Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #29 planning)
 
