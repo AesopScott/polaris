@@ -70,25 +70,27 @@ Liveness check / keep-alive.
 | `get-history` | client → server | ⚠ orphan server handler |
 | `get-pre-build-check-status` | client → server | ⚠ orphan server handler |
 | `ping` | client → server | ⚠ orphan server handler |
+| `ui-client-hello` | client → server | ✓ (added task #41) |
+| `ui-client-ack` | server → client | ✓ (added task #41) |
 | *(all other ~96 types)* | both | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #25)
+**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #41)
 
-**Task:** #25 — Split server.js into bounded runtime services
+**Task:** #41 — Capability policy schema + session wiring
 
 **Boundaries checked:** WebSocket `type` message types between client (resources/mockup.html) and server (server.js)
 
 **Evidence recorded:**
-- 96 entries with complete producer/consumer pairs ✓
-- 4 entries with gaps (orphan server handlers) ⚠
+- 98 entries with complete producer/consumer pairs ✓
+- 4 entries with gaps (orphan server handlers) ⚠ (pre-existing, unchanged)
 - 0 entries with shape mismatches
-- New identifiers introduced on task #25: none (pure internal refactoring)
+- New identifiers introduced on task #41: `ui-client-hello` (client→server, client ID handshake), `ui-client-ack` (server→client, handshake response) — both balanced ✓
 - Registries match current code diff: yes
 
-**Gaps identified:** 4 pre-existing orphan handlers (get-config, get-history, get-pre-build-check-status, ping)
+**Gaps identified:** 4 pre-existing orphan handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged since task #25.
 
-**Status:** Audit complete — registries valid for task #25 scope. Internal refactoring does not alter WebSocket contract.
+**Status:** Audit complete
