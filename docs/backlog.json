@@ -232,7 +232,7 @@
       "category": "security",
       "priority": 92,
       "impact": "standard",
-      "status": "staged",
+      "status": "production",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
@@ -298,7 +298,7 @@
       "category": "security",
       "priority": 92,
       "impact": "standard",
-      "status": "cba-complete",
+      "status": "production",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
