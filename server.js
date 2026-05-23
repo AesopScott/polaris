@@ -78,6 +78,7 @@ const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routin
 const STALL_CHECK_MS  = 3000;   // heartbeat interval
 const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
+const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
@@ -8478,7 +8479,14 @@ async function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
 
+  ws.lastSeenAt = Date.now();
   const { type } = msg;
+
+  if (type === 'ui-client-hello') {
+    ws.uiClientId = typeof msg.clientId === 'string' ? msg.clientId.slice(0, 80) : ws.uiClientId;
+    ws.uiTabId = typeof msg.tabId === 'string' ? msg.tabId.slice(0, 80) : ws.uiTabId;
+    return sendTo(ws, { type: 'ui-client-ack', clientId: ws.uiClientId || null, tabId: ws.uiTabId || null });
+  }
 
   if (type === 'launch-chat') {
     const { prompt, displayPrompt, workDir, tier, images, docs, audio, videos, chipLabel, chipColor, model: overrideModel } = msg;
@@ -11610,6 +11618,23 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 
 wss = new WebSocket.Server({ server: httpServer });
 
+const wsHeartbeatTimer = setInterval(() => {
+  if (!wss) return;
+  for (const client of wss.clients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    if (client.isAlive === false) {
+      console.warn(`[polaris] terminating stale WebSocket client ${client.uiClientId || client.clientId || 'unknown'}`);
+      try { client.terminate(); } catch {}
+      continue;
+    }
+    client.isAlive = false;
+    try { client.ping(); } catch {
+      try { client.terminate(); } catch {}
+    }
+  }
+}, WS_HEARTBEAT_MS);
+if (typeof wsHeartbeatTimer.unref === 'function') wsHeartbeatTimer.unref();
+
 // ── Session heartbeat / stall detector ───────────────────────────────────────
 // Checks every 3 s for running sessions with no broadcast activity.
 // 15 s idle → amber stall badge on card.
@@ -11646,11 +11671,27 @@ setInterval(() => {
   }
 }, STALL_CHECK_MS);
 
-wss.on('connection', (ws) => {
-  console.log('[polaris] WebSocket client connected');
+wss.on('connection', (ws, req) => {
+  let queryClientId = null;
+  try {
+    queryClientId = new URL(req.url || '/', 'http://localhost').searchParams.get('clientId');
+  } catch {}
+
+  ws.clientId = queryClientId || crypto.randomUUID();
+  ws.connectedAt = Date.now();
+  ws.lastSeenAt = ws.connectedAt;
+  ws.lastPongAt = ws.connectedAt;
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+    ws.lastPongAt = Date.now();
+  });
+
+  console.log(`[polaris] WebSocket client connected ${ws.clientId}`);
 
   // Send server timezone offset so the renderer can display local time correctly
   sendTo(ws, { type: 'server-tz', tzOffsetMin: new Date().getTimezoneOffset() });
+  sendTo(ws, { type: 'ui-client-ack', clientId: ws.clientId, tabId: null });
 
   // Fetch last 5 commits then send init (commits travel in the init payload)
   (async () => {
@@ -11760,7 +11801,7 @@ wss.on('connection', (ws) => {
   })();
 
   ws.on('message', raw => handleMessage(ws, raw));
-  ws.on('close', () => console.log('[polaris] WebSocket client disconnected'));
+  ws.on('close', () => console.log(`[polaris] WebSocket client disconnected ${ws.uiClientId || ws.clientId || 'unknown'}`));
   ws.on('error', err => console.error('[polaris] WebSocket error:', err));
 });
 
