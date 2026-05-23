@@ -163,21 +163,22 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #41)
+**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #42)
 
-**Task:** #41 — Capability policy schema + session wiring
+**Tasks audited:** #41 — Capability policy schema + session wiring; #42 — Command class registry for shell safety
 
-**Boundaries checked:** Environment variables (`process.env.*`) read in server.js, main.js, and agents/task_executor.py
+**Boundaries checked:** Environment variables (`process.env.*`) read in server.js, main.js
 
 **Evidence recorded:**
 - 8 entries with complete producer/consumer pairs ✓
 - 1 entry planned/pending (STALL_TIMEOUT_SECONDS) ⚠
 - 0 entries with shape mismatches
 - New identifiers introduced on task #41: none (USERPROFILE line refs updated — server.js:823 added for buildDefaultPolicy)
+- New identifiers introduced on task #42: none (pure internal refactor — COMMAND_CLASS_REGISTRY is not an env var)
 - Registries match current code diff: yes
 
 **Gaps identified:** STALL_TIMEOUT_SECONDS has no automated producer — operator must set manually or leave at default (3600s). Acceptable; documented with default.
 
-**Note — intentional orphan producer:** `session.policy` field is set at server.js:925 and server.js:8641 but has no consumers yet. Tasks #42-#45 will wire enforcement. Not a cross-boundary env var so not listed here — noted in audit for completeness.
+**Note — intentional orphan producer:** `session.policy` field is set at server.js:925 and server.js:8641 but has no consumers yet. Tasks #43-#45 will wire enforcement. Not a cross-boundary env var so not listed here — noted in audit for completeness.
 
 **Status:** Audit complete

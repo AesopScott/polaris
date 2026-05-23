@@ -62,6 +62,22 @@ Liveness check / keep-alive.
 
 ---
 
+## Zod Schema Coverage (task #37)
+
+All ~50 WebSocket message types that transit the Polaris WS boundary now have corresponding Zod schemas in `src/contracts/ws-messages.ts`. These are **intentional orphan producers** — schemas are defined and exported but not yet wired into runtime validation. Task #38 will import them into `server.js` and `mockup.html` to validate messages at the boundary.
+
+**Schema location:** `src/contracts/ws-messages.ts`
+**Barrel export:** `src/contracts/index.ts`
+**Consumer count:** 0 (until task #38)
+
+Notable exports:
+- `LaunchMessage`, `ResumeMessage`, `StopMessage`, `CloseSessionMessage` — session lifecycle
+- `AnyClientMessage` — discriminated union over all ~50 types (replaces `AnyClientMessage` interface in `src/runtime/contracts.ts` when task #38 wires it)
+
+**⚠ Divergence risk:** `AnyClientMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union.
+
+---
+
 ## Summary
 
 | Type | Direction | Status |
@@ -78,9 +94,9 @@ Liveness check / keep-alive.
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #41)
+**Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #42)
 
-**Task:** #41 — Capability policy schema + session wiring
+**Tasks audited:** #41 — Capability policy schema + session wiring; #42 — Command class registry for shell safety
 
 **Boundaries checked:** WebSocket `type` message types between client (resources/mockup.html) and server (server.js)
 
@@ -89,8 +105,26 @@ Liveness check / keep-alive.
 - 4 entries with gaps (orphan server handlers) ⚠ (pre-existing, unchanged)
 - 0 entries with shape mismatches
 - New identifiers introduced on task #41: `ui-client-hello` (client→server, client ID handshake), `ui-client-ack` (server→client, handshake response) — both balanced ✓
+- New identifiers introduced on task #42: none (pure internal refactor — no WS messages added or removed)
 - Registries match current code diff: yes
 
 **Gaps identified:** 4 pre-existing orphan handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged since task #25.
 
 **Status:** Audit complete
+
+---
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #37)
+
+**Task:** #37 — Contracts foundation: Zod schemas in src/contracts/
+
+**Boundaries checked:** WebSocket message type coverage against new Zod schemas in `src/contracts/ws-messages.ts`
+
+**Evidence recorded:**
+- ~50 WebSocket message types now have Zod schemas — all intentional orphan producers (no consumers until task #38)
+- `AnyClientMessage` discriminated union exported from `src/contracts/ws-messages.ts`
+- Divergence risk: `AnyClientMessage` also defined at `src/runtime/contracts.ts:611` — separately maintained
+
+**Gaps identified:** Two-way `AnyClientMessage` divergence (Zod discriminated union vs TypeScript interface union) — pre-existing pattern, task #38 consolidation opportunity. No new broken pairs introduced.
+
+**Status:** Audit complete — registries valid for task #37 scope.
