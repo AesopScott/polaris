@@ -6286,10 +6286,11 @@
       return col;
     });
     const colHeights = [0, 0, 0];
+    let cardIndex = 0;
     normalCards.forEach(s => {
       let idx = s.column;
       if (idx == null || idx < 0 || idx >= cols.length) {
-        idx = colHeights.indexOf(Math.min(...colHeights));
+        idx = cardIndex % 3;
         s.column = idx;
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
@@ -6298,6 +6299,7 @@
       if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
       cols[idx].appendChild(card);
       colHeights[idx] += (s.minimized || hiddenCards.has(s.id) || projectMismatch) ? 1 : (parseInt(s.height) || 260) + 12;
+      cardIndex++;
     });
     grid.appendChild(colsRow);
 
@@ -6505,7 +6507,8 @@
 
     const taskStateSpan = el.querySelector('[data-task-state]');
     if (taskStateSpan && s.taskNumber && s.taskState) {
-      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState));
+      taskStateSpan.dataset.taskClickBound = '1';
+      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState, s.projectName || 'global'));
     }
 
     const term = el.querySelector('[data-term]');
@@ -6908,6 +6911,11 @@
       if (s.lastSkill) text += ' /' + s.lastSkill;
       el.textContent = text;
       el.style.display = '';
+      el.style.cursor = s.taskState ? 'pointer' : 'default';
+      if (s.taskState && !el.dataset.taskClickBound) {
+        el.dataset.taskClickBound = '1';
+        el.addEventListener('click', () => showSessionTaskStatePicker(el, s.id, s.taskNumber, s.taskState, s.projectName || 'global'));
+      }
     } else {
       el.style.display = 'none';
     }
@@ -9846,12 +9854,25 @@ This is your current workflow status across all branches. Review the tasks and P
   function showBacklogError(msg) {
     const editModal = document.getElementById('backlog-edit-modal');
     const addModal = document.getElementById('backlog-add-modal');
-    const err = editModal && editModal.style.display !== 'none'
-      ? document.getElementById('backlog-edit-error')
-      : addModal && addModal.style.display !== 'none'
-        ? document.getElementById('backlog-add-error')
+    const inModal = (editModal && editModal.style.display !== 'none') || (addModal && addModal.style.display !== 'none');
+    if (inModal) {
+      const err = editModal && editModal.style.display !== 'none'
+        ? document.getElementById('backlog-edit-error')
         : document.getElementById('backlog-add-error');
-    if (err) { err.style.display = 'block'; err.textContent = msg; setTimeout(() => { err.style.display = 'none'; }, 5000); }
+      if (err) { err.style.display = 'block'; err.textContent = msg; setTimeout(() => { err.style.display = 'none'; }, 5000); }
+    } else {
+      let toast = document.getElementById('backlog-error-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'backlog-error-toast';
+        toast.style.cssText = 'position:fixed;bottom:16px;right:16px;background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b;border-radius:6px;padding:8px 14px;font-size:11px;font-weight:600;z-index:99999;max-width:340px;box-shadow:0 4px 16px rgba(0,0,0,0.5);';
+        document.body.appendChild(toast);
+      }
+      toast.textContent = 'Backlog error: ' + msg;
+      toast.style.display = 'block';
+      clearTimeout(toast._hideTimer);
+      toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, 5000);
+    }
     console.error('[backlog]', msg);
   }
 
@@ -11394,9 +11415,9 @@ This is your current workflow status across all branches. Review the tasks and P
   window.fireDomainScout        = fireDomainScout;
   window.clearDomainScout       = clearDomainScout;
 
-  const STATUS_CYCLE = ['done', 'test', 'waiting', 'broken', 'error'];
-  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', broken: 'status-broken' };
-  const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test' };
+  const STATUS_CYCLE = ['done', 'test', 'waiting', 'hold', 'broken', 'error'];
+  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken' };
+  const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold' };
   function cycleSessionStatus(sessionId) {
     const grid = getActiveGrid();
     if (!grid) return;
