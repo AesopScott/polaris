@@ -5599,6 +5599,7 @@ function loadSessionMessages(sessionId) {
 async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMessage = true, continuationContext = null) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  const runId = beginSessionRun(session);
   const config = readConfig();
   if (!config.openRouterApiKey) {
     broadcast({ type: 'line', sessionId, text: 'No OpenRouter API key configured. Add one in Settings.', role: 'error' });
@@ -5745,7 +5746,6 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   session.status = 'running';
   session.startAt = session.startAt || Date.now();
   if (!session.resolvedModel) session.resolvedModel = model;
-  session.aborted = false;
 
   const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
   const startMs = Date.now();
@@ -5830,6 +5830,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     const _promptK = (systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000;
     broadcast({ type: 'line', sessionId, text: _promptK >= 1 ? `(${_promptK.toFixed(1)}k)` : '(under 1k)', role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
+    if (!isSessionRunCurrent(sessionId, runId)) return;
 
     if (result.error) {
       if (session.aborted) return; // kicked externally — status already set
@@ -5915,6 +5916,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       let toolResult;
       try { toolResult = await executeDirectTool(tc.name, toolInput, workDir, sessionId); }
       catch (err) { toolResult = `Error: ${err.message}`; dlog('TOOL_ERR', err.message); }
+      if (!isSessionRunCurrent(sessionId, runId)) return;
       const resultStr = String(toolResult).slice(0, 50000);
       dlog('TOOL_RESULT', resultStr.slice(0, 200));
       broadcast({ type: 'line', sessionId, text: `  ↳ ${resultStr.slice(0, 400)}${resultStr.length > 400 ? '…' : ''}`, role: 'tool' });
@@ -5935,6 +5937,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       broadcast({ type: 'line', sessionId, text: '⚙ Requesting final answer...', role: 'tool' });
       session.messages.push({ role: 'user', content: 'Please provide your final answer based on everything you have done so far.' });
       const contResult = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
+      if (!isSessionRunCurrent(sessionId, runId)) return;
       if (!contResult.error && contResult.textAccum) {
         session.messages.push({ role: 'assistant', content: contResult.textAccum });
       } else {
@@ -6271,6 +6274,7 @@ function isCodexToolRouterFailure(text) {
 async function spawnMaxChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  const runId = beginSessionRun(session);
 
   const startMs = Date.now();
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
@@ -6556,7 +6560,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
 
   proc.on('close', async code => {
     if (watchdogKilled) return;
-    if (session.aborted) return;
+    if (!isSessionRunCurrent(sessionId, runId) || session.proc !== proc) return;
     if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     dlog('CLOSE', `code=${code} events=${eventCount} bytes=${totalOutBytes}`);
     if (rateInterval) clearInterval(rateInterval);
@@ -6613,6 +6617,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   });
 
   proc.on('error', err => {
+    if (!isSessionRunCurrent(sessionId, runId) || session.proc !== proc) return;
     if (startupWatchdog) { clearTimeout(startupWatchdog); startupWatchdog = null; }
     dlog('ERROR', err.code === 'ENOENT' ? 'CLI_NOT_FOUND (claude binary missing on PATH)' : `${err.code || ''} ${err.message}`);
     if (err.code === 'ENOENT') {
@@ -6695,6 +6700,7 @@ function buildCodexConfigToml(mcpServers) {
 async function spawnCodexSession(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  const runId = beginSessionRun(session);
 
   const startMs = Date.now();
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
@@ -6905,7 +6911,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   });
 
   proc.on('close', async code => {
-    if (session.aborted) return;
+    if (!isSessionRunCurrent(sessionId, runId) || session.proc !== proc) return;
     dlog('CLOSE', `code=${code} events=${eventCount}`);
     if (rateInterval) clearInterval(rateInterval);
     const firstTokenElapsed = firstTokenMs ? (Date.now() - firstTokenMs) / 1000 : null;
@@ -6962,6 +6968,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   });
 
   proc.on('error', err => {
+    if (!isSessionRunCurrent(sessionId, runId) || session.proc !== proc) return;
     dlog('ERROR', err.code === 'ENOENT' ? 'CLI_NOT_FOUND' : `${err.code || ''} ${err.message}`);
     if (err.code === 'ENOENT') {
       broadcast({ type: 'line', sessionId, role: 'error', text: `Codex CLI not found. Install via: npm install -g @openai/codex` });
@@ -7169,6 +7176,7 @@ async function gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCo
 async function spawnGptChat(sessionId, prompt, tier) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  const runId = beginSessionRun(session);
 
   const tierKey = (tier || 'balanced').toLowerCase();
   const model = GPT_TIER_MODELS[tierKey] || GPT_TIER_MODELS.balanced;
@@ -7256,6 +7264,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
     broadcast({ type: 'line', sessionId, text: '[gpt] message sent', role: 'system' });
 
     const result = await gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount: currentMsgCount });
+    if (!isSessionRunCurrent(sessionId, runId)) return;
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
     dlog('DONE', `elapsed=${elapsed}s | total_chars=${result.text.length} | tps=${result.finalTps}`);
     broadcast({ type: 'line', sessionId, text: `[gpt] done | ${elapsed}s | ${result.text.length} chars`, role: 'system' });
@@ -7264,6 +7273,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
     broadcast({ type: 'session-status', sessionId, status: 'done' });
 
   } catch (err) {
+    if (!isSessionRunCurrent(sessionId, runId)) return;
     dlog('ERROR', err.message);
     broadcast({ type: 'line', sessionId, text: `ChatGPT error: ${err.message}`, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -7271,13 +7281,14 @@ async function spawnGptChat(sessionId, prompt, tier) {
     session.endAt = Date.now();
   } finally {
     try { cdpConn?.ws?.close(); } catch {}
-    drainPendingTurns(sessionId);
+    if (isSessionRunCurrent(sessionId, runId)) drainPendingTurns(sessionId);
   }
 }
 
 function spawnChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  const runId = beginSessionRun(session);
 
   if (!config.openRouterApiKey) {
     broadcast({ type: 'line', sessionId, text: 'No OpenRouter API key configured. Add one in Settings.', role: 'error' });
@@ -7317,6 +7328,7 @@ function spawnChat(sessionId, prompt, config) {
       let errBody = '';
       res.on('data', c => errBody += c.toString());
       res.on('end', () => {
+        if (!isSessionRunCurrent(sessionId, runId) || session.req !== req) return;
         let msg = `OpenRouter error ${res.statusCode}`;
         try { const j = JSON.parse(errBody); msg += ': ' + (j.error?.message || j.error || errBody); } catch { msg += ': ' + errBody.slice(0, 200); }
         broadcast({ type: 'line', sessionId, text: msg, role: 'error' });
@@ -7347,6 +7359,7 @@ function spawnChat(sessionId, prompt, config) {
       }
     });
     res.on('end', () => {
+      if (!isSessionRunCurrent(sessionId, runId) || session.req !== req) return;
       const rem = (session.chatBuffer || '').trim();
       if (rem) { accText += rem; broadcast({ type: 'line', sessionId, text: rem, role: 'assistant' }); }
       session.chatBuffer = '';
@@ -7359,6 +7372,7 @@ function spawnChat(sessionId, prompt, config) {
   });
 
   req.on('error', err => {
+    if (!isSessionRunCurrent(sessionId, runId) || session.req !== req) return;
     if (err.code === 'ECONNRESET' || err.message === 'socket hang up') return;
     broadcast({ type: 'line', sessionId, text: `Chat error: ${err.message}`, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -8824,6 +8838,24 @@ function broadcastInitialUserPrompt(sessionId, prompt, displayPrompt) {
   broadcast({ type: 'line', sessionId, role: 'user', text });
 }
 
+function beginSessionRun(session) {
+  if (session.timeout) {
+    clearTimeout(session.timeout);
+    session.timeout = null;
+  }
+  session.activeRunId = (session.activeRunId || 0) + 1;
+  session.aborted = false;
+  session.endAt = null;
+  session.proc = null;
+  session.req = null;
+  return session.activeRunId;
+}
+
+function isSessionRunCurrent(sessionId, runId) {
+  const session = sessions.get(sessionId);
+  return !!session && session.activeRunId === runId && !session.aborted;
+}
+
 // ─── Resume turn dispatch + queue drain ──────────────────────────────────────
 // executeResumeTurn — runs the post-guard portion of the resume handler for a
 // single turn (whether it just arrived from the WS handler or was popped from
@@ -8835,6 +8867,10 @@ function executeResumeTurn(sessionId, turn) {
   const session = sessions.get(sessionId);
   if (!session) return;
   const { prompt, displayPrompt, projectName, images, docs, audio, videos } = turn;
+  session.aborted = false;
+  session.endAt = null;
+  session.proc = null;
+  session.req = null;
   session.status = 'running';
   session.lastActivityAt = Date.now();
   session.stallCount = 0;
@@ -9219,6 +9255,7 @@ async function handleMessage(ws, raw) {
     const session = sessions.get(msg.sessionId);
     if (session) {
       // Abort direct-API agent loop
+      session.activeRunId = (session.activeRunId || 0) + 1;
       session.aborted = true;
       // Kill legacy CLI proc if present
       if (session.proc && !session.proc.killed) {
