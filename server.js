@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE TOPOLOGY — server.js is the orchestrator; do NOT import from it.
@@ -1336,12 +1336,12 @@ async function startLiveServer(projectDir) {
         });
         const base = urlPath.replace(/\/$/, '');
         const rows = entries.map(e => {
-          const icon = e.isDirectory() ? 'ðŸ"' : 'ðŸ"„';
+          const icon = e.isDirectory() ? '📁' : '📄';
           const slash = e.isDirectory() ? '/' : '';
           return `<li style="padding:4px 0;font-family:Consolas,monospace;font-size:13px;"><a href="${base}/${encodeURIComponent(e.name)}${slash}" style="color:#60a5fa;text-decoration:none;">${icon} ${e.name}${slash}</a></li>`;
         }).join('');
         res.setHeader('Content-Type', 'text/html');
-        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>ðŸ"‚ ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
+        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>📂 ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
       }
       serveFile(fullPath, res);
     } catch (e) {
@@ -2146,7 +2146,7 @@ function generateSessionName(prompt) {
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
 
-const MAX_AGENT_MESSAGES = 40; // 20 turns Ã— user+assistant
+const MAX_AGENT_MESSAGES = 40; // 20 turns × user+assistant
 
 const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'Read', description: 'Read a file. Returns content with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer', description: 'Start line (1-based)' }, limit: { type: 'integer', description: 'Max lines to read' } }, required: ['file_path'] } } },
