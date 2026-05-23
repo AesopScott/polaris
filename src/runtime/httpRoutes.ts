@@ -19,6 +19,7 @@
  */
 
 import { IncomingMessage, ServerResponse } from 'http';
+import { ORCHESTRATION_QUIET_MODE } from './featureFlags';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -270,7 +271,7 @@ export function initHttpRoutes(handlers: HttpRouteHandlers): (req: IncomingMessa
     POST(HTTP_ROUTES.SET_PROJECT,            handlers.setProject),
     POST(HTTP_ROUTES.SET_FOCUSED_PROJECT,    handlers.setFocusedProject),
     POST(HTTP_ROUTES.API_LAUNCH_ROUTINE,     handlers.launchRoutine),
-    POST(HTTP_ROUTES.DISPATCH_AGENT,         handlers.dispatchAgent),
+    ...(!ORCHESTRATION_QUIET_MODE ? [POST(HTTP_ROUTES.DISPATCH_AGENT, handlers.dispatchAgent)] : []),
     // Root last — catches / after all prefixed routes
     GET(HTTP_ROUTES.ROOT, handlers.serveRoot),
   ];

@@ -764,6 +764,7 @@ function watchGlobalFiles() {
 const sessions = new Map();   // sessionId → session object
 const forkMap  = new Map();   // primarySessionId → forkSessionId
 let   wss      = null;
+const ORCHESTRATION_QUIET_MODE = process.env.POLARIS_ORCHESTRATION_QUIET_MODE !== '0';
 let healthSnapshotCache = null;
 let healthSnapshotCacheAt = 0;
 let healthSnapshotInFlight = false;
@@ -2371,12 +2372,16 @@ function buildPolarisContextBlock(config, session) {
     '  - To manually pause the session, call mcp__polaris__SetStatus with status "hold".',
     '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
     'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
-    '',
-    'Ship-task progress: when running /ship-task, call mcp__polaris__SetTaskState at the start of each step to update the UI.',
-    '  - Arguments: taskNumber (int), taskState (string), lastSkill (string).',
-    '  - States to use: planning, start-build, coding, audit, build-finished, in-review.',
-    '  - Example: SetTaskState({ taskNumber: 1, taskState: "build-finished", lastSkill: "finish-build" })',
   );
+  if (!ORCHESTRATION_QUIET_MODE) {
+    lines.push(
+      '',
+      'Ship-task progress: when running /ship-task, call mcp__polaris__SetTaskState at the start of each step to update the UI.',
+      '  - Arguments: taskNumber (int), taskState (string), lastSkill (string).',
+      '  - States to use: planning, start-build, coding, audit, build-finished, in-review.',
+      '  - Example: SetTaskState({ taskNumber: 1, taskState: "build-finished", lastSkill: "finish-build" })',
+    );
+  }
 
   lines.push(
     '',
@@ -3555,6 +3560,7 @@ function toolSetStatus({ status } = {}, sessionId) {
 }
 
 function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) {
+  if (ORCHESTRATION_QUIET_MODE) return 'Task orchestration quiet mode is enabled; task state was not changed.';
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
   if (taskNumber !== undefined) session.taskNumber = taskNumber;
@@ -7709,11 +7715,11 @@ const httpServer = http.createServer((req, res) => {
             description: 'Set the session card status in the Polaris UI. Use "test" after delivering work, "waiting" when expecting user input, "done" when complete.',
             inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'] }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['status', 'polaris_session_id'] },
           },
-          {
+          ...(!ORCHESTRATION_QUIET_MODE ? [{
             name: 'SetTaskState',
             description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step.',
             inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number.' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
-          },
+          }] : []),
           {
             name: 'QueryMemory',
             description: 'Query the project knowledge base loaded from Obsidian. Omit filename to get all project context.',
@@ -7769,7 +7775,7 @@ const httpServer = http.createServer((req, res) => {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [
           { name: 'SetProject', description: `Set the active project for this session. Known projects: ${projectNames || '(none configured)'}.`, inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name, or omit for no project (scratch).' } }, required: [] } },
           { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
-          { name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } },
+          ...(!ORCHESTRATION_QUIET_MODE ? [{ name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } }] : []),
           { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Omit filename to get all project context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' } }, required: [] } },
         ]}}));
       }
@@ -7877,6 +7883,11 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/dispatch-agent') {
+    if (ORCHESTRATION_QUIET_MODE) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Task orchestration quiet mode is enabled.' }));
+      return;
+    }
     // Dispatch an agent from a Python LangGraph node.
     // Called by agents/spike/sidecar_spike.py and agents/task_executor.py to invoke
     // UI-selected agents (max, sonnet, haiku, deepseek) and return their text response.
@@ -10144,6 +10155,7 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'set-task-state') {
+    if (ORCHESTRATION_QUIET_MODE) return;
     const session = sessions.get(msg.sessionId);
     if (!session) return;
     if (msg.taskNumber !== undefined) session.taskNumber = msg.taskNumber;

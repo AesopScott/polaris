@@ -21,6 +21,7 @@
  */
 
 import { IncomingMessage } from 'http';
+import { ORCHESTRATION_QUIET_MODE } from './featureFlags';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WEBSOCKET INTERFACE (minimal — avoids @types/ws dependency)
@@ -168,6 +169,7 @@ export function buildWsDispatcher(
     }
 
     try {
+      if (type === 'set-task-state' && ORCHESTRATION_QUIET_MODE) return;
       await handler(ws, data, clients);
     } catch (err: any) {
       console.error(`[ws] handler for "${type}" threw:`, err?.message ?? err);

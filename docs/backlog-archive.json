@@ -765,6 +765,92 @@
       "project_source": "Polaris",
       "promoted_via_pr": "32",
       "promoted_at": "2026-05-22T22:32:42.676Z"
+    },
+    {
+      "number": 27,
+      "title": "Create a single source of truth for tool and message contracts",
+      "description": "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
+      "category": "feature",
+      "priority": 92,
+      "impact": "major",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [],
+      "plan": "## Overview\n\nTask #27 decomposes the contract-definition work into four independently shippable subtasks.\n\n## Recommendation\n\nUse Zod in src/contracts/ as the single source of truth. TypeScript is already configured (tsconfig.json exists, TypeScript in devDeps). Zod provides runtime validation and TypeScript type inference from one definition. The existing hand-written markdown registries in docs/registries/ become generated artifacts.\n\n## Decomposition\n\n### Subtask #37 — Contracts foundation\nAdd Zod dependency, create src/contracts/ with four modules (ws-messages.ts, backlog.ts, tools.ts, mcp.ts), verify TypeScript compilation.\n\n### Subtask #38 — Runtime validation wiring\nCompile contracts and replace hand-rolled validation in server.js with Zod validators at the backlog and WebSocket message boundaries.\n\n### Subtask #39 — Registry generation script\nWrite scripts/generate-registries.js that imports compiled contracts and regenerates docs/registries/*.md from the schema definitions.\n\n### Subtask #40 — Contract test suite\nWrite test/contracts/ test files validating real payload samples against each schema.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Subtasks #37-40 created in backlog.json",
+          "expectedBehavior": "Tasks #37, #38, #39, #40 exist in docs/backlog.json with status backlog and correct titles.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const b=require('./docs/backlog.json'); [37,38,39,40].forEach(n=>{const t=b.tasks.find(t=>t.number===n); console.log(n,t?t.title:'MISSING')});\"",
+          "expectedInitialFailure": "Tasks 37-40 do not exist in backlog.json.",
+          "expectedPassingEvidence": "All four task numbers print their titles without MISSING.",
+          "waiverGuidance": "N/A"
+        }
+      ],
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 29,
+      "title": "Replace regex-heavy tool safety with capability policies",
+      "description": "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
+      "category": "security",
+      "priority": 92,
+      "impact": "major",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-23",
+      "dependencies": [],
+      "branch": null,
+      "pr_url": null,
+      "plan": "## Overview\n\nReplace scattered regex-based tool safety checks with a unified CapabilityPolicy system. Each agent session gets a frozen policy object at launch. Tool execution evaluates the policy before running any command or write. Privileged actions emit structured audit events to a JSONL file and the UI.\n\n## Phases\n\n1. Policy schema + session wiring — CapabilityPolicy type, buildDefaultPolicy() factory, session attachment\n2. Command class registry — replace SHELL_HARD_BLOCKED regex array with named class registry + structural detection\n3. evaluatePolicy unified enforcer — single function replacing assertWritable + assertSafeCommand + detectInstallerExe\n4. Audit emission — append events to audit.jsonl, emit tool-audit WebSocket message for blocks and grants\n5. Wire into tool execution — replace call sites in toolBash, toolPowerShell, toolWrite, toolEdit; consolidate duplicate shell precheck\n6. Unit test suite — one test per command class, write boundary check, and installer gate\n\n## Subtasks\n\nTask #41: Capability policy schema + session wiring\nTask #42: Command class registry\nTask #43: evaluatePolicy unified enforcer\nTask #44: Audit JSONL + WebSocket event\nTask #45: Wire policy into tool execution\nTask #46: Policy unit test suite",
+      "proofUnits": [],
+      "objective": {
+        "statement": "Replace scattered regex checks in tool execution with a unified CapabilityPolicy system — per-session policy objects, named command class registry, single evaluatePolicy enforcer, and structured audit events — so privileged actions are consistently gated and traceable.",
+        "successCriteria": [
+          "CapabilityPolicy type defined and attached to every session object at launch via buildDefaultPolicy()",
+          "COMMAND_CLASS_REGISTRY replaces SHELL_HARD_BLOCKED regex array with named, structurally-detected command classes",
+          "evaluatePolicy(action, context, policy) replaces assertWritable + assertSafeCommand + detectInstallerExe at all call sites",
+          "Audit events appended to audit.jsonl and emitted as tool-audit WebSocket message for every block and grant",
+          "toolBash, toolPowerShell, toolWrite, toolEdit all route through evaluatePolicy — no residual raw regex checks",
+          "Unit tests cover all command classes, write boundary checks, and installer gate"
+        ],
+        "nonGoals": [
+          "UI panel for browsing audit log",
+          "Network permission enforcement (field exists in schema, enforcement deferred)",
+          "MCP tool sandboxing",
+          "Per-project policy config file",
+          "Changes to Cross-Check approval flow"
+        ],
+        "proofMap": {
+          "Policy schema + session wiring": [
+            41
+          ],
+          "Command class registry": [
+            42
+          ],
+          "evaluatePolicy enforcer": [
+            43
+          ],
+          "Audit emission": [
+            44
+          ],
+          "Tool execution wiring": [
+            45
+          ],
+          "Unit tests": [
+            46
+          ]
+        },
+        "stopConditions": [
+          "src/runtime/toolRuntime.ts is already wired and tool execution no longer lives in server.js — confirm actual call sites before editing"
+        ]
+      },
+      "project_source": "Polaris",
+      "promoted_via_pr": null
     }
   ]
 }

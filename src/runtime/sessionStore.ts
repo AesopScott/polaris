@@ -14,6 +14,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { ORCHESTRATION_QUIET_MODE } from './featureFlags';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PATHS (injected at init; defaults mirror server.js constants)
@@ -136,6 +137,7 @@ export function inferTaskState(session: Pick<SessionRecord, 'name' | 'workDir'>)
   taskState: string;
   lastSkill: string | null;
 } | null {
+  if (ORCHESTRATION_QUIET_MODE) return null;
   const match = (session.name || '').match(/^Task #(\d+):/);
   if (!match) return null;
   const taskNumber = parseInt(match[1], 10);
@@ -210,7 +212,7 @@ export function loadPersistedSessions(): void {
         proc: null, watcher: null, timeout: null,
         lines: s.lines || [],
       };
-      if (!loaded.taskNumber) {
+      if (!ORCHESTRATION_QUIET_MODE && !loaded.taskNumber) {
         const inferred = inferTaskState(loaded);
         if (inferred) {
           loaded.taskNumber = inferred.taskNumber;

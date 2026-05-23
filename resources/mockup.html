@@ -2191,6 +2191,8 @@
   <div id="backlog-status-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:170px;"></div>
   <!-- Backlog Impact Picker (popover anchored under a clicked impact cell) -->
   <div id="backlog-impact-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:120px;"></div>
+  <!-- Session Task State Picker (popover anchored under clicked task state) -->
+  <div id="session-task-state-picker" style="display:none;position:fixed;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;z-index:10002;box-shadow:0 8px 24px rgba(0,0,0,0.5);flex-direction:column;gap:2px;min-width:180px;"></div>
 
   <div id="backlog-add-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;align-items:center;justify-content:center;">
     <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:24px;width:560px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
@@ -4232,6 +4234,7 @@
 
   let ws = null;
   let wsReconnectTimer = null;
+  const ORCHESTRATION_QUIET_MODE = true;
   const sessionStore = {};   // id → { id, name, workDir, projectName, status, startAt, lines, lastPrompt, resumeId, usage }
   let promptHistoryStore = [];
   let phIdx = -1;
@@ -4875,9 +4878,11 @@
         if (s) {
           s.status = msg.status;
           let taskChanged = false;
-          if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
-          if (msg.taskState  !== undefined) { s.taskState  = msg.taskState;  taskChanged = true; }
-          if (msg.lastSkill  !== undefined) { s.lastSkill  = msg.lastSkill;  taskChanged = true; }
+          if (!ORCHESTRATION_QUIET_MODE) {
+            if (msg.taskNumber !== undefined) { s.taskNumber = msg.taskNumber; taskChanged = true; }
+            if (msg.taskState  !== undefined) { s.taskState  = msg.taskState;  taskChanged = true; }
+            if (msg.lastSkill  !== undefined) { s.lastSkill  = msg.lastSkill;  taskChanged = true; }
+          }
           updateCardStatus(msg.sessionId, msg.status);
           if (taskChanged) updateCardTaskState(msg.sessionId);
         }
@@ -6196,7 +6201,6 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
-    if (focusedProject) pushDebugLog(`[focus-dbg] renderGrid — focusedProject="${focusedProject}" sessionCount=${sessionOrder.length}`, true);
     grid.innerHTML = '';
     const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
@@ -6319,7 +6323,7 @@
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-start;">
             <span class="status-badge ${statusClass}" title="Click to change status">${statusLabel}</span>
-            <span data-task-state style="font-size:9px;color:var(--text-muted,#94a3b8);letter-spacing:0.03em;white-space:nowrap;${s.taskNumber ? '' : 'display:none;'}">${s.taskNumber ? '#' + s.taskNumber + (s.taskState ? ' \xB7 ' + escHtml(s.taskState) : '') + (s.lastSkill ? ' /' + escHtml(s.lastSkill) : '') : ''}</span>
+            <span data-task-state style="font-size:9px;color:var(--text-muted,#94a3b8);letter-spacing:0.03em;white-space:nowrap;cursor:${s.taskState ? 'pointer' : 'default'};${s.taskNumber ? '' : 'display:none;'}">${s.taskNumber ? '#' + s.taskNumber + (s.taskState ? ' \xB7 ' + escHtml(s.taskState) : '') + (s.lastSkill ? ' /' + escHtml(s.lastSkill) : '') : ''}</span>
           </div>
           <span class="stall-badge" data-stall-badge></span>
           <div class="card-btns">
@@ -6413,6 +6417,11 @@
       <div class="card-resize-handle" data-resize></div>`;
 
     el.querySelector('.status-badge').addEventListener('click', () => cycleSessionStatus(s.id));
+
+    const taskStateSpan = el.querySelector('[data-task-state]');
+    if (taskStateSpan && s.taskNumber && s.taskState) {
+      taskStateSpan.addEventListener('click', () => showSessionTaskStatePicker(taskStateSpan, s.id, s.taskNumber, s.taskState));
+    }
 
     const term = el.querySelector('[data-term]');
     mergeConsecutiveAssistantLines(s.lines).forEach(l => term.appendChild(makeLineEl(l, s.id)));
@@ -9798,6 +9807,7 @@ This is your current workflow status across all branches. Review the tasks and P
   };
 
   function applyBacklogTaskStates() {
+    if (ORCHESTRATION_QUIET_MODE) return;
     Object.values(sessionStore).forEach(s => {
       if (s.taskNumber && s.taskState) return; // already set
       const match = (s.name || '').match(/^Task #(\d+):/);
@@ -9823,7 +9833,7 @@ This is your current workflow status across all branches. Review the tasks and P
 
   function renderBacklog(data) {
     _backlogData = data;
-    applyBacklogTaskStates();
+    if (!ORCHESTRATION_QUIET_MODE) applyBacklogTaskStates();
     const body  = document.getElementById('backlog-panel-body');
     const count = document.getElementById('backlog-panel-count');
     if (!body) return;
@@ -10099,7 +10109,9 @@ This is your current workflow status across all branches. Review the tasks and P
       prompt += '**Depends on:** ' + task.dependencies.map(d => '#' + d).join(', ') + '\n\n';
     }
     prompt += '**Status:** ' + (task.status || 'backlog') + ' · **Priority:** ' + (task.priority || '?');
-    prompt += '\n\nWhen complete, run `/ship-task ' + taskNumber + '`.';
+    if (!ORCHESTRATION_QUIET_MODE) {
+      prompt += '\n\nWhen complete, run `/ship-task ' + taskNumber + '`.';
+    }
     _pendingTaskLaunch = {
       prompt: prompt,
       displayPrompt: prompt,
@@ -10126,9 +10138,11 @@ This is your current workflow status across all branches. Review the tasks and P
       workDir: workDir,
       projectName: projectName,
       tier: tier,
-      taskNumber: taskNumber,
-      taskTitle: taskTitle,
     };
+    if (!ORCHESTRATION_QUIET_MODE) {
+      msg.taskNumber = taskNumber;
+      msg.taskTitle = taskTitle;
+    }
     switch (sessionType) {
       case 'max':
         msg.type = 'launch-chat';
@@ -10373,6 +10387,48 @@ This is your current workflow status across all branches. Review the tasks and P
     if (e.target.closest('#backlog-impact-picker')) return;
     if (e.target.classList && e.target.classList.contains('backlog-impact-cell')) return;
     hideImpactPicker();
+  });
+
+  // Session Task State Picker
+  function showSessionTaskStatePicker(spanEl, sessionId, taskNumber, currentTaskState) {
+    const picker = document.getElementById('session-task-state-picker');
+    if (!picker) return;
+    const rect = spanEl.getBoundingClientRect();
+    const pickerHeight = 450;
+    let top = rect.bottom + 4;
+    if (top + pickerHeight > window.innerHeight) top = Math.max(8, rect.top - pickerHeight - 4);
+    picker.style.left = Math.max(8, Math.min(window.innerWidth - 200, rect.left)) + 'px';
+    picker.style.top = top + 'px';
+    picker.innerHTML = BACKLOG_STATUS_OPTIONS.map(s => {
+      const style = BACKLOG_STATUS_COLORS[s] || BACKLOG_STATUS_COLORS['backlog'];
+      const selectedRing = s === currentTaskState ? 'box-shadow:inset 0 0 0 1px var(--accent);' : '';
+      return '<button data-task-state="' + s + '" style="text-align:left;padding:5px 12px;border:none;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + style + selectedRing + '">' + s + '</button>';
+    }).join('');
+    picker.style.display = 'flex';
+    picker.dataset.sessionId = sessionId;
+    picker.dataset.taskNumber = String(taskNumber);
+    picker.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const newTaskState = btn.dataset.taskState;
+        wsSend({ type: 'set-task-state', sessionId: sessionId, taskNumber: taskNumber, taskState: newTaskState });
+        hideSessionTaskStatePicker();
+      });
+    });
+  }
+
+  function hideSessionTaskStatePicker() {
+    const picker = document.getElementById('session-task-state-picker');
+    if (picker) picker.style.display = 'none';
+  }
+
+  // Hide task state picker on outside click
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('session-task-state-picker');
+    if (!picker || picker.style.display === 'none') return;
+    if (e.target.closest('#session-task-state-picker')) return;
+    if (e.target.closest('[data-task-state]')) return;
+    hideSessionTaskStatePicker();
   });
 
   window.openBacklogPanel       = openBacklogPanel;
@@ -15231,8 +15287,7 @@ This is your current workflow status across all branches. Review the tasks and P
     wireUI();
     startTimers();
     wsConnect();
-    runHealthCheck(true);
-    setInterval(() => runHealthCheck(false), 10000);
+    renderHealthIndicator();
   });
 
 })();

@@ -15,6 +15,8 @@
  * Topology: contracts ← sessionStore ← toolRuntime ← agentRuntime, WebSocket adapter
  */
 
+import { ORCHESTRATION_QUIET_MODE } from './featureFlags';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NATIVE TOOL NAMES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +234,10 @@ export async function executeDirectTool(
   workDir: string | null,
   sessionId: string
 ): Promise<string> {
+  if (ORCHESTRATION_QUIET_MODE && name === 'SetTaskState') {
+    return 'Task orchestration quiet mode is enabled; task state was not changed.';
+  }
+
   // MCP tool — delegate to gateway
   if (name.startsWith('mcp__')) {
     if (!_mcpDispatch) return '[toolRuntime] MCP dispatch not initialized';
