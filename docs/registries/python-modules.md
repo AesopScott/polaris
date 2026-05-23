@@ -96,32 +96,32 @@ def build_graph() -> StateGraph:
 
 Precondition validator for state machine transitions. Returns `(ok: bool, failures: List[str])`.
 
-**Schema / shape (planned):**
+**Schema / shape:**
 ```python
 def validate_transition(
     from_status: str,
     to_status: str,
-    state: TaskState
-) -> tuple[bool, List[str]]:
+    state: Dict[str, Any],
+) -> Tuple[bool, List[str]]:
     ...
 ```
 
 **Producers (define)**
-- `agents/transitions.py` — ⚠ **FILE DOES NOT EXIST** (task #26, Phase 2 build target)
+- `agents/transitions.py:11` — function definition
 
 **Consumers (call)**
-- `agents/task_executor.py` — planned: called inside `advance_graph()` before any node execution (task #26, Phase 2)
-- `agents/task_graph.py` — planned: node guard in `finish_build_node` (task #26, Phase 4)
+- `agents/task_executor.py:29` — `from transitions import validate_transition` — import
+- `agents/task_executor.py` — called inside `advance_graph()` after `graph.invoke()` to validate the transition that just occurred (task #26)
 
-**Status:** ⚠ planned (task #26, Phase 2) — file not yet created
+**Status:** ✓ Implemented (task #26)
 
 ---
 
 ## `backlog_sync.sync_status`
 
-Writes canonical task status to backlog.json via POST /sync-state on Polaris server. Called after every node transition.
+Writes canonical task status to backlog.json via POST /sync-state on Polaris server. Called after every non-HITL node transition.
 
-**Schema / shape (planned):**
+**Schema / shape:**
 ```python
 def sync_status(task_number: int, status: str, current_node: str) -> None:
     # POST http://localhost:PORT/sync-state
@@ -129,12 +129,13 @@ def sync_status(task_number: int, status: str, current_node: str) -> None:
 ```
 
 **Producers (define)**
-- `agents/backlog_sync.py` — ⚠ **FILE DOES NOT EXIST** (task #26, Phase 6 build target)
+- `agents/backlog_sync.py:19` — function definition
 
 **Consumers (call)**
-- `agents/task_executor.py` — planned: called inside `advance_graph()` after `save_state()` (task #26, Phase 6)
+- `agents/task_executor.py` — called inside `advance_graph()` after `save_state()` on non-HITL transitions (task #26)
+- `agents/task_executor.py` — called inside `_stall_watchdog()` when stall timeout fires (task #26)
 
-**Status:** ⚠ planned (task #26, Phase 6) — file not yet created
+**Status:** ✓ Implemented (task #26)
 
 ---
 
@@ -145,14 +146,14 @@ def sync_status(task_number: int, status: str, current_node: str) -> None:
 | `state.TaskState` | state.py:13 | task_graph.py:11, task_executor.py:22 | ✓ |
 | `state.TaskStatePydantic` | state.py:26 | task_executor.py:22 | ⚠ orphan producer |
 | `task_graph.build_graph` | task_graph.py:96 | task_executor.py:21,104,133; test_executor.py:103 | ✓ |
-| `transitions.validate_transition` | transitions.py (missing) | task_executor.py, task_graph.py (planned) | ⚠ planned |
-| `backlog_sync.sync_status` | backlog_sync.py (missing) | task_executor.py (planned) | ⚠ planned |
+| `transitions.validate_transition` | transitions.py:11 | task_executor.py (advance_graph post-invoke) | ✓ |
+| `backlog_sync.sync_status` | backlog_sync.py:19 | task_executor.py (advance_graph, _stall_watchdog) | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T20:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-23T03:50:00Z (post-build update by /review-pr for task #26)
 
 **Task:** #26 — Make task orchestration an explicit state machine
 
@@ -160,15 +161,13 @@ def sync_status(task_number: int, status: str, current_node: str) -> None:
 
 **Evidence recorded:**
 - 5 entries documented
-- 2 entries with complete producer/consumer pairs ✓
+- 4 entries with complete producer/consumer pairs ✓
 - 1 pre-existing orphan producer (TaskStatePydantic — imported, unused in handlers)
-- 2 entries planned/pending ⚠ (transitions.py, backlog_sync.py)
+- 0 planned/pending entries
 - 0 shape mismatches between paired producer/consumer
-- New identifiers introduced on task #26: `transitions.validate_transition`, `backlog_sync.sync_status`
-- Registries match current code diff: yes (planned entries marked as such)
+- `transitions.validate_transition` and `backlog_sync.sync_status` shipped in task #26
 
 **Gaps identified:**
-- `TaskStatePydantic` imported but not used as a response_model — pre-existing, low risk
-- `transitions.py` and `backlog_sync.py` are Phase 2 and Phase 6 build targets respectively
+- `TaskStatePydantic` imported but not used as a response_model — pre-existing, low risk (scope: task #27 contracts)
 
-**Status:** Audit complete
+**Status:** ✓ Audit current — all task #26 planned entries implemented

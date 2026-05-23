@@ -19,12 +19,10 @@
       "category": "feature",
       "priority": 90,
       "impact": "minor",
-      "status": "production",
+      "status": "backlog",
       "created_at": "2026-05-21",
-      "completed_at": "2026-05-22",
-      "dependencies": [],
-      "branch": "main",
-      "pr_url": null
+      "completed_at": null,
+      "dependencies": []
     },
     {
       "number": 33,
@@ -69,7 +67,7 @@
       "category": "feature",
       "priority": 95,
       "impact": "major",
-      "status": "cba-complete",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
@@ -134,7 +132,7 @@
           "title": "Proof gate blocks finish_build when proof units unverified",
           "expectedBehavior": "finish_build_node routes to start_build retry when proof_units is non-empty and no matching proof_results exist.",
           "proofType": "smoke-command",
-          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import finish_build_node; state = {'task_number': 77, 'current_node': 'finish_build', 'status': 'build-started', 'branch_name': 'task/77', 'pr_url': None, 'proof_units': [{'number': 1, 'title': 'test'}], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; result = finish_build_node(state); assert result.get('checkpoint_data', {}).get('proof_gate_failures'); print('PASS - routed to:', result['current_node'])\"",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import finish_build_node; state = {'task_number': 77, 'current_node': 'finish_build', 'status': 'build-started', 'branch_name': 'task/77', 'pr_url': None, 'proof_units': [{'number': 1, 'title': 'test'}], 'proof_results': {}, 'human_gate_signal': None, 'retry_count': 0, 'error_log': [], 'review_evidence': {}, 'checkpoint_data': {}}; result = finish_build_node(state); assert result.get('checkpoint_data', {}).get('proof_gate_failed'); print('PASS - routed to:', result['current_node'])\"",
           "expectedInitialFailure": "finish_build_node advances normally regardless of proof status (current stub behavior).",
           "expectedPassingEvidence": "Prints PASS - routed to: start_build.",
           "waiverGuidance": "N/A"
@@ -228,6 +226,18 @@
       }
     },
     {
+      "number": 27,
+      "title": "Create a single source of truth for tool and message contracts",
+      "description": "WebSocket types are documented in docs/registries, but runtime handling is still hand-rolled and can drift from the UI, direct tools, and MCP bridge. Move WebSocket messages, direct tool schemas, backlog task schemas, and MCP tool envelopes into JSON Schema or Zod-style contract definitions. Generate docs, validation, and contract tests from the same source so the agent prompt, MCP endpoint, UI handlers, and registries stay synchronized.",
+      "category": "feature",
+      "priority": 92,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
       "number": 28,
       "title": "Upgrade project memory into ranked retrieval",
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
@@ -240,162 +250,16 @@
       "dependencies": []
     },
     {
-      "number": 41,
-      "title": "Capability policy schema + session wiring",
-      "description": "Define the CapabilityPolicy TypeScript type with fields: allowedRoots (string[]), writeMode ('read-only'|'project-only'|'extended'), networkAllowed (boolean), installerAllowed (boolean), blockedCommandClasses (string[]), trustLevel ('restricted'|'standard'|'elevated'). Add a buildDefaultPolicy(session, config) factory that reads workDir, obsidianVaultPath, and downloadsDir once at session creation and returns a frozen policy object. Attach the policy to the session object at session launch.",
+      "number": 29,
+      "title": "Replace regex-heavy tool safety with capability policies",
+      "description": "Polaris already has thoughtful file, shell, installer, worktree, size, and encoding safeguards, but several critical protections depend on command regexes and scattered checks. Introduce normalized capability policy objects that define allowed roots, write modes, network permissions, installer permission, destructive command classes, and per-session trust levels. Make tool execution evaluate these policies before running commands or writes, and emit structured audit events for privileged actions.",
       "category": "security",
       "priority": 92,
-      "impact": "standard",
-      "status": "build-started",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [],
-      "branch": "task/41-capability-policy-schema-session-wiring",
-      "pr_url": null,
-      "plan": "## Overview\n\nAdd a CapabilityPolicy object to every Polaris agent session. The policy is a frozen JS object created once at session launch. It consolidates the allowed write roots, write mode, network flag, installer flag, blocked command class list, and trust level into a single queryable contract — the foundation that tasks #42, #43, #44, and #45 build on.\n\n## Phases\n\n1. JSDoc typedef — add @typedef CapabilityPolicy block to server.js constants section\n2. buildDefaultPolicy factory — function that reads session.workDir + config once and returns Object.freeze({...})\n3. Session wiring — attach policy in the launch and resume WS handlers\n\n## Key Decisions\n\n- Lives in server.js (no TypeScript modules wired yet; tasks #25/#37 still in backlog)\n- Frozen object prevents mid-session mutation\n- Default writeMode is 'extended' to preserve existing behavior (workDir + Obsidian + Downloads all allowed)\n- Default trustLevel is 'standard'; default installerAllowed is false\n- Edge case: null workDir → allowedRoots=[], trustLevel='restricted'\n- No enforcement in this task — policy exists but is not evaluated yet (that is task #43)",
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "buildDefaultPolicy returns correct shape",
-          "expectedBehavior": "buildDefaultPolicy({ workDir: 'C:\\test' }, { obsidianVaultPath: null }) returns a frozen object with all 6 CapabilityPolicy fields present and populated with sensible defaults.",
-          "proofType": "smoke-command",
-          "exactCommand": "node -e \"const path=require('path'); function buildDefaultPolicy(session,config){const wd=session.workDir?path.resolve(session.workDir):null; const roots=wd?[wd]:[]; const obs=config&&config.obsidianVaultPath?config.obsidianVaultPath:null; if(obs)roots.push(obs); return Object.freeze({allowedRoots:roots,writeMode:'extended',networkAllowed:true,installerAllowed:false,blockedCommandClasses:['GIT_FORCE_PUSH','GIT_RESET_HARD','GIT_CLEAN','DRIVE_FORMAT','RM_RECURSIVE_ROOT','RD_FULL_DRIVE'],trustLevel:session.workDir?'standard':'restricted'});}; const p=buildDefaultPolicy({workDir:'C:\\\\\\\\test'},{obsidianVaultPath:null}); const fields=['allowedRoots','writeMode','networkAllowed','installerAllowed','blockedCommandClasses','trustLevel']; fields.forEach(f=>{if(!(f in p))throw new Error('missing: '+f);}); if(!Object.isFrozen(p))throw new Error('not frozen'); console.log('OK',JSON.stringify(p));\"",
-          "expectedInitialFailure": "buildDefaultPolicy is not defined — function does not exist in server.js yet.",
-          "expectedPassingEvidence": "Prints OK with JSON object containing all 6 fields; Object.isFrozen check passes.",
-          "waiverGuidance": "N/A — this is a pure function test, no external dependencies."
-        },
-        {
-          "number": 2,
-          "title": "Policy attached to session object at launch",
-          "expectedBehavior": "After buildDefaultPolicy is wired into the launch and resume handlers, every session object in the sessions Map has a non-null .policy field with the CapabilityPolicy shape.",
-          "proofType": "waiver",
-          "exactCommand": "Code review: confirm newSession.policy = buildDefaultPolicy(newSession, readConfig()) is present in the launch WS handler immediately after workDir is resolved. Confirm session.policy = session.policy || buildDefaultPolicy(session, readConfig()) is present in the resume handler.",
-          "expectedInitialFailure": "sessions.get(sessionId).policy is undefined before wiring.",
-          "expectedPassingEvidence": "Code review passes: both wiring lines present in correct positions.",
-          "waiverGuidance": "Waiver acceptable — session Map is internal state not exposed via a public API. Code review is the appropriate verification."
-        }
-      ],
-      "objective": {
-        "statement": "Add a frozen CapabilityPolicy object to every session at launch — the schema and factory that all subsequent capability policy tasks (#42-#45) depend on.",
-        "successCriteria": [
-          "CapabilityPolicy JSDoc typedef is defined in server.js with all 6 fields documented",
-          "buildDefaultPolicy(session, config) returns a frozen object with correct defaults for all 6 fields",
-          "Every session launched via the launch WS handler has .policy attached immediately after workDir is resolved",
-          "Sessions resumed via the resume handler receive .policy if not already present"
-        ],
-        "nonGoals": [
-          "Using the policy for enforcement (task #43)",
-          "Command class registry definition (task #42)",
-          "Audit emission (task #44)",
-          "Replacing existing assertWritable or assertSafeCommand (task #45)"
-        ],
-        "proofMap": {
-          "CapabilityPolicy typedef defined": [
-            1
-          ],
-          "buildDefaultPolicy returns correct shape": [
-            1
-          ],
-          "Session wiring — launch and resume handlers": [
-            2
-          ]
-        },
-        "stopConditions": [
-          "src/runtime/toolRuntime.ts is already wired and sessions are not managed in server.js — confirm sessions Map location before editing"
-        ]
-      }
-    },
-    {
-      "number": 42,
-      "title": "Command class registry for shell safety",
-      "description": "Replace the SHELL_HARD_BLOCKED regex array in server.js with a COMMAND_CLASS_REGISTRY map. Each entry has a name (e.g. GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT, RM_RECURSIVE_ROOT, RD_FULL_DRIVE), a detect(command) function that may combine regex with structural path analysis, and a minimumTrustLevel field. The registry is the single source of truth for what constitutes a destructive command class.",
-      "category": "security",
-      "priority": 92,
-      "impact": "standard",
+      "impact": "major",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": [
-        41
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 43,
-      "title": "evaluatePolicy unified enforcer",
-      "description": "Write evaluatePolicy(action, context, policy): PolicyResult in server.js (or src/runtime/capabilityPolicy.ts if the toolRuntime module is wired). Handles: root boundary check (replaces assertWritable path logic), command class evaluation using COMMAND_CLASS_REGISTRY (replaces assertSafeCommand), installer gate (replaces detectInstallerExe + async approval prompt). Returns { allowed: boolean, reason?: string, auditEvent: AuditEvent }. Does not throw — callers inspect the result and throw if !allowed.",
-      "category": "security",
-      "priority": 92,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        41,
-        42
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 44,
-      "title": "Audit JSONL + tool-audit WebSocket event",
-      "description": "On every evaluatePolicy call, append a structured event to %APPDATA%\\.claude\\polaris\\audit.jsonl. Event schema: { ts, sessionId, action, tool, allowed, reason, commandSnippet }. Also emit a tool-audit WebSocket broadcast message for any block or grant (allowed=false or installerAllowed action). The JSONL file is append-only; no pruning in this task.",
-      "category": "security",
-      "priority": 90,
-      "impact": "minor",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        43
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 45,
-      "title": "Wire evaluatePolicy into tool execution",
-      "description": "Replace assertWritable + assertSafeCommand + detectInstallerExe call sites in toolBash, toolPowerShell, toolWrite, and toolEdit with evaluatePolicy. Consolidate the duplicated shell precheck sequence (assertSafeCommand + detectInstallerExe + detectShellWriteTargets + backupBeforeWrite + snapshotForShellEncodingCheck) that currently appears identically in both toolBash and toolPowerShell into a single shellPrecheck(command, workDir, sessionId, policy) helper. No behavior changes — enforcement must be identical to what existed before.",
-      "category": "security",
-      "priority": 92,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        43,
-        44
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 46,
-      "title": "Policy unit test suite",
-      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server — evaluatePolicy must be importable in isolation.",
-      "category": "test",
-      "priority": 88,
-      "impact": "minor",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        43
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
+      "dependencies": []
     },
     {
       "number": 30,
@@ -428,7 +292,7 @@
       "category": "feature",
       "priority": 70,
       "impact": "standard",
-      "status": "review-blocked",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
@@ -578,163 +442,7 @@
         ]
       },
       "branch": "task/36-add-a-ship-task-orchestration-capab",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/34"
-    },
-    {
-      "number": 37,
-      "title": "Contracts foundation: Zod schemas in src/contracts/",
-      "description": "Add Zod to package.json dependencies. Create src/contracts/ with four modules: ws-messages.ts (all WebSocket message types), backlog.ts (task schema + status enum), tools.ts (direct tool schemas for all 14 tools), and mcp.ts (MCP tool envelope schemas). Create src/contracts/index.ts as barrel export. Verify npx tsc --noEmit passes.",
-      "category": "feature",
-      "priority": 92,
-      "impact": "standard",
-      "status": "review-blocked",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [],
-      "branch": "task/37-contracts-foundation-zod-schemas-in-src",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/36",
-      "plan": "## Overview\n\nCreate the Zod contracts foundation for Polaris. Four modules in src/contracts/: ws-messages.ts (all WebSocket message types), backlog.ts (BacklogTask schema + BacklogStatus enum), tools.ts (all 14 native tool schemas), mcp.ts (MCPServer + MCPToolEnvelope). Barrel-exported via index.ts.\n\n## Phases\n\n1. Add zod to package.json dependencies and run npm install.\n2. Create src/contracts/backlog.ts - BacklogStatus enum and BacklogTask schema.\n3. Create src/contracts/tools.ts - schemas for all 14 native tools.\n4. Create src/contracts/mcp.ts - MCPServer, MCPToolEnvelope schemas.\n5. Create src/contracts/ws-messages.ts - Zod schemas for all WebSocket message types.\n6. Create src/contracts/index.ts - barrel re-export of all four modules.\n7. Run npx tsc --noEmit and fix any errors.",
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "Zod installed and importable",
-          "expectedBehavior": "Zod is in package.json dependencies and node can require it.",
-          "proofType": "smoke-command",
-          "exactCommand": "node -e \"const {z} = require('zod'); console.log(z.string().parse('ok'))\"",
-          "expectedInitialFailure": "Cannot find module zod",
-          "expectedPassingEvidence": "Prints ok with exit 0.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 2,
-          "title": "All four schema modules compile without error",
-          "expectedBehavior": "npx tsc --noEmit exits 0 with no errors from src/contracts/.",
-          "proofType": "smoke-command",
-          "exactCommand": "cd C:UsersscottCodePolaris && npx tsc --noEmit 2>&1",
-          "expectedInitialFailure": "TypeScript errors or Cannot find module zod.",
-          "expectedPassingEvidence": "No output; exit code 0.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 3,
-          "title": "Barrel export exposes named schemas",
-          "expectedBehavior": "src/contracts/index.ts re-exports all named schemas; tsc --noEmit passes.",
-          "proofType": "smoke-command",
-          "exactCommand": "cd C:UsersscottCodePolaris && npx tsc --noEmit 2>&1",
-          "expectedInitialFailure": "Import errors if index.ts is missing.",
-          "expectedPassingEvidence": "No TypeScript errors; exit 0.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 4,
-          "title": "Full src/ type-checks cleanly after contracts added",
-          "expectedBehavior": "npx tsc --noEmit passes with no errors across all of src/.",
-          "proofType": "smoke-command",
-          "exactCommand": "cd C:UsersscottCodePolaris && npx tsc --noEmit",
-          "expectedInitialFailure": "Type errors if new schemas conflict with existing types.",
-          "expectedPassingEvidence": "Exit 0; no compiler output.",
-          "waiverGuidance": "N/A"
-        }
-      ],
-      "objective": {
-        "statement": "Create runtime-validatable Zod schemas as the contracts foundation for Polaris — four modules in src/contracts/ covering WebSocket messages, backlog tasks, native tools, and MCP envelopes — with a barrel export and a clean tsc --noEmit.",
-        "successCriteria": [
-          "Zod is in package.json dependencies and installed",
-          "src/contracts/ws-messages.ts exports Zod schemas for all WebSocket message types",
-          "src/contracts/backlog.ts exports BacklogTask schema and BacklogStatus enum as Zod",
-          "src/contracts/tools.ts exports all 14 native tool schemas as Zod",
-          "src/contracts/mcp.ts exports MCPServer and MCPToolEnvelope schemas as Zod",
-          "src/contracts/index.ts barrel-exports all schemas",
-          "npx tsc --noEmit passes with no errors"
-        ],
-        "nonGoals": [
-          "Wiring validators into server.js (task #38)",
-          "Generating registries from schemas (task #39)",
-          "Writing contract tests (task #40)",
-          "Replacing or modifying src/runtime/contracts.ts"
-        ],
-        "proofMap": {
-          "Zod is in package.json dependencies and installed": [
-            1
-          ],
-          "src/contracts/ws-messages.ts exports Zod schemas for all WebSocket message types": [
-            2
-          ],
-          "src/contracts/backlog.ts exports BacklogTask schema and BacklogStatus enum as Zod": [
-            2
-          ],
-          "src/contracts/tools.ts exports all 14 native tool schemas as Zod": [
-            2
-          ],
-          "src/contracts/mcp.ts exports MCPServer and MCPToolEnvelope schemas as Zod": [
-            2
-          ],
-          "src/contracts/index.ts barrel-exports all schemas": [
-            3
-          ],
-          "npx tsc --noEmit passes with no errors": [
-            4
-          ]
-        },
-        "stopConditions": [
-          "TypeScript version < 5.0",
-          "tsconfig.json rootDir does not include src/contracts/"
-        ]
-      }
-    },
-    {
-      "number": 38,
-      "title": "Wire runtime validation: use compiled contracts in server.js",
-      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic — validation only.",
-      "category": "feature",
-      "priority": 91,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        37
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 39,
-      "title": "Registry generation: generate docs/registries/ from schemas",
-      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script \"generate:registries\". Run it to regenerate all current registries and verify output matches existing hand-written content.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        37
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 40,
-      "title": "Contract test suite: validate real payload samples",
-      "description": "Write test/contracts/ test files. Each file covers one contract module: valid samples pass, invalid samples produce descriptive Zod errors. Add npm script \"test:contracts\". Covers ws-messages, backlog tasks, tool calls, and MCP envelopes.",
-      "category": "test",
-      "priority": 88,
-      "impact": "minor",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        37
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
+      "pr_url": "https://github.com/AesopScott/polaris/pull/33"
     }
   ]
 }

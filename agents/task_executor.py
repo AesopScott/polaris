@@ -199,11 +199,12 @@ async def _stall_watchdog(task_number: int, timeout: int) -> None:
             pass
 
 
-def _start_watchdog(task_number: int) -> None:
-    loop = asyncio.get_event_loop()
+def _start_watchdog(task_number: int, timeout: Optional[int] = None) -> None:
+    loop = asyncio.get_running_loop()
     if task_number in _watchdog_tasks:
         _watchdog_tasks[task_number].cancel()
-    task = loop.create_task(_stall_watchdog(task_number, STALL_TIMEOUT_SECONDS))
+    actual_timeout = timeout if timeout is not None else STALL_TIMEOUT_SECONDS
+    task = loop.create_task(_stall_watchdog(task_number, actual_timeout))
     _watchdog_tasks[task_number] = task
 
 
@@ -250,6 +251,7 @@ async def advance_graph(task_number: int) -> Dict[str, Any]:
             "message":      f"Waiting for human signal at '{state['current_node']}' gate",
         }
 
+    old_status = state["status"]
     graph = build_graph()
     if state["current_node"] == "START":
         result = graph.invoke({**state})
@@ -257,6 +259,20 @@ async def advance_graph(task_number: int) -> Dict[str, Any]:
         result = graph.invoke({**state, "human_gate_signal": None})
 
     new_state: TaskState = {**state, **result, "human_gate_signal": None}
+
+    # Validate the transition that just occurred against the formal table
+    new_status = new_state["status"]
+    if new_status != old_status:
+        ok, failures = validate_transition(old_status, new_status, new_state)
+        if not ok:
+            return {
+                "status":       "precondition_failed",
+                "task_number":  task_number,
+                "current_node": state["current_node"],
+                "task_status":  old_status,
+                "failures":     failures,
+            }
+
     save_state(new_state)
     _cancel_watchdog(task_number)
 
@@ -330,8 +346,8 @@ async def signal(task_number: int, req: SignalRequest) -> Dict[str, Any]:
             status_code=400,
             detail=f"Task {task_number} is not at a HITL gate (current: {state['current_node']})"
         )
-    state["human_gate_signal"] = req.signal
-    save_state(state)
+    signalled_state = {**state, "human_gate_signal": req.signal}
+    save_state(signalled_state)
     _cancel_watchdog(task_number)
     result = await advance_graph(task_number)
     return {"status": "ok", "signal": req.signal, "task_number": task_number, "advance": result}
@@ -372,6 +388,19 @@ async def startup_event() -> None:
     print(f"[OK] SQLite: {DB_PATH}")
     print(f"[OK] HITL nodes: {HITL_NODES}")
     print(f"[OK] Stall timeout: {STALL_TIMEOUT_SECONDS}s")
+    # Re-arm stall watchdogs for tasks that were paused before this restart
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT task_number, paused_at FROM task_states "
+        "WHERE paused_at IS NOT NULL AND human_gate_signal IS NULL"
+    ).fetchall()
+    conn.close()
+    for tn, paused_at in rows:
+        elapsed = int(time.time()) - paused_at
+        remaining = max(STALL_TIMEOUT_SECONDS - elapsed, 1)
+        _start_watchdog(tn, remaining)
+    if rows:
+        print(f"[OK] Re-armed {len(rows)} stall watchdog(s) from prior session")
 
 
 if __name__ == "__main__":

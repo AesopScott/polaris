@@ -34,14 +34,12 @@ Name of the graph node currently executing or last completed.
 
 Canonical task lifecycle status. Must match a value in VALID_BACKLOG_STATUSES (server.js:3222) when written to backlog.json via /sync-state.
 
-**TypedDict:** `status: Literal["planning", "build-started", "build-finished", "reviewed", "staged", "production", "failed"]` (`state.py:17`)
-**SQLite:** `status TEXT NOT NULL` (`task_executor.py:37`) — no enum constraint
-**Pydantic:** `status: str = "planning"` (`state.py:31`) — no enum constraint
+**TypedDict:** `status: StatusLiteral` (`state.py:30`) — see StatusLiteral section for full enum
+**SQLite:** `status TEXT NOT NULL` (`task_executor.py:61`) — no enum constraint (validated at transition time)
+**Pydantic:** `status: str = "planned"` (`state.py:47`) — no enum constraint
 **server.js:** `VALID_BACKLOG_STATUSES` set at `server.js:3222`
 
-**⚠ StatusLiteral alignment — see dedicated section below**
-
-**Status:** ⚠ shape mismatch — state.py Literal is misaligned with VALID_BACKLOG_STATUSES (see StatusLiteral section)
+**Status:** ✓ Aligned — StatusLiteral values match VALID_BACKLOG_STATUSES (task #26 fix)
 
 ---
 
@@ -105,51 +103,51 @@ Catch-all dict for node-specific intermediate state.
 
 ---
 
-## Field: `proof_units` ⚠ PLANNED
+## Field: `proof_units`
 
 Full array of proof unit specs loaded from backlog.json when a task starts.
 
-**TypedDict:** ⚠ NOT PRESENT — task #26 Phase 1 adds `proof_units: List[Dict[str, Any]]`
-**SQLite:** ⚠ NOT PRESENT — task #26 Phase 1 adds `proof_units TEXT` column (JSON-serialized)
-**Pydantic:** ⚠ NOT PRESENT — task #26 Phase 1 adds `proof_units: List[Dict[str, Any]] = []`
+**TypedDict:** `proof_units: List[Dict[str, Any]]` (`state.py:33`)
+**SQLite:** `proof_units TEXT NOT NULL DEFAULT '[]'` (JSON-serialized, added via ALTER TABLE in task #26)
+**Pydantic:** `proof_units: List[Dict[str, Any]] = []` (`state.py:50`)
 
-**Status:** ⚠ planned (task #26, Phase 1)
+**Status:** ✓ Implemented (task #26)
 
 ---
 
-## Field: `human_gate_signal` ⚠ PLANNED
+## Field: `human_gate_signal`
 
 Signal received from POST /signal that unblocks a HITL pause node. None when no signal pending.
 
-**TypedDict:** ⚠ NOT PRESENT — task #26 Phase 3 adds `human_gate_signal: Optional[str]`
-**SQLite:** ⚠ NOT PRESENT — task #26 Phase 3 adds `human_gate_signal TEXT` column (nullable)
-**Pydantic:** ⚠ NOT PRESENT — task #26 Phase 3 adds `human_gate_signal: Optional[str] = None`
+**TypedDict:** `human_gate_signal: Optional[str]` (`state.py:35`)
+**SQLite:** `human_gate_signal TEXT` (nullable, added via ALTER TABLE in task #26)
+**Pydantic:** `human_gate_signal: Optional[str] = None` (`state.py:52`)
 
-**Status:** ⚠ planned (task #26, Phase 3)
+**Status:** ✓ Implemented (task #26)
 
 ---
 
-## Field: `retry_count` ⚠ PLANNED
+## Field: `retry_count`
 
 Number of times the current node has been retried after failure.
 
-**TypedDict:** ⚠ NOT PRESENT — task #26 Phase 5 adds `retry_count: int`
-**SQLite:** ⚠ NOT PRESENT — task #26 Phase 5 adds `retry_count INTEGER NOT NULL DEFAULT 0`
-**Pydantic:** ⚠ NOT PRESENT — task #26 Phase 5 adds `retry_count: int = 0`
+**TypedDict:** `retry_count: int` (`state.py:36`)
+**SQLite:** `retry_count INTEGER NOT NULL DEFAULT 0` (added via ALTER TABLE in task #26)
+**Pydantic:** `retry_count: int = 0` (`state.py:53`)
 
-**Status:** ⚠ planned (task #26, Phase 5)
+**Status:** ✓ Implemented (task #26)
 
 ---
 
-## Field: `error_log` ⚠ PLANNED
+## Field: `error_log`
 
 Ordered list of exception messages captured by the @safe_node decorator.
 
-**TypedDict:** ⚠ NOT PRESENT — task #26 Phase 5 adds `error_log: List[str]`
-**SQLite:** ⚠ NOT PRESENT — task #26 Phase 5 adds `error_log TEXT NOT NULL DEFAULT '[]'` (JSON-serialized)
-**Pydantic:** ⚠ NOT PRESENT — task #26 Phase 5 adds `error_log: List[str] = []`
+**TypedDict:** `error_log: List[str]` (`state.py:37`)
+**SQLite:** `error_log TEXT NOT NULL DEFAULT '[]'` (JSON-serialized, added via ALTER TABLE in task #26)
+**Pydantic:** `error_log: List[str] = []` (`state.py:54`)
 
-**Status:** ⚠ planned (task #26, Phase 5)
+**Status:** ✓ Implemented (task #26)
 
 ---
 
@@ -157,9 +155,10 @@ Ordered list of exception messages captured by the @safe_node decorator.
 
 The `status` field written by the executor must be accepted by `updateBacklogTaskStatus()` in server.js, which validates against `VALID_BACKLOG_STATUSES` (server.js:3222).
 
-### Current state.py Literal (state.py:17)
+### Current state.py StatusLiteral (state.py:13–22, task #26)
 ```
-"planning", "build-started", "build-finished", "reviewed", "staged", "production", "failed"
+"planned", "build-started", "build-finished", "cba-complete",
+"staged", "production", "stalled", "failed"
 ```
 
 ### Current VALID_BACKLOG_STATUSES (server.js:3222)
@@ -170,22 +169,20 @@ The `status` field written by the executor must be accepted by `updateBacklogTas
 (+ legacy: "ready", "in-progress", "complete", "pr-reviewed", "cba-half-complete", "smoke-tested")
 ```
 
-### Gaps
+### Alignment
 
 | Status value | In state.py Literal | In VALID_BACKLOG_STATUSES | Notes |
 |---|---|---|---|
-| `"planning"` | ✓ | ✗ | **Phantom** — executor writes this but server would reject it via /sync-state. Not a real backlog status. |
-| `"reviewed"` | ✓ | ✗ | **Phantom** — not a valid backlog status. Use `"cba-complete"` instead. |
-| `"planned"` | ✗ | ✓ | **Missing** — executor must write this when graph enters plan node. Task #26 Phase 1 adds it. |
-| `"stalled"` | ✗ | ✓ | **Missing** — stall timeout writes this. Task #26 Phase 3 adds it. |
-| `"cba-complete"` | ✗ | ✓ | **Missing** — codex_review node writes this. Task #26 Phase 1 adds it. |
+| `"planned"` | ✓ | ✓ | ✓ Aligned (task #26 fix) |
 | `"build-started"` | ✓ | ✓ | ✓ Aligned |
 | `"build-finished"` | ✓ | ✓ | ✓ Aligned |
+| `"cba-complete"` | ✓ | ✓ | ✓ Aligned (task #26 fix — was "reviewed") |
 | `"staged"` | ✓ | ✓ | ✓ Aligned |
 | `"production"` | ✓ | ✓ | ✓ Aligned |
+| `"stalled"` | ✓ | ✓ | ✓ Aligned (task #26 addition) |
 | `"failed"` | ✓ | ✓ | ✓ Aligned |
 
-**Hard gap:** `"planning"` and `"reviewed"` in state.py do not exist in VALID_BACKLOG_STATUSES. If the executor writes either via /sync-state, the server will throw `Invalid status`. Task #26 Phase 1 must rename these to `"planned"` and `"cba-complete"` respectively.
+**Status:** ✓ All StatusLiteral values align with VALID_BACKLOG_STATUSES. Phantom values "planning" and "reviewed" removed in task #26.
 
 ---
 
@@ -201,31 +198,28 @@ The `status` field written by the executor must be accepted by `updateBacklogTas
 | `proof_results` | ✓ | ✓ | ✓ | ✓ |
 | `review_evidence` | ✓ | ✓ | ✓ | ✓ |
 | `checkpoint_data` | ✓ | ✓ | ✓ | ✓ |
-| `proof_units` | ✗ | ✗ | ✗ | ⚠ planned |
-| `human_gate_signal` | ✗ | ✗ | ✗ | ⚠ planned |
-| `retry_count` | ✗ | ✗ | ✗ | ⚠ planned |
-| `error_log` | ✗ | ✗ | ✗ | ⚠ planned |
+| `proof_units` | ✓ | ✓ | ✓ | ✓ |
+| `human_gate_signal` | ✓ | ✓ | ✓ | ✓ |
+| `retry_count` | ✓ | ✓ | ✓ | ✓ |
+| `error_log` | ✓ | ✓ | ✓ | ✓ |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T20:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-23T03:50:00Z (post-build update by /review-pr for task #26)
 
 **Task:** #26 — Make task orchestration an explicit state machine
 
-**Boundaries checked:** TaskState TypedDict (state.py), SQLite schema (task_executor.py:34-43), Pydantic model (state.py:26-36), StatusLiteral vs VALID_BACKLOG_STATUSES (server.js:3222)
+**Boundaries checked:** TaskState TypedDict (state.py), SQLite schema (task_executor.py), Pydantic model (state.py), StatusLiteral vs VALID_BACKLOG_STATUSES (server.js:3222)
 
 **Evidence recorded:**
 - 12 field entries documented
-- 7 entries aligned across TypedDict/SQLite/Pydantic ✓
-- 1 entry with StatusLiteral mismatch (status field) ⚠
-- 4 entries planned/pending (proof_units, human_gate_signal, retry_count, error_log) ⚠
-- New identifiers introduced on task #26: proof_units, human_gate_signal, retry_count, error_log fields; StatusLiteral values "planned", "stalled", "cba-complete"
-- Registries match current code diff: yes (planned fields marked; hard gap flagged)
+- 12 entries aligned across TypedDict/SQLite/Pydantic ✓
+- 0 shape mismatches
+- StatusLiteral fully aligned — phantom "planning" and "reviewed" removed; "planned", "stalled", "cba-complete" added
 
 **Gaps identified:**
-- HARD GAP: state.py StatusLiteral contains "planning" and "reviewed" — not in VALID_BACKLOG_STATUSES. Executor writing either value via /sync-state would be rejected. Fix in task #26 Phase 1.
-- 4 planned fields missing from all three representations — task #26 Phase 1, 3, 5 build targets.
+- None — all planned fields from pre-build baseline are now implemented
 
-**Status:** Audit complete — hard gap documented, fix required in Phase 1
+**Status:** ✓ Audit current — all fields shipped in task #26

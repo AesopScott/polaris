@@ -75,7 +75,7 @@ def finish_build_node(state: TaskState) -> Dict[str, Any]:
     return {
         "current_node": "finish_build",
         "status": "build-finished",
-        "pr_url": state.get("pr_url") or f"https://github.com/AesopScott/polaris/pull/task-{state['task_number']}",
+        "pr_url": state.get("pr_url"),
         "checkpoint_data": {**state.get("checkpoint_data", {}), "pr_opened": True},
     }
 
