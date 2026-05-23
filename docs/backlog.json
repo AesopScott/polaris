@@ -594,12 +594,12 @@
       "category": "feature",
       "priority": 92,
       "impact": "standard",
-      "status": "build-started",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
       "branch": "task/37-contracts-foundation-zod-schemas-in-src",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/36",
       "plan": "## Overview\n\nCreate the Zod contracts foundation for Polaris. Four modules in src/contracts/: ws-messages.ts (all WebSocket message types), backlog.ts (BacklogTask schema + BacklogStatus enum), tools.ts (all 14 native tool schemas), mcp.ts (MCPServer + MCPToolEnvelope). Barrel-exported via index.ts.\n\n## Phases\n\n1. Add zod to package.json dependencies and run npm install.\n2. Create src/contracts/backlog.ts - BacklogStatus enum and BacklogTask schema.\n3. Create src/contracts/tools.ts - schemas for all 14 native tools.\n4. Create src/contracts/mcp.ts - MCPServer, MCPToolEnvelope schemas.\n5. Create src/contracts/ws-messages.ts - Zod schemas for all WebSocket message types.\n6. Create src/contracts/index.ts - barrel re-export of all four modules.\n7. Run npx tsc --noEmit and fix any errors.",
       "proofUnits": [
         {
