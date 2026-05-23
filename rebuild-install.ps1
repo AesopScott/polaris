@@ -82,14 +82,21 @@ $mockupColor = if ($mockupChanged) { "Green" } else { "Red" }
 Write-Host "  install app.asar     : $postAsarTime  $asarFlag" -ForegroundColor $asarColor
 Write-Host "  install mockup.html  : $postMockupTime  $mockupFlag" -ForegroundColor $mockupColor
 
-# D34 workaround: force-sync mockup.html to AppData regardless of installer behavior
+# D34 workaround: force-sync mockup.html from source regardless of installer behavior.
+# The installed resources directory can remain stale when the installer reuses files, so
+# copying install -> AppData can accidentally resurrect an older UI.
 Write-Host ""
 Write-Host "[6/6] Force-syncing AppData (D34 workaround)..." -ForegroundColor Cyan
-if (Test-Path $installMockup) {
-  Copy-Item $installMockup $appDataMockup -Force
-  Write-Host "      mockup.html copied to AppData (refreshed from install dir)" -ForegroundColor DarkGray
+$sourceMockup = Join-Path $PSScriptRoot "resources\mockup.html"
+if (Test-Path $sourceMockup) {
+  if (Test-Path (Split-Path -Parent $installMockup)) {
+    Copy-Item $sourceMockup $installMockup -Force
+    Write-Host "      mockup.html copied to install dir (refreshed from source)" -ForegroundColor DarkGray
+  }
+  Copy-Item $sourceMockup $appDataMockup -Force
+  Write-Host "      mockup.html copied to AppData (refreshed from source)" -ForegroundColor DarkGray
 } else {
-  Write-Host "      WARN: install mockup.html not found - installer likely failed" -ForegroundColor Yellow
+  Write-Host "      WARN: source mockup.html not found - cannot force-sync UI" -ForegroundColor Yellow
 }
 
 Write-Host ""

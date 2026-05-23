@@ -1,10 +1,38 @@
 ﻿'use strict';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODULE TOPOLOGY — server.js is the orchestrator; do NOT import from it.
+//
+// Typed boundaries live in src/runtime/ (TypeScript, compiled but not yet wired):
+//
+//   contracts      — all shared TS types (WebSocket messages, tools, sessions)
+//   sessionStore   — in-memory session Map, fork registry, persistence helpers
+//   agentRuntime   — backend resolution, session lifecycle, pending-turn queue
+//   toolRuntime    — native tool dispatch, worktree guard, MCP routing entry point
+//   mcpGateway     — MCP stdio/HTTP transport, tool discovery, result formatting
+//   crossCheck     — pre-approval and post-hoc change gates, audit JSONL trail
+//   backlog        — task CRUD, status lifecycle, archive, auto-commit
+//   httpRoutes     — HTTP route table, request dispatcher, response utilities
+//   wsAdapter      — WebSocket dispatch, broadcast helpers, 130-type handler map
+//
+// Dependency order (leaf → hub):
+//   contracts ← sessionStore ← agentRuntime
+//                            ← toolRuntime ← mcpGateway
+//                            ← crossCheck
+//                            ← backlog
+//                            ← httpRoutes
+//                            ← wsAdapter   (hub — depends on all of the above)
+//
+// Each module is initialized via its init*() function at startup (see bottom of
+// this file). Implementations (handler bodies) remain here during the incremental
+// migration; typed wrappers are injected via the init*() opts objects.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, exec, execFile, execSync, spawnSync } = require('child_process');
+const { spawn, exec, execFile, execFileSync, execSync, spawnSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -50,6 +78,7 @@ const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routin
 const STALL_CHECK_MS  = 3000;   // heartbeat interval
 const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
+const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
@@ -736,12 +765,74 @@ function watchGlobalFiles() {
 const sessions = new Map();   // sessionId → session object
 const forkMap  = new Map();   // primarySessionId → forkSessionId
 let   wss      = null;
+const ORCHESTRATION_QUIET_MODE = process.env.POLARIS_ORCHESTRATION_QUIET_MODE !== '0';
+let healthSnapshotCache = null;
+let healthSnapshotCacheAt = 0;
+let healthSnapshotInFlight = false;
+const HEALTH_SNAPSHOT_TTL_MS = 30000;
 
 // Connect-tab write protection — token is generated at startup and sent only to the main UI window.
 // Any WebSocket message that modifies MCP server config must include this token; otherwise the
 // request is queued and broadcast as an approval prompt so the user can allow or deny it.
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
 const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
+
+// ── Capability Policy ────────────────────────────────────────────────────────
+// Per-session policy object created once at launch and frozen. Tasks #42-#45
+// build on this foundation: command class registry, unified enforcer, audit
+// emission, and wiring into tool execution.
+
+/**
+ * @typedef {Object} CapabilityPolicy
+ * @property {string[]} allowedRoots    - Absolute paths the session may write to.
+ * @property {'read-only'|'project-only'|'extended'} writeMode
+ *   - read-only:    no writes permitted
+ *   - project-only: workDir only
+ *   - extended:     workDir + Obsidian vault + Downloads
+ * @property {boolean} networkAllowed   - WebFetch/WebSearch permitted (enforcement deferred to task #43).
+ * @property {boolean} installerAllowed - .exe installer execution pre-approved for this session.
+ * @property {string[]} blockedCommandClasses - Named command classes blocked at this trust level.
+ *   Valid class names: GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT,
+ *   RM_RECURSIVE_ROOT, RD_FULL_DRIVE.
+ * @property {'restricted'|'standard'|'elevated'} trustLevel
+ *   - restricted: no workDir configured; writes and shell blocked by default
+ *   - standard:   normal agent session
+ *   - elevated:   explicitly granted by user (installer allowed, fewer class blocks)
+ */
+
+const DEFAULT_BLOCKED_CLASSES = Object.freeze([
+  'GIT_FORCE_PUSH',
+  'GIT_RESET_HARD',
+  'GIT_CLEAN',
+  'DRIVE_FORMAT',
+  'RM_RECURSIVE_ROOT',
+  'RD_FULL_DRIVE',
+]);
+
+/**
+ * Build a frozen CapabilityPolicy for a session. Called once at session launch.
+ * @param {{ workDir?: string }} session
+ * @param {{ obsidianVaultPath?: string }} config
+ * @returns {CapabilityPolicy}
+ */
+function buildDefaultPolicy(session, config) {
+  const wd = session.workDir ? path.resolve(session.workDir) : null;
+  const roots = wd ? [wd] : [];
+  if (wd) {
+    const obsidian = config && config.obsidianVaultPath ? config.obsidianVaultPath : null;
+    const downloads = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Downloads') : null;
+    if (obsidian) roots.push(obsidian);
+    if (downloads) roots.push(downloads);
+  }
+  return Object.freeze({
+    allowedRoots:          Object.freeze(roots),
+    writeMode:             wd ? 'extended' : 'read-only',
+    networkAllowed:        true,
+    installerAllowed:      false,
+    blockedCommandClasses: DEFAULT_BLOCKED_CLASSES,
+    trustLevel:            wd ? 'standard' : 'restricted',
+  });
+}
 
 // ─── Session persistence ──────────────────────────────────────────────────────
 function serializeSession(s) {
@@ -831,6 +922,7 @@ function loadPersistedSessions() {
           loaded.lastSkill  = loaded.lastSkill  || inferred.lastSkill;
         }
       }
+      if (!loaded.policy) loaded.policy = buildDefaultPolicy(loaded, readConfig());
       sessions.set(s.id, loaded);
     }
     // Rebuild forkMap from persisted sessions
@@ -2339,12 +2431,16 @@ function buildPolarisContextBlock(config, session) {
     '  - To manually pause the session, call mcp__polaris__SetStatus with status "hold".',
     '  - Only call mcp__polaris__SetStatus with status "done" when the task is fully complete and needs no verification.',
     'For this session, SetStatus targets the current session automatically through the injected Polaris MCP endpoint.',
-    '',
-    'Ship-task progress: when running /ship-task, call mcp__polaris__SetTaskState at the start of each step to update the UI.',
-    '  - Arguments: taskNumber (int), taskState (string), lastSkill (string).',
-    '  - States to use: planning, start-build, coding, audit, build-finished, in-review.',
-    '  - Example: SetTaskState({ taskNumber: 1, taskState: "build-finished", lastSkill: "finish-build" })',
   );
+  if (!ORCHESTRATION_QUIET_MODE) {
+    lines.push(
+      '',
+      'Ship-task progress: when running /ship-task, call mcp__polaris__SetTaskState at the start of each step to update the UI.',
+      '  - Arguments: taskNumber (int), taskState (string), lastSkill (string).',
+      '  - States to use: planning, start-build, coding, audit, build-finished, in-review.',
+      '  - Example: SetTaskState({ taskNumber: 1, taskState: "build-finished", lastSkill: "finish-build" })',
+    );
+  }
 
   lines.push(
     '',
@@ -3309,6 +3405,84 @@ function updateBacklogTask(scope, taskNumber, updates) {
   return task;
 }
 
+function moveBacklogTask(fromScope, taskNumber, toScope) {
+  console.log(`[backlog] moveBacklogTask from=${fromScope} task=#${taskNumber} to=${toScope}`);
+  const cfg = readConfig();
+  const taskNum = parseInt(taskNumber, 10);
+  if (!taskNum) throw new Error('Invalid task number: ' + taskNumber);
+  if (fromScope === toScope) throw new Error('Source and target scope are the same.');
+
+  function _scopeFilePath(scope) {
+    if (scope === 'global') {
+      if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
+      return path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    }
+    const project = (cfg.projects || []).find(p => p.name === scope);
+    if (!project) throw new Error('Project not found: ' + scope);
+    if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
+    return path.join(project.workDir, 'docs', 'backlog.json');
+  }
+
+  function _scopeArchivePath(scope) {
+    if (scope === 'global') {
+      return path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
+    }
+    const project = (cfg.projects || []).find(p => p.name === scope);
+    return path.join(project.workDir, 'docs', 'backlog-archive.json');
+  }
+
+  const srcPath = _scopeFilePath(fromScope);
+  const srcData = JSON.parse(fs.readFileSync(srcPath, 'utf8'));
+  const taskIdx = (srcData.tasks || []).findIndex(t => t.number === taskNum);
+  if (taskIdx === -1) throw new Error('Task #' + taskNum + ' not found in ' + fromScope + ' backlog.');
+  const task = { ...(srcData.tasks[taskIdx]) };
+  srcData.tasks.splice(taskIdx, 1);
+  fs.writeFileSync(srcPath, JSON.stringify(srcData, null, 2) + '\n', 'utf8');
+
+  const dstPath = _scopeFilePath(toScope);
+  let dstData;
+  try {
+    dstData = JSON.parse(fs.readFileSync(dstPath, 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      try { fs.mkdirSync(path.dirname(dstPath), { recursive: true }); } catch {}
+      dstData = { tasks: [] };
+    } else {
+      srcData.tasks.splice(taskIdx, 0, task);
+      fs.writeFileSync(srcPath, JSON.stringify(srcData, null, 2) + '\n', 'utf8');
+      throw new Error('Could not read ' + dstPath + ': ' + e.message);
+    }
+  }
+  if (!Array.isArray(dstData.tasks)) dstData.tasks = [];
+  let dstArchived = [];
+  try {
+    const archiveData = JSON.parse(fs.readFileSync(_scopeArchivePath(toScope), 'utf8'));
+    if (Array.isArray(archiveData.tasks)) dstArchived = archiveData.tasks;
+  } catch (e) {}
+
+  const newNumber = _nextBacklogTaskNumber(dstData.tasks, dstArchived);
+  task.number = newNumber;
+  dstData.tasks.push(task);
+  fs.writeFileSync(dstPath, JSON.stringify(dstData, null, 2) + '\n', 'utf8');
+
+  if (fromScope !== 'global') {
+    const fromProject = (cfg.projects || []).find(p => p.name === fromScope);
+    if (fromProject) {
+      try { _autoCommitBacklog(fromProject.workDir, taskNum, `remove task #${taskNum} (moved to ${toScope})`); }
+      catch (e) { console.error('[backlog] auto-commit failed in ' + fromProject.workDir + ':', e.message); }
+    }
+  }
+  if (toScope !== 'global') {
+    const toProject = (cfg.projects || []).find(p => p.name === toScope);
+    if (toProject) {
+      try { _autoCommitBacklog(toProject.workDir, newNumber, `add task #${newNumber} (moved from ${fromScope})`); }
+      catch (e) { console.error('[backlog] auto-commit failed in ' + toProject.workDir + ':', e.message); }
+    }
+  }
+
+  return { oldNumber: taskNum, newNumber, task };
+}
+
 // Backward-compat shim — the old discoverSkills() signature returned items
 // with `dirPath`. Some callers (buildDirectSystemPrompt) only need name +
 // description, which the new shape still provides.
@@ -3440,17 +3614,18 @@ function toolSetStatus({ status } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
   session.status = status;
-  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   return `Status set to "${status}".`;
 }
 
 function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) {
+  if (ORCHESTRATION_QUIET_MODE) return 'Task orchestration quiet mode is enabled; task state was not changed.';
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
   if (taskNumber !== undefined) session.taskNumber = taskNumber;
   if (taskState  !== undefined) session.taskState  = taskState;
   if (lastSkill  !== undefined) session.lastSkill  = lastSkill;
-  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
@@ -3953,9 +4128,28 @@ function extractFirstJson(text) {
 }
 
 // Finds the first JSON object that contains a "verdict" key, scanning all JSON
-// objects in the text plus any JSON embedded in their string values (for CLI
-// envelopes like {"output":"...{\"verdict\":...}..."} or JSONL event streams).
+// objects in the text. Recursively checks nested objects and string values so
+// Codex JSONL envelopes like {"item":{"type":"agent_message","text":"{\"verdict\":..."}}
+// are unwrapped correctly regardless of nesting depth.
 function extractReviewJson(text) {
+  function findInValue(val, depth) {
+    if (depth > 6) return null;
+    if (typeof val === 'string') {
+      const inner = extractFirstJson(val);
+      if (!inner) return null;
+      try { const p = JSON.parse(inner); if ('verdict' in p) return inner; } catch {}
+      return null;
+    }
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      if ('verdict' in val) return JSON.stringify(val);
+      for (const v of Object.values(val)) {
+        const found = findInValue(v, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
   let remaining = text;
   while (remaining.length) {
     const idx = remaining.indexOf('{');
@@ -3966,13 +4160,8 @@ function extractReviewJson(text) {
     try {
       const p = JSON.parse(candidate);
       if ('verdict' in p) return candidate;
-      // Outer JSON has no verdict — search inside string values (CLI envelopes)
-      for (const val of Object.values(p)) {
-        if (typeof val !== 'string') continue;
-        const inner = extractFirstJson(val);
-        if (!inner) continue;
-        try { const ip = JSON.parse(inner); if ('verdict' in ip) return inner; } catch {}
-      }
+      const found = findInValue(p, 0);
+      if (found) return found;
     } catch {}
     remaining = remaining.slice(candidate.length);
   }
@@ -4094,7 +4283,10 @@ async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalCo
     }
   }
 
-  const reviewPrompt = `You are reviewing a file change for the Polaris project.
+  const reviewPrompt = `TEXT-ONLY CODE REVIEW — DO NOT EXECUTE ANY COMMANDS OR USE ANY TOOLS.
+Your sole output must be one JSON object. No shell commands. No file reads. No tool calls. Just JSON.
+
+You are reviewing a file change for the Polaris project.
 
 TASK: ${sessionPrompt || '(not captured)'}
 FILE: ${filePath}
@@ -4108,7 +4300,8 @@ Review for:
 3. Quality — broken syntax, dead code, security issues, malformed HTML/JS/CSS
 
 If the diff is non-empty and the changes look intentional and consistent with the task, verdict is PASS.
-Respond ONLY with JSON (no prose): {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
+Output ONLY this JSON object with no other text:
+{"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
   // Use Codex CLI if model is set to "codex"
   let result;
@@ -7187,6 +7380,73 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && req.url === '/api/health-snapshot') {
+    const now = Date.now();
+    if (healthSnapshotCache && now - healthSnapshotCacheAt < HEALTH_SNAPSHOT_TTL_MS) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ...healthSnapshotCache, cached: true }));
+      return;
+    }
+    if (healthSnapshotInFlight) {
+      const snapshot = healthSnapshotCache || { status: 'degraded', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: 'snapshot in progress' };
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ...snapshot, cached: !!healthSnapshotCache, inFlight: true }));
+      return;
+    }
+    healthSnapshotInFlight = true;
+    const snapshot = { status: 'ok', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: null };
+    try {
+      const ps = [
+        "$m=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' };",
+        "$c=@(Get-NetTCPConnection -LocalPort 40000 -State Established -ErrorAction SilentlyContinue);",
+        "$p=Get-Process -Name Polaris -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;",
+        "[pscustomobject]@{mcpHelpers=@($m).Count;connections=@($c).Count;topProcess=if($p){$p.ProcessName+':'+$p.Id+' cpu='+[math]::Round($p.CPU,1)+' memMB='+[math]::Round($p.WorkingSet/1MB,0)}else{$null}} | ConvertTo-Json -Compress"
+      ].join(' ');
+      const out = execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 3500 });
+      const parsed = JSON.parse(out);
+      snapshot.mcpHelpers = Number(parsed.mcpHelpers || 0);
+      snapshot.connections = Number(parsed.connections || 0);
+      snapshot.topProcess = parsed.topProcess || null;
+      if (snapshot.mcpHelpers >= 10) snapshot.status = 'critical';
+      else if (snapshot.connections >= 20) snapshot.status = 'critical';
+      else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) snapshot.status = 'degraded';
+    } catch (e) {
+      snapshot.status = 'degraded';
+      snapshot.error = e.message;
+    } finally {
+      healthSnapshotInFlight = false;
+    }
+    healthSnapshotCache = snapshot;
+    healthSnapshotCacheAt = Date.now();
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(snapshot));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/health-stop-mcp-helpers') {
+    const result = { ok: true, stopped: 0, remaining: null };
+    try {
+      const ps = [
+        "$targets=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' };",
+        "$count=@($targets).Count;",
+        "foreach($p in $targets){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} };",
+        "Start-Sleep -Milliseconds 500;",
+        "$remaining=@(Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' }).Count;",
+        "[pscustomobject]@{stopped=$count;remaining=$remaining} | ConvertTo-Json -Compress"
+      ].join(' ');
+      const out = execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 5000 });
+      const parsed = JSON.parse(out);
+      result.stopped = Number(parsed.stopped || 0);
+      result.remaining = Number(parsed.remaining || 0);
+    } catch (e) {
+      result.ok = false;
+      result.error = e.message;
+    }
+    res.writeHead(result.ok ? 200 : 500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/video-deps') {
     if (!videoDeps.checked) checkVideoDeps();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -7514,11 +7774,11 @@ const httpServer = http.createServer((req, res) => {
             description: 'Set the session card status in the Polaris UI. Use "test" after delivering work, "waiting" when expecting user input, "done" when complete.',
             inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done'] }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['status', 'polaris_session_id'] },
           },
-          {
+          ...(!ORCHESTRATION_QUIET_MODE ? [{
             name: 'SetTaskState',
             description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step.',
             inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number.' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
-          },
+          }] : []),
           {
             name: 'QueryMemory',
             description: 'Query the project knowledge base loaded from Obsidian. Omit filename to get all project context.',
@@ -7574,7 +7834,7 @@ const httpServer = http.createServer((req, res) => {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [
           { name: 'SetProject', description: `Set the active project for this session. Known projects: ${projectNames || '(none configured)'}.`, inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name, or omit for no project (scratch).' } }, required: [] } },
           { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
-          { name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } },
+          ...(!ORCHESTRATION_QUIET_MODE ? [{ name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } }] : []),
           { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Omit filename to get all project context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' } }, required: [] } },
         ]}}));
       }
@@ -7682,6 +7942,11 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/dispatch-agent') {
+    if (ORCHESTRATION_QUIET_MODE) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Task orchestration quiet mode is enabled.' }));
+      return;
+    }
     // Dispatch an agent from a Python LangGraph node.
     // Called by agents/spike/sidecar_spike.py and agents/task_executor.py to invoke
     // UI-selected agents (max, sonnet, haiku, deepseek) and return their text response.
@@ -7748,6 +8013,36 @@ const httpServer = http.createServer((req, res) => {
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /sync-state — receive canonical status update from LangGraph executor,
+  // write to backlog.json, then broadcast backlogs-data to refresh the UI.
+  if (req.method === 'POST' && req.url === '/sync-state') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { task_number, status, current_node } = JSON.parse(body);
+        if (!task_number || !status || !current_node) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
+        }
+        updateBacklogTaskStatus('global', task_number, status);
+        // Broadcast UI refresh
+        const { global: globalTasks, projects } = loadAllBacklogs();
+        const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
+        const archive = fs.existsSync(archivePath)
+          ? JSON.parse(fs.readFileSync(archivePath, 'utf8')).tasks || []
+          : [];
+        broadcast({ type: 'backlogs-data', global: globalTasks, projects, archive });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
       }
     });
     return;
@@ -8184,7 +8479,14 @@ async function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
 
+  ws.lastSeenAt = Date.now();
   const { type } = msg;
+
+  if (type === 'ui-client-hello') {
+    ws.uiClientId = typeof msg.clientId === 'string' ? msg.clientId.slice(0, 80) : ws.uiClientId;
+    ws.uiTabId = typeof msg.tabId === 'string' ? msg.tabId.slice(0, 80) : ws.uiTabId;
+    return sendTo(ws, { type: 'ui-client-ack', clientId: ws.uiClientId || null, tabId: ws.uiTabId || null });
+  }
 
   if (type === 'launch-chat') {
     const { prompt, displayPrompt, workDir, tier, images, docs, audio, videos, chipLabel, chipColor, model: overrideModel } = msg;
@@ -8365,6 +8667,8 @@ async function handleMessage(ws, raw) {
         sessionWorkDir = wtPath;
       }
     }
+
+    newSession.policy = buildDefaultPolicy(newSession, readConfig());
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
@@ -8707,6 +9011,19 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, updates } = msg;
       updateBacklogTask(scope, taskNumber, updates);
+      invalidateBacklogCache();
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
+    return;
+  }
+
+  if (type === 'move-backlog-task') {
+    try {
+      const { fromScope, taskNumber, toScope } = msg;
+      moveBacklogTask(fromScope, taskNumber, toScope);
       invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
@@ -9936,6 +10253,7 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'set-task-state') {
+    if (ORCHESTRATION_QUIET_MODE) return;
     const session = sessions.get(msg.sessionId);
     if (!session) return;
     if (msg.taskNumber !== undefined) session.taskNumber = msg.taskNumber;
@@ -11300,6 +11618,23 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 
 wss = new WebSocket.Server({ server: httpServer });
 
+const wsHeartbeatTimer = setInterval(() => {
+  if (!wss) return;
+  for (const client of wss.clients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    if (client.isAlive === false) {
+      console.warn(`[polaris] terminating stale WebSocket client ${client.uiClientId || client.clientId || 'unknown'}`);
+      try { client.terminate(); } catch {}
+      continue;
+    }
+    client.isAlive = false;
+    try { client.ping(); } catch {
+      try { client.terminate(); } catch {}
+    }
+  }
+}, WS_HEARTBEAT_MS);
+if (typeof wsHeartbeatTimer.unref === 'function') wsHeartbeatTimer.unref();
+
 // ── Session heartbeat / stall detector ───────────────────────────────────────
 // Checks every 3 s for running sessions with no broadcast activity.
 // 15 s idle → amber stall badge on card.
@@ -11336,11 +11671,27 @@ setInterval(() => {
   }
 }, STALL_CHECK_MS);
 
-wss.on('connection', (ws) => {
-  console.log('[polaris] WebSocket client connected');
+wss.on('connection', (ws, req) => {
+  let queryClientId = null;
+  try {
+    queryClientId = new URL(req.url || '/', 'http://localhost').searchParams.get('clientId');
+  } catch {}
+
+  ws.clientId = queryClientId || crypto.randomUUID();
+  ws.connectedAt = Date.now();
+  ws.lastSeenAt = ws.connectedAt;
+  ws.lastPongAt = ws.connectedAt;
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+    ws.lastPongAt = Date.now();
+  });
+
+  console.log(`[polaris] WebSocket client connected ${ws.clientId}`);
 
   // Send server timezone offset so the renderer can display local time correctly
   sendTo(ws, { type: 'server-tz', tzOffsetMin: new Date().getTimezoneOffset() });
+  sendTo(ws, { type: 'ui-client-ack', clientId: ws.clientId, tabId: null });
 
   // Fetch last 5 commits then send init (commits travel in the init payload)
   (async () => {
@@ -11450,7 +11801,7 @@ wss.on('connection', (ws) => {
   })();
 
   ws.on('message', raw => handleMessage(ws, raw));
-  ws.on('close', () => console.log('[polaris] WebSocket client disconnected'));
+  ws.on('close', () => console.log(`[polaris] WebSocket client disconnected ${ws.uiClientId || ws.clientId || 'unknown'}`));
   ws.on('error', err => console.error('[polaris] WebSocket error:', err));
 });
 

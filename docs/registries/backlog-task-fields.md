@@ -294,6 +294,36 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ---
 
+## `objective`
+
+Structured goal contract written by `/plan-task` when planning a task. Contains the task's objective statement, success criteria, non-goals, proof map, and stop conditions. Only present on tasks that have been through `/plan-task`.
+
+**Schema / shape:**
+```javascript
+{
+  statement: String,           // One-sentence goal statement
+  successCriteria: String[],   // Measurable outcomes required for done
+  nonGoals: String[],          // Explicitly out of scope
+  proofMap: Object,            // Maps criteria strings → proof unit numbers
+  stopConditions: String[]     // Conditions that halt the workflow
+}
+```
+
+**Producers (write)**
+- `/plan-task` skill — writes `objective` block to `docs/backlog.json` after design discussion phase; committed directly to main branch on task branch or in planning commit
+- `/write-plan` sub-skill — constructs the objective object as part of plan finalization
+
+**Consumers (read)**
+- `/start-build` skill — loads `objective.successCriteria` and `objective.nonGoals` to gate implementation scope
+- `/finish-build` skill — verifies build work maps to `objective.successCriteria`; flags out-of-scope drift against `objective.nonGoals`
+- `/ship-task` orchestrator — displays objective statement and success criteria at each gate; stops if `objective` is missing on a non-backlog task
+
+**Note:** `server.js` does not read or write this field — it lives purely in the skills layer and backlog.json. UI does not display it.
+
+**Status:** ✓ Intentional skill-side field — pre-existing gap from task #36 now registered (2026-05-23)
+
+---
+
 ## Summary
 
 | Field | Producers | Consumers | Status |
@@ -309,6 +339,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 | `dependencies` | 1 (create) | 1 (display) | ⚠ orphan producer |
 | `plan` | 1 (null init) | 3 (skills read) | ✓ intentional |
 | `proofUnits` | 1 (null init) | 3 (skills read) | ✓ intentional |
+| `objective` | 1 (/plan-task skill) | 3 (skills read) | ✓ intentional |
 | `branch` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `pr_url` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `impact` | 3 (create/update) | 5 (display/modal/skills) | ✓ |
@@ -317,24 +348,24 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #29 planning)
 
-**Task:** #26 — Make task orchestration an explicit state machine
+**Task:** #29 — Replace regex-heavy tool safety with capability policies
 
-**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and agents/task_executor.py
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and docs/backlog.json
 
 **Evidence recorded:**
-- 14 entries documented
-- 11 entries with complete producer/consumer pairs ✓
-- 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
-- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠ pre-existing
+- 15 entries documented (14 previous + `objective` added)
+- 12 entries with complete producer/consumer pairs ✓
+- 3 entries with intentional skill-side wiring (plan, proofUnits, objective) ✓
+- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠ pre-existing, deferred
 - 0 entries with shape mismatches
-- New identifiers introduced on task #26: `stalled` and `failed` status values added to VALID_BACKLOG_STATUSES (server.js:3194); written by LangGraph executor
-- Registries match current code diff: yes — server.js patched in this audit run
+- New identifiers introduced on task #29 planning: `objective` field registered (pre-existing gap from task #36)
+- Registries match current code diff: yes
 
-**Gaps identified:** 2 pre-existing hard blockers resolved — `stalled` and `failed` added to VALID_BACKLOG_STATUSES. 3 pre-existing orphan producers (dependencies, branch, pr_url) deferred.
+**Gaps identified:** Pre-existing orphan producers (dependencies, branch, pr_url) remain deferred. `objective` gap from task #36 now resolved.
 
-**Status:** Audit complete — hard blockers resolved. Registries valid for task #26 scope.
+**Status:** Audit complete — registries valid for task #29 planning scope.
 
 ---
 
