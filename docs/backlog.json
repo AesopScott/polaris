@@ -342,16 +342,88 @@
       "category": "test",
       "priority": 88,
       "impact": "minor",
-      "status": "backlog",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         37
       ],
-      "branch": null,
+      "branch": "task/40-contract-test-suite-validate-real-payload-s",
       "pr_url": null,
-      "plan": null,
-      "proofUnits": []
+      "plan": "Minor task — inline plan. Install vitest as devDependency. Create test/contracts/ with four test files (ws-messages.test.ts, backlog.test.ts, tools.test.ts, mcp.test.ts). Each file imports from src/contracts/ and asserts: (a) valid representative payloads parse without errors, (b) invalid payloads produce descriptive Zod errors. Add npm script test:contracts. Bump version.",
+      "objective": {
+        "statement": "Add a test suite under test/contracts/ that validates all four Zod contract modules using Vitest — valid representative payloads parse cleanly, invalid payloads produce descriptive Zod errors. Adds npm script test:contracts.",
+        "successCriteria": [
+          "ws-messages: valid payloads pass, invalid produce descriptive Zod errors",
+          "backlog: valid payloads pass, invalid produce descriptive Zod errors",
+          "tools: valid payloads pass, invalid produce descriptive Zod errors",
+          "mcp: valid payloads pass, invalid produce descriptive Zod errors",
+          "npm run test:contracts exits 0 with all tests green"
+        ],
+        "nonGoals": [
+          "E2E or integration tests against a running server",
+          "Code coverage metrics",
+          "Testing server.js runtime behavior",
+          "Testing compiled dist/ output (test directly against src/contracts/)"
+        ],
+        "proofMap": [
+          { "criterion": "ws-messages: valid payloads pass, invalid produce descriptive Zod errors", "proofUnit": 1 },
+          { "criterion": "backlog: valid payloads pass, invalid produce descriptive Zod errors", "proofUnit": 2 },
+          { "criterion": "tools: valid payloads pass, invalid produce descriptive Zod errors", "proofUnit": 3 },
+          { "criterion": "mcp: valid payloads pass, invalid produce descriptive Zod errors", "proofUnit": 4 },
+          { "criterion": "npm run test:contracts exits 0 with all tests green", "proofUnit": 5 }
+        ],
+        "stopConditions": [
+          "Vitest cannot import src/contracts/ TypeScript directly (would require tsconfig change or separate bundler setup)"
+        ]
+      },
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "ws-messages contracts validated",
+          "expectedBehavior": "Valid LaunchMessage, ResumeMessage, CrossCheckDecisionMessage samples parse without error; invalid samples produce descriptive Zod path+message errors.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run test:contracts -- test/contracts/ws-messages.test.ts",
+          "expectedInitialFailure": "Test file not found or ENOENT",
+          "expectedPassingEvidence": "All tests pass, 0 failures"
+        },
+        {
+          "number": 2,
+          "title": "backlog contracts validated",
+          "expectedBehavior": "Valid BacklogTask, BacklogFile samples parse; invalid samples (bad status enum, non-int number) produce descriptive Zod errors.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run test:contracts -- test/contracts/backlog.test.ts",
+          "expectedInitialFailure": "Test file not found or ENOENT",
+          "expectedPassingEvidence": "All tests pass, 0 failures"
+        },
+        {
+          "number": 3,
+          "title": "tools contracts validated",
+          "expectedBehavior": "Valid ReadInput, BashInput, AskUserQuestionInput, TodoWriteInput samples parse; invalid samples produce descriptive Zod errors.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run test:contracts -- test/contracts/tools.test.ts",
+          "expectedInitialFailure": "Test file not found or ENOENT",
+          "expectedPassingEvidence": "All tests pass, 0 failures"
+        },
+        {
+          "number": 4,
+          "title": "mcp contracts validated",
+          "expectedBehavior": "Valid MCPServer, MCPToolEnvelope, MCPToolCall, MCPToolResult samples parse; invalid samples produce descriptive Zod errors.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run test:contracts -- test/contracts/mcp.test.ts",
+          "expectedInitialFailure": "Test file not found or ENOENT",
+          "expectedPassingEvidence": "All tests pass, 0 failures"
+        },
+        {
+          "number": 5,
+          "title": "Full test:contracts suite passes",
+          "expectedBehavior": "npm run test:contracts runs all four files and exits 0 with every test green.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run test:contracts",
+          "expectedInitialFailure": "Script not found in package.json or files not present",
+          "expectedPassingEvidence": "Exit 0, all tests pass"
+        }
+      ]
     }
   ]
 }
