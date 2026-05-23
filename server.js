@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, exec, execFile, execSync, spawnSync } = require('child_process');
+const { spawn, exec, execFile, execSync, execFileSync, spawnSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -5076,10 +5076,14 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
   const dryBranch = `dry-run-${Date.now()}`;
   let conflictFiles = [];
   let mergeStatus = 'clean';
+  let originalBranch = targetBranch;
   try {
-    execSync(`git checkout -b "${dryBranch}" "${targetBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+    originalBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {}
+  try {
+    execFileSync('git', ['checkout', '-b', dryBranch, targetBranch], { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
     try {
-      execSync(`git merge --no-commit --no-ff "${sourceBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+      execFileSync('git', ['merge', '--no-commit', '--no-ff', sourceBranch], { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch {
       const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       conflictFiles = statusOut
@@ -5091,8 +5095,8 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
     }
   } finally {
     try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
-    try { execSync(`git checkout "${targetBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
-    try { execSync(`git branch -D "${dryBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+    try { execFileSync('git', ['checkout', originalBranch], { cwd: repoPath, stdio: 'ignore' }); } catch {}
+    try { execFileSync('git', ['branch', '-D', dryBranch], { cwd: repoPath, stdio: 'ignore' }); } catch {}
   }
   return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles };
 }
@@ -7941,7 +7945,7 @@ const httpServer = http.createServer((req, res) => {
     req.on('data', c => { body += c; });
     req.on('end', async () => {
       try {
-        const { sessionId, targetBranch = 'stage' } = JSON.parse(body);
+        const { sessionId, targetBranch = 'stage', slotId: incomingSlotId } = JSON.parse(body);
         if (!sessionId) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'sessionId required' }));
@@ -7963,18 +7967,26 @@ const httpServer = http.createServer((req, res) => {
         }
         const { branch } = info;
 
-        // Reserve merge slot (FIFO); store sourceBranch so orchSlotReady can auto-trigger the next push
-        const slotId = `slot-${sessionId}-${Date.now()}`;
-        const activeSlot = Object.values(mergeSlots.slots).find(sl => sl.targetBranch === targetBranch && sl.status === 'active');
-        if (activeSlot) {
-          const position = mergeSlots.queue.filter(q => q.targetBranch === targetBranch).length + 1;
-          mergeSlots.queue.push({ slotId, sessionId, sourceBranch: branch, targetBranch, queuedAt: Date.now() });
+        // Reserve merge slot (FIFO); store sourceBranch so orchSlotReady can auto-trigger the next push.
+        // If the caller is resuming via orchSlotReady and already owns the active slot, skip re-reservation
+        // to avoid an infinite re-queue loop (promoted slot appears active to a fresh /push-git call).
+        const resumedSlot = incomingSlotId
+          && mergeSlots.slots[incomingSlotId]?.sessionId === sessionId
+          && mergeSlots.slots[incomingSlotId]?.status === 'active'
+          ? mergeSlots.slots[incomingSlotId] : null;
+        const slotId = resumedSlot ? incomingSlotId : `slot-${sessionId}-${Date.now()}`;
+        if (!resumedSlot) {
+          const activeSlot = Object.values(mergeSlots.slots).find(sl => sl.targetBranch === targetBranch && sl.status === 'active');
+          if (activeSlot) {
+            const position = mergeSlots.queue.filter(q => q.targetBranch === targetBranch).length + 1;
+            mergeSlots.queue.push({ slotId, sessionId, sourceBranch: branch, targetBranch, queuedAt: Date.now() });
+            saveOrchestratorState();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ status: 'queued', slotId, position }));
+          }
+          mergeSlots.slots[slotId] = { slotId, sessionId, sourceBranch: branch, targetBranch, status: 'active', acquiredAt: Date.now() };
           saveOrchestratorState();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ status: 'queued', slotId, position }));
         }
-        mergeSlots.slots[slotId] = { slotId, sessionId, sourceBranch: branch, targetBranch, status: 'active', acquiredAt: Date.now() };
-        saveOrchestratorState();
 
         // Dry-run merge via shared helper
         const dryResult = runDryMerge(repoPath, branch, targetBranch);
@@ -7990,7 +8002,7 @@ const httpServer = http.createServer((req, res) => {
         let pushError = '';
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            execSync(`git push origin "${branch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+            execFileSync('git', ['push', 'origin', branch], { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
             pushOk = true;
             break;
           } catch (e) {
@@ -8056,7 +8068,7 @@ const httpServer = http.createServer((req, res) => {
           : path.join(vaultPath, `${(session.projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_')}_Build`);
 
         // Locate the Build Plan file
-        const candidates = ['3-Build_Plan.md', 'Build Plan.md', 'Build-Plan.md'];
+        const candidates = ['3-Build-Plan.md', '3-Build_Plan.md', 'Build Plan.md', 'Build-Plan.md'];
         let planPath = null;
         for (const name of candidates) {
           const c = path.join(obsDir, name);

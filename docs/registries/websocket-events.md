@@ -311,14 +311,14 @@ Server broadcast when a queued `/push-git` slot becomes active after the previou
 **Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js) for orchestrator events
 
 **Evidence recorded:**
-- 10 entries documented
-- 6 entries with complete producer/consumer pairs ✓
+- 11 entries documented
+- 9 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional orphan gaps ⚠ (emit-debug-log, debug-log — task #20 scope)
-- 2 entries with partial gaps ⚠ (orchConflict, orchAmber — consumer done Phase 3; producer deferred Phase 4)
+- 0 entries with partial gaps (orchConflict, orchAmber, orchSlotReady all fully wired in Phase 4)
 - 0 shape mismatches
-- New identifiers introduced on task #36: `orchConflict`, `orchAmber` (both consumer-only; server producer Phase 4)
-- Registries match current code diff: yes — ⚠ partial status is accurate; mockup.html handlers verified at lines 4678, 4688
+- New identifiers introduced on task #36: `orchConflict`, `orchAmber`, `orchSlotReady` (all fully wired in Phase 4)
+- Registries match current code diff: yes — all orch events verified producer and consumer in Phase 4 + review fixes
 
-**Gaps identified:** `orchConflict` and `orchAmber` remain orphan producers until Phase 4 push flow wires server-side emission. Intentional deferral — documented. `backlogs-data` planned producer (task #26) still pending /sync-state implementation.
+**Gaps identified:** `backlogs-data` planned producer (task #26) still pending /sync-state implementation. All task #36 orch events are now fully wired.
 
-**Status:** Audit complete — WS events registry verified for task #36 scope. Phase 4 gaps intentionally deferred.
+**Status:** Audit complete — WS events registry verified for task #36 scope. All Phase 4 events fully wired.

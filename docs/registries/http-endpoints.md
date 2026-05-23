@@ -57,16 +57,16 @@ Invoke a UI-selected agent from within a Python LangGraph node.
 **Boundaries checked:** HTTP endpoints in server.js and consumers in resources/mockup.html
 
 **Evidence recorded:**
-- 7 entries total (3 pre-existing + 4 new task #36 endpoints)
-- 5 entries with complete producer/consumer pairs ✓
+- 9 entries total (3 pre-existing + 6 new task #36 endpoints)
+- 7 entries with complete producer/consumer pairs ✓
 - 2 entries planned/deferred ⚠ (/sync-state, /recover — task #26 scope, unchanged)
 - 4 shape mismatches corrected:
   - `GET /branch-state`: response shape now reflects project-name top-level wrap, `sessionCount`, `sessionId`, `sessionName`, `timestamp`
   - `POST /reserve-merge-slot`: `position: 0` for acquired vs `1+` for queued now documented
   - `POST /release-merge-slot`: `nextInQueue.slotId` added to response shape
   - `POST /dry-run-merge`: optional `repoPath` request field added
-- New identifiers introduced on task #36: `/branch-state`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge`
-- Registries match current code diff: yes (shapes corrected to match server.js:7825–8009)
+- New identifiers introduced on task #36: `/branch-state`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge`, `/push-git`, `/push-obsidian`
+- Registries match current code diff: yes (shapes corrected to match server.js:7825–8060)
 
 **Gaps identified:** 4 shape mismatches corrected above. `/sync-state` and `/recover` remain planned (task #26 scope). `orchConflict` and `orchAmber` WS emissions remain Phase 4 deferred (see websocket-events.md).
 
@@ -250,7 +250,7 @@ Execute a full serialized push flow for a session: reserve slot → dry-run merg
 
 **Request Payload:**
 ```json
-{ "sessionId": "string", "targetBranch": "string (default: 'stage')" }
+{ "sessionId": "string", "targetBranch": "string (default: 'stage')", "slotId": "string (optional — pass when resuming via orchSlotReady to bypass re-queue)" }
 ```
 
 **Response Payload (clean push):**
@@ -300,7 +300,7 @@ Append a timestamped session summary (branch, worktree, modified files, contenti
 { "error": "string" }
 ```
 
-**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; falls back to `3-Build_Plan.md` if canonical file not found; creates Build folder if missing
+**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; candidate list: `3-Build-Plan.md`, `3-Build_Plan.md`, `Build Plan.md`, `Build-Plan.md`; creates Build folder if missing
 
 ---
 

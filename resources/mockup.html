@@ -4698,7 +4698,7 @@
       case 'orchSlotReady': {
         // Queued push slot is now active — auto-trigger the push for this session
         if (typeof window.orchPushGit === 'function' && msg.sessionId && msg.sourceBranch && msg.targetBranch) {
-          window.orchPushGit(msg.sessionId, msg.sourceBranch, msg.targetBranch);
+          window.orchPushGit(msg.sessionId, msg.sourceBranch, msg.targetBranch, msg.slotId);
         }
         break;
       }
@@ -15220,26 +15220,26 @@ This is your current workflow status across all branches. Review the tasks and P
           ? '<span style="color:#f59e0b;font-weight:700;" title="File contention">&#9888;</span>'
           : '<span style="color:#22c55e;" title="No contention">&#9679;</span>';
         const filesHtml = b.filesChanged.length > 0
-          ? `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${b.filesChanged.slice(0, 5).join(', ')}${b.filesChanged.length > 5 ? ` +${b.filesChanged.length - 5} more` : ''}</div>`
+          ? `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${b.filesChanged.slice(0, 5).map(escHtml).join(', ')}${b.filesChanged.length > 5 ? ` +${b.filesChanged.length - 5} more` : ''}</div>`
           : '<div style="font-size:10px;opacity:0.3;margin-top:2px;">no changes</div>';
         const sid = b.sessionId || '';
         const btnBase = 'border:none;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;';
         return `<div style="padding:6px 0;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;gap:6px;">
             ${statusDot}
-            <code style="font-size:11px;">${branch}</code>
-            <span style="font-size:10px;opacity:0.5;">${b.head || ''}</span>
-            <span style="margin-left:auto;font-size:10px;opacity:0.5;">${b.sessionName || sid}</span>
-            <button id="push-git-${sid}" style="${btnBase}background:#1e40af;color:#93c5fd;" onclick="window.orchPushGit('${sid}','${branch}','stage')">Push Git ↑</button>
-            <button id="push-obs-${sid}" style="${btnBase}background:#1e3a2f;color:#6ee7b7;" onclick="window.orchPushObsidian('${sid}')">Push Obsidian →</button>
+            <code style="font-size:11px;">${escHtml(branch)}</code>
+            <span style="font-size:10px;opacity:0.5;">${escHtml(b.head || '')}</span>
+            <span style="margin-left:auto;font-size:10px;opacity:0.5;">${escHtml(b.sessionName || sid)}</span>
+            <button id="push-git-${escHtmlAttr(sid)}" data-sid="${escHtmlAttr(sid)}" data-branch="${escHtmlAttr(branch)}" style="${btnBase}background:#1e40af;color:#93c5fd;" onclick="window.orchPushGit(this.dataset.sid,this.dataset.branch,'stage')">Push Git ↑</button>
+            <button id="push-obs-${escHtmlAttr(sid)}" data-sid="${escHtmlAttr(sid)}" style="${btnBase}background:#1e3a2f;color:#6ee7b7;" onclick="window.orchPushObsidian(this.dataset.sid)">Push Obsidian →</button>
           </div>
           ${filesHtml}
-          ${contentionFiles.length > 0 ? `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">Contention: ${contentionFiles.join(', ')}</div>` : ''}
+          ${contentionFiles.length > 0 ? `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">Contention: ${contentionFiles.map(escHtml).join(', ')}</div>` : ''}
         </div>`;
       }).join('');
 
       return `<div style="margin-bottom:16px;">
-        <div style="font-size:12px;font-weight:700;opacity:0.6;letter-spacing:1px;margin-bottom:6px;">${proj.toUpperCase()} &mdash; ${info.sessionCount} sessions</div>
+        <div style="font-size:12px;font-weight:700;opacity:0.6;letter-spacing:1px;margin-bottom:6px;">${escHtml(proj).toUpperCase()} &mdash; ${info.sessionCount} sessions</div>
         ${hasContention ? `<div style="background:#f59e0b22;border:1px solid #f59e0b55;border-radius:6px;padding:6px 10px;font-size:11px;color:#f59e0b;margin-bottom:8px;">File contention detected — review before pushing.</div>` : ''}
         ${branchRows || '<div style="opacity:0.4;font-size:11px;">No worktree data</div>'}
       </div>`;
@@ -15252,10 +15252,10 @@ This is your current workflow status across all branches. Review the tasks and P
     if (!feed) return;
     const card = document.createElement('div');
     card.style.cssText = 'background:#f59e0b22;border:1px solid #f59e0b;border-radius:8px;padding:12px;margin-bottom:10px;';
-    card.innerHTML = `<div style="font-weight:700;color:#f59e0b;font-size:12px;">MERGE CONFLICT — Session ${msg.sessionId}</div>
-      <div style="font-size:11px;margin-top:4px;opacity:0.8;">${msg.sourceBranch} → ${msg.targetBranch}</div>
-      <div style="font-size:11px;margin-top:4px;">Conflicting files: <code>${(msg.conflictFiles || []).join(', ')}</code></div>
-      <div style="font-size:10px;opacity:0.5;margin-top:4px;">Slot held: ${msg.slotId} — resolve conflict then release slot.</div>`;
+    card.innerHTML = `<div style="font-weight:700;color:#f59e0b;font-size:12px;">MERGE CONFLICT — Session ${escHtml(msg.sessionId)}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:0.8;">${escHtml(msg.sourceBranch)} → ${escHtml(msg.targetBranch)}</div>
+      <div style="font-size:11px;margin-top:4px;">Conflicting files: <code>${(msg.conflictFiles || []).map(escHtml).join(', ')}</code></div>
+      <div style="font-size:10px;opacity:0.5;margin-top:4px;">Slot held: ${escHtml(msg.slotId)} — resolve conflict then release slot.</div>`;
     feed.prepend(card);
   }
 
@@ -15264,14 +15264,14 @@ This is your current workflow status across all branches. Review the tasks and P
     if (!feed) return;
     const card = document.createElement('div');
     card.style.cssText = 'background:#ef444422;border:1px solid #ef4444;border-radius:8px;padding:12px;margin-bottom:10px;';
-    card.innerHTML = `<div style="font-weight:700;color:#ef4444;font-size:12px;">PUSH FAILURE — Session ${msg.sessionId}</div>
-      <div style="font-size:11px;margin-top:4px;opacity:0.8;">${msg.reason}</div>
-      <div style="font-size:11px;margin-top:4px;opacity:0.6;">${msg.detail}</div>
-      <div style="font-size:10px;opacity:0.5;margin-top:4px;">Retries: ${msg.retryCount}${msg.slotId ? ` · Slot: ${msg.slotId}` : ''}</div>`;
+    card.innerHTML = `<div style="font-weight:700;color:#ef4444;font-size:12px;">PUSH FAILURE — Session ${escHtml(msg.sessionId)}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:0.8;">${escHtml(msg.reason)}</div>
+      <div style="font-size:11px;margin-top:4px;opacity:0.6;">${escHtml(msg.detail)}</div>
+      <div style="font-size:10px;opacity:0.5;margin-top:4px;">Retries: ${escHtml(String(msg.retryCount))}${msg.slotId ? ` · Slot: ${escHtml(msg.slotId)}` : ''}</div>`;
     feed.prepend(card);
   }
 
-  async function orchPushGit(sessionId, branch, targetBranch) {
+  async function orchPushGit(sessionId, branch, targetBranch, slotId) {
     const btn = document.getElementById(`push-git-${sessionId}`);
     if (!btn || btn.disabled) return;
     btn.disabled = true;
@@ -15280,7 +15280,7 @@ This is your current workflow status across all branches. Review the tasks and P
       const r = await fetch('/push-git', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, targetBranch }),
+        body: JSON.stringify({ sessionId, targetBranch, ...(slotId ? { slotId } : {}) }),
       });
       const data = await r.json();
       if (data.status === 'success') {

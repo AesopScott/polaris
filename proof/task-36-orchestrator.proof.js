@@ -86,8 +86,8 @@ async function runProofs() {
     assert('PU2 request succeeded', false, e.message);
   }
 
-  // ── Proof Unit 3: POST /release-merge-slot ───────────────────────────────
-  console.log('\nPU3  POST /release-merge-slot — release slot and advance queue');
+  // ── Proof Unit 2b: POST /release-merge-slot ──────────────────────────────
+  console.log('\nPU2b POST /release-merge-slot — release slot and advance queue');
   try {
     if (!slotId1) throw new Error('No slotId from PU2 — skipping');
     const r = await request('POST', '/release-merge-slot', { slotId: slotId1, status: 'success' });
@@ -103,10 +103,10 @@ async function runProofs() {
     assert('PU3 request succeeded', false, e.message);
   }
 
-  // ── Proof Unit 4: POST /dry-run-merge ───────────────────────────────────
+  // ── Proof Unit 3: POST /dry-run-merge ───────────────────────────────────
   // Requires repoPath pointing to a valid git repo with the named branches.
   // Provide REPO_PATH env var or the test will check for a 400 (no-repo fallback).
-  console.log('\nPU4  POST /dry-run-merge — real git dry-run or graceful 400 without active sessions');
+  console.log('\nPU3  POST /dry-run-merge — real git dry-run or graceful 400 without active sessions');
   try {
     const repoPath = process.env.REPO_PATH || null;
     const payload = { sourceBranch: 'task/99-nonexistent', targetBranch: 'main' };
