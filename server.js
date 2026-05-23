@@ -32,7 +32,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, exec, execFile, execFileSync, execSync, spawnSync } = require('child_process');
+const { spawn, exec, execFile, execSync, execFileSync, spawnSync } = require('child_process');
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -80,6 +80,7 @@ const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
 const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
+const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
@@ -1603,90 +1604,6 @@ function scaffoldBacklog(project) {
   }
 }
 
-function scaffoldDeployYml(project) {
-  const { name, workDir } = project;
-  if (!workDir) return;
-  try {
-    const githubDir = path.join(workDir, '.github', 'workflows');
-    const deployPath = path.join(githubDir, 'deploy.yml');
-    if (fs.existsSync(deployPath)) return; // Idempotent: don't overwrite if already exists
-
-    fs.mkdirSync(githubDir, { recursive: true });
-
-    // Deploy.yml template based on AesopScott/Aesop
-    const deployYmlContent = `name: Deploy to Mocahost
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:        # manual "Run workflow" button for force redeploys
-
-concurrency:
-  group: deploy-mocahost
-  # IMPORTANT: keep this \`false\`. With \`true\`, every push cancels the
-  # in-flight deploy mid-FTP, and on a busy push day no deploy ever
-  # finishes (see 2026-04-28 incident: 10 cancelled in a row, prod stuck
-  # 13+ hours behind main). \`false\` lets runs queue and complete in
-  # order; the latest run still wins because FTP uploads the whole tree.
-  cancel-in-progress: false
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-          token: \${{ secrets.AIP_COMMIT_TOKEN || secrets.AESOP_PAT || github.token }}
-
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: 65.181.111.131
-          username: hivetec1
-          password: \${{ secrets.FTP_PASSWORD }}
-          port: 21
-          protocol: ftps
-          local-dir: ./
-          server-dir: /public_html/aesop-academy/
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/.github/**
-            **/.claude/**
-            **/TEMP/**
-            **/archive/**
-            **/aesop-api/archive/**
-            **/Board Meetings/**
-            **/secrets.local.php
-            **/config.local.php
-            **/*.bat
-            **/*.ps1
-            **/audit_*.txt
-            **/audit_modules.py
-            **/fix_*.py
-            **/README.md
-            **/.DS_Store
-            # cPanel infrastructure — never touch
-            cgi-bin/**
-            .htaccess
-`;
-
-    fs.writeFileSync(deployPath, deployYmlContent, 'utf8');
-    console.log(`[scaffold-deploy] wrote ${deployPath} for ${name}`);
-    broadcast({
-      type: 'deploy-yml-scaffolded',
-      project: name,
-      path: deployPath,
-      message: 'deploy.yml created. Create FTP_PASSWORD secret in GitHub before deploying.'
-    });
-  } catch (e) {
-    console.error('[scaffold-deploy] failed:', e.message);
-  }
-}
 
 async function scaffoldGitRepo(project) {
   const { name, workDir, repo } = project;
@@ -5114,7 +5031,7 @@ function normalizeMcpAllowlist(allowlist) {
 function getMcpServerConfigs(allowlist = null) {
   const servers = readClaudeJson().mcpServers || {};
   const normalized = normalizeMcpAllowlist(allowlist);
-  if (normalized === null) return {};
+  if (normalized === null) return servers; // null allowlist = no filter; return all configured servers
   const allowed = new Set(normalized);
   return Object.fromEntries(Object.entries(servers).filter(([name]) => allowed.has(name)));
 }
@@ -5351,6 +5268,127 @@ function removeSessionWorktree(sessionId) {
   } catch {}
   try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {}
 }
+
+// ── Orchestrator helpers ──────────────────────────────────────────────────────
+
+function getSessionsForProject(projectName) {
+  const result = [];
+  for (const [, s] of sessions) {
+    if (s.projectName === projectName && s.status !== 'closed') result.push(s);
+  }
+  return result;
+}
+
+function getWorktreeBranchInfo(worktreePath) {
+  if (!worktreePath || !fs.existsSync(worktreePath)) return null;
+  try {
+    const branch = execSync('git branch --show-current', { cwd: worktreePath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const head   = execSync('git rev-parse --short HEAD', { cwd: worktreePath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const statusRaw = execSync('git status --short', { cwd: worktreePath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const filesChanged = statusRaw
+      ? statusRaw.split('\n').map(l => l.slice(3).trim()).filter(Boolean)
+      : [];
+    return { branch, head, filesChanged };
+  } catch {
+    return null;
+  }
+}
+
+function detectFileContention(projectSessions) {
+  const fileToSessions = {};
+  for (const s of projectSessions) {
+    const info = getWorktreeBranchInfo(s.worktreePath);
+    if (!info) continue;
+    for (const f of info.filesChanged) {
+      if (!fileToSessions[f]) fileToSessions[f] = [];
+      fileToSessions[f].push(s.id);
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(fileToSessions).filter(([, ids]) => ids.length > 1)
+  );
+}
+
+// Shared dry-run merge helper. Creates a throwaway branch off targetBranch, attempts
+// git merge --no-commit --no-ff, always aborts and deletes the branch in finally.
+// Returns { status: 'clean' } or { status: 'conflict', conflictFiles: [...] }.
+function runDryMerge(repoPath, sourceBranch, targetBranch) {
+  const dryBranch = `dry-run-${Date.now()}`;
+  let conflictFiles = [];
+  let diffExcerpt = '';
+  let mergeStatus = 'clean';
+  let originalBranch = targetBranch;
+  let restoreFailed = false;
+  try {
+    originalBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {}
+  try {
+    execFileSync('git', ['checkout', '-b', dryBranch, targetBranch], { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+    try {
+      execFileSync('git', ['merge', '--no-commit', '--no-ff', sourceBranch], { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch {
+      const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      conflictFiles = statusOut
+        .split('\n')
+        .filter(l => /^(UU|AA|DD|AU|UA)/.test(l))
+        .map(l => l.slice(3).trim())
+        .filter(Boolean);
+      mergeStatus = 'conflict';
+      try {
+        diffExcerpt = execSync('git diff --stat HEAD', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().slice(0, 500);
+      } catch {}
+    }
+  } catch (setupErr) {
+    // git checkout -b or other setup failure — normalize to error so caller handles it cleanly.
+    // finally still runs to attempt cleanup before this return takes effect.
+    return { status: 'error', reason: setupErr.message || 'dry-run-setup-failed' };
+  } finally {
+    try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
+    try {
+      execFileSync('git', ['checkout', originalBranch], { cwd: repoPath, stdio: 'ignore' });
+    } catch {
+      restoreFailed = true;
+    }
+    try { execFileSync('git', ['branch', '-D', dryBranch], { cwd: repoPath, stdio: 'ignore' }); } catch {}
+  }
+  if (restoreFailed) return { status: 'error', reason: 'branch-restore-failed' };
+  return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles, diffExcerpt };
+}
+
+// Merge slot queue — serialises concurrent session push operations.
+// State persisted to ORCHESTRATOR_STATE_PATH so it survives server restarts.
+const mergeSlots = { slots: {}, queue: [] };
+
+function loadOrchestratorState() {
+  try {
+    if (fs.existsSync(ORCHESTRATOR_STATE_PATH)) {
+      const raw = fs.readFileSync(ORCHESTRATOR_STATE_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed.slots) mergeSlots.slots = parsed.slots;
+      if (parsed.queue) mergeSlots.queue = parsed.queue;
+      // Drop slots whose timeout has elapsed to prevent stale locks surviving restarts
+      const now = Date.now();
+      for (const [id, slot] of Object.entries(mergeSlots.slots)) {
+        if (slot.timeout && slot.acquiredAt && (now - slot.acquiredAt) > slot.timeout) {
+          console.log(`[orchestrator] dropping expired slot ${id} (held ${Math.round((now - slot.acquiredAt) / 1000)}s)`);
+          delete mergeSlots.slots[id];
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[orchestrator] state load failed:', e.message);
+  }
+}
+
+function saveOrchestratorState() {
+  try {
+    fs.writeFileSync(ORCHESTRATOR_STATE_PATH, JSON.stringify(mergeSlots, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[orchestrator] state save failed:', e.message);
+  }
+}
+
+loadOrchestratorState();
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -8065,6 +8103,350 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // GET /branch-state — live session/branch data for the orchestrator panel
+  if (req.method === 'GET' && req.url.split('?')[0] === '/branch-state') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const params = new URL(req.url, 'http://localhost').searchParams;
+        const projectName = params.get('project') || null;
+
+        const projectMap = {};
+        for (const [, s] of sessions) {
+          if (s.status === 'closed') continue;
+          const pn = s.projectName || '(unknown)';
+          if (projectName && pn !== projectName) continue;
+          if (!projectMap[pn]) projectMap[pn] = [];
+          projectMap[pn].push(s);
+        }
+
+        const result = {};
+        for (const [pn, pSessions] of Object.entries(projectMap)) {
+          const contention = detectFileContention(pSessions);
+          const featureBranches = {};
+          for (const s of pSessions) {
+            const info = getWorktreeBranchInfo(s.worktreePath);
+            if (!info) continue;
+            featureBranches[info.branch || s.id] = {
+              sessionId:    s.id,
+              sessionName:  s.name || s.id,
+              head:         info.head,
+              worktreePath: s.worktreePath,
+              filesChanged: info.filesChanged,
+              contention:   info.filesChanged.filter(f => contention[f]),
+            };
+          }
+          result[pn] = {
+            sessionCount:   pSessions.length,
+            featureBranches,
+            contention,
+            timestamp:      new Date().toISOString(),
+          };
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /reserve-merge-slot — acquire or queue a merge slot for a push
+  if (req.method === 'POST' && req.url === '/reserve-merge-slot') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const { taskNumber, targetBranch, timeout = 300000 } = JSON.parse(body);
+        if (!taskNumber || !targetBranch) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'taskNumber and targetBranch required' }));
+          return;
+        }
+        const key = `${targetBranch}`;
+        const slotId = `slot-${taskNumber}-${Date.now()}`;
+        const activeSlot = Object.values(mergeSlots.slots).find(sl => sl.targetBranch === key && sl.status === 'active');
+        if (!activeSlot) {
+          mergeSlots.slots[slotId] = { slotId, taskNumber, targetBranch: key, status: 'active', acquiredAt: Date.now(), timeout };
+          saveOrchestratorState();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'acquired', slotId, position: 0 }));
+        } else {
+          const position = mergeSlots.queue.filter(q => q.targetBranch === key).length + 1;
+          mergeSlots.queue.push({ slotId, taskNumber, targetBranch: key, queuedAt: Date.now(), timeout });
+          saveOrchestratorState();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'queued', slotId, position }));
+        }
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /release-merge-slot — release a held slot and advance the queue
+  if (req.method === 'POST' && req.url === '/release-merge-slot') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const { slotId, status = 'success' } = JSON.parse(body);
+        if (!slotId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'slotId required' }));
+          return;
+        }
+        const slot = mergeSlots.slots[slotId];
+        if (!slot) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'slot not found' }));
+          return;
+        }
+        const targetBranch = slot.targetBranch;
+        delete mergeSlots.slots[slotId];
+
+        let nextInQueue = null;
+        const nextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
+        if (nextIdx !== -1) {
+          const next = mergeSlots.queue.splice(nextIdx, 1)[0];
+          mergeSlots.slots[next.slotId] = { ...next, status: 'active', acquiredAt: Date.now() };
+          nextInQueue = { taskNumber: next.taskNumber, slotId: next.slotId };
+          // If the promoted entry is a push-git queue entry, signal the UI to auto-trigger
+          if (next.sessionId) {
+            broadcast({ type: 'orchSlotReady', sessionId: next.sessionId, sourceBranch: next.sourceBranch, targetBranch: next.targetBranch, slotId: next.slotId });
+          }
+        }
+        saveOrchestratorState();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ released: true, status, nextInQueue }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /dry-run-merge — detect conflicts before any real merge
+  if (req.method === 'POST' && req.url === '/dry-run-merge') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const { sourceBranch, targetBranch, repoPath: callerRepoPath, cleanup = true } = JSON.parse(body);
+        if (!sourceBranch || !targetBranch) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'sourceBranch and targetBranch required' }));
+          return;
+        }
+        // Resolve repo: use caller-supplied repoPath or fall back to any active session's repoWorkDir.
+        const repoPath = callerRepoPath ||
+          [...sessions.values()].find(s => s.repoWorkDir && fs.existsSync(s.repoWorkDir))?.repoWorkDir;
+        if (!repoPath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No repo path available — pass repoPath or have an active session' }));
+          return;
+        }
+
+        const dryResult = runDryMerge(repoPath, sourceBranch, targetBranch);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(dryResult));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /push-git — slot reserve → dry-run → git push + retry → release slot
+  if (req.method === 'POST' && req.url === '/push-git') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      try {
+        const { sessionId, targetBranch = 'stage', slotId: incomingSlotId } = JSON.parse(body);
+        if (!sessionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'sessionId required' }));
+        }
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'session not found' }));
+        }
+        const repoPath = session.repoWorkDir;
+        if (!repoPath || !fs.existsSync(repoPath)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'session has no associated git repo' }));
+        }
+        const info = getWorktreeBranchInfo(session.worktreePath);
+        if (!info || !info.branch) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'could not determine session branch' }));
+        }
+        const { branch } = info;
+
+        // Reserve merge slot (FIFO); store sourceBranch so orchSlotReady can auto-trigger the next push.
+        // If the caller is resuming via orchSlotReady and already owns the active slot, skip re-reservation
+        // to avoid an infinite re-queue loop (promoted slot appears active to a fresh /push-git call).
+        const resumedSlot = incomingSlotId
+          && mergeSlots.slots[incomingSlotId]?.sessionId === sessionId
+          && mergeSlots.slots[incomingSlotId]?.status === 'active'
+          ? mergeSlots.slots[incomingSlotId] : null;
+        const slotId = resumedSlot ? incomingSlotId : `slot-${sessionId}-${Date.now()}`;
+        if (!resumedSlot) {
+          const activeSlot = Object.values(mergeSlots.slots).find(sl => sl.targetBranch === targetBranch && sl.status === 'active');
+          if (activeSlot) {
+            const position = mergeSlots.queue.filter(q => q.targetBranch === targetBranch).length + 1;
+            mergeSlots.queue.push({ slotId, sessionId, sourceBranch: branch, targetBranch, queuedAt: Date.now() });
+            saveOrchestratorState();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ status: 'queued', slotId, position }));
+          }
+          mergeSlots.slots[slotId] = { slotId, sessionId, sourceBranch: branch, targetBranch, status: 'active', acquiredAt: Date.now() };
+          saveOrchestratorState();
+        }
+
+        // Dry-run merge via shared helper
+        const dryResult = runDryMerge(repoPath, branch, targetBranch);
+        if (dryResult.status === 'conflict') {
+          // Hold slot — user must resolve conflict and release manually via /release-merge-slot
+          broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles: dryResult.conflictFiles, diffExcerpt: dryResult.diffExcerpt || '', slotId });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'conflict', conflictFiles: dryResult.conflictFiles, slotId }));
+        }
+        if (dryResult.status === 'error') {
+          // Branch restore failed — release slot so the queue doesn't deadlock, then surface the error
+          delete mergeSlots.slots[slotId];
+          const errNextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
+          if (errNextIdx !== -1) {
+            const errNext = mergeSlots.queue.splice(errNextIdx, 1)[0];
+            mergeSlots.slots[errNext.slotId] = { ...errNext, status: 'active', acquiredAt: Date.now() };
+            if (errNext.sessionId) {
+              broadcast({ type: 'orchSlotReady', sessionId: errNext.sessionId, sourceBranch: errNext.sourceBranch, targetBranch: errNext.targetBranch, slotId: errNext.slotId });
+            }
+          }
+          saveOrchestratorState();
+          broadcast({ type: 'orchAmber', sessionId, sourceBranch: branch, targetBranch, reason: dryResult.reason, detail: 'Branch restore failed during dry-run — push aborted to protect repo state', retryCount: 0, slotId: null });
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'dry-run-restore-failed', reason: dryResult.reason }));
+        }
+
+        // Push to origin with retry (up to 3 attempts, exponential backoff)
+        let pushOk = false;
+        let pushError = '';
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            execFileSync('git', ['push', 'origin', branch], { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+            pushOk = true;
+            break;
+          } catch (e) {
+            pushError = (e.stderr ? e.stderr.toString().trim() : e.message) || 'push failed';
+            if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+          }
+        }
+
+        // Release slot and promote next in queue; broadcast orchSlotReady so the UI auto-triggers the queued push
+        delete mergeSlots.slots[slotId];
+        const nextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
+        if (nextIdx !== -1) {
+          const next = mergeSlots.queue.splice(nextIdx, 1)[0];
+          mergeSlots.slots[next.slotId] = { ...next, status: 'active', acquiredAt: Date.now() };
+          if (next.sessionId) {
+            broadcast({ type: 'orchSlotReady', sessionId: next.sessionId, sourceBranch: next.sourceBranch, targetBranch: next.targetBranch, slotId: next.slotId });
+          }
+        }
+        saveOrchestratorState();
+
+        if (!pushOk) {
+          broadcast({ type: 'orchAmber', sessionId, reason: 'git push failed after 3 attempts', detail: pushError, retryCount: 3, slotId: null });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'error', error: pushError }));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'success', branch, targetBranch }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /push-obsidian — append timestamped session summary to project Build Plan in Obsidian
+  if (req.method === 'POST' && req.url === '/push-obsidian') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const { sessionId } = JSON.parse(body);
+        if (!sessionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'sessionId required' }));
+        }
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'session not found' }));
+        }
+        const config = readConfig();
+        const vaultPath = config.obsidianVaultPath || '';
+        if (!vaultPath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Obsidian vault path not configured in Settings' }));
+        }
+        const projects = config.projects || [];
+        const proj = projects.find(p => p.name === session.projectName);
+        const obsDir = proj?.obsidianDir
+          ? (path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir))
+          : path.join(vaultPath, `${(session.projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_')}_Build`);
+
+        // Locate the Build Plan file
+        const candidates = ['3-Build-Plan.md', '3-Build_Plan.md', 'Build Plan.md', 'Build-Plan.md'];
+        let planPath = null;
+        for (const name of candidates) {
+          const c = path.join(obsDir, name);
+          if (fs.existsSync(c)) { planPath = c; break; }
+        }
+        if (!planPath) {
+          planPath = path.join(obsDir, '3-Build_Plan.md');
+          if (!fs.existsSync(obsDir)) fs.mkdirSync(obsDir, { recursive: true });
+          fs.writeFileSync(planPath, `# Build Plan\n`, 'utf8');
+        }
+
+        const info = getWorktreeBranchInfo(session.worktreePath);
+        const filesChanged = info?.filesChanged || [];
+        const activeSessions = [...sessions.values()].filter(s => s.projectName === session.projectName && s.id !== session.id);
+        const contention = Object.keys(detectFileContention([session, ...activeSessions]));
+        const ts = new Date().toISOString();
+
+        const summary = `\n---\n\n## Session Summary — ${ts}\n\n` +
+          `**Session:** ${session.name || session.id}  \n` +
+          `**Branch:** ${info?.branch || '(unknown)'}  \n` +
+          `**Worktree:** ${session.worktreePath || '(none)'}  \n` +
+          `**Modified (${filesChanged.length}):** ${filesChanged.length ? filesChanged.join(', ') : 'none'}  \n` +
+          `**Contention:** ${contention.length ? contention.join(', ') : 'none'}  \n` +
+          `**Status:** ${session.status}\n`;
+
+        fs.appendFileSync(planPath, summary, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, filePath: planPath }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // POST /sync-state — receive canonical status update from LangGraph executor,
   // write to backlog.json, then broadcast backlogs-data to refresh the UI.
   if (req.method === 'POST' && req.url === '/sync-state') {
@@ -10154,7 +10536,6 @@ async function handleMessage(ws, raw) {
     writeJSON(CONFIG_PATH, cfg);
     if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
     if (idx < 0) scaffoldBacklog(proj);
-    if (idx < 0) scaffoldDeployYml(proj);
     sendTo(ws, { type: 'config-saved' });
     return;
   }
