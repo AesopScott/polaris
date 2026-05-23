@@ -825,7 +825,7 @@ function buildDefaultPolicy(session, config) {
     if (downloads) roots.push(downloads);
   }
   return Object.freeze({
-    allowedRoots:          roots,
+    allowedRoots:          Object.freeze(roots),
     writeMode:             wd ? 'extended' : 'read-only',
     networkAllowed:        true,
     installerAllowed:      false,

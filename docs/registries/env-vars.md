@@ -181,5 +181,3 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 **Note — intentional orphan producer:** `session.policy` field is set at server.js:925 and server.js:8641 but has no consumers yet. Tasks #42-#45 will wire enforcement. Not a cross-boundary env var so not listed here — noted in audit for completeness.
 
 **Status:** Audit complete
-
-**Status:** Audit complete — registries updated for task #26 scope.
