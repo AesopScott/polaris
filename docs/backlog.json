@@ -232,10 +232,23 @@
       "category": "feature",
       "priority": 92,
       "impact": "major",
-      "status": "backlog",
+      "status": "planned",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "plan": "## Overview\n\nTask #27 decomposes the contract-definition work into four independently shippable subtasks.\n\n## Recommendation\n\nUse Zod in src/contracts/ as the single source of truth. TypeScript is already configured (tsconfig.json exists, TypeScript in devDeps). Zod provides runtime validation and TypeScript type inference from one definition. The existing hand-written markdown registries in docs/registries/ become generated artifacts.\n\n## Decomposition\n\n### Subtask #37 — Contracts foundation\nAdd Zod dependency, create src/contracts/ with four modules (ws-messages.ts, backlog.ts, tools.ts, mcp.ts), verify TypeScript compilation.\n\n### Subtask #38 — Runtime validation wiring\nCompile contracts and replace hand-rolled validation in server.js with Zod validators at the backlog and WebSocket message boundaries.\n\n### Subtask #39 — Registry generation script\nWrite scripts/generate-registries.js that imports compiled contracts and regenerates docs/registries/*.md from the schema definitions.\n\n### Subtask #40 — Contract test suite\nWrite test/contracts/ test files validating real payload samples against each schema.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Subtasks #37-40 created in backlog.json",
+          "expectedBehavior": "Tasks #37, #38, #39, #40 exist in docs/backlog.json with status backlog and correct titles.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const b=require('./docs/backlog.json'); [37,38,39,40].forEach(n=>{const t=b.tasks.find(t=>t.number===n); console.log(n,t?t.title:'MISSING')});\"",
+          "expectedInitialFailure": "Tasks 37-40 do not exist in backlog.json.",
+          "expectedPassingEvidence": "All four task numbers print their titles without MISSING.",
+          "waiverGuidance": "N/A"
+        }
+      ]
     },
     {
       "number": 28,
@@ -443,6 +456,76 @@
       },
       "branch": "task/36-add-a-ship-task-orchestration-capab",
       "pr_url": "https://github.com/AesopScott/polaris/pull/34"
+    },
+    {
+      "number": 37,
+      "title": "Contracts foundation: Zod schemas in src/contracts/",
+      "description": "Add Zod to package.json dependencies. Create src/contracts/ with four modules: ws-messages.ts (all WebSocket message types), backlog.ts (task schema + status enum), tools.ts (direct tool schemas for all 14 tools), and mcp.ts (MCP tool envelope schemas). Create src/contracts/index.ts as barrel export. Verify npx tsc --noEmit passes.",
+      "category": "feature",
+      "priority": 92,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 38,
+      "title": "Wire runtime validation: use compiled contracts in server.js",
+      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic — validation only.",
+      "category": "feature",
+      "priority": 91,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        37
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 39,
+      "title": "Registry generation: generate docs/registries/ from schemas",
+      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script \"generate:registries\". Run it to regenerate all current registries and verify output matches existing hand-written content.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        37
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 40,
+      "title": "Contract test suite: validate real payload samples",
+      "description": "Write test/contracts/ test files. Each file covers one contract module: valid samples pass, invalid samples produce descriptive Zod errors. Add npm script \"test:contracts\". Covers ws-messages, backlog tasks, tool calls, and MCP envelopes.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        37
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
     }
   ]
 }
