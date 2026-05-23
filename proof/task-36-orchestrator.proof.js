@@ -100,7 +100,7 @@ async function runProofs() {
       await request('POST', '/release-merge-slot', { slotId: slotId2, status: 'success' });
     }
   } catch (e) {
-    assert('PU3 request succeeded', false, e.message);
+    assert('PU2b request succeeded', false, e.message);
   }
 
   // ── Proof Unit 3: POST /dry-run-merge ───────────────────────────────────
@@ -119,7 +119,7 @@ async function runProofs() {
       assert('status is clean or conflict', r.body.status === 'clean' || r.body.status === 'conflict', JSON.stringify(r.body));
     }
   } catch (e) {
-    assert('PU4 request succeeded', false, e.message);
+    assert('PU3 request succeeded', false, e.message);
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────
