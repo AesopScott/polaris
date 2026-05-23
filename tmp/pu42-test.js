@@ -7,8 +7,6 @@
 // Inline the registry and assertSafeCommand for isolated testing
 // (mirrors the implementation in server.js)
 
-const path = require('path');
-
 /**
  * @typedef {Object} CommandClassEntry
  * @property {string} name - Unique identifier for this command class entry

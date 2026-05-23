@@ -4816,48 +4816,48 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
 
 /** @type {ReadonlyMap<string, CommandClassEntry>} */
 const COMMAND_CLASS_REGISTRY = Object.freeze(new Map([
-  ['GIT_FORCE_PUSH', {
+  ['GIT_FORCE_PUSH', Object.freeze({
     name: 'GIT_FORCE_PUSH',
     commandClass: 'system-destructive',
     minimumTrustLevel: 'any',
     reason: 'force-push is blocked — run manually if needed',
     detect: cmd => /\bgit\s+push\s+(-f\b|--force\b)/i.test(cmd),
-  }],
-  ['GIT_RESET_HARD', {
+  })],
+  ['GIT_RESET_HARD', Object.freeze({
     name: 'GIT_RESET_HARD',
     commandClass: 'system-destructive',
     minimumTrustLevel: 'any',
     reason: 'git reset --hard is blocked — run manually if needed',
     detect: cmd => /\bgit\s+reset\s+--hard\b/i.test(cmd),
-  }],
-  ['GIT_CLEAN', {
+  })],
+  ['GIT_CLEAN', Object.freeze({
     name: 'GIT_CLEAN',
     commandClass: 'system-destructive',
     minimumTrustLevel: 'any',
     reason: 'git clean -f is blocked — run manually if needed',
     detect: cmd => /\bgit\s+clean\s+-[a-zA-Z]*f/i.test(cmd),
-  }],
-  ['DRIVE_FORMAT', {
+  })],
+  ['DRIVE_FORMAT', Object.freeze({
     name: 'DRIVE_FORMAT',
     commandClass: 'system-destructive',
     minimumTrustLevel: 'any',
     reason: 'drive format is blocked',
     detect: cmd => /\bformat\s+[a-zA-Z]:/i.test(cmd),
-  }],
-  ['RM_RECURSIVE_ROOT', {
+  })],
+  ['RM_RECURSIVE_ROOT', Object.freeze({
     name: 'RM_RECURSIVE_ROOT',
     commandClass: 'system-destructive',
     minimumTrustLevel: 'any',
     reason: 'recursive delete at filesystem root is blocked',
     detect: cmd => /\brm\s+-[rRfF ]*[rR][fF]?\s+[/"']*[\/\\]/i.test(cmd),
-  }],
-  ['RD_FULL_DRIVE', {
+  })],
+  ['RD_FULL_DRIVE', Object.freeze({
     name: 'RD_FULL_DRIVE',
     commandClass: 'system-destructive',
     minimumTrustLevel: 'any',
     reason: 'full-drive rd is blocked',
     detect: cmd => /\brd\s+\/s\s+\/q\s+[a-zA-Z]:\\\s*$/i.test(cmd),
-  }],
+  })],
 ]));
 
 const SHELL_WRITE_VERBS = /\b(rm|del|rd|rmdir|Remove-Item|ri|move|mv|ren|rename|copy|cp|xcopy|robocopy|Set-Content|Out-File|New-Item|Add-Content|Write-Output\s*>|echo\s+.+>)\b/i;
