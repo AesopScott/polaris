@@ -435,6 +435,18 @@ async def signal(task_number: int, req: SignalRequest) -> Dict[str, Any]:
     if not state:
         raise HTTPException(status_code=404, detail=f"Task {task_number} not found")
 
+    # Guard: stalled/failed tasks cannot be resumed — the LangGraph checkpoint may
+    # still have snapshot.next set even after the watchdog fired, so we must check
+    # the persisted status first to avoid the stall/signal race.
+    if state["status"] in ("stalled", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Task {task_number} is {state['status']} and cannot be resumed via /signal. "
+                "Use /recover to check restart options."
+            ),
+        )
+
     config = _graph_config(task_number)
     snapshot = _get_snapshot(config)
 

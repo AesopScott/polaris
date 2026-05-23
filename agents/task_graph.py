@@ -17,6 +17,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.types import interrupt
 from state import TaskState
 from node_utils import safe_node
+from transitions import validate_transition
 
 
 # Nodes where the executor suspends and waits for a human signal
@@ -80,11 +81,21 @@ def finish_build_node(state: TaskState) -> Dict[str, Any]:
             },
         }
 
+    # Enforce precondition before setting status (catches multi-hop paths too)
+    ok, failures = validate_transition(state.get("status", ""), "build-finished", state)
+    if not ok:
+        raise ValueError(f"Precondition failed for build-finished: {failures}")
+
+    # Clear stale proof-gate flags so _route_finish_build won't re-route on re-check
+    clean_checkpoint = {
+        k: v for k, v in state.get("checkpoint_data", {}).items()
+        if k not in ("proof_gate_failed", "unverified_units")
+    }
     return {
         "current_node": "finish_build",
         "status": "build-finished",
         "pr_url": state.get("pr_url"),
-        "checkpoint_data": {**state.get("checkpoint_data", {}), "pr_opened": True},
+        "checkpoint_data": {**clean_checkpoint, "pr_opened": True},
     }
 
 
@@ -102,6 +113,9 @@ def review_node(state: TaskState) -> Dict[str, Any]:
 
 @safe_node
 def codex_review_node(state: TaskState) -> Dict[str, Any]:
+    ok, failures = validate_transition(state.get("status", ""), "cba-complete", state)
+    if not ok:
+        raise ValueError(f"Precondition failed for cba-complete: {failures}")
     return {
         "current_node": "codex_review",
         "status": "cba-complete",
@@ -117,6 +131,9 @@ def stage_decision_node(state: TaskState) -> Dict[str, Any]:
 
 @safe_node
 def promote_stage_node(state: TaskState) -> Dict[str, Any]:
+    ok, failures = validate_transition(state.get("status", ""), "staged", state)
+    if not ok:
+        raise ValueError(f"Precondition failed for staged: {failures}")
     return {
         "current_node": "promote_stage",
         "status": "staged",
