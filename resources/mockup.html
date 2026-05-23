@@ -4695,6 +4695,14 @@
         break;
       }
 
+      case 'orchSlotReady': {
+        // Queued push slot is now active — auto-trigger the push for this session
+        if (typeof window.orchPushGit === 'function' && msg.sessionId && msg.sourceBranch && msg.targetBranch) {
+          window.orchPushGit(msg.sessionId, msg.sourceBranch, msg.targetBranch);
+        }
+        break;
+      }
+
       case 'queue-status': {
         const s = sessionStore[msg.sessionId];
         if (s) {
@@ -15167,6 +15175,9 @@ This is your current workflow status across all branches. Review the tasks and P
     if (shouldBeOpen && panel.classList.contains('hidden')) {
       panel.classList.remove('hidden');
       startOrchPoll();
+    } else if (!shouldBeOpen && !panel.classList.contains('hidden')) {
+      panel.classList.add('hidden');
+      stopOrchPoll();
     }
   }
 

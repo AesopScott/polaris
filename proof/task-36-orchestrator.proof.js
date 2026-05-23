@@ -1,13 +1,14 @@
 /**
- * Proof Unit 1-4 — Task #36 Orchestrator Endpoints
+ * Proof Units — Task #36 Orchestrator Endpoints
  *
  * Run after `npm start` with: node proof/task-36-orchestrator.proof.js
  *
- * Tests:
- *   PU1  GET  /branch-state        → returns session data shape
- *   PU2  POST /reserve-merge-slot  → acquired | queued status
- *   PU3  POST /release-merge-slot  → released: true, advances queue
- *   PU4  POST /dry-run-merge       → returns { status: 'clean' } (stub)
+ * Tests (aligned to backlog PU numbering):
+ *   PU1  GET  /branch-state        → HTTP 200, object response (backlog PU1)
+ *   PU2  POST /reserve-merge-slot  → acquired | queued status (backlog PU2)
+ *   PU2b POST /release-merge-slot  → released: true, advances queue (backlog PU2 continued)
+ *   PU3  POST /dry-run-merge       → { status: 'clean' | 'conflict' } or graceful 400 (backlog PU3)
+ *   Note: backlog PU4 (file contention in /branch-state) requires two live sessions — manual verification only
  */
 
 const http = require('http');

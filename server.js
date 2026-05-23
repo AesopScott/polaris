@@ -1512,90 +1512,6 @@ function scaffoldBacklog(project) {
   }
 }
 
-function scaffoldDeployYml(project) {
-  const { name, workDir } = project;
-  if (!workDir) return;
-  try {
-    const githubDir = path.join(workDir, '.github', 'workflows');
-    const deployPath = path.join(githubDir, 'deploy.yml');
-    if (fs.existsSync(deployPath)) return; // Idempotent: don't overwrite if already exists
-
-    fs.mkdirSync(githubDir, { recursive: true });
-
-    // Deploy.yml template based on AesopScott/Aesop
-    const deployYmlContent = `name: Deploy to Mocahost
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:        # manual "Run workflow" button for force redeploys
-
-concurrency:
-  group: deploy-mocahost
-  # IMPORTANT: keep this \`false\`. With \`true\`, every push cancels the
-  # in-flight deploy mid-FTP, and on a busy push day no deploy ever
-  # finishes (see 2026-04-28 incident: 10 cancelled in a row, prod stuck
-  # 13+ hours behind main). \`false\` lets runs queue and complete in
-  # order; the latest run still wins because FTP uploads the whole tree.
-  cancel-in-progress: false
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-          token: \${{ secrets.AIP_COMMIT_TOKEN || secrets.AESOP_PAT || github.token }}
-
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: 65.181.111.131
-          username: hivetec1
-          password: \${{ secrets.FTP_PASSWORD }}
-          port: 21
-          protocol: ftps
-          local-dir: ./
-          server-dir: /public_html/aesop-academy/
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/.github/**
-            **/.claude/**
-            **/TEMP/**
-            **/archive/**
-            **/aesop-api/archive/**
-            **/Board Meetings/**
-            **/secrets.local.php
-            **/config.local.php
-            **/*.bat
-            **/*.ps1
-            **/audit_*.txt
-            **/audit_modules.py
-            **/fix_*.py
-            **/README.md
-            **/.DS_Store
-            # cPanel infrastructure — never touch
-            cgi-bin/**
-            .htaccess
-`;
-
-    fs.writeFileSync(deployPath, deployYmlContent, 'utf8');
-    console.log(`[scaffold-deploy] wrote ${deployPath} for ${name}`);
-    broadcast({
-      type: 'deploy-yml-scaffolded',
-      project: name,
-      path: deployPath,
-      message: 'deploy.yml created. Create FTP_PASSWORD secret in GitHub before deploying.'
-    });
-  } catch (e) {
-    console.error('[scaffold-deploy] failed:', e.message);
-  }
-}
 
 async function scaffoldGitRepo(project) {
   const { name, workDir, repo } = project;
@@ -4875,7 +4791,7 @@ function normalizeMcpAllowlist(allowlist) {
 function getMcpServerConfigs(allowlist = null) {
   const servers = readClaudeJson().mcpServers || {};
   const normalized = normalizeMcpAllowlist(allowlist);
-  if (normalized === null) return {};
+  if (normalized === null) return servers; // null allowlist = no filter; return all configured servers
   const allowed = new Set(normalized);
   return Object.fromEntries(Object.entries(servers).filter(([name]) => allowed.has(name)));
 }
@@ -5153,6 +5069,34 @@ function detectFileContention(projectSessions) {
   );
 }
 
+// Shared dry-run merge helper. Creates a throwaway branch off targetBranch, attempts
+// git merge --no-commit --no-ff, always aborts and deletes the branch in finally.
+// Returns { status: 'clean' } or { status: 'conflict', conflictFiles: [...] }.
+function runDryMerge(repoPath, sourceBranch, targetBranch) {
+  const dryBranch = `dry-run-${Date.now()}`;
+  let conflictFiles = [];
+  let mergeStatus = 'clean';
+  try {
+    execSync(`git checkout -b "${dryBranch}" "${targetBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+    try {
+      execSync(`git merge --no-commit --no-ff "${sourceBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch {
+      const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      conflictFiles = statusOut
+        .split('\n')
+        .filter(l => /^(UU|AA|DD|AU|UA)/.test(l))
+        .map(l => l.slice(3).trim())
+        .filter(Boolean);
+      mergeStatus = 'conflict';
+    }
+  } finally {
+    try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
+    try { execSync(`git checkout "${targetBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+    try { execSync(`git branch -D "${dryBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
+  }
+  return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles };
+}
+
 // Merge slot queue — serialises concurrent session push operations.
 // State persisted to ORCHESTRATOR_STATE_PATH so it survives server restarts.
 const mergeSlots = { slots: {}, queue: [] };
@@ -5162,8 +5106,16 @@ function loadOrchestratorState() {
     if (fs.existsSync(ORCHESTRATOR_STATE_PATH)) {
       const raw = fs.readFileSync(ORCHESTRATOR_STATE_PATH, 'utf8');
       const parsed = JSON.parse(raw);
-      if (parsed.slots)  mergeSlots.slots = parsed.slots;
-      if (parsed.queue)  mergeSlots.queue = parsed.queue;
+      if (parsed.slots) mergeSlots.slots = parsed.slots;
+      if (parsed.queue) mergeSlots.queue = parsed.queue;
+      // Drop slots whose timeout has elapsed to prevent stale locks surviving restarts
+      const now = Date.now();
+      for (const [id, slot] of Object.entries(mergeSlots.slots)) {
+        if (slot.timeout && slot.acquiredAt && (now - slot.acquiredAt) > slot.timeout) {
+          console.log(`[orchestrator] dropping expired slot ${id} (held ${Math.round((now - slot.acquiredAt) / 1000)}s)`);
+          delete mergeSlots.slots[id];
+        }
+      }
     }
   } catch (e) {
     console.error('[orchestrator] state load failed:', e.message);
@@ -7822,7 +7774,7 @@ const httpServer = http.createServer((req, res) => {
   }
 
   // GET /branch-state — live session/branch data for the orchestrator panel
-  if (req.method === 'GET' && req.url === '/branch-state') {
+  if (req.method === 'GET' && req.url.split('?')[0] === '/branch-state') {
     let body = '';
     req.on('data', c => { body += c; });
     req.on('end', () => {
@@ -7935,6 +7887,10 @@ const httpServer = http.createServer((req, res) => {
           const next = mergeSlots.queue.splice(nextIdx, 1)[0];
           mergeSlots.slots[next.slotId] = { ...next, status: 'active', acquiredAt: Date.now() };
           nextInQueue = { taskNumber: next.taskNumber, slotId: next.slotId };
+          // If the promoted entry is a push-git queue entry, signal the UI to auto-trigger
+          if (next.sessionId) {
+            broadcast({ type: 'orchSlotReady', sessionId: next.sessionId, sourceBranch: next.sourceBranch, targetBranch: next.targetBranch, slotId: next.slotId });
+          }
         }
         saveOrchestratorState();
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -7968,38 +7924,9 @@ const httpServer = http.createServer((req, res) => {
           return;
         }
 
-        const dryBranch = `dry-run-${Date.now()}`;
-        let conflictFiles = [];
-        let mergeStatus = 'clean';
-        try {
-          // Create throwaway branch off targetBranch
-          execSync(`git checkout -b "${dryBranch}" "${targetBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
-          try {
-            execSync(`git merge --no-commit --no-ff "${sourceBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
-            // No exception = clean merge
-          } catch {
-            // Conflicts present — parse git status for conflicted files
-            const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-            conflictFiles = statusOut
-              .split('\n')
-              .filter(l => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('DD') || l.startsWith('AU') || l.startsWith('UA'))
-              .map(l => l.slice(3).trim())
-              .filter(Boolean);
-            mergeStatus = 'conflict';
-          }
-        } finally {
-          // Always abort merge and delete throwaway branch
-          try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
-          try { execSync(`git checkout "${targetBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
-          try { execSync(`git branch -D "${dryBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
-        }
-
+        const dryResult = runDryMerge(repoPath, sourceBranch, targetBranch);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(
-          mergeStatus === 'clean'
-            ? { status: 'clean' }
-            : { status: 'conflict', conflictFiles }
-        ));
+        res.end(JSON.stringify(dryResult));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
@@ -8036,46 +7963,26 @@ const httpServer = http.createServer((req, res) => {
         }
         const { branch } = info;
 
-        // Reserve merge slot (FIFO, same logic as /reserve-merge-slot)
+        // Reserve merge slot (FIFO); store sourceBranch so orchSlotReady can auto-trigger the next push
         const slotId = `slot-${sessionId}-${Date.now()}`;
         const activeSlot = Object.values(mergeSlots.slots).find(sl => sl.targetBranch === targetBranch && sl.status === 'active');
         if (activeSlot) {
           const position = mergeSlots.queue.filter(q => q.targetBranch === targetBranch).length + 1;
-          mergeSlots.queue.push({ slotId, sessionId, targetBranch, queuedAt: Date.now() });
+          mergeSlots.queue.push({ slotId, sessionId, sourceBranch: branch, targetBranch, queuedAt: Date.now() });
           saveOrchestratorState();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ status: 'queued', slotId, position }));
         }
-        mergeSlots.slots[slotId] = { slotId, sessionId, targetBranch, status: 'active', acquiredAt: Date.now() };
+        mergeSlots.slots[slotId] = { slotId, sessionId, sourceBranch: branch, targetBranch, status: 'active', acquiredAt: Date.now() };
         saveOrchestratorState();
 
-        // Dry-run merge: check if branch would cleanly merge into targetBranch
-        const dryBranch = `dry-run-${Date.now()}`;
-        let conflictFiles = [];
-        let mergeStatus = 'clean';
-        try {
-          execSync(`git checkout -b "${dryBranch}" "${targetBranch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
-          try {
-            execSync(`git merge --no-commit --no-ff "${branch}"`, { cwd: repoPath, stdio: ['ignore', 'pipe', 'pipe'] });
-          } catch {
-            const statusOut = execSync('git status --short', { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-            conflictFiles = statusOut.split('\n')
-              .filter(l => /^(UU|AA|DD|AU|UA)/.test(l))
-              .map(l => l.slice(3).trim())
-              .filter(Boolean);
-            mergeStatus = 'conflict';
-          }
-        } finally {
-          try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
-          try { execSync(`git checkout "${targetBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
-          try { execSync(`git branch -D "${dryBranch}"`, { cwd: repoPath, stdio: 'ignore' }); } catch {}
-        }
-
-        if (mergeStatus === 'conflict') {
+        // Dry-run merge via shared helper
+        const dryResult = runDryMerge(repoPath, branch, targetBranch);
+        if (dryResult.status === 'conflict') {
           // Hold slot — user must resolve conflict and release manually via /release-merge-slot
-          broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles, slotId });
+          broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles: dryResult.conflictFiles, slotId });
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ status: 'conflict', conflictFiles, slotId }));
+          return res.end(JSON.stringify({ status: 'conflict', conflictFiles: dryResult.conflictFiles, slotId }));
         }
 
         // Push to origin with retry (up to 3 attempts, exponential backoff)
@@ -8092,12 +7999,15 @@ const httpServer = http.createServer((req, res) => {
           }
         }
 
-        // Release slot and promote next in queue
+        // Release slot and promote next in queue; broadcast orchSlotReady so the UI auto-triggers the queued push
         delete mergeSlots.slots[slotId];
         const nextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
         if (nextIdx !== -1) {
           const next = mergeSlots.queue.splice(nextIdx, 1)[0];
           mergeSlots.slots[next.slotId] = { ...next, status: 'active', acquiredAt: Date.now() };
+          if (next.sessionId) {
+            broadcast({ type: 'orchSlotReady', sessionId: next.sessionId, sourceBranch: next.sourceBranch, targetBranch: next.targetBranch, slotId: next.slotId });
+          }
         }
         saveOrchestratorState();
 
@@ -10220,7 +10130,6 @@ async function handleMessage(ws, raw) {
     writeJSON(CONFIG_PATH, cfg);
     if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
     if (idx < 0) scaffoldBacklog(proj);
-    if (idx < 0) scaffoldDeployYml(proj);
     sendTo(ws, { type: 'config-saved' });
     return;
   }

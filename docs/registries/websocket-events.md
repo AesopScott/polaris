@@ -258,6 +258,32 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 
 ---
 
+## `orchSlotReady`
+
+Server broadcast when a queued `/push-git` slot becomes active after the previous push completes. Triggers the UI to auto-retry the queued push without requiring user interaction.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'orchSlotReady',
+  sessionId: String,      // Session whose push is now ready to execute
+  sourceBranch: String,   // Branch to push
+  targetBranch: String,   // Merge target (e.g. 'stage')
+  slotId: String          // Now-active slot ID
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — `/push-git` handler broadcasts when slot is released and next queued push-git entry is promoted ✓
+- `server.js` — `/release-merge-slot` handler broadcasts same when the promoted entry has a sessionId ✓
+
+**Consumers (Client receives)**
+- `resources/mockup.html` — `orchSlotReady` WS case calls `window.orchPushGit(sessionId, sourceBranch, targetBranch)` to auto-trigger ✓
+
+**Status:** ✓ Fully wired (task #36, review fixes) — closes PU7 auto-trigger gap
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -272,6 +298,7 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
 | `orchConflict` | 1 (server ✓) | 1 (client ✓) | ✓ fully wired (Phase 4) |
 | `orchAmber` | 1 (server ✓) | 1 (client ✓) | ✓ fully wired (Phase 4) |
+| `orchSlotReady` | 2 (server ✓) | 1 (client ✓) | ✓ fully wired (review fixes) |
 
 ---
 
