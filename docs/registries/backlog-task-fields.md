@@ -110,6 +110,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `server.js:2717` — `addBacklogTask()` sets status to 'backlog'
 - `server.js:2879` — `updateBacklogTaskStatus()` validates and updates status
 - `server.js:2914` — Sets completed_at when status is terminal
+- `src/contracts/backlog.ts:3` — Zod enum `BacklogStatus` (17 values; schema producer only — no consumers until task #38 wires validators)
 
 **Consumers (read)**
 - `resources/mockup.html:9172` — Table renders status badge with styling
@@ -118,7 +119,13 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 
 **Validation:** VALID_BACKLOG_STATUSES set at server.js:3194 — backlog, planned, build-started, build-finished, cba-complete, review-blocked, staged, production, failed-smoke-test, stalled, failed, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).** `stalled` and `failed` are written by the LangGraph executor (task #26) when a human gate times out or a node throws an unhandled exception.
 
-**Status:** ✓ Balanced (validation enforced server-side)
+**⚠ Divergence risk — BacklogStatus defined independently in three places:**
+- `src/contracts/backlog.ts:3` — Zod enum (17 values, task #37)
+- `src/runtime/backlog.ts:30` — `VALID_BACKLOG_STATUSES` Set (17 values)
+- `src/runtime/backlog.ts:53` — TypeScript union type (17 values)
+Currently identical; maintained separately — drift possible. Task #38 should consolidate to derive runtime validation from the Zod enum.
+
+**Status:** ✓ Balanced (validation enforced server-side) — ⚠ three-way status enum divergence risk (see above)
 
 ---
 
@@ -296,7 +303,7 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 | `description` | 2 (create/update) | 2 (display) | ✓ |
 | `category` | 2 (create/update) | 3 (display/sort) | ✓ |
 | `priority` | 2 (create/update) | 4 (display/sort) | ✓ |
-| `status` | 3 (create/status-update) | 3 (display/validate) | ✓ |
+| `status` | 4 (create/status-update/Zod) | 3 (display/validate) | ✓ ⚠ 3-way enum divergence |
 | `created_at` | 1 (auto) | 0 (stored) | ✓ |
 | `completed_at` | 2 (auto-update) | 1 (display) | ✓ |
 | `dependencies` | 1 (create) | 1 (display) | ⚠ orphan producer |
@@ -328,3 +335,20 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 **Gaps identified:** 2 pre-existing hard blockers resolved — `stalled` and `failed` added to VALID_BACKLOG_STATUSES. 3 pre-existing orphan producers (dependencies, branch, pr_url) deferred.
 
 **Status:** Audit complete — hard blockers resolved. Registries valid for task #26 scope.
+
+---
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #37)
+
+**Task:** #37 — Contracts foundation: Zod schemas in src/contracts/
+
+**Boundaries checked:** `status` field — new Zod schema producer in `src/contracts/backlog.ts`
+
+**Evidence recorded:**
+- New producer: `src/contracts/backlog.ts:3` — `BacklogStatus` Zod enum (17 values)
+- Orphan producer: intentional — no consumers until task #38 wires runtime validators
+- Divergence risk: three independent `BacklogStatus` definitions now exist (Zod enum, runtime Set, TypeScript union) — currently identical, separately maintained
+
+**Gaps identified:** Three-way status enum divergence risk (pre-existing pattern, not introduced by task #37; task #38 consolidation opportunity)
+
+**Status:** Audit complete — registries valid for task #37 scope.

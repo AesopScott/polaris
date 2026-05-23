@@ -62,6 +62,22 @@ Liveness check / keep-alive.
 
 ---
 
+## Zod Schema Coverage (task #37)
+
+All ~50 WebSocket message types that transit the Polaris WS boundary now have corresponding Zod schemas in `src/contracts/ws-messages.ts`. These are **intentional orphan producers** — schemas are defined and exported but not yet wired into runtime validation. Task #38 will import them into `server.js` and `mockup.html` to validate messages at the boundary.
+
+**Schema location:** `src/contracts/ws-messages.ts`
+**Barrel export:** `src/contracts/index.ts`
+**Consumer count:** 0 (until task #38)
+
+Notable exports:
+- `LaunchMessage`, `ResumeMessage`, `StopMessage`, `CloseSessionMessage` — session lifecycle
+- `AnyWebSocketMessage` — discriminated union over all ~50 types (replaces `AnyWebSocketMessage` interface in `src/runtime/contracts.ts` when task #38 wires it)
+
+**⚠ Divergence risk:** `AnyWebSocketMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union.
+
+---
+
 ## Summary
 
 | Type | Direction | Status |
@@ -92,3 +108,20 @@ Liveness check / keep-alive.
 **Gaps identified:** 4 pre-existing orphan handlers (get-config, get-history, get-pre-build-check-status, ping)
 
 **Status:** Audit complete — registries valid for task #25 scope. Internal refactoring does not alter WebSocket contract.
+
+---
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #37)
+
+**Task:** #37 — Contracts foundation: Zod schemas in src/contracts/
+
+**Boundaries checked:** WebSocket message type coverage against new Zod schemas in `src/contracts/ws-messages.ts`
+
+**Evidence recorded:**
+- ~50 WebSocket message types now have Zod schemas — all intentional orphan producers (no consumers until task #38)
+- `AnyWebSocketMessage` discriminated union exported from `src/contracts/ws-messages.ts`
+- Divergence risk: `AnyWebSocketMessage` also defined at `src/runtime/contracts.ts:611` — separately maintained
+
+**Gaps identified:** Two-way `AnyWebSocketMessage` divergence (Zod discriminated union vs TypeScript interface union) — pre-existing pattern, task #38 consolidation opportunity. No new broken pairs introduced.
+
+**Status:** Audit complete — registries valid for task #37 scope.
