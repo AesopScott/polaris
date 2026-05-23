@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE TOPOLOGY — server.js is the orchestrator; do NOT import from it.
@@ -1336,12 +1336,12 @@ async function startLiveServer(projectDir) {
         });
         const base = urlPath.replace(/\/$/, '');
         const rows = entries.map(e => {
-          const icon = e.isDirectory() ? 'ðŸ"' : 'ðŸ"„';
+          const icon = e.isDirectory() ? '📁' : '📄';
           const slash = e.isDirectory() ? '/' : '';
           return `<li style="padding:4px 0;font-family:Consolas,monospace;font-size:13px;"><a href="${base}/${encodeURIComponent(e.name)}${slash}" style="color:#60a5fa;text-decoration:none;">${icon} ${e.name}${slash}</a></li>`;
         }).join('');
         res.setHeader('Content-Type', 'text/html');
-        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>ðŸ"‚ ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
+        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>📂 ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
       }
       serveFile(fullPath, res);
     } catch (e) {
@@ -2146,7 +2146,7 @@ function generateSessionName(prompt) {
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
 
-const MAX_AGENT_MESSAGES = 40; // 20 turns Ã— user+assistant
+const MAX_AGENT_MESSAGES = 40; // 20 turns × user+assistant
 
 const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'Read', description: 'Read a file. Returns content with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer', description: 'Start line (1-based)' }, limit: { type: 'integer', description: 'Max lines to read' } }, required: ['file_path'] } } },
@@ -4804,14 +4804,61 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
 }
 
 // Shell safety enforcement ─────────────────────────────────────────────────
-const SHELL_HARD_BLOCKED = [
-  { pattern: /\bgit\s+push\s+(-f\b|--force\b)/i,    reason: 'force-push is blocked — run manually if needed' },
-  { pattern: /\bgit\s+reset\s+--hard\b/i,            reason: 'git reset --hard is blocked — run manually if needed' },
-  { pattern: /\bgit\s+clean\s+-[a-zA-Z]*f/i,         reason: 'git clean -f is blocked — run manually if needed' },
-  { pattern: /\bformat\s+[a-zA-Z]:/i,                reason: 'drive format is blocked' },
-  { pattern: /\brm\s+-[rRfF ]*[rR][fF]?\s+[/"']*[\/\\]/i, reason: 'recursive delete at filesystem root is blocked' },
-  { pattern: /\brd\s+\/s\s+\/q\s+[a-zA-Z]:\\\s*$/i, reason: 'full-drive rd is blocked' },
-];
+
+/**
+ * @typedef {Object} CommandClassEntry
+ * @property {string} name - Unique identifier for this command class entry
+ * @property {string} commandClass - Class name (matches DEFAULT_BLOCKED_CLASSES values from CapabilityPolicy)
+ * @property {'any'|'standard'|'restricted'} minimumTrustLevel - Trust level at which this class is blocked
+ * @property {string} reason - Human-readable block reason shown in error messages
+ * @property {function(string): boolean} detect - Returns true if the flattened command matches this class
+ */
+
+/** @type {ReadonlyMap<string, CommandClassEntry>} */
+const COMMAND_CLASS_REGISTRY = Object.freeze(new Map([
+  ['GIT_FORCE_PUSH', {
+    name: 'GIT_FORCE_PUSH',
+    commandClass: 'system-destructive',
+    minimumTrustLevel: 'any',
+    reason: 'force-push is blocked — run manually if needed',
+    detect: cmd => /\bgit\s+push\s+(-f\b|--force\b)/i.test(cmd),
+  }],
+  ['GIT_RESET_HARD', {
+    name: 'GIT_RESET_HARD',
+    commandClass: 'system-destructive',
+    minimumTrustLevel: 'any',
+    reason: 'git reset --hard is blocked — run manually if needed',
+    detect: cmd => /\bgit\s+reset\s+--hard\b/i.test(cmd),
+  }],
+  ['GIT_CLEAN', {
+    name: 'GIT_CLEAN',
+    commandClass: 'system-destructive',
+    minimumTrustLevel: 'any',
+    reason: 'git clean -f is blocked — run manually if needed',
+    detect: cmd => /\bgit\s+clean\s+-[a-zA-Z]*f/i.test(cmd),
+  }],
+  ['DRIVE_FORMAT', {
+    name: 'DRIVE_FORMAT',
+    commandClass: 'system-destructive',
+    minimumTrustLevel: 'any',
+    reason: 'drive format is blocked',
+    detect: cmd => /\bformat\s+[a-zA-Z]:/i.test(cmd),
+  }],
+  ['RM_RECURSIVE_ROOT', {
+    name: 'RM_RECURSIVE_ROOT',
+    commandClass: 'system-destructive',
+    minimumTrustLevel: 'any',
+    reason: 'recursive delete at filesystem root is blocked',
+    detect: cmd => /\brm\s+-[rRfF ]*[rR][fF]?\s+[/"']*[\/\\]/i.test(cmd),
+  }],
+  ['RD_FULL_DRIVE', {
+    name: 'RD_FULL_DRIVE',
+    commandClass: 'system-destructive',
+    minimumTrustLevel: 'any',
+    reason: 'full-drive rd is blocked',
+    detect: cmd => /\brd\s+\/s\s+\/q\s+[a-zA-Z]:\\\s*$/i.test(cmd),
+  }],
+]));
 
 const SHELL_WRITE_VERBS = /\b(rm|del|rd|rmdir|Remove-Item|ri|move|mv|ren|rename|copy|cp|xcopy|robocopy|Set-Content|Out-File|New-Item|Add-Content|Write-Output\s*>|echo\s+.+>)\b/i;
 
@@ -4819,10 +4866,10 @@ function assertSafeCommand(command, workDir) {
   if (!workDir) return; // no workDir configured — skip enforcement
   const flat = command.replace(/\r?\n/g, ' ');
 
-  // Layer 1: hard-blocked patterns
-  for (const { pattern, reason } of SHELL_HARD_BLOCKED) {
-    if (pattern.test(flat)) {
-      throw new Error(`Shell command blocked: ${reason}.\nCommand: ${flat.slice(0, 120)}`);
+  // Layer 1: command class registry
+  for (const entry of COMMAND_CLASS_REGISTRY.values()) {
+    if (entry.detect(flat)) {
+      throw new Error(`Shell command blocked: ${entry.reason}.\nCommand: ${flat.slice(0, 120)}`);
     }
   }
 
