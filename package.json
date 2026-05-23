@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.550",
+  "version": "1.0.552",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
@@ -58,7 +58,8 @@
     "mammoth": "^1.12.0",
     "monaco-editor": "^0.55.1",
     "pdf-parse": "^1.1.1",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

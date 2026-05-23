@@ -110,6 +110,7 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `server.js:2717` — `addBacklogTask()` sets status to 'backlog'
 - `server.js:2879` — `updateBacklogTaskStatus()` validates and updates status
 - `server.js:2914` — Sets completed_at when status is terminal
+- `src/contracts/backlog.ts:3` — Zod enum `BacklogStatus` (20 values: 14 active + 6 legacy; schema producer only — no consumers until task #38 wires validators)
 
 **Consumers (read)**
 - `resources/mockup.html:9172` — Table renders status badge with styling
@@ -118,7 +119,13 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 
 **Validation:** VALID_BACKLOG_STATUSES set at server.js:3194 — backlog, planned, build-started, build-finished, cba-complete, review-blocked, staged, production, failed-smoke-test, stalled, failed, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).** `stalled` and `failed` are written by the LangGraph executor (task #26) when a human gate times out or a node throws an unhandled exception.
 
-**Status:** ✓ Balanced (validation enforced server-side)
+**⚠ Divergence risk — BacklogStatus defined independently in three places:**
+- `src/contracts/backlog.ts:3` — Zod enum (20 values: 14 active + 6 legacy, task #37; fixed in /review-pr)
+- `src/runtime/backlog.ts:30` — `VALID_BACKLOG_STATUSES` Set (14 active + 6 legacy = 20 values)
+- `src/runtime/backlog.ts:53` — TypeScript union type (20 values)
+All three now in sync. Maintained separately — drift possible. Task #38 should consolidate to derive runtime validation from the Zod enum.
+
+**Status:** ✓ Balanced (validation enforced server-side) — ⚠ three-way status enum divergence risk (see above)
 
 ---
 
@@ -326,7 +333,7 @@ Structured goal contract written by `/plan-task` when planning a task. Contains 
 | `description` | 2 (create/update) | 2 (display) | ✓ |
 | `category` | 2 (create/update) | 3 (display/sort) | ✓ |
 | `priority` | 2 (create/update) | 4 (display/sort) | ✓ |
-| `status` | 3 (create/status-update) | 3 (display/validate) | ✓ |
+| `status` | 4 (create/status-update/Zod) | 3 (display/validate) | ✓ ⚠ 3-way enum divergence |
 | `created_at` | 1 (auto) | 0 (stored) | ✓ |
 | `completed_at` | 2 (auto-update) | 1 (display) | ✓ |
 | `dependencies` | 1 (create) | 1 (display) | ⚠ orphan producer |
@@ -359,3 +366,23 @@ Structured goal contract written by `/plan-task` when planning a task. Contains 
 **Gaps identified:** Pre-existing orphan producers (dependencies, branch, pr_url) remain deferred. `objective` gap from task #36 now resolved.
 
 **Status:** Audit complete — registries valid for task #29 planning scope.
+
+---
+
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #37)
+
+**Task:** #37 — Contracts foundation: Zod schemas in src/contracts/
+
+**Boundaries checked:** `status` field — new Zod schema producer in `src/contracts/backlog.ts`
+
+**Evidence recorded:**
+- New producer: `src/contracts/backlog.ts:3` — `BacklogStatus` Zod enum (20 values: 14 active + 6 legacy)
+- Orphan producer: intentional — no consumers until task #38 wires runtime validators
+- Three independent `BacklogStatus` definitions exist; now aligned after /review-pr fixes:
+  - `src/contracts/backlog.ts:3` — Zod enum (20 values: all 14 active + 6 legacy; `review-blocked` in active group)
+  - `src/runtime/backlog.ts:30` — `VALID_BACKLOG_STATUSES` Set (14 active + 6 legacy = 20 values)
+  - `src/runtime/backlog.ts:53` — TypeScript union type (same 20 values)
+
+**Gaps identified:** Three-way status enum divergence risk — definitions now in sync after review fixes (`stalled`, `failed` added; `review-blocked` moved to active group). Task #38 consolidation opportunity remains.
+
+**Status:** Audit complete — registries valid for task #37 scope.
