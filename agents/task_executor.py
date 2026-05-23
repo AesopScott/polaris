@@ -230,17 +230,20 @@ _watchdog_tasks: Dict[int, asyncio.Task] = {}
 async def _stall_watchdog(task_number: int, timeout: int) -> None:
     """Wait timeout seconds, then mark the task stalled if still paused at a HITL gate."""
     await asyncio.sleep(timeout)
-    state = load_state(task_number)
-    # Only stall if task is still waiting at a HITL gate with no signal received
-    if (state
-            and state.get("current_node") in HITL_NODES
-            and state.get("human_gate_signal") is None):
-        stalled: TaskState = {**state, "status": "stalled"}
-        save_state(stalled)
-        _set_paused_at(task_number, None)
-        warning = _sync_status_safe(task_number, "stalled", state["current_node"])
-        if warning:
-            print(f"[WARN] stall watchdog sync failed for task {task_number}: {warning}")
+    # Hold the per-task lock while checking and saving so /signal cannot race past
+    # the stalled status between the guard check and _cancel_watchdog().
+    async with _get_task_lock(task_number):
+        state = load_state(task_number)
+        # Only stall if task is still waiting at a HITL gate with no signal received
+        if (state
+                and state.get("current_node") in HITL_NODES
+                and state.get("human_gate_signal") is None):
+            stalled: TaskState = {**state, "status": "stalled"}
+            save_state(stalled)
+            _set_paused_at(task_number, None)
+            warning = _sync_status_safe(task_number, "stalled", state["current_node"])
+            if warning:
+                print(f"[WARN] stall watchdog sync failed for task {task_number}: {warning}")
 
 
 def _start_watchdog(task_number: int, timeout: Optional[int] = None) -> None:
@@ -457,6 +460,17 @@ async def signal(task_number: int, req: SignalRequest) -> Dict[str, Any]:
         )
 
     async with _get_task_lock(task_number):
+        # Re-read inside lock to close race: _stall_watchdog also holds this lock
+        # when it saves stalled state, so the state we act on is authoritative.
+        state = load_state(task_number)
+        if not state or state["status"] in ("stalled", "failed"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Task {task_number} became {state['status'] if state else 'not found'} "
+                    "before signal could be delivered — signal rejected."
+                ),
+            )
         _cancel_watchdog(task_number)
         old_status = state["status"]
 
