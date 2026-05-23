@@ -68,7 +68,7 @@ Invoke a UI-selected agent from within a Python LangGraph node.
 - New identifiers introduced on task #36: `/branch-state`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge`, `/push-git`, `/push-obsidian`
 - Registries match current code diff: yes (shapes corrected to match server.js:7825–8060)
 
-**Gaps identified:** 4 shape mismatches corrected above. `/sync-state` and `/recover` remain planned (task #26 scope). `orchConflict` and `orchAmber` WS emissions remain Phase 4 deferred (see websocket-events.md).
+**Gaps identified:** 4 shape mismatches corrected above. `/sync-state` and `/recover` remain planned (task #26 scope). `orchConflict` and `orchAmber` are fully wired (see websocket-events.md ✓).
 
 **Status:** Audit complete — shape mismatches resolved for task #36 scope.
 

@@ -8002,6 +8002,22 @@ const httpServer = http.createServer((req, res) => {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ status: 'conflict', conflictFiles: dryResult.conflictFiles, slotId }));
         }
+        if (dryResult.status === 'error') {
+          // Branch restore failed — release slot so the queue doesn't deadlock, then surface the error
+          delete mergeSlots.slots[slotId];
+          const errNextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
+          if (errNextIdx !== -1) {
+            const errNext = mergeSlots.queue.splice(errNextIdx, 1)[0];
+            mergeSlots.slots[errNext.slotId] = { ...errNext, status: 'active', acquiredAt: Date.now() };
+            if (errNext.sessionId) {
+              broadcast({ type: 'orchSlotReady', sessionId: errNext.sessionId, sourceBranch: errNext.sourceBranch, targetBranch: errNext.targetBranch, slotId: errNext.slotId });
+            }
+          }
+          saveOrchestratorState();
+          broadcast({ type: 'orchAmber', sessionId, sourceBranch: branch, targetBranch, reason: dryResult.reason, detail: 'Branch restore failed during dry-run — push aborted to protect repo state', retryCount: 0, slotId: null });
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'dry-run-restore-failed', reason: dryResult.reason }));
+        }
 
         // Push to origin with retry (up to 3 attempts, exponential backoff)
         let pushOk = false;

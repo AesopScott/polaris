@@ -104,9 +104,10 @@ async function runProofs() {
   }
 
   // ── Proof Unit 3: POST /dry-run-merge ───────────────────────────────────
-  // Requires repoPath pointing to a valid git repo with the named branches.
-  // Provide REPO_PATH env var or the test will check for a 400 (no-repo fallback).
-  console.log('\nPU3  POST /dry-run-merge — real git dry-run or graceful 400 without active sessions');
+  // Automated smoke only — verifies the endpoint responds. Real conflict detection
+  // requires two branches with an actual merge conflict and is classified manual (PU3 manual waiver).
+  // Provide REPO_PATH env var to point at a real repo for a live dry-run result.
+  console.log('\nPU3  POST /dry-run-merge — endpoint responds (conflict proof is manual)');
   try {
     const repoPath = process.env.REPO_PATH || null;
     const payload = { sourceBranch: 'task/99-nonexistent', targetBranch: 'main' };
