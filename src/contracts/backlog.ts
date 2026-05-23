@@ -41,7 +41,7 @@ export const ObjectiveCriteria = z.object({
   statement: z.string(),
   successCriteria: z.array(z.string()),
   nonGoals: z.array(z.string()),
-  proofMap: z.record(z.string(), z.array(z.number())),
+  proofMap: z.record(z.string(), z.unknown()),
   stopConditions: z.array(z.string()).optional(),
 });
 

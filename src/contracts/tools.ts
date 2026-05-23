@@ -95,7 +95,7 @@ export const AskUserQuestionOption = z.object({
 
 export const AskUserQuestionItem = z.object({
   question: z.string(),
-  header: z.string(),
+  header: z.string().max(12),
   options: z.array(AskUserQuestionOption).min(2).max(4),
   multiSelect: z.boolean(),
 });
