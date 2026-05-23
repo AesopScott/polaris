@@ -258,6 +258,36 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 
 ---
 
+## `tool-audit`
+
+Server broadcast emitted for every `evaluatePolicy()` call that results in a block or an installer grant. Provides real-time visibility of privileged actions in the session card.
+
+**Schema / shape:**
+```javascript
+{
+  type: 'tool-audit',
+  ts: String,              // ISO 8601 timestamp
+  sessionId: String,       // Session that triggered the action
+  action: String,          // 'shell-command' | 'file-write' | 'installer-exec'
+  tool: String,            // 'Bash' | 'PowerShell' | 'Write' | 'Edit'
+  allowed: Boolean,        // Whether the action was permitted
+  reason: String | null,   // Block reason (present when allowed=false)
+  commandSnippet: String   // First 120 chars of command or file path
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — `evaluatePolicy()` emits on every block (`allowed=false`) and every installer grant (`action='installer-exec', allowed=true`) (task #44, planned)
+
+**Consumers (Client receives)**
+- `resources/mockup.html` — session card surfaces blocks/grants as inline audit badges (task #44, planned — exact line TBD)
+
+**Note:** Allowed non-installer actions do NOT emit this event to avoid noise. Only blocks and explicit grants are broadcast.
+
+**Status:** ⚠ planned (task #29/#44) — pre-registered so build session has contract to implement against
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -272,25 +302,28 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 | `debug-log` | 1 (server) | 1 (client) | ⚠ (intentional) |
 | `orchConflict` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
 | `orchAmber` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #36) |
+| `tool-audit` | 1 (server, planned) | 1 (client, planned) | ⚠ planned (task #29/#44) |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T18:00:00Z (by /cross-boundary-audit for task #36)
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #29 planning)
 
-**Task:** #26 — Make task orchestration an explicit state machine
+**Task:** #29 — Replace regex-heavy tool safety with capability policies
 
-**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js), including new /sync-state-triggered broadcasts
+**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js)
 
 **Evidence recorded:**
-- 8 entries documented
+- 11 entries documented (10 previous + `tool-audit` added)
 - 6 entries with complete producer/consumer pairs ✓
-- 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, for task #20)
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log, debug-log for task #20)
+- 2 entries planned/pending from task #36 (orchConflict, orchAmber) ⚠
+- 1 new entry pre-registered as planned ⚠ (tool-audit, task #29/#44)
 - 0 entries with shape mismatches
-- New identifiers introduced on task #26: new producer for `backlogs-data` (server.js /sync-state handler, planned)
-- Registries match current code diff: yes (new producer marked planned)
+- New identifiers introduced on task #29: `tool-audit` event pre-registered
+- Registries match current code diff: yes (new entry marked planned)
 
-**Gaps identified:** 2 pre-existing intentional orphan gaps (emit-debug-log, debug-log for task #20). New `backlogs-data` producer is planned/pending until task #26 builds /sync-state.
+**Gaps identified:** `tool-audit` is an orphan producer until task #44 builds it. Intentional — pre-registered so build session has contract to implement against.
 
-**Status:** Audit complete — registries updated for task #26 scope.
+**Status:** Audit complete — registries updated for task #29 planning scope.
