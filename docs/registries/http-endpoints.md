@@ -170,7 +170,7 @@ Returns current branch/worktree state for all active sessions grouped by project
 Acquire or queue a merge slot for a task promoting to a target branch. Serializes concurrent promotions.
 
 **Method:** `POST`
-**Producer:** `resources/mockup.html` — Push Git button handler (task #36, Phase 4)
+**Producer:** `proof/task-36-orchestrator.proof.js` — PU2 direct call; also callable for manual resolution. Note: the UI calls `/push-git` which handles slot reservation internally — `mockup.html` does NOT call this endpoint directly.
 **Consumer:** `server.js` — FIFO merge slot queue manager
 
 **Request Payload:**
@@ -194,7 +194,7 @@ Acquire or queue a merge slot for a task promoting to a target branch. Serialize
 Release a held merge slot after push completes or is cancelled.
 
 **Method:** `POST`
-**Producer:** `resources/mockup.html` — push completion handler (task #36, Phase 4)
+**Producer:** `proof/task-36-orchestrator.proof.js` — PU2b direct call; also callable for manual conflict resolution (e.g. after user resolves an `orchConflict` held slot). Note: `/push-git` handles slot release internally — `mockup.html` does NOT call this endpoint directly.
 **Consumer:** `server.js` — FIFO merge slot queue manager
 
 **Request Payload:**

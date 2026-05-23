@@ -5094,6 +5094,10 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
         .filter(Boolean);
       mergeStatus = 'conflict';
     }
+  } catch (setupErr) {
+    // git checkout -b or other setup failure — normalize to error so caller handles it cleanly.
+    // finally still runs to attempt cleanup before this return takes effect.
+    return { status: 'error', reason: setupErr.message || 'dry-run-setup-failed' };
   } finally {
     try { execSync('git merge --abort', { cwd: repoPath, stdio: 'ignore' }); } catch {}
     try {
