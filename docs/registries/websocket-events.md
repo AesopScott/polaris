@@ -277,20 +277,21 @@ Server broadcast for permanent push failure or unresolvable conflict requiring S
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T18:00:00Z (by /cross-boundary-audit for task #36)
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
 
-**Task:** #26 — Make task orchestration an explicit state machine
+**Task:** #36 — Add a ship task orchestration capability
 
-**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js), including new /sync-state-triggered broadcasts
+**Boundaries checked:** WebSocket event types between client (mockup.html) and server (server.js) for orchestrator events
 
 **Evidence recorded:**
-- 8 entries documented
+- 10 entries documented
 - 6 entries with complete producer/consumer pairs ✓
-- 2 entries with intentional orphan gaps ⚠ (emit-debug-log and debug-log, for task #20)
-- 0 entries with shape mismatches
-- New identifiers introduced on task #26: new producer for `backlogs-data` (server.js /sync-state handler, planned)
-- Registries match current code diff: yes (new producer marked planned)
+- 2 entries with intentional orphan gaps ⚠ (emit-debug-log, debug-log — task #20 scope)
+- 2 entries with partial gaps ⚠ (orchConflict, orchAmber — consumer done Phase 3; producer deferred Phase 4)
+- 0 shape mismatches
+- New identifiers introduced on task #36: `orchConflict`, `orchAmber` (both consumer-only; server producer Phase 4)
+- Registries match current code diff: yes — ⚠ partial status is accurate; mockup.html handlers verified at lines 4678, 4688
 
-**Gaps identified:** 2 pre-existing intentional orphan gaps (emit-debug-log, debug-log for task #20). New `backlogs-data` producer is planned/pending until task #26 builds /sync-state.
+**Gaps identified:** `orchConflict` and `orchAmber` remain orphan producers until Phase 4 push flow wires server-side emission. Intentional deferral — documented. `backlogs-data` planned producer (task #26) still pending /sync-state implementation.
 
-**Status:** Audit complete — registries updated for task #26 scope.
+**Status:** Audit complete — WS events registry verified for task #36 scope. Phase 4 gaps intentionally deferred.

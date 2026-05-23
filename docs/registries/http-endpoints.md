@@ -50,22 +50,27 @@ Invoke a UI-selected agent from within a Python LangGraph node.
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
 
-**Task:** #26 — Make task orchestration an explicit state machine
+**Task:** #36 — Add a ship task orchestration capability
 
-**Boundaries checked:** HTTP endpoints between server.js and agents/task_executor.py
+**Boundaries checked:** HTTP endpoints in server.js and consumers in resources/mockup.html
 
 **Evidence recorded:**
-- 1 existing entry fully documented ✓ (/dispatch-agent)
-- 2 new entries pre-registered as planned ⚠ (/sync-state, /recover)
-- 0 shape mismatches
-- New identifiers introduced on task #26: `/sync-state` (server.js, Task 6.3), `/recover` (task_executor.py, Task 3.3)
-- Registries match current code diff: yes (entries marked planned — not yet implemented)
+- 7 entries total (3 pre-existing + 4 new task #36 endpoints)
+- 5 entries with complete producer/consumer pairs ✓
+- 2 entries planned/deferred ⚠ (/sync-state, /recover — task #26 scope, unchanged)
+- 4 shape mismatches corrected:
+  - `GET /branch-state`: response shape now reflects project-name top-level wrap, `sessionCount`, `sessionId`, `sessionName`, `timestamp`
+  - `POST /reserve-merge-slot`: `position: 0` for acquired vs `1+` for queued now documented
+  - `POST /release-merge-slot`: `nextInQueue.slotId` added to response shape
+  - `POST /dry-run-merge`: optional `repoPath` request field added
+- New identifiers introduced on task #36: `/branch-state`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge`
+- Registries match current code diff: yes (shapes corrected to match server.js:7825–8009)
 
-**Gaps identified:** `/sync-state` and `/recover` are orphan consumers until task #26 build lands. Intentional — pre-registered so build session has contract to implement against.
+**Gaps identified:** 4 shape mismatches corrected above. `/sync-state` and `/recover` remain planned (task #26 scope). `orchConflict` and `orchAmber` WS emissions remain Phase 4 deferred (see websocket-events.md).
 
-**Status:** Audit complete — registries updated for task #26 scope.
+**Status:** Audit complete — shape mismatches resolved for task #36 scope.
 
 ---
 
@@ -128,27 +133,35 @@ Query the LangGraph executor for a stalled or failed task's last checkpoint, and
 
 ### `GET /branch-state`
 
-Returns current branch/worktree state for all active sessions in a project.
+Returns current branch/worktree state for all active sessions grouped by project.
 
 **Method:** `GET`
-**Producer:** `server.js` HTTP handler — queries git + OrchestratorRegistry (task #36, Phase 1)
-**Consumer:** `resources/mockup.html` — orchestrator panel polls on interval
+**Query params:** `project=string` (optional — filter to a single project name)
+**Producer:** `server.js:7825` — groups `sessions` map by `projectName`, calls `getWorktreeBranchInfo()` per session, detects contention via `detectFileContention()`
+**Consumer:** `resources/mockup.html:15185` — `fetchAndRenderBranchState()` polls every 5 s; `renderBranchState()` at line 15192 reads all fields below
 
 **Response Payload:**
 ```json
 {
-  "featureBranches": {
-    "task/N-slug": {
-      "head": "string — HEAD SHA",
-      "worktreePath": "string",
-      "filesChanged": ["string"],
-      "contention": ["string — files touched by multiple sessions"]
-    }
+  "[projectName]": {
+    "sessionCount": "number — total active sessions for this project",
+    "featureBranches": {
+      "[branch | sessionId]": {
+        "sessionId": "string",
+        "sessionName": "string",
+        "head": "string — HEAD SHA",
+        "worktreePath": "string",
+        "filesChanged": ["string"],
+        "contention": ["string — files also modified by another session"]
+      }
+    },
+    "contention": { "[filename]": true },
+    "timestamp": "string — ISO 8601"
   }
 }
 ```
 
-**Status:** ✓ Implemented (task #36, Phase 1) — `server.js` `/branch-state` handler; groups active sessions by `projectName`, calls `getWorktreeBranchInfo()` per session, detects contention via `detectFileContention()`
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js:7825`; shape corrected in audit (task #36) — previous registry omitted project-name top-level wrap, `sessionId`, `sessionName`, `sessionCount`, and `timestamp`
 
 ---
 
@@ -170,7 +183,9 @@ Acquire or queue a merge slot for a task promoting to a target branch. Serialize
 { "status": "acquired" | "queued", "slotId": "string", "position": number }
 ```
 
-**Status:** ✓ Implemented (task #36, Phase 1) — `server.js` FIFO merge slot queue; persisted to `orchestrator-state.json`
+**Position semantics:** `position: 0` when status is `acquired` (slot is immediately active); `position: 1+` when status is `queued` (1 = first in queue behind the active slot).
+
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js:7877` FIFO merge slot queue; persisted to `orchestrator-state.json`
 
 ---
 
@@ -189,10 +204,10 @@ Release a held merge slot after push completes or is cancelled.
 
 **Response Payload:**
 ```json
-{ "released": true, "nextInQueue": { "taskNumber": number } | null }
+{ "released": true, "status": "success" | "failed", "nextInQueue": { "taskNumber": number, "slotId": "string" } | null }
 ```
 
-**Status:** ✓ Implemented (task #36, Phase 1) — `server.js` releases slot, promotes next queued request, persists state
+**Status:** ✓ Implemented (task #36, Phase 1) — `server.js:7912` releases slot, promotes next queued request, persists state; `nextInQueue.slotId` corrected in audit (was undocumented)
 
 ---
 
@@ -206,8 +221,10 @@ Attempt merge on a throwaway branch to detect conflicts before any real merge.
 
 **Request Payload:**
 ```json
-{ "sourceBranch": "string", "targetBranch": "string", "cleanup": boolean }
+{ "sourceBranch": "string", "targetBranch": "string", "repoPath": "string (optional)", "cleanup": boolean }
 ```
+
+**`repoPath`:** Optional override for the git repo root. When absent, server falls back to `repoWorkDir` of any active session (`server.js:7963`).
 
 **Response Payload (clean):**
 ```json

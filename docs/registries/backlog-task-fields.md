@@ -287,6 +287,37 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 
 ---
 
+## `objective`
+
+Reviewer-facing definition of done for the task — read by `/review-pr` to gate merge decisions.
+
+**Schema / shape:**
+```javascript
+{
+  statement: String,            // One-sentence objective
+  successCriteria: Array<String>,  // Each criterion mapped to a proof unit
+  nonGoals: Array<String>,      // Explicitly out-of-scope items
+  proofMap: Array<{
+    criterion: String,
+    proofUnit: Number           // Index into proofUnits[]
+  }>,
+  stopConditions: Array<String> // Hard blockers that abort the build
+}
+```
+Optional, null initially.
+
+**Producers (write)**
+- `/plan-task` skill — generates and writes `objective` to `docs/backlog.json` during planning phase
+- Direct commit (build session) — may write objective manually alongside plan
+
+**Consumers (read)**
+- `/review-pr` skill — loads all sub-fields at Step 4a; verifies each `successCriteria` item against diff; checks for non-goal drift; flags missing fields as proof/planning gap
+- `/codex-review` skill — reads same fields for independent Codex review comparison
+
+**Status:** ⚠ orphan producer in UI — field is written by skills and committed; not exposed in Add Task or Edit Task modals. Intentional: objective is planning-phase output, not a UI-editable field.
+
+---
+
 ## Summary
 
 | Field | Producers | Consumers | Status |
@@ -305,26 +336,29 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 | `branch` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `pr_url` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `impact` | 3 (create/update) | 5 (display/modal/skills) | ✓ |
+| `objective` | skills (/plan-task) | 2 (/review-pr, /codex-review) | ⚠ UI orphan (intentional) |
 
 ---
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-22T12:00:00Z (by /cross-boundary-audit for task #26)
+**Last audit:** 2026-05-22T00:00:00Z (by /cross-boundary-audit for task #36)
 
-**Task:** #26 — Make task orchestration an explicit state machine
+**Task:** #36 — Add a ship task orchestration capability
 
-**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and agents/task_executor.py
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and docs/backlog.json
 
 **Evidence recorded:**
-- 14 entries documented
+- 15 entries documented (14 prior + 1 new)
 - 11 entries with complete producer/consumer pairs ✓
 - 2 entries with intentional skill-side wiring (plan, proofUnits) ✓
-- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠ pre-existing
-- 0 entries with shape mismatches
-- New identifiers introduced on task #26: `stalled` and `failed` status values added to VALID_BACKLOG_STATUSES (server.js:3194); written by LangGraph executor
-- Registries match current code diff: yes — server.js patched in this audit run
+- 4 entries with orphan producers (dependencies, branch, pr_url, objective) ⚠
+  - dependencies/branch/pr_url: pre-existing, deferred
+  - objective: newly registered; intentionally skill-written, not UI-editable
+- 0 shape mismatches
+- New identifiers introduced on task #36: `objective` field (with sub-fields statement, successCriteria, nonGoals, proofMap, stopConditions) — present in backlog.json task #36, consumed by /review-pr and /codex-review skills
+- Registries match current code diff: yes
 
-**Gaps identified:** 2 pre-existing hard blockers resolved — `stalled` and `failed` added to VALID_BACKLOG_STATUSES. 3 pre-existing orphan producers (dependencies, branch, pr_url) deferred.
+**Gaps identified:** `objective` was unregistered — now added. Pre-existing orphan producers (dependencies, branch, pr_url) unchanged.
 
-**Status:** Audit complete — hard blockers resolved. Registries valid for task #26 scope.
+**Status:** Audit complete — objective field registered for task #36 scope.
