@@ -3341,6 +3341,84 @@ function updateBacklogTask(scope, taskNumber, updates) {
   return task;
 }
 
+function moveBacklogTask(fromScope, taskNumber, toScope) {
+  console.log(`[backlog] moveBacklogTask from=${fromScope} task=#${taskNumber} to=${toScope}`);
+  const cfg = readConfig();
+  const taskNum = parseInt(taskNumber, 10);
+  if (!taskNum) throw new Error('Invalid task number: ' + taskNumber);
+  if (fromScope === toScope) throw new Error('Source and target scope are the same.');
+
+  function _scopeFilePath(scope) {
+    if (scope === 'global') {
+      if (!cfg.obsidianVaultPath) throw new Error('Obsidian vault path not configured.');
+      return path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
+    }
+    const project = (cfg.projects || []).find(p => p.name === scope);
+    if (!project) throw new Error('Project not found: ' + scope);
+    if (!project.workDir) throw new Error('Project ' + scope + ' has no workDir.');
+    return path.join(project.workDir, 'docs', 'backlog.json');
+  }
+
+  function _scopeArchivePath(scope) {
+    if (scope === 'global') {
+      return path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog-archive.json');
+    }
+    const project = (cfg.projects || []).find(p => p.name === scope);
+    return path.join(project.workDir, 'docs', 'backlog-archive.json');
+  }
+
+  const srcPath = _scopeFilePath(fromScope);
+  const srcData = JSON.parse(fs.readFileSync(srcPath, 'utf8'));
+  const taskIdx = (srcData.tasks || []).findIndex(t => t.number === taskNum);
+  if (taskIdx === -1) throw new Error('Task #' + taskNum + ' not found in ' + fromScope + ' backlog.');
+  const task = { ...(srcData.tasks[taskIdx]) };
+  srcData.tasks.splice(taskIdx, 1);
+  fs.writeFileSync(srcPath, JSON.stringify(srcData, null, 2) + '\n', 'utf8');
+
+  const dstPath = _scopeFilePath(toScope);
+  let dstData;
+  try {
+    dstData = JSON.parse(fs.readFileSync(dstPath, 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      try { fs.mkdirSync(path.dirname(dstPath), { recursive: true }); } catch {}
+      dstData = { tasks: [] };
+    } else {
+      srcData.tasks.splice(taskIdx, 0, task);
+      fs.writeFileSync(srcPath, JSON.stringify(srcData, null, 2) + '\n', 'utf8');
+      throw new Error('Could not read ' + dstPath + ': ' + e.message);
+    }
+  }
+  if (!Array.isArray(dstData.tasks)) dstData.tasks = [];
+  let dstArchived = [];
+  try {
+    const archiveData = JSON.parse(fs.readFileSync(_scopeArchivePath(toScope), 'utf8'));
+    if (Array.isArray(archiveData.tasks)) dstArchived = archiveData.tasks;
+  } catch (e) {}
+
+  const newNumber = _nextBacklogTaskNumber(dstData.tasks, dstArchived);
+  task.number = newNumber;
+  dstData.tasks.push(task);
+  fs.writeFileSync(dstPath, JSON.stringify(dstData, null, 2) + '\n', 'utf8');
+
+  if (fromScope !== 'global') {
+    const fromProject = (cfg.projects || []).find(p => p.name === fromScope);
+    if (fromProject) {
+      try { _autoCommitBacklog(fromProject.workDir, taskNum, `remove task #${taskNum} (moved to ${toScope})`); }
+      catch (e) { console.error('[backlog] auto-commit failed in ' + fromProject.workDir + ':', e.message); }
+    }
+  }
+  if (toScope !== 'global') {
+    const toProject = (cfg.projects || []).find(p => p.name === toScope);
+    if (toProject) {
+      try { _autoCommitBacklog(toProject.workDir, newNumber, `add task #${newNumber} (moved from ${fromScope})`); }
+      catch (e) { console.error('[backlog] auto-commit failed in ' + toProject.workDir + ':', e.message); }
+    }
+  }
+
+  return { oldNumber: taskNum, newNumber, task };
+}
+
 // Backward-compat shim — the old discoverSkills() signature returned items
 // with `dirPath`. Some callers (buildDirectSystemPrompt) only need name +
 // description, which the new shape still provides.
@@ -8824,6 +8902,19 @@ async function handleMessage(ws, raw) {
     try {
       const { scope, taskNumber, updates } = msg;
       updateBacklogTask(scope, taskNumber, updates);
+      invalidateBacklogCache();
+      const result = loadAllBacklogs();
+      sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
+    } catch (e) {
+      sendTo(ws, { type: 'backlog-error', error: String(e.message || e) });
+    }
+    return;
+  }
+
+  if (type === 'move-backlog-task') {
+    try {
+      const { fromScope, taskNumber, toScope } = msg;
+      moveBacklogTask(fromScope, taskNumber, toScope);
       invalidateBacklogCache();
       const result = loadAllBacklogs();
       sendTo(ws, { type: 'backlogs-data', global: result.global, projects: result.projects, archive: result.archive });
