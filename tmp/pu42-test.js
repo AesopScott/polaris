@@ -82,6 +82,7 @@ const blocked = [
   'git clean -fd .',
   'format C:',
   'rm -rf /',
+  "rm -rf '/'",
   'rd /s /q C:\\',
 ];
 
