@@ -89,6 +89,29 @@ def safe_node(fn: Callable) -> Callable:
 
 ---
 
+## `task_graph.dispatch_agent`
+
+Helper that calls the Polaris server's `/dispatch-agent` HTTP endpoint to run a real agent session from within a LangGraph node. Used by all 6 automation nodes (task #33).
+
+**Schema / shape:**
+```python
+def dispatch_agent(task_number: int, prompt: str, agent: str = "sonnet", timeout: int = 300) -> str:
+    # POST http://localhost:{SERVER_PORT}/dispatch-agent
+    # { agent, prompt, task_number }
+    # Returns: response text string
+    # Raises: RuntimeError if ok=false or HTTP error
+```
+
+**Producers (define)**
+- `agents/task_graph.py:35` — function definition (task #33)
+
+**Consumers (call)**
+- `agents/task_graph.py` — called by `plan_node`, `start_build_node`, `finish_build_node`, `codex_review_node`, `promote_stage_node`, `promote_prod_node` (all 6 automation nodes, task #33)
+
+**Status:** ✓ Implemented (task #33)
+
+---
+
 ## `task_graph.build_graph`
 
 Factory function that compiles the LangGraph StateGraph with 10 nodes decorated with `@safe_node`.
@@ -103,7 +126,7 @@ def build_graph(checkpointer=None) -> StateGraph:
 ```
 
 **Producers (define)**
-- `agents/task_graph.py:170` — function definition
+- `agents/task_graph.py:255` — function definition (line ref updated task #33)
 
 **Consumers (call)**
 - `agents/task_executor.py:32` — `from task_graph import build_graph, HITL_NODES` — module-level import
@@ -189,7 +212,8 @@ def sync_status(task_number: int, status: str, current_node: str) -> None:
 | `state.TaskState` | state.py:13 | task_graph.py:11, task_executor.py:33 | ✓ |
 | `state.TaskStatePydantic` | state.py:26 | task_executor.py:33 | ⚠ orphan producer |
 | `node_utils.safe_node` | node_utils.py:15 | task_graph.py (all 10 nodes) | ✓ |
-| `task_graph.build_graph` | task_graph.py:170 | task_executor.py:32; test_executor.py:103 | ✓ |
+| `task_graph.dispatch_agent` | task_graph.py:35 | task_graph.py (6 automation nodes) | ✓ (task #33) |
+| `task_graph.build_graph` | task_graph.py:255 | task_executor.py:32; test_executor.py:103 | ✓ |
 | `transitions.is_direct_transition` | transitions.py:11 | task_executor.py:265 (_validate_if_direct) | ✓ |
 | `transitions.validate_transition` | transitions.py:23 | task_executor.py:265 (_validate_if_direct) | ✓ |
 | `backlog_sync.sync_status` | backlog_sync.py:19 | task_executor.py (_sync_status_safe wrapper) | ✓ |
@@ -218,3 +242,23 @@ def sync_status(task_number: int, status: str, current_node: str) -> None:
 - `TaskStatePydantic` imported but not used as a response_model — pre-existing, low risk (scope: task #27 contracts)
 
 **Status:** ✓ Audit current — all task #26 symbols registered with correct line refs
+
+---
+
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #33)
+
+**Task:** #33 — LangGraph node implementation + HITL
+
+**Boundaries checked:** Python module exports and imports within `agents/` package
+
+**Evidence recorded:**
+- 8 entries documented (7 previous + 1 new)
+- 7 entries with complete producer/consumer pairs ✓
+- 1 pre-existing orphan producer (TaskStatePydantic — unchanged)
+- New identifier introduced: `task_graph.dispatch_agent` (task #33)
+- Stale line ref corrected: `task_graph.build_graph` line ref updated 170 → 255 (new code inserted above it)
+- All 6 automation nodes now call `dispatch_agent()` — registered as consumers
+
+**Gaps identified:** None new. `TaskStatePydantic` orphan pre-existing.
+
+**Status:** ✓ Audit current — task #33 additions registered
