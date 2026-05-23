@@ -1,457 +1,457 @@
 {
-    "tasks": [
+  "tasks": [
+    {
+      "number": 4,
+      "title": "Status button not updating from text entered after session close",
+      "category": "fix",
+      "priority": 1,
+      "status": "on-hold",
+      "dependencies": [],
+      "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
+      "plan": null,
+      "branch": null,
+      "pr_url": null
+    },
+    {
+      "number": 33,
+      "title": "LangGraph: Node Implementation + HITL (Phases 4-5)",
+      "description": "Build all 9 LangGraph node files (plan, start_build, build, finish_build, review, codex_review, stage_decision, promote_stage, promote_prod) and wire HITL pause/resume semantics with WebSocket signal forwarding. Depends on Task #24.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "cba-complete",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        24
+      ],
+      "branch": "task/33-langgraph-node-implementation-hitl-phase",
+      "pr_url": null,
+      "plan": "## Overview\n\nTask #24 shipped LangGraph stubs; Task #26 delivered the full state machine with all 9 nodes, HITL interrupt semantics, formal transitions, and backlog sync. Task #33 enriches those stub nodes with real /dispatch-agent skill invocations and adds the WebSocket bridge so the Polaris UI can advance and signal tasks.\n\n## Phases\n\n1. dispatch_agent helper — Add dispatch_agent() to task_graph.py for calling /dispatch-agent\n2. Enrich automation nodes — Wire real skill prompts into plan, start_build, finish_build, codex_review, promote_stage, promote_prod nodes\n3. WebSocket signal bridge — Add advance-task and send-lang-signal WS handlers to server.js\n4. UI controls — Add Advance/Signal controls to task card in mockup.html\n\n## First Proof Unit\n\ndispatch_agent helper: import dispatch_agent from task_graph; call dispatch_agent(99, \"Reply: PONG\", agent=\"haiku\"); assert non-empty response; exits 0. Requires server.js running on port 40000.",
+      "proofUnits": [
         {
-            "number": 4,
-            "title": "Status button not updating from text entered after session close",
-            "category": "fix",
-            "priority": 1,
-            "status": "on-hold",
-            "dependencies": [],
-            "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
-            "plan": null,
-            "branch": null,
-            "pr_url": null
+          "number": 1,
+          "title": "dispatch_agent helper calls /dispatch-agent and returns text",
+          "expectedBehavior": "dispatch_agent(99, \"Reply: PONG\") POSTs to /dispatch-agent and returns a non-empty string.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import dispatch_agent; result = dispatch_agent(99, 'Reply: PONG', agent='haiku'); assert isinstance(result, str) and len(result) > 0; print('PASS:', result[:80])\"",
+          "expectedInitialFailure": "ImportError: cannot import name dispatch_agent",
+          "expectedPassingEvidence": "Prints PASS: followed by agent response text; exit code 0.",
+          "waiverGuidance": "N/A"
         },
         {
-            "number": 33,
-            "title": "LangGraph: Node Implementation + HITL (Phases 4-5)",
-            "description": "Build all 9 LangGraph node files (plan, start_build, build, finish_build, review, codex_review, stage_decision, promote_stage, promote_prod) and wire HITL pause/resume semantics with WebSocket signal forwarding. Depends on Task #24.",
-            "category": "feature",
-            "priority": 90,
-            "impact": "standard",
-            "status": "build-started",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                24
-            ],
-            "branch": "task/33-langgraph-node-implementation-hitl-phase",
-            "pr_url": null,
-            "plan": "## Overview\n\nTask #24 shipped LangGraph stubs; Task #26 delivered the full state machine with all 9 nodes, HITL interrupt semantics, formal transitions, and backlog sync. Task #33 enriches those stub nodes with real /dispatch-agent skill invocations and adds the WebSocket bridge so the Polaris UI can advance and signal tasks.\n\n## Phases\n\n1. dispatch_agent helper — Add dispatch_agent() to task_graph.py for calling /dispatch-agent\n2. Enrich automation nodes — Wire real skill prompts into plan, start_build, finish_build, codex_review, promote_stage, promote_prod nodes\n3. WebSocket signal bridge — Add advance-task and send-lang-signal WS handlers to server.js\n4. UI controls — Add Advance/Signal controls to task card in mockup.html\n\n## First Proof Unit\n\ndispatch_agent helper: import dispatch_agent from task_graph; call dispatch_agent(99, \"Reply: PONG\", agent=\"haiku\"); assert non-empty response; exits 0. Requires server.js running on port 40000.",
-            "proofUnits": [
-                {
-                    "number": 1,
-                    "title": "dispatch_agent helper calls /dispatch-agent and returns text",
-                    "expectedBehavior": "dispatch_agent(99, \"Reply: PONG\") POSTs to /dispatch-agent and returns a non-empty string.",
-                    "proofType": "smoke-command",
-                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import dispatch_agent; result = dispatch_agent(99, 'Reply: PONG', agent='haiku'); assert isinstance(result, str) and len(result) > 0; print('PASS:', result[:80])\"",
-                    "expectedInitialFailure": "ImportError: cannot import name dispatch_agent",
-                    "expectedPassingEvidence": "Prints PASS: followed by agent response text; exit code 0.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 2,
-                    "title": "plan_node calls dispatch_agent and records response in checkpoint_data",
-                    "expectedBehavior": "plan_node(state) returns status=planned and checkpoint_data[\"plan_response\"] with a non-empty string.",
-                    "proofType": "smoke-command",
-                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import plan_node; s={'task_number':33,'current_node':'START','status':'planned','branch_name':'','pr_url':None,'proof_units':[],'proof_results':{},'human_gate_signal':None,'retry_count':0,'error_log':[],'review_evidence':{},'checkpoint_data':{}}; r=plan_node(s); assert r.get('status')=='planned'; assert r.get('checkpoint_data',{}).get('plan_response'); print('PASS')\"",
-                    "expectedInitialFailure": "checkpoint_data missing plan_response key (stub sets only plan_complete: True).",
-                    "expectedPassingEvidence": "Prints PASS; exit code 0.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 3,
-                    "title": "start_build_node dispatches and sets branch_name",
-                    "expectedBehavior": "start_build_node(state) returns status=build-started and a non-empty branch_name.",
-                    "proofType": "smoke-command",
-                    "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import start_build_node; s={'task_number':33,'current_node':'plan','status':'planned','branch_name':'','pr_url':None,'proof_units':[],'proof_results':{},'human_gate_signal':None,'retry_count':0,'error_log':[],'review_evidence':{},'checkpoint_data':{'plan_complete':True}}; r=start_build_node(s); assert r.get('status')=='build-started'; assert r.get('branch_name'); print('PASS branch:', r['branch_name'])\"",
-                    "expectedInitialFailure": "status stays planned or branch_name is empty.",
-                    "expectedPassingEvidence": "Prints PASS branch: task/33-...; exit code 0.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 4,
-                    "title": "advance-task WS handler returns executor response",
-                    "expectedBehavior": "Sending {type:\"advance-task\",task_number:99} over WS returns advance-task-result with status field.",
-                    "proofType": "manual-script",
-                    "exactCommand": "1. Start server.js and task_executor.py\n2. In browser console: ws.send(JSON.stringify({type:\"advance-task\",task_number:99}))\n3. Observe advance-task-result message with task_number:99",
-                    "expectedInitialFailure": "No response or unknown message type error.",
-                    "expectedPassingEvidence": "Browser console logs advance-task-result with executor response payload.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 5,
-                    "title": "send-lang-signal WS handler forwards signal to executor",
-                    "expectedBehavior": "Sending {type:\"send-lang-signal\",task_number:99,signal:\"code_done\"} returns lang-signal-result; executor advances past build gate.",
-                    "proofType": "manual-script",
-                    "exactCommand": "1. Ensure task 99 paused at build gate\n2. ws.send(JSON.stringify({type:\"send-lang-signal\",task_number:99,signal:\"code_done\"}))\n3. Observe lang-signal-result\n4. curl http://localhost:4001/state?task_number=99 shows current_node=finish_build",
-                    "expectedInitialFailure": "No lang-signal-result; executor state unchanged.",
-                    "expectedPassingEvidence": "lang-signal-result received; executor shows current_node=finish_build.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 6,
-                    "title": "UI Advance and Signal controls render for orchestrated tasks",
-                    "expectedBehavior": "Task card with current_node set shows Advance Task button and signal input; task without current_node shows neither.",
-                    "proofType": "ui-check",
-                    "exactCommand": "1. Initialize executor task state for task #33 with current_node=build\n2. POST /sync-state to push to UI\n3. Open Polaris UI backlog panel\n4. Verify Advance Task button and signal input visible for task #33\n5. Verify controls absent on tasks with no current_node",
-                    "expectedInitialFailure": "No controls visible regardless of current_node value.",
-                    "expectedPassingEvidence": "Advance + signal controls present for orchestrated task; absent for normal tasks.",
-                    "waiverGuidance": "N/A"
-                }
-            ],
-            "objective": {
-                "statement": "Enrich the 6 automation LangGraph nodes with real /dispatch-agent skill invocations and wire the WebSocket bridge so the Polaris UI can advance and signal tasks under /lang orchestration.",
-                "successCriteria": [
-                    "dispatch_agent() helper in task_graph.py calls /dispatch-agent and returns response text",
-                    "plan_node, start_build_node, finish_build_node, codex_review_node, promote_stage_node, and promote_prod_node call dispatch_agent() with skill-appropriate prompts",
-                    "advance-task WS handler in server.js proxies to executor /advance and returns result",
-                    "send-lang-signal WS handler in server.js proxies to executor /signal and returns result",
-                    "UI task card shows Advance Task and Signal controls when task has current_node set"
-                ],
-                "nonGoals": [
-                    "Splitting nodes into agents/taskNodes/ directory",
-                    "asyncio.to_thread for non-blocking dispatch (Task #34)",
-                    "Full end-to-end /lang POC validation run (Task #34)",
-                    "Resume-from-restart hardening (Task #34)"
-                ],
-                "stopConditions": [
-                    "agents/task_graph.py not found (Task #26 delivery missing)",
-                    "Python environment in agents/ missing langgraph",
-                    "server.js /dispatch-agent endpoint missing (required by nodes)"
-                ]
-            }
+          "number": 2,
+          "title": "plan_node calls dispatch_agent and records response in checkpoint_data",
+          "expectedBehavior": "plan_node(state) returns status=planned and checkpoint_data[\"plan_response\"] with a non-empty string.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import plan_node; s={'task_number':33,'current_node':'START','status':'planned','branch_name':'','pr_url':None,'proof_units':[],'proof_results':{},'human_gate_signal':None,'retry_count':0,'error_log':[],'review_evidence':{},'checkpoint_data':{}}; r=plan_node(s); assert r.get('status')=='planned'; assert r.get('checkpoint_data',{}).get('plan_response'); print('PASS')\"",
+          "expectedInitialFailure": "checkpoint_data missing plan_response key (stub sets only plan_complete: True).",
+          "expectedPassingEvidence": "Prints PASS; exit code 0.",
+          "waiverGuidance": "N/A"
         },
         {
-            "number": 34,
-            "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
-            "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
-            "category": "feature",
-            "priority": 90,
-            "impact": "standard",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                33
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
+          "number": 3,
+          "title": "start_build_node dispatches and sets branch_name",
+          "expectedBehavior": "start_build_node(state) returns status=build-started and a non-empty branch_name.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python -c \"from task_graph import start_build_node; s={'task_number':33,'current_node':'plan','status':'planned','branch_name':'','pr_url':None,'proof_units':[],'proof_results':{},'human_gate_signal':None,'retry_count':0,'error_log':[],'review_evidence':{},'checkpoint_data':{'plan_complete':True}}; r=start_build_node(s); assert r.get('status')=='build-started'; assert r.get('branch_name'); print('PASS branch:', r['branch_name'])\"",
+          "expectedInitialFailure": "status stays planned or branch_name is empty.",
+          "expectedPassingEvidence": "Prints PASS branch: task/33-...; exit code 0.",
+          "waiverGuidance": "N/A"
         },
         {
-            "number": 28,
-            "title": "Upgrade project memory into ranked retrieval",
-            "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
-            "category": "feature",
-            "priority": 90,
-            "impact": "major",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": []
+          "number": 4,
+          "title": "advance-task WS handler returns executor response",
+          "expectedBehavior": "Sending {type:\"advance-task\",task_number:99} over WS returns advance-task-result with status field.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Start server.js and task_executor.py\n2. In browser console: ws.send(JSON.stringify({type:\"advance-task\",task_number:99}))\n3. Observe advance-task-result message with task_number:99",
+          "expectedInitialFailure": "No response or unknown message type error.",
+          "expectedPassingEvidence": "Browser console logs advance-task-result with executor response payload.",
+          "waiverGuidance": "N/A"
         },
         {
-            "number": 43,
-            "title": "evaluatePolicy unified enforcer",
-            "description": "Write evaluatePolicy(action, context, policy): PolicyResult in server.js (or src/runtime/capabilityPolicy.ts if the toolRuntime module is wired). Handles: root boundary check (replaces assertWritable path logic), command class evaluation using COMMAND_CLASS_REGISTRY (replaces assertSafeCommand), installer gate (replaces detectInstallerExe + async approval prompt). Returns { allowed: boolean, reason?: string, auditEvent: AuditEvent }. Does not throw â€” callers inspect the result and throw if !allowed.",
-            "category": "security",
-            "priority": 92,
-            "impact": "standard",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                41,
-                42
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
+          "number": 5,
+          "title": "send-lang-signal WS handler forwards signal to executor",
+          "expectedBehavior": "Sending {type:\"send-lang-signal\",task_number:99,signal:\"code_done\"} returns lang-signal-result; executor advances past build gate.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Ensure task 99 paused at build gate\n2. ws.send(JSON.stringify({type:\"send-lang-signal\",task_number:99,signal:\"code_done\"}))\n3. Observe lang-signal-result\n4. curl http://localhost:4001/state?task_number=99 shows current_node=finish_build",
+          "expectedInitialFailure": "No lang-signal-result; executor state unchanged.",
+          "expectedPassingEvidence": "lang-signal-result received; executor shows current_node=finish_build.",
+          "waiverGuidance": "N/A"
         },
         {
-            "number": 44,
-            "title": "Audit JSONL + tool-audit WebSocket event",
-            "description": "On every evaluatePolicy call, append a structured event to %APPDATA%\\.claude\\polaris\\audit.jsonl. Event schema: { ts, sessionId, action, tool, allowed, reason, commandSnippet }. Also emit a tool-audit WebSocket broadcast message for any block or grant (allowed=false or installerAllowed action). The JSONL file is append-only; no pruning in this task.",
-            "category": "security",
-            "priority": 90,
-            "impact": "minor",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                43
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
-        },
-        {
-            "number": 45,
-            "title": "Wire evaluatePolicy into tool execution",
-            "description": "Replace assertWritable + assertSafeCommand + detectInstallerExe call sites in toolBash, toolPowerShell, toolWrite, and toolEdit with evaluatePolicy. Consolidate the duplicated shell precheck sequence (assertSafeCommand + detectInstallerExe + detectShellWriteTargets + backupBeforeWrite + snapshotForShellEncodingCheck) that currently appears identically in both toolBash and toolPowerShell into a single shellPrecheck(command, workDir, sessionId, policy) helper. No behavior changes â€” enforcement must be identical to what existed before.",
-            "category": "security",
-            "priority": 92,
-            "impact": "standard",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                43,
-                44
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
-        },
-        {
-            "number": 46,
-            "title": "Policy unit test suite",
-            "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
-            "category": "test",
-            "priority": 88,
-            "impact": "minor",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                43
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
-        },
-        {
-            "number": 30,
-            "title": "Expand agent evals into product-critical acceptance suites",
-            "description": "The existing agent eval harness is a strong seed, but it is too small to guard Polaris's behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
-            "category": "test",
-            "priority": 88,
-            "impact": "standard",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": []
-        },
-        {
-            "number": 31,
-            "title": "Make trust, proof, cost, and recovery visible in the product",
-            "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
-            "category": "feature",
-            "priority": 90,
-            "impact": "major",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": []
-        },
-        {
-            "number": 36,
-            "title": "Add a ship task orchestration capability.",
-            "description": "I want to have an orchestration window that monitors all open active sessions for projects and ensures that coordination and conflicts are managed. Reference this file for more information.   docs/orchestrator-design.md",
-            "category": "feature",
-            "priority": 70,
-            "impact": "standard",
-            "status": "staged",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [],
-            "plan": "## Overview\n\nAdd an orchestrator window that auto-activates when two or more sessions are open for the same project. The orchestrator is a passive monitor â€” it reads session state, detects conflicts, and enables Scott to resolve conflicts and push git/Obsidian updates per session. No commands run from the orchestrator directly.\n\n## Phases\n\n1. Server Foundations: Session registry + 4 new HTTP endpoints (GET /branch-state, POST /reserve-merge-slot, POST /release-merge-slot, POST /dry-run-merge stub). Persist state to orchestrator-state.json in Runtime zone.\n2. Git Integration: Worktree state query helper, file contention detection, full dry-run merge implementation (throwaway branch, auto-cleaned).\n3. Orchestrator UI Panel: New panel in mockup.html â€” auto-activates on second session, session cards with branch/worktree/conflict state, push buttons.\n4. Conflict Resolution + Merge Serialization: FIFO merge slot queue wired into push flow, Obsidian bridge for session summaries, retry logic, amber conflict alerts.\n\n## First Proof Unit\n\nGET /branch-state returns live session data. curl http://localhost:40000/branch-state returns HTTP 200 with JSON containing featureBranches keyed by branch name with head, worktreePath, and contention fields.",
-            "proofUnits": [
-                {
-                    "number": 1,
-                    "title": "/branch-state returns live session data",
-                    "expectedBehavior": "GET /branch-state returns JSON listing all active sessions for the project with branch, worktree path, HEAD SHA, and contention array.",
-                    "proofType": "smoke-command",
-                    "exactCommand": "curl -s http://localhost:40000/branch-state | python -m json.tool",
-                    "expectedInitialFailure": "HTTP 404 â€” endpoint does not exist.",
-                    "expectedPassingEvidence": "HTTP 200 with JSON body containing featureBranches keyed by branch name, each with head, worktreePath, and contention fields.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 2,
-                    "title": "Merge slot queue serializes concurrent requests",
-                    "expectedBehavior": "Two simultaneous POST /reserve-merge-slot requests for the same target branch result in one acquired and one queued with position: 2.",
-                    "proofType": "smoke-command",
-                    "exactCommand": "Send two POST /reserve-merge-slot requests with taskNumber 36 and 37, both targeting stage. First should return {status:acquired,position:1}, second {status:queued,position:2}.",
-                    "expectedInitialFailure": "HTTP 404 â€” endpoint does not exist.",
-                    "expectedPassingEvidence": "First returns {status:acquired,position:1}, second returns {status:queued,position:2}.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 3,
-                    "title": "Dry-run merge detects conflict correctly",
-                    "expectedBehavior": "POST /dry-run-merge with a conflicting source branch returns {status: conflict, conflictFiles: [...]} and leaves the repo clean.",
-                    "proofType": "api-check",
-                    "exactCommand": "POST http://localhost:40000/dry-run-merge with {sourceBranch:\"task/36-orchestrator\",targetBranch:\"main\",cleanup:true}. Then run: git status and git branch to confirm no dry-run-* branch exists.",
-                    "expectedInitialFailure": "HTTP 404 or stub always returns {status:clean}.",
-                    "expectedPassingEvidence": "Returns {status:conflict,conflictFiles:[...]} when conflict exists; git status shows clean; no dry-run-* branch exists.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 4,
-                    "title": "File contention detection flags overlapping edits",
-                    "expectedBehavior": "When two active sessions have modified the same file, /branch-state includes that file in the contention[] array.",
-                    "proofType": "smoke-command",
-                    "exactCommand": "1. Open two sessions on same project, both with server.js modified\n2. GET http://localhost:40000/branch-state\n3. Verify contention array includes server.js",
-                    "expectedInitialFailure": "contention field missing or always empty.",
-                    "expectedPassingEvidence": "/branch-state response has contention: [\"server.js\"] when both sessions list it as modified.",
-                    "waiverGuidance": "Manual verification with two real sessions is acceptable."
-                },
-                {
-                    "number": 5,
-                    "title": "Orchestrator panel auto-activates on second session",
-                    "expectedBehavior": "Opening a second agent session for the same project causes the orchestrator panel to appear without manual action; closing back to one session hides it.",
-                    "proofType": "ui-check",
-                    "exactCommand": "1. Start Polaris (npm start)\n2. Open one session for Project A â€” orchestrator panel should be hidden\n3. Open a second session for Project A â€” orchestrator panel should appear automatically\n4. Close one session â€” panel should hide",
-                    "expectedInitialFailure": "Panel does not exist or does not auto-activate.",
-                    "expectedPassingEvidence": "Panel appears on second session open; disappears when count drops to 1.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 6,
-                    "title": "Session cards show correct branch, worktree, and conflict state",
-                    "expectedBehavior": "Each session card displays correct branch, worktree path, HEAD SHA, and file contention indicators sourced live from /branch-state.",
-                    "proofType": "ui-check",
-                    "exactCommand": "1. Open two sessions on different branches for same project\n2. Verify each card shows correct branch and worktree\n3. Modify same file in both sessions; verify contention indicator appears",
-                    "expectedInitialFailure": "Cards show placeholder data or no contention indicator.",
-                    "expectedPassingEvidence": "Each card matches live git state; contention badge appears on file overlap.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 7,
-                    "title": "Full push flow executes through merge slot",
-                    "expectedBehavior": "Push Git acquires a slot, runs dry-run, executes push if clean, releases slot. A second concurrent push waits in queue until the first completes.",
-                    "proofType": "manual-script",
-                    "exactCommand": "1. Open two sessions on branches with no conflicts\n2. Click Push Git on Session A â€” verify slot acquired, dry-run clean, push executes, slot released\n3. While Session A runs, click Push Git on Session B â€” verify queued state\n4. After Session A completes, verify Session B push runs automatically",
-                    "expectedInitialFailure": "Push ignores slot coordination or button does nothing.",
-                    "expectedPassingEvidence": "Pushes complete in order; Session B starts only after Session A slot is released.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 8,
-                    "title": "Amber conflict alert fires on conflict detection",
-                    "expectedBehavior": "When Push Git triggers a conflicting dry-run, an amber alert card appears in the orchestrator panel with conflicting files and diff excerpt. Push is held; git repo stays clean.",
-                    "proofType": "ui-check",
-                    "exactCommand": "1. Create two branches conflicting on same file\n2. Open both as sessions in orchestrator\n3. Click Push Git on conflicting session\n4. Verify amber alert appears with conflict file list and diff\n5. Verify git status shows clean working tree",
-                    "expectedInitialFailure": "No amber alert; push silently fails or corrupts git state.",
-                    "expectedPassingEvidence": "Amber alert card shows conflict details; git state clean.",
-                    "waiverGuidance": "N/A"
-                },
-                {
-                    "number": 9,
-                    "title": "Push Obsidian writes session summary to Build Plan",
-                    "expectedBehavior": "Clicking Push Obsidian appends a timestamped session summary (branch, worktree, modified files, conflict status) to the project 3-Build_Plan.md in Obsidian.",
-                    "proofType": "manual-script",
-                    "exactCommand": "1. Open a session with some modified files\n2. Click Push Obsidian in the orchestrator panel\n3. Open G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\3-Build_Plan.md\n4. Verify a new timestamped session summary block was appended",
-                    "expectedInitialFailure": "Button does nothing; file unchanged; or write fails silently.",
-                    "expectedPassingEvidence": "Build Plan shows new summary block matching the session actual branch/worktree/file state.",
-                    "waiverGuidance": "N/A"
-                }
-            ],
-            "objective": {
-                "statement": "Add an orchestrator window that auto-activates when 2+ sessions are running for the same project, monitoring branch/worktree state and enabling conflict detection and per-session git/Obsidian pushes.",
-                "successCriteria": [
-                    "GET /branch-state returns live session data",
-                    "Merge slot queue serializes concurrent push requests",
-                    "Dry-run merge detects conflicts before any real push",
-                    "Orchestrator panel auto-activates on second session",
-                    "Push Git flow runs through slot queue with conflict detection",
-                    "Amber conflict alert fires on conflict; repo stays clean",
-                    "Push Obsidian writes session summary to Build Plan"
-                ],
-                "nonGoals": [
-                    "Orchestrator spawning or cancelling child sessions",
-                    "Production/post-deployment monitoring",
-                    "CI/CD webhook integration",
-                    "Automated conflict resolution"
-                ],
-                "proofMap": [
-                    {
-                        "criterion": "GET /branch-state returns live session data",
-                        "proofUnit": 1
-                    },
-                    {
-                        "criterion": "Merge slot queue serializes concurrent push requests",
-                        "proofUnit": 2
-                    },
-                    {
-                        "criterion": "Dry-run merge detects conflicts before any real push",
-                        "proofUnit": 3
-                    },
-                    {
-                        "criterion": "Orchestrator panel auto-activates on second session",
-                        "proofUnit": 5
-                    },
-                    {
-                        "criterion": "Push Git flow runs through slot queue with conflict detection",
-                        "proofUnit": 7
-                    },
-                    {
-                        "criterion": "Amber conflict alert fires on conflict; repo stays clean",
-                        "proofUnit": 8
-                    },
-                    {
-                        "criterion": "Push Obsidian writes session summary to Build Plan",
-                        "proofUnit": 9
-                    }
-                ],
-                "stopConditions": [
-                    "git worktree list shows no per-session worktrees (orchestrator cannot map sessions to branches)",
-                    "WebSocket session map key structure is incompatible with project-based grouping"
-                ]
-            },
-            "branch": "task/36-add-a-ship-task-orchestration-capab",
-            "pr_url": "https://github.com/AesopScott/polaris/pull/34"
-        },
-        {
-            "number": 38,
-            "title": "Wire runtime validation: use compiled contracts in server.js",
-            "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic â€” validation only.",
-            "category": "feature",
-            "priority": 91,
-            "impact": "standard",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                37
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
-        },
-        {
-            "number": 39,
-            "title": "Registry generation: generate docs/registries/ from schemas",
-            "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script \"generate:registries\". Run it to regenerate all current registries and verify output matches existing hand-written content.",
-            "category": "feature",
-            "priority": 90,
-            "impact": "standard",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                37
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
-        },
-        {
-            "number": 40,
-            "title": "Contract test suite: validate real payload samples",
-            "description": "Write test/contracts/ test files. Each file covers one contract module: valid samples pass, invalid samples produce descriptive Zod errors. Add npm script \"test:contracts\". Covers ws-messages, backlog tasks, tool calls, and MCP envelopes.",
-            "category": "test",
-            "priority": 88,
-            "impact": "minor",
-            "status": "backlog",
-            "created_at": "2026-05-22",
-            "completed_at": null,
-            "dependencies": [
-                37
-            ],
-            "branch": null,
-            "pr_url": null,
-            "plan": null,
-            "proofUnits": []
+          "number": 6,
+          "title": "UI Advance and Signal controls render for orchestrated tasks",
+          "expectedBehavior": "Task card with current_node set shows Advance Task button and signal input; task without current_node shows neither.",
+          "proofType": "ui-check",
+          "exactCommand": "1. Initialize executor task state for task #33 with current_node=build\n2. POST /sync-state to push to UI\n3. Open Polaris UI backlog panel\n4. Verify Advance Task button and signal input visible for task #33\n5. Verify controls absent on tasks with no current_node",
+          "expectedInitialFailure": "No controls visible regardless of current_node value.",
+          "expectedPassingEvidence": "Advance + signal controls present for orchestrated task; absent for normal tasks.",
+          "waiverGuidance": "N/A"
         }
-    ]
+      ],
+      "objective": {
+        "statement": "Enrich the 6 automation LangGraph nodes with real /dispatch-agent skill invocations and wire the WebSocket bridge so the Polaris UI can advance and signal tasks under /lang orchestration.",
+        "successCriteria": [
+          "dispatch_agent() helper in task_graph.py calls /dispatch-agent and returns response text",
+          "plan_node, start_build_node, finish_build_node, codex_review_node, promote_stage_node, and promote_prod_node call dispatch_agent() with skill-appropriate prompts",
+          "advance-task WS handler in server.js proxies to executor /advance and returns result",
+          "send-lang-signal WS handler in server.js proxies to executor /signal and returns result",
+          "UI task card shows Advance Task and Signal controls when task has current_node set"
+        ],
+        "nonGoals": [
+          "Splitting nodes into agents/taskNodes/ directory",
+          "asyncio.to_thread for non-blocking dispatch (Task #34)",
+          "Full end-to-end /lang POC validation run (Task #34)",
+          "Resume-from-restart hardening (Task #34)"
+        ],
+        "stopConditions": [
+          "agents/task_graph.py not found (Task #26 delivery missing)",
+          "Python environment in agents/ missing langgraph",
+          "server.js /dispatch-agent endpoint missing (required by nodes)"
+        ]
+      }
+    },
+    {
+      "number": 34,
+      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
+      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        33
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 28,
+      "title": "Upgrade project memory into ranked retrieval",
+      "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 43,
+      "title": "evaluatePolicy unified enforcer",
+      "description": "Write evaluatePolicy(action, context, policy): PolicyResult in server.js (or src/runtime/capabilityPolicy.ts if the toolRuntime module is wired). Handles: root boundary check (replaces assertWritable path logic), command class evaluation using COMMAND_CLASS_REGISTRY (replaces assertSafeCommand), installer gate (replaces detectInstallerExe + async approval prompt). Returns { allowed: boolean, reason?: string, auditEvent: AuditEvent }. Does not throw â€” callers inspect the result and throw if !allowed.",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        41,
+        42
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 44,
+      "title": "Audit JSONL + tool-audit WebSocket event",
+      "description": "On every evaluatePolicy call, append a structured event to %APPDATA%\\.claude\\polaris\\audit.jsonl. Event schema: { ts, sessionId, action, tool, allowed, reason, commandSnippet }. Also emit a tool-audit WebSocket broadcast message for any block or grant (allowed=false or installerAllowed action). The JSONL file is append-only; no pruning in this task.",
+      "category": "security",
+      "priority": 90,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        43
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 45,
+      "title": "Wire evaluatePolicy into tool execution",
+      "description": "Replace assertWritable + assertSafeCommand + detectInstallerExe call sites in toolBash, toolPowerShell, toolWrite, and toolEdit with evaluatePolicy. Consolidate the duplicated shell precheck sequence (assertSafeCommand + detectInstallerExe + detectShellWriteTargets + backupBeforeWrite + snapshotForShellEncodingCheck) that currently appears identically in both toolBash and toolPowerShell into a single shellPrecheck(command, workDir, sessionId, policy) helper. No behavior changes â€” enforcement must be identical to what existed before.",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        43,
+        44
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 46,
+      "title": "Policy unit test suite",
+      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        43
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 30,
+      "title": "Expand agent evals into product-critical acceptance suites",
+      "description": "The existing agent eval harness is a strong seed, but it is too small to guard Polaris's behavior as the system grows. Add suites for tool choice, permission refusal, QueryMemory fallback, Cross-Check approval and rejection, backlog transitions, model regressions, latency, token cost, retry behavior, and failure recovery. Report pass rate, tool-call count, token use, latency, and regression deltas in concise scorecards.",
+      "category": "test",
+      "priority": 88,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 31,
+      "title": "Make trust, proof, cost, and recovery visible in the product",
+      "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 36,
+      "title": "Add a ship task orchestration capability.",
+      "description": "I want to have an orchestration window that monitors all open active sessions for projects and ensures that coordination and conflicts are managed. Reference this file for more information.   docs/orchestrator-design.md",
+      "category": "feature",
+      "priority": 70,
+      "impact": "standard",
+      "status": "staged",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": "## Overview\n\nAdd an orchestrator window that auto-activates when two or more sessions are open for the same project. The orchestrator is a passive monitor â€” it reads session state, detects conflicts, and enables Scott to resolve conflicts and push git/Obsidian updates per session. No commands run from the orchestrator directly.\n\n## Phases\n\n1. Server Foundations: Session registry + 4 new HTTP endpoints (GET /branch-state, POST /reserve-merge-slot, POST /release-merge-slot, POST /dry-run-merge stub). Persist state to orchestrator-state.json in Runtime zone.\n2. Git Integration: Worktree state query helper, file contention detection, full dry-run merge implementation (throwaway branch, auto-cleaned).\n3. Orchestrator UI Panel: New panel in mockup.html â€” auto-activates on second session, session cards with branch/worktree/conflict state, push buttons.\n4. Conflict Resolution + Merge Serialization: FIFO merge slot queue wired into push flow, Obsidian bridge for session summaries, retry logic, amber conflict alerts.\n\n## First Proof Unit\n\nGET /branch-state returns live session data. curl http://localhost:40000/branch-state returns HTTP 200 with JSON containing featureBranches keyed by branch name with head, worktreePath, and contention fields.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "/branch-state returns live session data",
+          "expectedBehavior": "GET /branch-state returns JSON listing all active sessions for the project with branch, worktree path, HEAD SHA, and contention array.",
+          "proofType": "smoke-command",
+          "exactCommand": "curl -s http://localhost:40000/branch-state | python -m json.tool",
+          "expectedInitialFailure": "HTTP 404 â€” endpoint does not exist.",
+          "expectedPassingEvidence": "HTTP 200 with JSON body containing featureBranches keyed by branch name, each with head, worktreePath, and contention fields.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "Merge slot queue serializes concurrent requests",
+          "expectedBehavior": "Two simultaneous POST /reserve-merge-slot requests for the same target branch result in one acquired and one queued with position: 2.",
+          "proofType": "smoke-command",
+          "exactCommand": "Send two POST /reserve-merge-slot requests with taskNumber 36 and 37, both targeting stage. First should return {status:acquired,position:1}, second {status:queued,position:2}.",
+          "expectedInitialFailure": "HTTP 404 â€” endpoint does not exist.",
+          "expectedPassingEvidence": "First returns {status:acquired,position:1}, second returns {status:queued,position:2}.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Dry-run merge detects conflict correctly",
+          "expectedBehavior": "POST /dry-run-merge with a conflicting source branch returns {status: conflict, conflictFiles: [...]} and leaves the repo clean.",
+          "proofType": "api-check",
+          "exactCommand": "POST http://localhost:40000/dry-run-merge with {sourceBranch:\"task/36-orchestrator\",targetBranch:\"main\",cleanup:true}. Then run: git status and git branch to confirm no dry-run-* branch exists.",
+          "expectedInitialFailure": "HTTP 404 or stub always returns {status:clean}.",
+          "expectedPassingEvidence": "Returns {status:conflict,conflictFiles:[...]} when conflict exists; git status shows clean; no dry-run-* branch exists.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "File contention detection flags overlapping edits",
+          "expectedBehavior": "When two active sessions have modified the same file, /branch-state includes that file in the contention[] array.",
+          "proofType": "smoke-command",
+          "exactCommand": "1. Open two sessions on same project, both with server.js modified\n2. GET http://localhost:40000/branch-state\n3. Verify contention array includes server.js",
+          "expectedInitialFailure": "contention field missing or always empty.",
+          "expectedPassingEvidence": "/branch-state response has contention: [\"server.js\"] when both sessions list it as modified.",
+          "waiverGuidance": "Manual verification with two real sessions is acceptable."
+        },
+        {
+          "number": 5,
+          "title": "Orchestrator panel auto-activates on second session",
+          "expectedBehavior": "Opening a second agent session for the same project causes the orchestrator panel to appear without manual action; closing back to one session hides it.",
+          "proofType": "ui-check",
+          "exactCommand": "1. Start Polaris (npm start)\n2. Open one session for Project A â€” orchestrator panel should be hidden\n3. Open a second session for Project A â€” orchestrator panel should appear automatically\n4. Close one session â€” panel should hide",
+          "expectedInitialFailure": "Panel does not exist or does not auto-activate.",
+          "expectedPassingEvidence": "Panel appears on second session open; disappears when count drops to 1.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 6,
+          "title": "Session cards show correct branch, worktree, and conflict state",
+          "expectedBehavior": "Each session card displays correct branch, worktree path, HEAD SHA, and file contention indicators sourced live from /branch-state.",
+          "proofType": "ui-check",
+          "exactCommand": "1. Open two sessions on different branches for same project\n2. Verify each card shows correct branch and worktree\n3. Modify same file in both sessions; verify contention indicator appears",
+          "expectedInitialFailure": "Cards show placeholder data or no contention indicator.",
+          "expectedPassingEvidence": "Each card matches live git state; contention badge appears on file overlap.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 7,
+          "title": "Full push flow executes through merge slot",
+          "expectedBehavior": "Push Git acquires a slot, runs dry-run, executes push if clean, releases slot. A second concurrent push waits in queue until the first completes.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Open two sessions on branches with no conflicts\n2. Click Push Git on Session A â€” verify slot acquired, dry-run clean, push executes, slot released\n3. While Session A runs, click Push Git on Session B â€” verify queued state\n4. After Session A completes, verify Session B push runs automatically",
+          "expectedInitialFailure": "Push ignores slot coordination or button does nothing.",
+          "expectedPassingEvidence": "Pushes complete in order; Session B starts only after Session A slot is released.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 8,
+          "title": "Amber conflict alert fires on conflict detection",
+          "expectedBehavior": "When Push Git triggers a conflicting dry-run, an amber alert card appears in the orchestrator panel with conflicting files and diff excerpt. Push is held; git repo stays clean.",
+          "proofType": "ui-check",
+          "exactCommand": "1. Create two branches conflicting on same file\n2. Open both as sessions in orchestrator\n3. Click Push Git on conflicting session\n4. Verify amber alert appears with conflict file list and diff\n5. Verify git status shows clean working tree",
+          "expectedInitialFailure": "No amber alert; push silently fails or corrupts git state.",
+          "expectedPassingEvidence": "Amber alert card shows conflict details; git state clean.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 9,
+          "title": "Push Obsidian writes session summary to Build Plan",
+          "expectedBehavior": "Clicking Push Obsidian appends a timestamped session summary (branch, worktree, modified files, conflict status) to the project 3-Build_Plan.md in Obsidian.",
+          "proofType": "manual-script",
+          "exactCommand": "1. Open a session with some modified files\n2. Click Push Obsidian in the orchestrator panel\n3. Open G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\3-Build_Plan.md\n4. Verify a new timestamped session summary block was appended",
+          "expectedInitialFailure": "Button does nothing; file unchanged; or write fails silently.",
+          "expectedPassingEvidence": "Build Plan shows new summary block matching the session actual branch/worktree/file state.",
+          "waiverGuidance": "N/A"
+        }
+      ],
+      "objective": {
+        "statement": "Add an orchestrator window that auto-activates when 2+ sessions are running for the same project, monitoring branch/worktree state and enabling conflict detection and per-session git/Obsidian pushes.",
+        "successCriteria": [
+          "GET /branch-state returns live session data",
+          "Merge slot queue serializes concurrent push requests",
+          "Dry-run merge detects conflicts before any real push",
+          "Orchestrator panel auto-activates on second session",
+          "Push Git flow runs through slot queue with conflict detection",
+          "Amber conflict alert fires on conflict; repo stays clean",
+          "Push Obsidian writes session summary to Build Plan"
+        ],
+        "nonGoals": [
+          "Orchestrator spawning or cancelling child sessions",
+          "Production/post-deployment monitoring",
+          "CI/CD webhook integration",
+          "Automated conflict resolution"
+        ],
+        "proofMap": [
+          {
+            "criterion": "GET /branch-state returns live session data",
+            "proofUnit": 1
+          },
+          {
+            "criterion": "Merge slot queue serializes concurrent push requests",
+            "proofUnit": 2
+          },
+          {
+            "criterion": "Dry-run merge detects conflicts before any real push",
+            "proofUnit": 3
+          },
+          {
+            "criterion": "Orchestrator panel auto-activates on second session",
+            "proofUnit": 5
+          },
+          {
+            "criterion": "Push Git flow runs through slot queue with conflict detection",
+            "proofUnit": 7
+          },
+          {
+            "criterion": "Amber conflict alert fires on conflict; repo stays clean",
+            "proofUnit": 8
+          },
+          {
+            "criterion": "Push Obsidian writes session summary to Build Plan",
+            "proofUnit": 9
+          }
+        ],
+        "stopConditions": [
+          "git worktree list shows no per-session worktrees (orchestrator cannot map sessions to branches)",
+          "WebSocket session map key structure is incompatible with project-based grouping"
+        ]
+      },
+      "branch": "task/36-add-a-ship-task-orchestration-capab",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/34"
+    },
+    {
+      "number": 38,
+      "title": "Wire runtime validation: use compiled contracts in server.js",
+      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic â€” validation only.",
+      "category": "feature",
+      "priority": 91,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        37
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 39,
+      "title": "Registry generation: generate docs/registries/ from schemas",
+      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script \"generate:registries\". Run it to regenerate all current registries and verify output matches existing hand-written content.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        37
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 40,
+      "title": "Contract test suite: validate real payload samples",
+      "description": "Write test/contracts/ test files. Each file covers one contract module: valid samples pass, invalid samples produce descriptive Zod errors. Add npm script \"test:contracts\". Covers ws-messages, backlog tasks, tool calls, and MCP envelopes.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        37
+      ],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    }
+  ]
 }
