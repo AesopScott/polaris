@@ -78,6 +78,7 @@ const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routin
 const STALL_CHECK_MS  = 3000;   // heartbeat interval
 const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
+const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
@@ -776,6 +777,63 @@ const HEALTH_SNAPSHOT_TTL_MS = 30000;
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
 const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
 
+// ── Capability Policy ────────────────────────────────────────────────────────
+// Per-session policy object created once at launch and frozen. Tasks #42-#45
+// build on this foundation: command class registry, unified enforcer, audit
+// emission, and wiring into tool execution.
+
+/**
+ * @typedef {Object} CapabilityPolicy
+ * @property {string[]} allowedRoots    - Absolute paths the session may write to.
+ * @property {'read-only'|'project-only'|'extended'} writeMode
+ *   - read-only:    no writes permitted
+ *   - project-only: workDir only
+ *   - extended:     workDir + Obsidian vault + Downloads
+ * @property {boolean} networkAllowed   - WebFetch/WebSearch permitted (enforcement deferred to task #43).
+ * @property {boolean} installerAllowed - .exe installer execution pre-approved for this session.
+ * @property {string[]} blockedCommandClasses - Named command classes blocked at this trust level.
+ *   Valid class names: GIT_FORCE_PUSH, GIT_RESET_HARD, GIT_CLEAN, DRIVE_FORMAT,
+ *   RM_RECURSIVE_ROOT, RD_FULL_DRIVE.
+ * @property {'restricted'|'standard'|'elevated'} trustLevel
+ *   - restricted: no workDir configured; writes and shell blocked by default
+ *   - standard:   normal agent session
+ *   - elevated:   explicitly granted by user (installer allowed, fewer class blocks)
+ */
+
+const DEFAULT_BLOCKED_CLASSES = Object.freeze([
+  'GIT_FORCE_PUSH',
+  'GIT_RESET_HARD',
+  'GIT_CLEAN',
+  'DRIVE_FORMAT',
+  'RM_RECURSIVE_ROOT',
+  'RD_FULL_DRIVE',
+]);
+
+/**
+ * Build a frozen CapabilityPolicy for a session. Called once at session launch.
+ * @param {{ workDir?: string }} session
+ * @param {{ obsidianVaultPath?: string }} config
+ * @returns {CapabilityPolicy}
+ */
+function buildDefaultPolicy(session, config) {
+  const wd = session.workDir ? path.resolve(session.workDir) : null;
+  const roots = wd ? [wd] : [];
+  if (wd) {
+    const obsidian = config && config.obsidianVaultPath ? config.obsidianVaultPath : null;
+    const downloads = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Downloads') : null;
+    if (obsidian) roots.push(obsidian);
+    if (downloads) roots.push(downloads);
+  }
+  return Object.freeze({
+    allowedRoots:          Object.freeze(roots),
+    writeMode:             wd ? 'extended' : 'read-only',
+    networkAllowed:        true,
+    installerAllowed:      false,
+    blockedCommandClasses: DEFAULT_BLOCKED_CLASSES,
+    trustLevel:            wd ? 'standard' : 'restricted',
+  });
+}
+
 // ─── Session persistence ──────────────────────────────────────────────────────
 function serializeSession(s) {
   return {
@@ -864,6 +922,7 @@ function loadPersistedSessions() {
           loaded.lastSkill  = loaded.lastSkill  || inferred.lastSkill;
         }
       }
+      if (!loaded.policy) loaded.policy = buildDefaultPolicy(loaded, readConfig());
       sessions.set(s.id, loaded);
     }
     // Rebuild forkMap from persisted sessions
@@ -3555,7 +3614,7 @@ function toolSetStatus({ status } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
   session.status = status;
-  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  broadcast({ type: 'session-status', sessionId, status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   return `Status set to "${status}".`;
 }
 
@@ -3566,7 +3625,7 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) 
   if (taskNumber !== undefined) session.taskNumber = taskNumber;
   if (taskState  !== undefined) session.taskState  = taskState;
   if (lastSkill  !== undefined) session.lastSkill  = lastSkill;
-  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
+  broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
@@ -8420,7 +8479,14 @@ async function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
 
+  ws.lastSeenAt = Date.now();
   const { type } = msg;
+
+  if (type === 'ui-client-hello') {
+    ws.uiClientId = typeof msg.clientId === 'string' ? msg.clientId.slice(0, 80) : ws.uiClientId;
+    ws.uiTabId = typeof msg.tabId === 'string' ? msg.tabId.slice(0, 80) : ws.uiTabId;
+    return sendTo(ws, { type: 'ui-client-ack', clientId: ws.uiClientId || null, tabId: ws.uiTabId || null });
+  }
 
   if (type === 'launch-chat') {
     const { prompt, displayPrompt, workDir, tier, images, docs, audio, videos, chipLabel, chipColor, model: overrideModel } = msg;
@@ -8601,6 +8667,8 @@ async function handleMessage(ws, raw) {
         sessionWorkDir = wtPath;
       }
     }
+
+    newSession.policy = buildDefaultPolicy(newSession, readConfig());
 
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
@@ -11550,6 +11618,23 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 
 wss = new WebSocket.Server({ server: httpServer });
 
+const wsHeartbeatTimer = setInterval(() => {
+  if (!wss) return;
+  for (const client of wss.clients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    if (client.isAlive === false) {
+      console.warn(`[polaris] terminating stale WebSocket client ${client.uiClientId || client.clientId || 'unknown'}`);
+      try { client.terminate(); } catch {}
+      continue;
+    }
+    client.isAlive = false;
+    try { client.ping(); } catch {
+      try { client.terminate(); } catch {}
+    }
+  }
+}, WS_HEARTBEAT_MS);
+if (typeof wsHeartbeatTimer.unref === 'function') wsHeartbeatTimer.unref();
+
 // ── Session heartbeat / stall detector ───────────────────────────────────────
 // Checks every 3 s for running sessions with no broadcast activity.
 // 15 s idle → amber stall badge on card.
@@ -11586,11 +11671,27 @@ setInterval(() => {
   }
 }, STALL_CHECK_MS);
 
-wss.on('connection', (ws) => {
-  console.log('[polaris] WebSocket client connected');
+wss.on('connection', (ws, req) => {
+  let queryClientId = null;
+  try {
+    queryClientId = new URL(req.url || '/', 'http://localhost').searchParams.get('clientId');
+  } catch {}
+
+  ws.clientId = queryClientId || crypto.randomUUID();
+  ws.connectedAt = Date.now();
+  ws.lastSeenAt = ws.connectedAt;
+  ws.lastPongAt = ws.connectedAt;
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+    ws.lastPongAt = Date.now();
+  });
+
+  console.log(`[polaris] WebSocket client connected ${ws.clientId}`);
 
   // Send server timezone offset so the renderer can display local time correctly
   sendTo(ws, { type: 'server-tz', tzOffsetMin: new Date().getTimezoneOffset() });
+  sendTo(ws, { type: 'ui-client-ack', clientId: ws.clientId, tabId: null });
 
   // Fetch last 5 commits then send init (commits travel in the init payload)
   (async () => {
@@ -11700,7 +11801,7 @@ wss.on('connection', (ws) => {
   })();
 
   ws.on('message', raw => handleMessage(ws, raw));
-  ws.on('close', () => console.log('[polaris] WebSocket client disconnected'));
+  ws.on('close', () => console.log(`[polaris] WebSocket client disconnected ${ws.uiClientId || ws.clientId || 'unknown'}`));
   ws.on('error', err => console.error('[polaris] WebSocket error:', err));
 });
 
