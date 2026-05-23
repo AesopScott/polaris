@@ -2,27 +2,30 @@
 LangGraph task executor — FastAPI server wrapping the StateGraph.
 
 Endpoints:
-- POST /advance: advance graph by one node (suspends at HITL gates)
+- POST /advance: advance graph by one node (suspends at HITL interrupt gates)
 - GET /state: retrieve current task state
-- POST /signal: send human pause/resume signal to unblock a HITL node
+- POST /signal: send human resume signal to unblock a HITL interrupt node
 - GET /recover: return checkpoint for a stalled/failed task
 - GET /health: health check
 
-Persistent SQLite checkpointing. HITL nodes suspend until /signal is called
-or STALL_TIMEOUT_SECONDS elapses (sets status=stalled).
+SQLite persists task metadata across restarts. MemorySaver holds LangGraph
+interrupt checkpoints in memory (rebuilt on restart by re-invoking /advance).
+HITL nodes suspend until /signal delivers Command(resume=...) or
+STALL_TIMEOUT_SECONDS elapses (sets status=stalled).
 """
 
 import asyncio
-import functools
 import json
 import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from task_graph import build_graph, HITL_NODES
 from state import TaskState, TaskStatePydantic
@@ -34,6 +37,7 @@ from transitions import validate_transition
 # ─────────────────────────────────────────────────────────────────────────────
 
 DB_PATH = Path(__file__).parent / "task_state.db"
+BACKLOG_PATH = Path(__file__).parent.parent / "docs" / "backlog.json"
 STALL_TIMEOUT_SECONDS = int(os.environ.get("STALL_TIMEOUT_SECONDS", "3600"))
 
 
@@ -154,31 +158,54 @@ def _get_paused_at(task_number: int) -> Optional[int]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# @safe_node — failure recovery decorator (Phase 5)
+# Backlog integration — load proof units at task initialization
 # ─────────────────────────────────────────────────────────────────────────────
 
-def safe_node(fn: Callable) -> Callable:
-    """Wrap a graph node: on unhandled exception set status=failed, log error."""
-    @functools.wraps(fn)
-    def wrapper(state: TaskState) -> TaskState:
-        try:
-            return fn(state)
-        except Exception as exc:
-            error_log: List[str] = list(state.get("error_log", []))
-            error_log.append(f"{fn.__name__}: {exc}")
-            failed_state: TaskState = {
-                **state,
-                "status":      "failed",
-                "error_log":   error_log,
-                "retry_count": state.get("retry_count", 0) + 1,
-            }
-            save_state(failed_state)
-            return failed_state
-    return wrapper
+def _load_proof_units(task_number: int) -> List[Dict[str, Any]]:
+    """Read proof units for task_number from backlog.json."""
+    try:
+        with open(BACKLOG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        task = next((t for t in data.get("tasks", []) if t.get("number") == task_number), None)
+        return task.get("proofUnits", []) if task else []
+    except Exception:
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stall-timeout watchdog (Phase 3)
+# LangGraph checkpointer + compiled graph (module-level singletons)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CHECKPOINTER = MemorySaver()
+_GRAPH = build_graph(_CHECKPOINTER)
+
+
+def _graph_config(task_number: int) -> dict:
+    return {"configurable": {"thread_id": str(task_number)}}
+
+
+def _get_snapshot(config: dict):
+    """Return graph.get_state(config) or None on error / missing checkpoint."""
+    try:
+        return _GRAPH.get_state(config)
+    except Exception:
+        return None
+
+
+def _sync_status_safe(task_number: int, status: str, current_node: str) -> Optional[str]:
+    """Sync task status to server.js. Returns error string if failed, None if ok."""
+    try:
+        from backlog_sync import sync_status
+        sync_status(task_number, status, current_node)
+        return None
+    except Exception as exc:
+        msg = str(exc)
+        print(f"[WARN] /sync-state failed for task {task_number}: {msg}")
+        return msg
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stall-timeout watchdog
 # ─────────────────────────────────────────────────────────────────────────────
 
 _watchdog_tasks: Dict[int, asyncio.Task] = {}
@@ -192,11 +219,9 @@ async def _stall_watchdog(task_number: int, timeout: int) -> None:
         stalled: TaskState = {**state, "status": "stalled"}
         save_state(stalled)
         _set_paused_at(task_number, None)
-        try:
-            from backlog_sync import sync_status
-            sync_status(task_number, "stalled", state["current_node"])
-        except Exception:
-            pass
+        warning = _sync_status_safe(task_number, "stalled", state["current_node"])
+        if warning:
+            print(f"[WARN] stall watchdog sync failed for task {task_number}: {warning}")
 
 
 def _start_watchdog(task_number: int, timeout: Optional[int] = None) -> None:
@@ -215,7 +240,7 @@ def _cancel_watchdog(task_number: int) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Graph advancement with HITL pause
+# Graph advancement with LangGraph interrupt API
 # ─────────────────────────────────────────────────────────────────────────────
 
 def initialize_state(task_number: int) -> TaskState:
@@ -228,7 +253,7 @@ def initialize_state(task_number: int) -> TaskState:
         "status":            "planned",
         "branch_name":       f"task/{task_number}-orchestration",
         "pr_url":            None,
-        "proof_units":       [],
+        "proof_units":       _load_proof_units(task_number),
         "proof_results":     {},
         "human_gate_signal": None,
         "retry_count":       0,
@@ -239,36 +264,50 @@ def initialize_state(task_number: int) -> TaskState:
 
 
 async def advance_graph(task_number: int) -> Dict[str, Any]:
-    """Advance by one node. Suspends at HITL gates until /signal is called."""
+    """Advance the graph. Suspends at interrupt() HITL nodes until /signal."""
     state = initialize_state(task_number)
+    config = _graph_config(task_number)
 
-    # If currently paused at a HITL gate with no signal, stay paused
-    if state["current_node"] in HITL_NODES and state.get("human_gate_signal") is None:
+    # If already interrupted (in-memory checkpoint exists), stay paused
+    snapshot = _get_snapshot(config)
+    if snapshot and snapshot.next:
+        interrupted_node = snapshot.next[0]
         return {
             "status":       "paused",
             "task_number":  task_number,
-            "current_node": state["current_node"],
-            "message":      f"Waiting for human signal at '{state['current_node']}' gate",
+            "current_node": interrupted_node,
+            "message":      f"Already paused at '{interrupted_node}'. POST /signal to resume.",
         }
 
     old_status = state["status"]
-    graph = build_graph()
-    if state["current_node"] == "START":
-        result = graph.invoke({**state})
-    else:
-        result = graph.invoke({**state, "human_gate_signal": None})
+    _GRAPH.invoke({**state}, config=config)
 
-    new_state: TaskState = {**state, **result, "human_gate_signal": None}
+    new_snapshot = _GRAPH.get_state(config)
+    new_state: TaskState = {**state, **new_snapshot.values}
 
-    # Validate the transition that just occurred against the formal table
-    new_status = new_state["status"]
+    # Graph hit an interrupt() — HITL gate suspended
+    if new_snapshot.next:
+        interrupted_node = new_snapshot.next[0]
+        new_state["current_node"] = interrupted_node
+        save_state(new_state)
+        _set_paused_at(task_number, int(time.time()))
+        _start_watchdog(task_number)
+        return {
+            "status":       "paused",
+            "task_number":  task_number,
+            "current_node": interrupted_node,
+            "message":      f"Paused at HITL gate '{interrupted_node}'. POST /signal to resume.",
+        }
+
+    # Graph completed — validate the transition that occurred
+    new_status = new_state.get("status", old_status)
     if new_status != old_status:
         ok, failures = validate_transition(old_status, new_status, new_state)
         if not ok:
             return {
                 "status":       "precondition_failed",
                 "task_number":  task_number,
-                "current_node": state["current_node"],
+                "current_node": new_state.get("current_node", state["current_node"]),
                 "task_status":  old_status,
                 "failures":     failures,
             }
@@ -276,30 +315,18 @@ async def advance_graph(task_number: int) -> Dict[str, Any]:
     save_state(new_state)
     _cancel_watchdog(task_number)
 
-    # Arm stall watchdog if we landed on a HITL node
-    if new_state["current_node"] in HITL_NODES:
-        _set_paused_at(task_number, int(time.time()))
-        _start_watchdog(task_number)
-        return {
-            "status":       "paused",
-            "task_number":  task_number,
-            "current_node": new_state["current_node"],
-            "message":      f"Paused at HITL gate '{new_state['current_node']}'. POST /signal to resume.",
-        }
+    sync_warning = _sync_status_safe(task_number, new_state["status"], new_state["current_node"])
 
-    try:
-        from backlog_sync import sync_status
-        sync_status(task_number, new_state["status"], new_state["current_node"])
-    except Exception:
-        pass
-
-    return {
+    response: Dict[str, Any] = {
         "status":       "ok",
         "task_number":  task_number,
         "current_node": new_state["current_node"],
         "task_status":  new_state["status"],
-        "checkpoint":   new_state["checkpoint_data"],
+        "checkpoint":   new_state.get("checkpoint_data", {}),
     }
+    if sync_warning:
+        response["sync_warning"] = sync_warning
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -337,20 +364,72 @@ async def get_state(task_number: int) -> Dict[str, Any]:
 
 @app.post("/signal")
 async def signal(task_number: int, req: SignalRequest) -> Dict[str, Any]:
-    """Deliver a human gate signal and immediately advance the graph."""
+    """Deliver a human gate signal via Command(resume=...) and advance past the interrupt."""
     state = load_state(task_number)
     if not state:
         raise HTTPException(status_code=404, detail=f"Task {task_number} not found")
-    if state["current_node"] not in HITL_NODES:
+
+    config = _graph_config(task_number)
+    snapshot = _get_snapshot(config)
+
+    if not snapshot or not snapshot.next:
         raise HTTPException(
             status_code=400,
-            detail=f"Task {task_number} is not at a HITL gate (current: {state['current_node']})"
+            detail=f"Task {task_number} is not at a HITL gate (no interrupt pending)"
         )
-    signalled_state = {**state, "human_gate_signal": req.signal}
-    save_state(signalled_state)
+
     _cancel_watchdog(task_number)
-    result = await advance_graph(task_number)
-    return {"status": "ok", "signal": req.signal, "task_number": task_number, "advance": result}
+    old_status = state["status"]
+
+    _GRAPH.invoke(Command(resume=req.signal), config=config)
+    new_snapshot = _GRAPH.get_state(config)
+    new_state: TaskState = {**state, **new_snapshot.values, "human_gate_signal": req.signal}
+
+    # Hit another interrupt (e.g., review gate after build gate)
+    if new_snapshot.next:
+        next_node = new_snapshot.next[0]
+        new_state["current_node"] = next_node
+        save_state(new_state)
+        _set_paused_at(task_number, int(time.time()))
+        _start_watchdog(task_number)
+        return {
+            "status":      "ok",
+            "signal":      req.signal,
+            "task_number": task_number,
+            "advance": {
+                "status":       "paused",
+                "task_number":  task_number,
+                "current_node": next_node,
+                "message":      f"Paused at HITL gate '{next_node}'. POST /signal to resume.",
+            },
+        }
+
+    # Graph completed after signal — validate transition
+    new_status = new_state.get("status", old_status)
+    if new_status != old_status:
+        ok, failures = validate_transition(old_status, new_status, new_state)
+        if not ok:
+            return {
+                "status":      "precondition_failed",
+                "task_number": task_number,
+                "failures":    failures,
+            }
+
+    save_state(new_state)
+
+    sync_warning = _sync_status_safe(task_number, new_state["status"], new_state["current_node"])
+
+    advance_result: Dict[str, Any] = {
+        "status":       "ok",
+        "task_number":  task_number,
+        "current_node": new_state["current_node"],
+        "task_status":  new_state["status"],
+        "checkpoint":   new_state.get("checkpoint_data", {}),
+    }
+    if sync_warning:
+        advance_result["sync_warning"] = sync_warning
+
+    return {"status": "ok", "signal": req.signal, "task_number": task_number, "advance": advance_result}
 
 
 @app.get("/recover")

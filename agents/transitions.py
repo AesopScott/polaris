@@ -21,15 +21,16 @@ def validate_transition(
         return True, []
 
     key = (from_status, to_status)
-    checker = _TRANSITIONS.get(key)
 
-    if checker is None:
+    if key not in _TRANSITIONS:
         failures.append(
             f"No transition defined from '{from_status}' to '{to_status}'"
         )
         return False, failures
 
-    checker(state, failures)
+    checker = _TRANSITIONS[key]
+    if checker is not None:
+        checker(state, failures)
     return len(failures) == 0, failures
 
 
