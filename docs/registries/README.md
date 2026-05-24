@@ -6,8 +6,14 @@ A boundary is anywhere two pieces of code refer to the same name independently a
 
 | File | Boundary kind | Names | Gaps |
 |------|---------------|-------|------|
-| [websocket-messages.md](websocket-messages.md) | WebSocket `type` strings between client (mockup.html) and server (server.js) | ~100 | 4 orphan server handlers |
-| [env-vars.md](env-vars.md) | `process.env.*` variables read in server.js / main.js | 8 | 0 |
+| [websocket-messages.md](websocket-messages.md) | WebSocket `type` strings between client (mockup.html) and server (server.js) | ~100 | 4 orphan server handlers (pre-existing) |
+| [websocket-events.md](websocket-events.md) | WS event types with full payload docs (server→client push events) | ~20 | 0 |
+| [http-endpoints.md](http-endpoints.md) | HTTP endpoints: Polaris server + Python LangGraph executor | ~15 | 0 |
+| [backlog-task-fields.md](backlog-task-fields.md) | Fields on BacklogTask objects in docs/backlog.json | ~12 | 0 |
+| [agent-state-schema.md](agent-state-schema.md) | LangGraph agent state schema between executor and server | varies | 0 |
+| [python-modules.md](python-modules.md) | Python module boundaries in agents/ | varies | 0 |
+| [env-vars.md](env-vars.md) | `process.env.*` variables read in server.js / main.js / test harness | 11 | 1 orphan consumer (`POLARIS_PORT`) |
+| [zod-contracts.md](zod-contracts.md) | Zod schema module exports in src/contracts/ → consumers | 5 modules | 4 orphan runtime producers (intentional, pending task #38) |
 
 ## Maintenance rule
 

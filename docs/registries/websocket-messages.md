@@ -42,7 +42,7 @@ Poll for the result of a pre-build check.
 
 **Producers:** none — client never sends this type  
 **Consumers**
-- `server.js:8060` — returns the cached pre-build check result
+- `server.js:9970` — returns the cached pre-build check result
 
 **Status:** ⚠ orphan server handler  
 **Note:** Pre-existing before Task #7. Pre-build check flow may have been refactored to push results instead of polling.
@@ -55,26 +55,29 @@ Liveness check / keep-alive.
 
 **Producers:** none — client never sends this type  
 **Consumers**
-- `server.js:8841` — responds to keep-alive
+- `server.js:10751` — responds to keep-alive
 
 **Status:** ⚠ orphan server handler  
 **Note:** Pre-existing before Task #7. Likely superseded by WebSocket native ping/pong frames or the connection is considered always-live while the Electron window is open.
 
 ---
 
-## Zod Schema Coverage (task #37)
+## Zod Schema Coverage (tasks #37, #40)
 
-All ~50 WebSocket message types that transit the Polaris WS boundary now have corresponding Zod schemas in `src/contracts/ws-messages.ts`. These are **intentional orphan producers** — schemas are defined and exported but not yet wired into runtime validation. Task #38 will import them into `server.js` and `mockup.html` to validate messages at the boundary.
+All ~50 WebSocket message types that transit the Polaris WS boundary have corresponding Zod schemas in `src/contracts/ws-messages.ts`. Task #37 defined the schemas; task #40 added a Vitest test consumer that validates valid and invalid payloads for all major types. Runtime consumers (server.js receive-side validation) are pending task #38.
 
 **Schema location:** `src/contracts/ws-messages.ts`
 **Barrel export:** `src/contracts/index.ts`
-**Consumer count:** 0 (until task #38)
+**Test consumer:** `test/contracts/ws-messages.test.ts` — 59 tests covering all major schemas and the `AnyClientMessage` discriminated union ✓
+**Runtime consumer:** none yet (task #38)
 
 Notable exports:
 - `LaunchMessage`, `ResumeMessage`, `StopMessage`, `CloseSessionMessage` — session lifecycle
+- `CrossCheckDecisionMessage`, `InstallerPermissionDecisionMessage` — agent interaction
+- `AddBacklogTaskMessage`, `UpdateBacklogTaskMessage` — backlog mutations
 - `AnyClientMessage` — discriminated union over all ~50 types (replaces `AnyClientMessage` interface in `src/runtime/contracts.ts` when task #38 wires it)
 
-**⚠ Divergence risk:** `AnyClientMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union.
+**⚠ Divergence risk:** `AnyClientMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union. See also `docs/registries/zod-contracts.md` for the full contract module registry.
 
 ---
 
@@ -163,6 +166,27 @@ Server response after proxying to executor `/signal`.
 ---
 
 ## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-24T00:00:00Z (by /cross-boundary-audit for task #40)
+
+**Task audited:** #40 — Contract test suite: validate real payload samples
+
+**Boundaries checked:** WebSocket `type` message types; Zod schema coverage for `src/contracts/ws-messages.ts`
+
+**Evidence recorded:**
+- No new WS message types introduced by task #40
+- 2 stale line refs corrected: `get-pre-build-check-status` `:8060` → `:9970`; `ping` `:8841` → `:10751`
+- Zod schema coverage section updated: `test/contracts/ws-messages.test.ts` (59 tests) added as test consumer
+- Runtime consumer count unchanged: 0 (task #38 pending)
+- Registries match current code diff: yes
+
+**Gaps identified:**
+- 4 pre-existing orphan server handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged
+- `AnyClientMessage` maintained in both `src/contracts/ws-messages.ts` and `src/runtime/contracts.ts:611` — divergence risk, flagged for task #38 consolidation
+
+**Status:** Audit complete
+
+---
 
 **Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #33)
 

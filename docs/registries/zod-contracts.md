@@ -1,0 +1,172 @@
+# Zod Contract Modules Registry
+
+Every Zod schema module in `src/contracts/`. For each: exports, producers (who defines the schema), consumers (who imports and uses it), and status. Update whenever a schema module is added, a named export is renamed, or a new consumer is wired.
+
+**Boundary:** Named exports in `src/contracts/*.ts` → any file that imports from those paths. The schemas are the source of truth for payload shapes. If a schema name or field changes, all consumers must be updated simultaneously.
+
+**Two distinct contracts layers exist in this project:**
+- `src/runtime/contracts.ts` — TypeScript interfaces only (no runtime validation). Depended on by `src/runtime/*.ts` modules.
+- `src/contracts/*.ts` — Zod schemas (runtime-parseable). Introduced in task #37; currently consumed only by tests.
+
+---
+
+## `src/contracts/ws-messages.ts`
+
+Zod schemas for all ~50 WebSocket message types exchanged between `resources/mockup.html` and `server.js`.
+
+**Key exports:**
+- `LaunchMessage`, `ResumeMessage`, `StopMessage`, `CloseSessionMessage`, `RenameSessionMessage`, `TransferSessionMessage`
+- `SessionHeightMessage`, `SessionColumnMessage`, `SessionColumnSpanMessage`, `SessionPinnedMessage`
+- `UserQuestionAnswerMessage`, `CrossCheckDecisionMessage`, `CrossCheckPostHocDecisionMessage`, `InstallerPermissionDecisionMessage`
+- `DeleteQueueMessageMessage`, `EditQueueMessageMessage`, `CostUpdateMessage`
+- `ListBacklogsMessage`, `AddBacklogTaskMessage`, `UpdateBacklogTaskMessage`, `UpdateBacklogTaskStatusMessage`, `ArchiveBacklogTasksMessage`
+- `TestApiKeyMessage`, `AnyClientMessage` (discriminated union over all ~50 types)
+- *(and ~30 additional message schemas)*
+
+**Producers**
+- `src/contracts/ws-messages.ts` — schema definitions (488 lines)
+- `src/contracts/index.ts` — barrel re-export
+
+**Consumers**
+- `test/contracts/ws-messages.test.ts:1` — Vitest contract tests; exercises valid/invalid payloads for all major types including `AnyClientMessage` union
+- *(task #38 will add)* `server.js` — runtime WS receive-side validation
+
+**⚠ Divergence risk:** `AnyClientMessage` discriminated union also exists as a TypeScript interface union in `src/runtime/contracts.ts:611`. Both describe the same concept. Task #38 must derive the runtime type from the Zod schema, not maintain both independently.
+
+**Status:** ⚠ orphan runtime producer — test consumer exists (`test/contracts/ws-messages.test.ts`), runtime consumer pending (task #38)
+
+---
+
+## `src/contracts/backlog.ts`
+
+Zod schemas for backlog task data model: status enum, task structure, proof units, objective criteria.
+
+**Key exports:**
+- `BacklogStatus` — enum of all valid status strings (backlog → production lifecycle + legacy values)
+- `ProofUnit` — task proof unit shape (number, title, proofType, exactCommand, expectedInitialFailure, expectedPassingEvidence)
+- `ObjectiveCriteria` — task objective shape (statement, successCriteria, nonGoals, proofMap, stopConditions)
+- `BacklogTask` — full task object schema (all optional except `number` and `title`)
+- `BacklogFile` — wrapper with `tasks: BacklogTask[]`
+- `BacklogTaskType`, `BacklogStatusType` — inferred TypeScript types
+
+**Producers**
+- `src/contracts/backlog.ts` — schema definitions
+- `src/contracts/index.ts` — barrel re-export
+
+**Consumers**
+- `test/contracts/backlog.test.ts:1` — Vitest contract tests; exercises all status enum values, ProofUnit required/optional fields, BacklogTask field validation
+- *(task #38 will add)* `server.js` — replaces hand-rolled `VALID_BACKLOG_STATUSES` set and `_validImpact` check
+
+**Note:** `src/runtime/backlog.ts:20` imports `type { ProofUnit }` from `./contracts` — that's `src/runtime/contracts.ts`, not this Zod module. The TypeScript interface and the Zod schema are currently maintained separately.
+
+**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer pending (task #38)
+
+---
+
+## `src/contracts/tools.ts`
+
+Zod schemas for all 14 direct tool input shapes used in agent sessions.
+
+**Key exports:**
+- `ReadInput`, `WriteInput`, `EditInput`, `GlobInput`, `GrepInput`
+- `BashInput`, `PowerShellInput`
+- `WebFetchInput`, `WebSearchInput`
+- `AskUserQuestionInput`, `AskUserQuestionItem`, `AskUserQuestionOption`
+- `TodoWriteInput`, `TodoItem`
+- `QueryMemoryInput`, `SetProjectInput`, `SetStatusInput`
+- `ToolResult`
+- `DIRECT_TOOL_NAMES`, `DirectToolName`, `DirectToolNameType`
+
+**Producers**
+- `src/contracts/tools.ts` — schema definitions (168 lines)
+- `src/contracts/index.ts` — barrel re-export
+
+**Consumers**
+- `test/contracts/tools.test.ts:1` — Vitest contract tests; covers all 14 tool inputs, DirectToolName enum, ToolResult variants
+- *(task #38 will add)* `server.js` — runtime tool-call validation before execution
+
+**⚠ Shape drift risk:** `server.js:2069–2087` defines inline JSON-schema objects for the same 14 tools (used by the OpenRouter API). These inline schemas are maintained separately from the Zod schemas. If a tool's parameter changes, both must be updated. Task #38 should derive the inline schemas from the Zod definitions.
+
+**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer pending (task #38)
+
+---
+
+## `src/contracts/mcp.ts`
+
+Zod schemas for MCP (Model Context Protocol) server configuration and tool envelope shapes.
+
+**Key exports:**
+- `MCPServer` — server config (name, command, args, env)
+- `MCPToolInputSchema` — JSON Schema `object` shape for MCP tool inputs
+- `MCPToolEnvelope` — tool registration shape (name, description, inputSchema)
+- `MCPToolCall` — tool invocation (name, arguments)
+- `MCPToolResult` — tool result with content union (text | image | resource)
+- `MCPServerConfig` — top-level config file shape (`mcpServers: Record<string, MCPServer>`)
+- `MCPServerType`, `MCPToolEnvelopeType` — inferred TypeScript types
+
+**Producers**
+- `src/contracts/mcp.ts` — schema definitions
+- `src/contracts/index.ts` — barrel re-export
+
+**Consumers**
+- `test/contracts/mcp.test.ts:1` — Vitest contract tests; covers MCPServer, MCPToolEnvelope, MCPToolCall, MCPToolResult content union (text/image/resource), MCPServerConfig
+- *(task #38 will add)* `server.js` — runtime MCP envelope validation at `mcpGateway.ts`
+
+**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer pending (task #38)
+
+---
+
+## `src/contracts/index.ts`
+
+Barrel export re-exporting all four contract modules. Single import point for consumers that need multiple schemas.
+
+**Producers**
+- `src/contracts/index.ts:1–4` — `export * from './backlog'`, `'./mcp'`, `'./tools'`, `'./ws-messages'`
+
+**Consumers**
+- No current imports of the barrel form. Test files import from individual module paths (e.g. `../../src/contracts/ws-messages`).
+
+**Status:** ⚠ orphan producer — barrel is defined but no consumer uses it yet. Acceptable; consumer would be `server.js` in task #38.
+
+---
+
+## Summary
+
+| Module | Test consumer | Runtime consumer | Status |
+|--------|--------------|-----------------|--------|
+| `src/contracts/ws-messages.ts` | `test/contracts/ws-messages.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
+| `src/contracts/backlog.ts` | `test/contracts/backlog.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
+| `src/contracts/tools.ts` | `test/contracts/tools.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
+| `src/contracts/mcp.ts` | `test/contracts/mcp.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
+| `src/contracts/index.ts` | none | none | ⚠ orphan producer |
+
+**All ⚠ findings above are intentional** — the contracts were introduced in task #37 as the foundation for tasks #38 (runtime wiring) and #40 (test suite). Task #40 adds test consumers; task #38 adds runtime consumers. Not a defect.
+
+**Shape drift risks** (non-blocking, flag for task #38):
+- `AnyClientMessage` defined in both `src/contracts/ws-messages.ts` and `src/runtime/contracts.ts:611` — task #38 must consolidate
+- 14 inline tool JSON-schemas in `server.js:2069–2087` duplicate the Zod definitions — task #38 should derive from Zod
+
+---
+
+## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-24T00:00:00Z (by /cross-boundary-audit for task #40)
+
+**Boundaries checked:** `src/contracts/*.ts` module exports → all consumers in `test/`, `src/runtime/`, `server.js`
+
+**Evidence recorded:**
+- 4 schema modules with test consumers ✓ (ws-messages, backlog, tools, mcp)
+- 4 entries with no runtime consumer ⚠ (intentional — pending task #38)
+- 1 barrel export with no consumer ⚠ (intentional — pending task #38)
+- 2 shape drift risks flagged (AnyClientMessage duplication; inline tool schemas)
+- New identifiers introduced by task #40: none (test files are consumers, no new schema exports)
+- New identifiers introduced by task #37 (producers): all 4 modules and ~80 named exports
+- Registries match current code diff: yes
+
+**Gaps identified:**
+- All `⚠` entries are intentional, documented with task #38 as the resolution path
+- `src/contracts/index.ts` barrel has no consumers — acceptable, task #38 will use it
+- `AnyClientMessage` maintained in two places — flag for task #38 consolidation
+- Inline tool JSON-schemas in server.js duplicate Zod schemas — flag for task #38
+
+**Status:** Audit complete
