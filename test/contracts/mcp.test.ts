@@ -263,8 +263,8 @@ describe('MCPToolResult', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects empty content array — content must be an array (empty is valid schema-wise)', () => {
-    // Empty array is technically valid per the schema — the array constraint is just that it's an array
+  it('accepts empty content array (no minimum item constraint in schema)', () => {
+    // Empty array is valid per the schema — the array type has no minLength constraint
     const result = MCPToolResult.safeParse({ content: [] });
     expect(result.success).toBe(true);
   });

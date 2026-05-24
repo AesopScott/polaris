@@ -342,14 +342,14 @@
       "category": "test",
       "priority": 88,
       "impact": "minor",
-      "status": "build-started",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         37
       ],
       "branch": "task/40-contract-test-suite-validate-real-payload-s",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/44",
       "plan": "Minor task — inline plan. Install vitest as devDependency. Create test/contracts/ with four test files (ws-messages.test.ts, backlog.test.ts, tools.test.ts, mcp.test.ts). Each file imports from src/contracts/ and asserts: (a) valid representative payloads parse without errors, (b) invalid payloads produce descriptive Zod errors. Add npm script test:contracts. Bump version.",
       "objective": {
         "statement": "Add a test suite under test/contracts/ that validates all four Zod contract modules using Vitest — valid representative payloads parse cleanly, invalid payloads produce descriptive Zod errors. Adds npm script test:contracts.",
