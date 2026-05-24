@@ -848,6 +848,7 @@ function serializeSession(s) {
     lastPrompt: s.lastPrompt || null,
     height: s.height || null,
     column: s.column != null ? s.column : null,
+    columnSpan: s.columnSpan || 1,
     pinned: !!s.pinned,
     lines: (s.lines || []).slice(-300),
     lastUsage: s.lastUsage || null,

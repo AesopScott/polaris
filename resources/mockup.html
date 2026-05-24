@@ -11462,7 +11462,12 @@ This is your current workflow status across all branches. Review the tasks and P
     if (list) {
       const ts = notif.timestamp ? new Date(notif.timestamp).toLocaleString() : '';
       list.innerHTML = (ts ? `<div class="routine-notif-ts">${escHtml(ts)}</div>` : '') +
-        (notif.items || []).map(item => {
+        (notif.items || []).map(rawItem => {
+          // Normalize to string — older notification formats stored objects
+          const item = typeof rawItem === 'string' ? rawItem
+            : (rawItem && typeof rawItem === 'object')
+              ? [rawItem.project, rawItem.version, rawItem.summary].filter(Boolean).join(' — ')
+              : String(rawItem);
           if (/^\S+\.(com|ai|io|studio)$/.test(item.trim())) {
             return `<div class="routine-notif-item domain-header"><span>${escHtml(item.trim())}</span></div>`;
           }
