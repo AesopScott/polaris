@@ -88,11 +88,99 @@ Notable exports:
 | `ping` | client → server | ⚠ orphan server handler |
 | `ui-client-hello` | client → server | ✓ (added task #41) |
 | `ui-client-ack` | server → client | ✓ (added task #41) |
+| `advance-task` | client → server | ✓ (added task #33) |
+| `advance-task-result` | server → client | ✓ (added task #33) |
+| `send-lang-signal` | client → server | ✓ (added task #33) |
+| `lang-signal-result` | server → client | ✓ (added task #33) |
 | *(all other ~96 types)* | both | ✓ |
 
 ---
 
+## `advance-task`
+
+Client request to advance the LangGraph task graph one step via the executor `/advance` endpoint.
+
+**Payload:** `{ type: 'advance-task', taskNumber: number }`
+
+**Producers (client sends)**
+- `resources/mockup.html:10108` — Advance button click handler in LangGraph controls on task row
+
+**Consumers (server handles)**
+- `server.js:9519` — proxies to `POST localhost:4001/advance`, responds with `advance-task-result`
+
+**Status:** ✓ Balanced (task #33)
+
+---
+
+## `advance-task-result`
+
+Server response after proxying to executor `/advance`.
+
+**Payload:** `{ type: 'advance-task-result', taskNumber: number, status: string, current_node: string, ... } | { error: string }`
+
+**Producers (server sends)**
+- `server.js:9532` — success path, spreads executor response
+- `server.js:9534` — error path, error string
+
+**Consumers (client handles)**
+- `resources/mockup.html:5154` — `advance-task-result` WS case; re-enables button, pushes result to debug panel
+
+**Status:** ✓ Balanced (task #33)
+
+---
+
+## `send-lang-signal`
+
+Client request to deliver a human resume signal to an executor HITL gate.
+
+**Payload:** `{ type: 'send-lang-signal', taskNumber: number, signal: string }`
+
+**Producers (client sends)**
+- `resources/mockup.html:10122` — Signal button click handler in LangGraph controls on task row
+
+**Consumers (server handles)**
+- `server.js:9539` — proxies to `POST localhost:4001/signal?task_number=N`, responds with `lang-signal-result`
+
+**Status:** ✓ Balanced (task #33)
+
+---
+
+## `lang-signal-result`
+
+Server response after proxying to executor `/signal`.
+
+**Payload:** `{ type: 'lang-signal-result', taskNumber: number, signal: string, status: string, ... } | { error: string }`
+
+**Producers (server sends)**
+- `server.js:9552` — success path, spreads executor response
+- `server.js:9554` — error path, error string
+
+**Consumers (client handles)**
+- `resources/mockup.html:5166` — `lang-signal-result` WS case; re-enables button, pushes result to debug panel
+
+**Status:** ✓ Balanced (task #33)
+
+---
+
 ## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #33)
+
+**Task:** #33 — LangGraph node implementation + HITL
+
+**Boundaries checked:** WebSocket message types between client (resources/mockup.html) and server (server.js)
+
+**Evidence recorded:**
+- 4 new WS message types added and balanced: `advance-task`, `advance-task-result`, `send-lang-signal`, `lang-signal-result`
+- All 4 have complete producer/consumer pairs ✓
+- 0 shape mismatches
+- Line references recorded for both server.js handlers and mockup.html case handlers
+
+**Gaps identified:** None new. Pre-existing orphan handlers unchanged.
+
+**Status:** ✓ Audit complete — task #33 additions registered
+
+---
 
 **Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #42)
 

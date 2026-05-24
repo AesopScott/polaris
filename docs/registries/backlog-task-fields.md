@@ -331,6 +331,22 @@ Optional, null initially.
 
 ---
 
+## `current_node`
+
+Active LangGraph node name for the task. Written by the executor via `/sync-state` after each node transition. Consumed by the UI to render LangGraph controls (Advance / Signal buttons) on task rows.
+
+**Schema / shape:** String or absent (undefined/null if task has never been advanced through the LangGraph). Examples: `"plan"`, `"build"`, `"review"`, `"promote_prod"`.
+
+**Producers (write)**
+- `server.js:8464` — `/sync-state` POST handler calls `updateBacklogTaskStatus(scope, task_number, status, { current_node })`. `updateBacklogTaskStatus` applies `extraFields` via `Object.assign(task, extraFields)` — introduced as part of task #33 to pass `current_node` alongside `status`.
+
+**Consumers (read)**
+- `resources/mockup.html:10188` — `renderBacklogSection()` checks `t.current_node`; if present, renders LangGraph controls div with Advance button, Signal input, Signal button, and `@{current_node}` badge. Controls hidden when `current_node` is absent/falsy.
+
+**Status:** ✓ Balanced (task #33) — producer and consumer paired; field optional on tasks not yet graph-driven
+
+---
+
 ## Summary
 
 | Field | Producers | Consumers | Status |
@@ -346,11 +362,11 @@ Optional, null initially.
 | `dependencies` | 1 (create) | 1 (display) | ⚠ orphan producer |
 | `plan` | 1 (null init) | 3 (skills read) | ✓ intentional |
 | `proofUnits` | 1 (null init) | 3 (skills read) | ✓ intentional |
-| `objective` | 1 (/plan-task skill) | 3 (skills read) | ✓ intentional |
+| `objective` | 1 (/plan-task skill) | 3+ (skills read) | ✓ intentional |
 | `branch` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `pr_url` | 1 (null init) | 0 (never read) | ⚠ orphan producer |
 | `impact` | 3 (create/update) | 5 (display/modal/skills) | ✓ |
-| `objective` | skills (/plan-task) | 2 (/review-pr, /codex-review) | ⚠ UI orphan (intentional) |
+| `current_node` | server.js:8464 (/sync-state) | mockup.html:10188 (LangGraph controls) | ✓ (task #33) |
 
 ---
 
@@ -418,3 +434,26 @@ Optional, null initially.
 **Gaps identified:** Three-way status enum divergence risk — definitions now in sync after review fixes (`stalled`, `failed` added; `review-blocked` moved to active group). Task #38 consolidation opportunity remains.
 
 **Status:** Audit complete — registries valid for task #37 scope.
+
+---
+
+**Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #33)
+
+**Task:** #33 — LangGraph: Node Implementation + HITL (Phases 4-5)
+
+**Boundaries checked:** Backlog task schema fields across server.js, UI (mockup.html), skills, and docs/backlog.json
+
+**Evidence recorded:**
+- 16 entries (15 previous + 1 new)
+- 13 entries with complete producer/consumer pairs ✓
+- 3 entries with intentional skill-side wiring (plan, proofUnits, objective) ✓
+- 3 entries with orphan producers (dependencies, branch, pr_url) ⚠ pre-existing, deferred
+- 0 shape mismatches
+- New identifier introduced on task #33: `current_node` — written by server.js:8464 `/sync-state` handler via `updateBacklogTaskStatus(scope, taskNum, status, { current_node })`; consumed by mockup.html:10188 to render LangGraph Advance/Signal controls
+- Duplicate `objective` row in summary table removed (was listed twice: once as "✓ intentional" and once as "⚠ UI orphan (intentional)"; consolidated to single "✓ intentional" row)
+
+**Gaps identified:**
+- `current_node` field was unregistered — now added
+- Duplicate summary row for `objective` — now removed
+
+**Status:** ✓ Audit current — all task #33 backlog field changes registered
