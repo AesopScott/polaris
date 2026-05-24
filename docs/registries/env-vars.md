@@ -149,6 +149,26 @@ Windows user home directory.
 
 ---
 
+## `POLARIS_PORT`
+
+Port override for test scripts that connect to a running Polaris server. Shadows `SERVER_PORT` in the eval/test harness context; both default to `40000` so tests run without configuration.
+
+**Set by:** Operator (manual env var before running test scripts)
+**Default:** `40000` when absent
+
+**Producers**
+- Operator shell — set `POLARIS_PORT=<N>` before running eval scripts to target a non-default server
+
+**Consumers**
+- `test/agent-evals/run-server-eval.js:16` — `const port = Number(process.env.POLARIS_PORT) || 40000`
+- `test/agent-evals/lib/wsClient.js:5` — `const DEFAULT_PORT = Number(process.env.POLARIS_PORT) || 40000`
+
+**⚠ Naming gap:** The production server reads `SERVER_PORT` (set by `main.js`); test scripts read `POLARIS_PORT` (never set by `main.js`). Both default to `40000`, so tests connect correctly in the common case. If the server is started on a non-default port, the operator must set *both* `SERVER_PORT` and `POLARIS_PORT`.
+
+**Status:** ⚠ orphan consumer — consumed by test harness; never explicitly produced. Acceptable if server always runs on default port during eval runs.
+
+---
+
 ## `STALL_TIMEOUT_SECONDS`
 
 Maximum seconds a LangGraph task may remain paused at a human gate before the executor marks it `stalled`. Configurable so short timeouts can be used in tests.
@@ -176,6 +196,7 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 | `MOCKUP_DEST` | main.js | server.js:46 | ✓ |
 | `POLARIS_DIR` | main.js | server.js:45 | ✓ |
 | `POLARIS_ORCHESTRATION_QUIET_MODE` | Operator | server.js:769; mockup.html:4264 (hardcoded) | ✓ (task #33) |
+| `POLARIS_PORT` | Operator | run-server-eval.js:16; wsClient.js:5 | ⚠ orphan consumer (task #40 audit) |
 | `POLARIS_SKILLS_DIR` | main.js | server.js:221 | ✓ |
 | `RESOURCES_PATH` | main.js | server.js:230 | ✓ |
 | `SERVER_PORT` | main.js | server.js:47; backlog_sync.py:15; task_graph.py:41 | ✓ |
@@ -185,6 +206,26 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 ---
 
 ## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-24T00:00:00Z (by /cross-boundary-audit for task #40)
+
+**Task audited:** #40 — Contract test suite: validate real payload samples
+
+**Boundaries checked:** `process.env.*` variables in server.js, main.js, test/agent-evals/
+
+**Evidence recorded:**
+- 10 entries with complete producer/consumer pairs ✓ (was 9 in prior audit)
+- 1 new entry added: `POLARIS_PORT` ⚠ orphan consumer — consumed by test harness scripts, never explicitly produced; both `SERVER_PORT` and `POLARIS_PORT` default to 40000 so no functional failure unless port changes
+- 0 new env vars introduced by task #40 itself
+- No stale line refs in this pass
+- Registries match current code diff: yes
+
+**Gaps identified:**
+- `POLARIS_PORT` — orphan consumer in test harness; recommend adding production-server mapping note or unifying with `SERVER_PORT` in a future cleanup task
+
+**Status:** Audit complete
+
+---
 
 **Last audit:** 2026-05-23T14:00:00Z (by /cross-boundary-audit for task #42)
 
