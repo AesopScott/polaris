@@ -67,10 +67,10 @@
   .header-stats { display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .stats { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; align-items: flex-start; }
   .stat { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-  .stat-waiting, .stat-running { display: inline; white-space: nowrap; }
+  .stat-waiting, .stat-running, .stat-done { display: inline; white-space: nowrap; }
   .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
-  #filter-waiting-label, #filter-running-label { transition: opacity 0.15s; }
-  #filter-waiting-label:hover, #filter-running-label:hover { text-decoration: underline; }
+  #filter-waiting-label, #filter-running-label, #filter-done-label { transition: opacity 0.15s; }
+  #filter-waiting-label:hover, #filter-running-label:hover, #filter-done-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
   .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(4, minmax(38px, auto)); grid-auto-rows: 0; gap: 8px; position: relative; }
@@ -698,6 +698,7 @@
   .p4 .stat-running { color: #34d399; }
   .p5 .stat-running { color: #fb923c; }
   .palette .stat-waiting { color: #fbbf24; }
+  .palette .stat-done { color: #22c55e; }
 
   /* Accent colors per palette */
   /* Per-palette launch-btn solid colors removed — neumorphic body is uniform across palettes,
@@ -1609,6 +1610,7 @@
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
+      <span class="stat"><span data-stat-done style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-done" id="filter-done-label" onclick="toggleSessionFilter('done')" style="cursor:pointer;" title="Filter to done sessions">Done Sessions</span></span>
       <span id="stat-testing-wrap" class="stat" style="display:none;"><span data-stat-testing style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-testing" id="filter-testing-label" onclick="toggleTestingFilter()" style="cursor:pointer;" title="Hide/show testing sessions">Testing</span></span>
       <span id="stat-hidden-wrap" class="stat" style="display:none;"><span id="stat-hidden-count" style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span onclick="unhideAll()" style="cursor:pointer;color:#94a3b8;" title="Show all hidden sessions">Hidden · Show</span></span>
     </div>
@@ -7664,9 +7666,11 @@
     const vals = Object.values(sessionStore);
     const running  = vals.filter(s => s.status === 'running').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
+    const done     = vals.filter(s => s.status === 'done').length;
     const testing  = vals.filter(s => s.status === 'test').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
+    document.querySelectorAll('[data-stat-done]').forEach(el => el.textContent = done);
     document.querySelectorAll('[data-stat-testing]').forEach(el => el.textContent = testing);
     const testingWrap = document.getElementById('stat-testing-wrap');
     if (testingWrap) testingWrap.style.display = testing > 0 ? '' : 'none';
@@ -7773,21 +7777,24 @@
     sessionFilter = (sessionFilter === type) ? null : type;
     if (clearFocusedProject()) renderGrid();
     applySessionFilter();
-    const waitingLabel = document.getElementById('filter-waiting-label');
-    const runningLabel = document.getElementById('filter-running-label');
-    if (!waitingLabel || !runningLabel) return;
-    if (!sessionFilter) {
-      waitingLabel.style.textDecoration = '';
-      waitingLabel.style.opacity = '';
-      runningLabel.style.textDecoration = '';
-      runningLabel.style.opacity = '';
-    } else {
-      const filteringRunning = sessionFilter === 'running';
-      waitingLabel.style.textDecoration = filteringRunning ? '' : 'underline';
-      waitingLabel.style.opacity        = filteringRunning ? '0.4' : '';
-      runningLabel.style.textDecoration = filteringRunning ? 'underline' : '';
-      runningLabel.style.opacity        = filteringRunning ? '' : '0.4';
-    }
+    const labels = {
+      waiting: document.getElementById('filter-waiting-label'),
+      running: document.getElementById('filter-running-label'),
+      done:    document.getElementById('filter-done-label'),
+    };
+    Object.entries(labels).forEach(([key, el]) => {
+      if (!el) return;
+      if (!sessionFilter) {
+        el.style.textDecoration = '';
+        el.style.opacity = '';
+      } else if (key === sessionFilter) {
+        el.style.textDecoration = 'underline';
+        el.style.opacity = '';
+      } else {
+        el.style.textDecoration = '';
+        el.style.opacity = '0.4';
+      }
+    });
   };
 
   function applySessionFilter() {
@@ -7800,9 +7807,7 @@
       if (s && s.minimized) { card.style.display = 'none'; return; }
       if (focusedProject && s && getSessionFocusKey(s) !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
-      const isRunning = s.status === 'running';
-      const isWaiting = s.status === 'waiting';
-      card.style.display = (sessionFilter === 'running' ? isRunning : isWaiting) ? '' : 'none';
+      card.style.display = (s.status === sessionFilter) ? '' : 'none';
     });
   }
 
