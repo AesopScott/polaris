@@ -11991,55 +11991,61 @@ async function runDomainScout() {
   if (!allTitles.length) return { error: 'Could not fetch any headlines' };
 
   // Ask AI to suggest complete domain names tied to hot topics
-  const termPrompt = `You are a domain investor and product strategist. Based on these trending tech headlines, suggest 20 specific domain names worth registering RIGHT NOW because of what's hot.
+  const termPrompt = `You are a domain investor. Based on these trending tech headlines, suggest 30 specific domain names that could be available RIGHT NOW and are inspired by what's actually in the news today.
 
 For each suggestion return a JSON object with:
-- domain: a complete domain name including TLD (e.g. "agentops.ai", "meshrelay.com", "tracekit.dev")
+- domain: a complete domain name including TLD (e.g. "jujutvcs.dev", "meshtastic.run", "specforge.io")
 - trend: the specific headline or topic that inspired this (1 sentence)
 - represents: what product this domain would be for (1 sentence)
-- value: why register it now, not later (1 sentence)
+- value: why this name, why now (1 sentence)
 - audience: who the target users are
 
-Rules:
-- Suggest the FULL domain with TLD — pick the most fitting TLD for the concept (.ai, .com, .io, .dev, .so, .run, .app, .co)
-- Vary the TLDs — do not suggest all .ai domains
-- Names should be 4–18 characters (excluding TLD), easy to spell, memorable
-- Prioritise names that feel like real product names people would actually use
-- No trademark violations (avoid openai, anthropic, google, microsoft, apple, meta, etc.)
-- No generic filler words (app, tech, data, cloud, hub, labs unless it feels genuinely right)
-- Each domain must be directly inspired by something in the headlines below
+Rules for FINDABLE domains (follow these carefully):
+- Be SPECIFIC to today's headlines — use words, concepts, or project names from the actual headlines below
+- Prefer UNUSUAL combinations: compound words, portmanteaus, specific technical terms from the articles
+- Vary TLDs widely: .dev, .run, .build, .sh, .so, .io, .app, .co — not just .ai and .com which are saturated
+- Names 6–20 characters (excluding TLD) — longer compound names are more likely to be available
+- Avoid popular generic AI terms: agent, gpt, llm, chat, bot, copilot — those are all taken
+- Draw on the SPECIFIC tools, techniques, authors, or paper titles in the headlines
+- No trademark violations
 
 Headlines:
 ${allTitles.join('\n')}
 
-Return ONLY a JSON array. Example:
-[{"domain":"agentops.ai","trend":"Agentic AI systems paper on arXiv about multi-step task completion","represents":"observability and debugging platform for AI agents","value":"Agent frameworks are proliferating now — ops tooling will be the next wave","audience":"AI engineers deploying autonomous agents"}]`;
+Return ONLY a valid JSON array with exactly 30 items.`;
 
   const result = await callOpenRouterOnce(
     'anthropic/claude-haiku-4-5',
     apiKey,
     [{ role: 'user', content: termPrompt }],
-    1800
+    2400
   );
 
   if (result.error) return { error: `AI extraction failed: ${result.error}` };
 
   let terms = [];
   try {
-    const match = result.content.match(/\[[\s\S]*\]/s);
-    if (match) terms = JSON.parse(match[0]);
+    // Try to extract the JSON array robustly — AI may wrap in prose or markdown
+    const text = result.content;
+    const jsonStart = text.indexOf('[');
+    const jsonEnd   = text.lastIndexOf(']');
+    if (jsonStart !== -1 && jsonEnd > jsonStart) {
+      terms = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    }
   } catch (e) {
-    return { error: 'Could not parse domain suggestions from AI response' };
+    return { error: `Could not parse domain suggestions: ${e.message}` };
   }
 
   if (!terms.length) return { error: 'No domain suggestions returned' };
 
-  // Check each suggested domain directly — no suffix patterns needed
+  // Check each suggested domain directly
+  const checked = [];
   const available = [];
-  for (const entry of terms.slice(0, 20)) {
+  for (const entry of terms.slice(0, 30)) {
     const domain = (typeof entry === 'object' ? (entry.domain || '') : String(entry))
-      .toLowerCase().trim().replace(/^https?:\/\//, '');
+      .toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
     if (!domain || !domain.includes('.')) continue;
+    checked.push(domain);
     const isAvail = await checkDomainAvailable(domain);
     if (isAvail) {
       available.push({ domain, ...(typeof entry === 'object' ? entry : {}) });
@@ -12081,7 +12087,7 @@ Return ONLY a JSON array. Example:
   const sorted = [...merged].sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt));
   const items = sorted.length
     ? [
-        `${sorted.length} domain${sorted.length === 1 ? '' : 's'} found (${trulyNew.length} new this scan):`,
+        `${sorted.length} domain${sorted.length === 1 ? '' : 's'} found (${trulyNew.length} new · ${checked.length} checked this scan):`,
         ...sorted.flatMap(({ domain, trend, represents, value, audience }) => [
           `${domain}`,
           `   Trend: ${trend || '—'}`,
@@ -12090,7 +12096,7 @@ Return ONLY a JSON array. Example:
           `   Audience: ${audience || '—'}`,
         ]),
       ]
-    : ['No available domains found this scan — try again later'];
+    : [`Checked ${checked.length} domains — none available yet. Try again later.`];
 
   const notif = {
     id: Date.now().toString(),
