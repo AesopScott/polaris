@@ -3892,8 +3892,13 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
   const session = sessions.get(sessionId);
   if (session?.evalRunner || session?.isChat === false) return;
 
-  const origBytes = Buffer.byteLength(originalContent, 'utf8');
-  const newBytes  = Buffer.byteLength(newContent, 'utf8');
+  // Normalize CRLF → LF so the 200-byte bypass and line counts aren't thrown
+  // off by Windows autocrlf converting LF on checkout.
+  const origNorm = (originalContent || '').replace(/\r\n/g, '\n');
+  const nextNorm = (newContent || '').replace(/\r\n/g, '\n');
+
+  const origBytes = Buffer.byteLength(origNorm, 'utf8');
+  const newBytes  = Buffer.byteLength(nextNorm, 'utf8');
   if (Math.abs(newBytes - origBytes) < 200) return;
 
   const sessionPrompt  = session?.lastPrompt || '';
@@ -3904,11 +3909,11 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
   if (!apiKey) {
     review = { verdict: 'ERROR', summary: 'No openRouterApiKey — review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
   } else {
-    review = await crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model: reviewerModel, apiKey, unifiedDiff });
+    review = await crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent: origNorm, newContent: nextNorm, model: reviewerModel, apiKey, unifiedDiff });
   }
 
-  const origLines = originalContent.split('\n').length;
-  const newLines  = newContent.split('\n').length;
+  const origLines = origNorm.split('\n').length;
+  const newLines  = nextNorm.split('\n').length;
 
   const decision = await new Promise(resolve => {
     const checkId = `ph_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -3953,8 +3958,13 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
   const session = sessions.get(sessionId);
   if (session?.evalRunner || session?.isChat === false) return true;
 
-  const origBytes = Buffer.byteLength(originalContent || '', 'utf8');
-  const newBytes  = Buffer.byteLength(newContent, 'utf8');
+  // Normalize CRLF → LF so the 200-byte bypass and line counts aren't skewed
+  // by Windows autocrlf adding \r on checkout when the new content uses LF.
+  const origNorm = (originalContent || '').replace(/\r\n/g, '\n');
+  const nextNorm = (newContent || '').replace(/\r\n/g, '\n');
+
+  const origBytes = Buffer.byteLength(origNorm, 'utf8');
+  const newBytes  = Buffer.byteLength(nextNorm, 'utf8');
   if (Math.abs(newBytes - origBytes) < 200) return true; // tiny edit bypass
 
   const sessionPrompt = session?.lastPrompt || '';
@@ -3967,15 +3977,15 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
   } else {
     review = await crossCheckChange({
       sessionId, sessionPrompt, filePath,
-      originalContent: originalContent || '',
-      newContent,
+      originalContent: origNorm,
+      newContent: nextNorm,
       model: reviewerModel,
       apiKey,
     });
   }
 
-  const origLines = originalContent ? originalContent.split('\n').length : 0;
-  const newLines  = newContent.split('\n').length;
+  const origLines = origNorm ? origNorm.split('\n').length : 0;
+  const newLines  = nextNorm.split('\n').length;
 
   const decision = await askForCrossCheckApproval({
     sessionId, filePath, operation, review,
@@ -4100,14 +4110,20 @@ const CROSS_CHECK_DEFAULT_MODEL = 'anthropic/claude-haiku-4-5';
 const CROSS_CHECK_DIFF_BUDGET = 100 * 1024;  // 100 KB max combined before/after sent to reviewer
 
 function buildDiffContext(originalContent, newContent) {
-  const totalBytes = Buffer.byteLength(originalContent, 'utf8') + Buffer.byteLength(newContent, 'utf8');
+  // Normalize CRLF → LF so Windows checkouts (autocrlf=true) don't produce
+  // spurious whole-file diffs when the on-disk file has CRLF but the incoming
+  // content from Claude has LF.  The reviewer model should see semantic changes,
+  // not line-ending noise.
+  const orig = originalContent.replace(/\r\n/g, '\n');
+  const next = newContent.replace(/\r\n/g, '\n');
+  const totalBytes = Buffer.byteLength(orig, 'utf8') + Buffer.byteLength(next, 'utf8');
   if (totalBytes <= CROSS_CHECK_DIFF_BUDGET) {
-    return { mode: 'full', original: originalContent, after: newContent };
+    return { mode: 'full', original: orig, after: next };
   }
   // Large file — emit a unified diff of just the changed region + context.
   // Finds the longest common prefix and suffix, leaving only the changed block.
-  const origLines = originalContent.split('\n');
-  const nextLines = newContent.split('\n');
+  const origLines = orig.split('\n');
+  const nextLines = next.split('\n');
   const minLen = Math.min(origLines.length, nextLines.length);
   let prefix = 0;
   while (prefix < minLen && origLines[prefix] === nextLines[prefix]) prefix++;
@@ -4183,10 +4199,16 @@ function withTimeout(promise, ms) {
 async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey, unifiedDiff }) {
   const startMs = Date.now();
   const useModel = model || CROSS_CHECK_DEFAULT_MODEL;
-  const origLines = originalContent ? originalContent.split('\n').length : 0;
-  const origBytes = originalContent ? Buffer.byteLength(originalContent, 'utf8') : 0;
-  const newLines  = newContent ? newContent.split('\n').length : 0;
-  const newBytes  = newContent ? Buffer.byteLength(newContent, 'utf8') : 0;
+  // Normalize CRLF → LF for consistent line/byte counts.  On Windows with
+  // autocrlf=true the on-disk file has CRLF while incoming content uses LF;
+  // without normalization the SIZE header would show a spurious ±N-byte delta
+  // equal to the number of lines, misleading the reviewer model.
+  const origNorm = originalContent ? originalContent.replace(/\r\n/g, '\n') : '';
+  const nextNorm = newContent      ? newContent.replace(/\r\n/g, '\n')      : '';
+  const origLines = origNorm ? origNorm.split('\n').length : 0;
+  const origBytes = origNorm ? Buffer.byteLength(origNorm, 'utf8') : 0;
+  const newLines  = nextNorm ? nextNorm.split('\n').length : 0;
+  const newBytes  = nextNorm ? Buffer.byteLength(nextNorm, 'utf8') : 0;
 
   // Prefer a pre-computed unified diff (e.g. from git diff) over building one in-process.
   let diffSection;
@@ -4197,7 +4219,7 @@ async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalCo
     }
     diffSection = `UNIFIED DIFF (git):\n\`\`\`diff\n${d}\n\`\`\``;
   } else {
-    const diff = buildDiffContext(originalContent || '', newContent || '');
+    const diff = buildDiffContext(origNorm, nextNorm);
     if (diff.mode === 'full') {
       diffSection = `ORIGINAL CONTENT:\n\`\`\`\n${diff.original}\n\`\`\`\n\nPROPOSED NEW CONTENT:\n\`\`\`\n${diff.after}\n\`\`\``;
     } else {
