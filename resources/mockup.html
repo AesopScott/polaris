@@ -7729,8 +7729,18 @@
       testSessions.forEach(sid => hiddenCards.add(sid));
     }
 
+    if (focusedProject) {
+      focusedProject = null;
+      fetch('/set-focused-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focusedProject: null })
+      }).catch(e => pushDebugLog('[focus-dbg] fetch error: ' + e.message, true));
+    }
+
     updateMiniCards();
     updateHiddenCount();
+    renderGrid();
     applySessionFilter();
     saveHiddenCards();
   };
@@ -7752,6 +7762,15 @@
 
   window.toggleSessionFilter = function(type) {
     sessionFilter = (sessionFilter === type) ? null : type;
+    if (focusedProject) {
+      focusedProject = null;
+      fetch('/set-focused-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focusedProject: null })
+      }).catch(e => pushDebugLog('[focus-dbg] fetch error: ' + e.message, true));
+      renderGrid();
+    }
     applySessionFilter();
     const waitingLabel = document.getElementById('filter-waiting-label');
     const runningLabel = document.getElementById('filter-running-label');
