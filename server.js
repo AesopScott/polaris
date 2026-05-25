@@ -11663,9 +11663,9 @@ async function handleMessage(ws, raw) {
                 const mostRecent = archiveFiles[0];
                 try {
                   content = fs.readFileSync(path.join(archiveDir, mostRecent), 'utf8');
-                  log(`[project-status] loaded archive for ${projectName}: ${mostRecent}`);
+                  console.log(`[project-status] loaded archive for ${projectName}: ${mostRecent}`);
                 } catch (archErr) {
-                  log(`[project-status] failed to load archive ${mostRecent}: ${archErr.message}`);
+                  console.log(`[project-status] failed to load archive ${mostRecent}: ${archErr.message}`);
                 }
               }
             }
@@ -11675,7 +11675,7 @@ async function handleMessage(ws, raw) {
         }
       }
     } catch (e) {
-      log(`[project-status] read error: ${e.message}`);
+      console.log(`[project-status] read error: ${e.message}`);
     }
     sendTo(ws, { type: 'project-statuses', statuses });
     return;
@@ -11711,7 +11711,7 @@ async function handleMessage(ws, raw) {
             try { fs.unlinkSync(path.join(archiveDir, olderFirst.shift())); } catch {}
           }
         } catch (archErr) {
-          log(`[project-status] archive failed for ${safeName}: ${archErr.message}`);
+          console.log(`[project-status] archive failed for ${safeName}: ${archErr.message}`);
         }
       }
 
