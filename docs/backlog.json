@@ -43,24 +43,6 @@
       "dependencies": []
     },
     {
-      "number": 44,
-      "title": "Audit JSONL + tool-audit WebSocket event",
-      "description": "On every evaluatePolicy call, append a structured event to %APPDATA%\\.claude\\polaris\\audit.jsonl. Event schema: { ts, sessionId, action, tool, allowed, reason, commandSnippet }. Also emit a tool-audit WebSocket broadcast message for any block or grant (allowed=false or installerAllowed action). The JSONL file is append-only; no pruning in this task.",
-      "category": "security",
-      "priority": 90,
-      "impact": "minor",
-      "status": "production",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-25",
-      "dependencies": [
-        43
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
       "number": 45,
       "title": "Wire evaluatePolicy into tool execution",
       "description": "Replace assertWritable + assertSafeCommand + detectInstallerExe call sites in toolBash, toolPowerShell, toolWrite, and toolEdit with evaluatePolicy. Consolidate the duplicated shell precheck sequence (assertSafeCommand + detectInstallerExe + detectShellWriteTargets + backupBeforeWrite + snapshotForShellEncodingCheck) that currently appears identically in both toolBash and toolPowerShell into a single shellPrecheck(command, workDir, sessionId, policy) helper. No behavior changes â€” enforcement must be identical to what existed before.",
