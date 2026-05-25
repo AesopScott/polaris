@@ -11990,63 +11990,59 @@ async function runDomainScout() {
   const allTitles = [...hnTitles, ...arxivTitles].slice(0, 50);
   if (!allTitles.length) return { error: 'Could not fetch any headlines' };
 
-  // Extract brandable terms with full analysis via Claude Haiku
-  const termPrompt = `You are a domain name strategist. Analyze these tech headlines and extract 10 novel, brandable single words that could make great domain name prefixes.
+  // Ask AI to suggest complete domain names tied to hot topics
+  const termPrompt = `You are a domain investor and product strategist. Based on these trending tech headlines, suggest 20 specific domain names worth registering RIGHT NOW because of what's hot.
 
-For each term return a JSON object with these fields:
-- term: the word (lowercase, 4-9 chars, easy to spell, no trademarks)
-- represents: what product or idea this domain would represent (1 sentence)
-- value: why this term is valuable as a brand right now (1 sentence)
-- audience: who would use a product with this name
-- scale: estimated monthly active users or developers in this space (e.g. "~50K devs", "~2M users")
+For each suggestion return a JSON object with:
+- domain: a complete domain name including TLD (e.g. "agentops.ai", "meshrelay.com", "tracekit.dev")
+- trend: the specific headline or topic that inspired this (1 sentence)
+- represents: what product this domain would be for (1 sentence)
+- value: why register it now, not later (1 sentence)
+- audience: who the target users are
 
-Rules: single words only, emerging tech concepts or strong nouns. No generic words (app, tech, data, cloud, new, next).
+Rules:
+- Suggest the FULL domain with TLD — pick the most fitting TLD for the concept (.ai, .com, .io, .dev, .so, .run, .app, .co)
+- Vary the TLDs — do not suggest all .ai domains
+- Names should be 4–18 characters (excluding TLD), easy to spell, memorable
+- Prioritise names that feel like real product names people would actually use
+- No trademark violations (avoid openai, anthropic, google, microsoft, apple, meta, etc.)
+- No generic filler words (app, tech, data, cloud, hub, labs unless it feels genuinely right)
+- Each domain must be directly inspired by something in the headlines below
 
 Headlines:
 ${allTitles.join('\n')}
 
 Return ONLY a JSON array. Example:
-[{"term":"nexus","represents":"central hub connecting AI tools and workflows","value":"signals authority and interconnection — premium tech positioning","audience":"AI platform builders and enterprise integrators","scale":"~40–60K developers globally"}]`;
+[{"domain":"agentops.ai","trend":"Agentic AI systems paper on arXiv about multi-step task completion","represents":"observability and debugging platform for AI agents","value":"Agent frameworks are proliferating now — ops tooling will be the next wave","audience":"AI engineers deploying autonomous agents"}]`;
 
   const result = await callOpenRouterOnce(
     'anthropic/claude-haiku-4-5',
     apiKey,
     [{ role: 'user', content: termPrompt }],
-    1200
+    1800
   );
 
   if (result.error) return { error: `AI extraction failed: ${result.error}` };
 
   let terms = [];
   try {
-    const match = result.content.match(/\[[\s\S]*?\]/);
+    const match = result.content.match(/\[[\s\S]*\]/s);
     if (match) terms = JSON.parse(match[0]);
   } catch (e) {
-    return { error: 'Could not parse terms from AI response' };
+    return { error: 'Could not parse domain suggestions from AI response' };
   }
 
-  if (!terms.length) return { error: 'No terms extracted' };
+  if (!terms.length) return { error: 'No domain suggestions returned' };
 
-  // Check domain availability — best pattern first per term
-  // Ordered by desirability: short .ai TLD > {term}ai.com > ai{term}.com > {term}aistudio.com (fallback)
-  const mkPatterns = t => [
-    `${t}.ai`,
-    `${t}ai.com`,
-    `ai${t}.com`,
-    `${t}aistudio.com`,
-  ];
-
+  // Check each suggested domain directly — no suffix patterns needed
   const available = [];
-  for (const entry of terms.slice(0, 10)) {
-    const rawTerm = typeof entry === 'string' ? entry : (entry.term || '');
-    const term = rawTerm.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!term) continue;
-    for (const domain of mkPatterns(term)) {
-      const isAvail = await checkDomainAvailable(domain);
-      if (isAvail) {
-        available.push({ domain, term, ...(typeof entry === 'object' ? entry : {}) });
-        break;
-      }
+  for (const entry of terms.slice(0, 20)) {
+    const domain = (typeof entry === 'object' ? (entry.domain || '') : String(entry))
+      .toLowerCase().trim().replace(/^https?:\/\//, '');
+    if (!domain || !domain.includes('.')) continue;
+    const isAvail = await checkDomainAvailable(domain);
+    if (isAvail) {
+      available.push({ domain, ...(typeof entry === 'object' ? entry : {}) });
     }
   }
 
@@ -12070,8 +12066,8 @@ Return ONLY a JSON array. Example:
         const logPath = path.join(scoutDir, 'Domain-Scout-Log.md');
         const dateStr = new Date(scannedAt).toLocaleString();
         let section = `\n## ${dateStr} — ${trulyNew.length} new domain${trulyNew.length === 1 ? '' : 's'}\n\n`;
-        for (const { domain, represents, value, audience, scale } of trulyNew) {
-          section += `### ${domain}\n- **What:** ${represents || '—'}\n- **Value:** ${value || '—'}\n- **Audience:** ${audience || '—'}\n- **Scale:** ${scale || '—'}\n\n`;
+        for (const { domain, trend, represents, value, audience } of trulyNew) {
+          section += `### ${domain}\n- **Trend:** ${trend || '—'}\n- **What:** ${represents || '—'}\n- **Value:** ${value || '—'}\n- **Audience:** ${audience || '—'}\n\n`;
         }
         if (fs.existsSync(logPath)) fs.appendFileSync(logPath, section, 'utf8');
         else fs.writeFileSync(logPath, `# Domain Scout Log\n${section}`, 'utf8');
@@ -12086,15 +12082,15 @@ Return ONLY a JSON array. Example:
   const items = sorted.length
     ? [
         `${sorted.length} domain${sorted.length === 1 ? '' : 's'} found (${trulyNew.length} new this scan):`,
-        ...sorted.flatMap(({ domain, represents, value, audience, scale }) => [
+        ...sorted.flatMap(({ domain, trend, represents, value, audience }) => [
           `${domain}`,
+          `   Trend: ${trend || '—'}`,
           `   What: ${represents || '—'}`,
           `   Value: ${value || '—'}`,
           `   Audience: ${audience || '—'}`,
-          `   Scale: ${scale || '—'}`,
         ]),
       ]
-    : ['No available .com/.ai domains found this scan — try again tomorrow'];
+    : ['No available domains found this scan — try again later'];
 
   const notif = {
     id: Date.now().toString(),
