@@ -4345,6 +4345,7 @@
   }
 
   function classifyHealth() {
+    if (healthState.lastChecked === null) return { status: 'degraded', issue: 'Checking server heartbeat...' };
     if (healthState.latencyMs === null) return { status: 'critical', issue: 'Server heartbeat timed out' };
     if (healthState.mcpHelpers != null && healthState.mcpHelpers >= 10) return { status: 'critical', issue: `${healthState.mcpHelpers} MCP helper processes detected` };
     if (healthState.connections != null && healthState.connections >= 20) return { status: 'critical', issue: `${healthState.connections} established connections on port 40000` };
@@ -4381,12 +4382,40 @@
   }
 
   async function fetchWithTimeout(url, timeoutMs) {
+    const nowMs = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (typeof fetch !== 'function') {
+      return new Promise(resolve => {
+        const started = nowMs();
+        const xhr = new XMLHttpRequest();
+        const timer = setTimeout(() => {
+          try { xhr.abort(); } catch {}
+          resolve({ ok: false, ms: Math.round(nowMs() - started), data: null });
+        }, timeoutMs);
+        xhr.open('GET', url, true);
+        xhr.setRequestHeader('Cache-Control', 'no-store');
+        xhr.onreadystatechange = () => {
+          if (xhr.readyState !== 4) return;
+          clearTimeout(timer);
+          let data = null;
+          try { data = JSON.parse(xhr.responseText || 'null'); } catch {}
+          resolve({ ok: xhr.status >= 200 && xhr.status < 300, ms: Math.round(nowMs() - started), data });
+        };
+        xhr.onerror = () => {
+          clearTimeout(timer);
+          resolve({ ok: false, ms: Math.round(nowMs() - started), data: null });
+        };
+        try { xhr.send(); } catch {
+          clearTimeout(timer);
+          resolve({ ok: false, ms: Math.round(nowMs() - started), data: null });
+        }
+      });
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const started = performance.now();
+      const started = nowMs();
       const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
-      const ms = Math.round(performance.now() - started);
+      const ms = Math.round(nowMs() - started);
       let data = null;
       try { data = await res.json(); } catch {}
       return { ok: res.ok, ms, data };
@@ -15526,6 +15555,7 @@ This is your current workflow status across all branches. Review the tasks and P
     startTimers();
     wsConnect();
     renderHealthIndicator();
+    setTimeout(() => runHealthCheck(false), 250);
   });
 
 })();
