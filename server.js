@@ -12016,12 +12016,13 @@ Return ONLY a JSON array. Example:
 
   if (!terms.length) return { error: 'No terms extracted' };
 
-  // Check domain availability — stop at first available pattern per term
+  // Check domain availability — best pattern first per term
+  // Ordered by desirability: short .ai TLD > {term}ai.com > ai{term}.com > {term}aistudio.com (fallback)
   const mkPatterns = t => [
-    `${t}aistudio.com`,
-    `${t}ai.com`,
     `${t}.ai`,
+    `${t}ai.com`,
     `ai${t}.com`,
+    `${t}aistudio.com`,
   ];
 
   const available = [];
