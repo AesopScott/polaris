@@ -8096,7 +8096,7 @@ const httpServer = http.createServer((req, res) => {
     const sessionId = req.url.slice(5).split('?')[0];
     let body = '';
     req.on('data', c => { body += c; });
-    req.on('end', () => {
+    req.on('end', async () => {
       let rpc;
       try { rpc = JSON.parse(body); } catch {
         res.writeHead(400, { 'Content-Type': 'application/json' });
