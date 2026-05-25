@@ -4136,17 +4136,34 @@ function buildDiffContext(originalContent, newContent) {
   const oStart = Math.max(0, prefix - CTX);
   const oEnd   = Math.min(origLines.length, origLines.length - suffix + CTX);
   const nEnd   = Math.min(nextLines.length, nextLines.length - suffix + CTX);
-  const hunkLines = [
-    `@@ -${oStart + 1},${oEnd - oStart} +${oStart + 1},${nEnd - oStart} @@`,
-    ...origLines.slice(oStart, prefix).map(l => ` ${l}`),
-    ...origLines.slice(prefix, origLines.length - suffix).map(l => `-${l}`),
-    ...nextLines.slice(prefix, nextLines.length - suffix).map(l => `+${l}`),
-    ...origLines.slice(origLines.length - suffix, oEnd).map(l => ` ${l}`),
-  ];
-  let diff = hunkLines.join('\n');
-  if (Buffer.byteLength(diff, 'utf8') > CROSS_CHECK_DIFF_BUDGET) {
-    diff = diff.slice(0, CROSS_CHECK_DIFF_BUDGET) + '\n[... diff truncated ...]';
+  // Build each section separately so the budget can be split evenly between
+  // removed and added lines.  Formerly the hunk was assembled in one pass and
+  // sliced at 100 KB — for a large file the entire removal region would consume
+  // the budget before a single '+' line appeared, making the reviewer see only
+  // deletions and conclude the file was wiped.
+  const header      = `@@ -${oStart + 1},${oEnd - oStart} +${oStart + 1},${nEnd - oStart} @@`;
+  const ctxBefore   = origLines.slice(oStart, prefix).map(l => ` ${l}`).join('\n');
+  const removedPart = origLines.slice(prefix, origLines.length - suffix).map(l => `-${l}`).join('\n');
+  const addedPart   = nextLines.slice(prefix, nextLines.length - suffix).map(l => `+${l}`).join('\n');
+  const ctxAfter    = origLines.slice(origLines.length - suffix, oEnd).map(l => ` ${l}`).join('\n');
+
+  const fullDiff = [header, ctxBefore, removedPart, addedPart, ctxAfter].filter(Boolean).join('\n');
+  if (Buffer.byteLength(fullDiff, 'utf8') <= CROSS_CHECK_DIFF_BUDGET) {
+    return { mode: 'unified-diff', diff: fullDiff };
   }
+
+  // Over budget — allocate half to removed and half to added so both sides are
+  // always visible to the reviewer regardless of the change size.
+  const halfBudget = Math.floor(CROSS_CHECK_DIFF_BUDGET / 2);
+  let trimmedRemoved = removedPart;
+  let trimmedAdded   = addedPart;
+  if (Buffer.byteLength(removedPart, 'utf8') > halfBudget) {
+    trimmedRemoved = removedPart.slice(0, halfBudget) + '\n[... removed section truncated ...]';
+  }
+  if (Buffer.byteLength(addedPart, 'utf8') > halfBudget) {
+    trimmedAdded = addedPart.slice(0, halfBudget) + '\n[... added section truncated ...]';
+  }
+  const diff = [header, ctxBefore, trimmedRemoved, trimmedAdded, ctxAfter].filter(Boolean).join('\n');
   return { mode: 'unified-diff', diff };
 }
 
@@ -4227,12 +4244,16 @@ async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalCo
     }
   }
 
+  const taskLine = sessionPrompt
+    ? `TASK: ${sessionPrompt}`
+    : `TASK: (not captured — assess technical correctness only; do not FAIL solely because task context is missing)`;
+
   const reviewPrompt = `TEXT-ONLY CODE REVIEW — DO NOT EXECUTE ANY COMMANDS OR USE ANY TOOLS.
 Your sole output must be one JSON object. No shell commands. No file reads. No tool calls. Just JSON.
 
 You are reviewing a file change for the Polaris project.
 
-TASK: ${sessionPrompt || '(not captured)'}
+${taskLine}
 FILE: ${filePath}
 SIZE: ${origLines} → ${newLines} lines  /  ${origBytes} → ${newBytes} bytes
 
@@ -4240,10 +4261,11 @@ ${diffSection}
 
 Review for:
 1. Corruption — gibberish, structural damage, encoding mojibake, repeated identical content
-2. Correctness — does the change actually implement the stated task?
+2. Correctness — does the change actually implement the stated task? (skip this check if TASK is not captured)
 3. Quality — broken syntax, dead code, security issues, malformed HTML/JS/CSS
 
-If the diff is non-empty and the changes look intentional and consistent with the task, verdict is PASS.
+If the diff is non-empty and the changes look intentional and technically sound, verdict is PASS.
+When TASK is not captured, base your verdict solely on corruption and quality signals — PASS if the changes look like valid, intentional code edits.
 Output ONLY this JSON object with no other text:
 {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
