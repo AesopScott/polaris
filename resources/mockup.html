@@ -4283,7 +4283,7 @@
   let focusedProject = null; // focus key currently active, or null if no focus
   function getSessionFocusKey(s) {
     if (!s) return null;
-    return s.projectName || s.chipLabel || null;
+    return s.chipLabel || s.projectName || null;
   }
   const sessionStateStore = {}; // sessionId → { scrollTop } — persists terminal scroll across re-renders
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
