@@ -843,6 +843,124 @@ function buildDefaultPolicy(session, config) {
   });
 }
 
+/**
+ * @typedef {Object} AuditEvent
+ * @property {string} ts - ISO timestamp
+ * @property {string} sessionId
+ * @property {string} action - 'write'|'bash'|'powershell'|'installer'|etc
+ * @property {boolean} allowed
+ * @property {string} [reason] - Block reason (if !allowed)
+ * @property {string} [commandSnippet] - First 120 chars of command (for shell actions)
+ */
+
+/**
+ * @typedef {Object} PolicyResult
+ * @property {boolean} allowed
+ * @property {string} [reason] - Human-readable block reason
+ * @property {AuditEvent} auditEvent
+ */
+
+/**
+ * Unified policy enforcer. Evaluates action against session policy.
+ * Does not throw — callers inspect result.allowed and throw if needed.
+ * @param {string} action - 'write'|'bash'|'powershell'|'installer'
+ * @param {{filePath?: string, command?: string, workDir?: string, sessionId: string}} context
+ * @param {CapabilityPolicy} policy
+ * @returns {PolicyResult}
+ */
+function evaluatePolicy(action, context, policy) {
+  const ts = new Date().toISOString();
+  const auditEvent = {
+    ts,
+    sessionId: context.sessionId,
+    action,
+    allowed: true,
+  };
+
+  if (action === 'write' || action === 'edit') {
+    // Write boundary check
+    if (policy.writeMode === 'read-only') {
+      const reason = 'Write blocked: session is read-only';
+      auditEvent.allowed = false;
+      auditEvent.reason = reason;
+      return { allowed: false, reason, auditEvent };
+    }
+
+    const filePath = context.filePath && path.resolve(context.filePath);
+    if (!filePath) {
+      const reason = 'Write blocked: no file path provided';
+      auditEvent.allowed = false;
+      auditEvent.reason = reason;
+      return { allowed: false, reason, auditEvent };
+    }
+
+    let isAllowed = false;
+    for (const root of policy.allowedRoots) {
+      const resolvedRoot = path.resolve(root);
+      if (filePath.startsWith(resolvedRoot)) {
+        isAllowed = true;
+        break;
+      }
+    }
+
+    if (!isAllowed) {
+      const reason = `Write blocked: path "${context.filePath}" is outside allowed roots (${policy.allowedRoots.join(', ')})`;
+      auditEvent.allowed = false;
+      auditEvent.reason = reason;
+      return { allowed: false, reason, auditEvent };
+    }
+  }
+
+  if (action === 'bash' || action === 'powershell') {
+    const command = context.command || '';
+    auditEvent.commandSnippet = command.slice(0, 120);
+
+    // Command class registry check
+    for (const entry of COMMAND_CLASS_REGISTRY.values()) {
+      if (entry.detect(command)) {
+        if (policy.blockedCommandClasses && policy.blockedCommandClasses.includes(entry.name)) {
+          const reason = `Shell command blocked: ${entry.reason}`;
+          auditEvent.allowed = false;
+          auditEvent.reason = reason;
+          return { allowed: false, reason, auditEvent };
+        }
+      }
+    }
+
+    // Write boundary check for shell commands
+    const flat = command.replace(/\r?\n/g, ' ');
+    if (SHELL_WRITE_VERBS.test(flat)) {
+      const absPathRe = /[a-zA-Z]:[\\\/][^\s'">,;|&)>]*/g;
+      const wd = context.workDir ? path.resolve(context.workDir).toLowerCase() : null;
+      for (const p of (flat.match(absPathRe) || [])) {
+        const resolved = path.resolve(p).toLowerCase();
+        if (wd && !resolved.startsWith(wd)) {
+          const reason = `Shell command blocked: path "${p}" is outside the project directory`;
+          auditEvent.allowed = false;
+          auditEvent.reason = reason;
+          return { allowed: false, reason, auditEvent };
+        }
+      }
+    }
+
+    // Installer detection and gate
+    const installerPath = detectInstallerExe(command);
+    if (installerPath) {
+      if (!policy.installerAllowed) {
+        const reason = `Installer blocked: ${installerPath} — installer execution not pre-approved for this session`;
+        auditEvent.allowed = false;
+        auditEvent.reason = reason;
+        return { allowed: false, reason, auditEvent };
+      }
+      auditEvent.action = 'installer';
+      auditEvent.commandSnippet = installerPath;
+    }
+  }
+
+  auditEvent.allowed = true;
+  return { allowed: true, auditEvent };
+}
+
 // ─── Session persistence ──────────────────────────────────────────────────────
 function serializeSession(s) {
   return {
