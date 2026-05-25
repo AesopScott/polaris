@@ -3949,7 +3949,7 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
 // Returns true if user approved (write should proceed), false if rejected.
 // Bypasses cross-check entirely if the change delta is under 200 bytes
 // (single-char fixes don't need a Sonnet call) or if cross-check is disabled.
-async function runCrossCheckAndApproval({ sessionId, filePath, operation, originalContent, newContent }) {
+async function runCrossCheckAndApproval({ sessionId, filePath, operation, originalContent, newContent, unifiedDiff }) {
   const cfg = readConfig();
   if (cfg.crossCheckEnabled === false) return true; // explicitly disabled
 
@@ -3981,6 +3981,7 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
       newContent: nextNorm,
       model: reviewerModel,
       apiKey,
+      unifiedDiff,
     });
   }
 
@@ -4029,8 +4030,17 @@ async function toolEdit({ file_path, old_string, new_string, replace_all }, work
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
   const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
   assertSafeWriteSize(updated, file_path);
+  // Build a compact diff from old_string → new_string so the cross-check
+  // reviewer sees exactly what changed, not the entire file.  buildDiffContext
+  // treats everything between the first and last changed line as one big
+  // removed/added block — for a large file with scattered hunks (e.g. adding a
+  // new function 6 000 lines in) the added section is truncated before the
+  // reviewer can see it.  Passing the focused edit diff bypasses that path.
+  const editDiff = buildEditDiff(file_path, old_string, new_string);
   const approved = await runCrossCheckAndApproval({
-    sessionId, filePath: file_path, operation: 'Edit', originalContent: content, newContent: updated,
+    sessionId, filePath: file_path, operation: 'Edit',
+    originalContent: content, newContent: updated,
+    unifiedDiff: editDiff,
   });
   if (!approved) {
     throw new Error(`Cross-Check rejected: edit to ${path.basename(file_path)} was not approved by the user.`);
@@ -4165,6 +4175,30 @@ function buildDiffContext(originalContent, newContent) {
   }
   const diff = [header, ctxBefore, trimmedRemoved, trimmedAdded, ctxAfter].filter(Boolean).join('\n');
   return { mode: 'unified-diff', diff };
+}
+
+// Build a focused unified diff for toolEdit: old_string as removals, new_string
+// as additions.  This bypasses buildDiffContext's prefix/suffix scan which, for
+// a large file with multiple scattered hunks, collapses the entire inter-hunk
+// region into one oversized removed/added block and truncates before the actual
+// new code appears.  Since toolEdit already knows the exact changed strings,
+// there is no need to diff the full file.
+function buildEditDiff(filePath, oldStr, newStr) {
+  const removed = oldStr.split('\n').map(l => `-${l}`).join('\n');
+  const added   = newStr.split('\n').map(l => `+${l}`).join('\n');
+  const header  = `--- ${path.basename(filePath)}\n+++ ${path.basename(filePath)}\n@@ edit @@`;
+  const full    = [header, removed, added].join('\n');
+  if (Buffer.byteLength(full, 'utf8') <= CROSS_CHECK_DIFF_BUDGET) return full;
+  // Edge case: pathologically large edit — split budget evenly so both sides
+  // stay visible (same approach as buildDiffContext).
+  const half = Math.floor(CROSS_CHECK_DIFF_BUDGET / 2);
+  const trimRemoved = Buffer.byteLength(removed, 'utf8') > half
+    ? removed.slice(0, half) + '\n[... removed section truncated ...]'
+    : removed;
+  const trimAdded = Buffer.byteLength(added, 'utf8') > half
+    ? added.slice(0, half) + '\n[... added section truncated ...]'
+    : added;
+  return [header, trimRemoved, trimAdded].join('\n');
 }
 
 function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
