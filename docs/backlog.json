@@ -43,35 +43,6 @@
       "dependencies": []
     },
     {
-      "number": 43,
-      "title": "evaluatePolicy unified enforcer",
-      "description": "Write evaluatePolicy(action, context, policy): PolicyResult in server.js (or src/runtime/capabilityPolicy.ts if the toolRuntime module is wired). Handles: root boundary check (replaces assertWritable path logic), command class evaluation using COMMAND_CLASS_REGISTRY (replaces assertSafeCommand), installer gate (replaces detectInstallerExe + async approval prompt). Returns { allowed: boolean, reason?: string, auditEvent: AuditEvent }. Does not throw â€” callers inspect the result and throw if !allowed.",
-      "category": "security",
-      "priority": 92,
-      "impact": "standard",
-      "status": "build-finished",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-25",
-      "dependencies": [
-        41,
-        42
-      ],
-      "branch": "main",
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "evaluatePolicy returns correct shape",
-          "expectedBehavior": "evaluatePolicy smoke test covers all 7 cases: allowed write, blocked write, allowed bash, blocked bash, blocked installer, allowed installer, read-only policy",
-          "proofType": "smoke-command",
-          "exactCommand": "node tmp/test-evaluatePolicy.js",
-          "expectedInitialFailure": "Tests fail because evaluatePolicy does not handle all cases",
-          "expectedPassingEvidence": "All 7 smoke tests pass, exit 0"
-        }
-      ]
-    },
-    {
       "number": 44,
       "title": "Audit JSONL + tool-audit WebSocket event",
       "description": "On every evaluatePolicy call, append a structured event to %APPDATA%\\.claude\\polaris\\audit.jsonl. Event schema: { ts, sessionId, action, tool, allowed, reason, commandSnippet }. Also emit a tool-audit WebSocket broadcast message for any block or grant (allowed=false or installerAllowed action). The JSONL file is append-only; no pruning in this task.",
