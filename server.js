@@ -51,6 +51,7 @@ const LOCKS_PATH    = path.join(POLARIS_DIR, 'locks.json');
 const VERSIONS_PATH = path.join(POLARIS_DIR, 'file-versions.json');
 const VERSIONS_LOG_PATH = path.join(POLARIS_DIR, 'file-versions-log.jsonl');
 const VERSIONS_LOG_CAP = 1000;
+const AUDIT_JSONL_PATH  = path.join(POLARIS_DIR, 'audit.jsonl');
 
 const CROSS_CHECKS_DIR = path.join(POLARIS_DIR, 'cross-checks');
 const SOURCE_BACKUPS_DIR = path.join(POLARIS_DIR, 'source-backups');
@@ -853,6 +854,7 @@ function buildDefaultPolicy(session, config) {
  * @property {string} ts - ISO timestamp
  * @property {string} sessionId
  * @property {string} action - 'write'|'bash'|'powershell'|'installer'|etc
+ * @property {string|null} tool - Tool name as reported by the caller (e.g. 'Write', 'Bash')
  * @property {boolean} allowed
  * @property {string} [reason] - Block reason (if !allowed)
  * @property {string} [commandSnippet] - First 120 chars of command (for shell actions)
@@ -866,19 +868,19 @@ function buildDefaultPolicy(session, config) {
  */
 
 /**
- * Unified policy enforcer. Evaluates action against session policy.
- * Does not throw — callers inspect result.allowed and throw if needed.
+ * Inner policy evaluator — pure logic, no side-effects.
  * @param {string} action - 'write'|'bash'|'powershell'|'installer'
- * @param {{filePath?: string, command?: string, workDir?: string, sessionId: string}} context
+ * @param {{filePath?: string, command?: string, workDir?: string, sessionId: string, tool?: string}} context
  * @param {CapabilityPolicy} policy
  * @returns {PolicyResult}
  */
-function evaluatePolicy(action, context, policy) {
+function _evaluatePolicyCore(action, context, policy) {
   const ts = new Date().toISOString();
   const auditEvent = {
     ts,
     sessionId: context.sessionId,
     action,
+    tool: context.tool || null,
     allowed: true,
   };
 
@@ -964,6 +966,38 @@ function evaluatePolicy(action, context, policy) {
 
   auditEvent.allowed = true;
   return { allowed: true, auditEvent };
+}
+
+/**
+ * Append one AuditEvent line to audit.jsonl (fire-and-forget, never throws).
+ * @param {AuditEvent} event
+ */
+function appendAuditEvent(event) {
+  try {
+    fs.appendFileSync(AUDIT_JSONL_PATH, JSON.stringify(event) + '\n', 'utf8');
+  } catch (e) {
+    // Non-fatal — audit failure must not break tool execution
+    console.error('[audit] appendAuditEvent failed:', e.message);
+  }
+}
+
+/**
+ * Unified policy enforcer. Evaluates action against session policy,
+ * appends a structured event to audit.jsonl, and broadcasts a tool-audit
+ * WebSocket message for any block or installer grant.
+ * Does not throw — callers inspect result.allowed and throw if needed.
+ * @param {string} action - 'write'|'bash'|'powershell'|'installer'
+ * @param {{filePath?: string, command?: string, workDir?: string, sessionId: string, tool?: string}} context
+ * @param {CapabilityPolicy} policy
+ * @returns {PolicyResult}
+ */
+function evaluatePolicy(action, context, policy) {
+  const result = _evaluatePolicyCore(action, context, policy);
+  appendAuditEvent(result.auditEvent);
+  if (!result.allowed || result.auditEvent.action === 'installer') {
+    broadcast({ type: 'tool-audit', ...result.auditEvent });
+  }
+  return result;
 }
 
 // ─── Session persistence ──────────────────────────────────────────────────────
