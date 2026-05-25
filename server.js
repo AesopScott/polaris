@@ -11488,7 +11488,35 @@ async function handleMessage(ws, raw) {
       sendTo(ws, { type: 'error', text: 'Chrome not found. Install Google Chrome and try again.' });
       return;
     }
-    spawn(chromePath, ['--remote-debugging-port=9222'], { detached: true, stdio: 'ignore' }).unref();
+    // 1. If CDP is already live, nothing to do.
+    const cdpAlive = await new Promise(resolve => {
+      http.get({ hostname: 'localhost', port: 9222, path: '/json', timeout: 1000 }, res => {
+        res.resume();
+        resolve(true);
+      }).on('error', () => resolve(false)).on('timeout', () => resolve(false));
+    });
+    if (cdpAlive) {
+      sendTo(ws, { type: 'chrome-ready', text: 'Chrome is already running with remote debugging on port 9222.' });
+      return;
+    }
+    // 2. If Chrome is already running WITHOUT CDP, warn — launching a second instance
+    //    with the same profile dir won't work; the user needs to close Chrome first.
+    let chromeRunning = false;
+    try { chromeRunning = execSync('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2>NUL').toString().toLowerCase().includes('chrome.exe'); } catch {}
+    if (chromeRunning) {
+      sendTo(ws, { type: 'error', text: 'Chrome is already running without remote debugging. Close Chrome completely, then click Launch Chrome again.' });
+      return;
+    }
+    // 3. Launch Chrome fresh using the real user profile (no temp dir → no profile picker).
+    const userDataDir = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
+    const args = [
+      '--remote-debugging-port=9222',
+      '--remote-allow-origins=*',
+      `--user-data-dir=${userDataDir}`,
+      '--profile-directory=Default',
+    ];
+    spawn(chromePath, args, { detached: true, stdio: 'ignore' }).unref();
+    sendTo(ws, { type: 'chrome-ready', text: 'Chrome launched with remote debugging on port 9222.' });
     return;
   }
 
