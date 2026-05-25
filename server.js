@@ -86,6 +86,11 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
+// ─── PowerMem sidecar (AI memory system) ────────────────────────────────────────
+const POWERMEM_HOST = process.env.POWERMEM_HOST || 'http://localhost:8000';
+const POWERMEM_TIMEOUT_MS = Number(process.env.POWERMEM_TIMEOUT_MS) || 10000;
+let powerMemHealthy = false;  // Set on startup; checked before writes
+
 // ─── Video utilities (frame extraction) ────────────────────────────────────────
 const VIDEO_TEMP_DIR   = path.join(POLARIS_DIR, 'video-temp');
 const VIDEO_FRAME_COUNT = 6;
@@ -1779,6 +1784,25 @@ async function scaffoldGitRepo(project) {
   }
 }
 
+// Check PowerMem sidecar health once at startup
+async function checkPowerMemHealth() {
+  try {
+    const resp = await fetch(`${POWERMEM_HOST}/health`, {
+      timeout: 5000,
+      method: 'GET'
+    });
+    powerMemHealthy = resp.ok;
+    if (powerMemHealthy) {
+      console.log(`[PowerMem] ✅ healthy at ${POWERMEM_HOST}`);
+    } else {
+      console.warn(`[PowerMem] ⚠️  health check returned ${resp.status}`);
+    }
+  } catch (e) {
+    console.warn(`[PowerMem] ⚠️  health check failed: ${e.message}`);
+    powerMemHealthy = false;
+  }
+}
+
 // Extract signal-rich session content and distill into numbered Obsidian knowledge files
 async function extractSessionToKnowledge(sessionId) {
   const s = sessions.get(sessionId);
@@ -1806,6 +1830,33 @@ async function extractSessionToKnowledge(sessionId) {
   const today = new Date().toISOString().slice(0, 10);
   const projectName = matched.name || s.projectName || 'Project';
 
+  // ─── STEP 1: Ingest to PowerMem (new) ─────────────────────────────────────────
+  if (powerMemHealthy) {
+    try {
+      const memResp = await fetch(`${POWERMEM_HOST}/api/v1/memories/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeout: POWERMEM_TIMEOUT_MS,
+        body: JSON.stringify({
+          transcript,
+          sessionId,
+          project: projectName,
+          type: s.type || 'chat',  // 'agent', 'chat', 'routine'
+          timestamp: new Date().toISOString(),
+          tags: [s.type, projectName].filter(Boolean)
+        })
+      });
+      if (memResp.ok) {
+        console.log(`[PowerMem] ✅ ingested session ${sessionId}`);
+      } else {
+        console.warn(`[PowerMem] ⚠️  ingest failed: HTTP ${memResp.status}`);
+      }
+    } catch (e) {
+      console.warn(`[PowerMem] ⚠️  ingest error: ${e.message}`);
+    }
+  }
+
+  // ─── STEP 2: Extract via DeepSeek (original path) ────────────────────────────
   const extractionPrompt = `You are a knowledge extractor for a software project called "${projectName}".
 
 Analyze this session transcript and extract structured updates. Return ONLY valid JSON with these keys (omit a key or set to null if nothing relevant was found):
@@ -1860,6 +1911,7 @@ ${transcript}`;
     return;
   }
 
+  // ─── STEP 3: Write to Obsidian (original path, unchanged) ───────────────────
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath) return;
   // obsidianDir may be absolute or relative to vault
@@ -1900,7 +1952,7 @@ ${transcript}`;
     } catch (_e) { /* skip */ }
   }
 
-  console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
+  console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated (Obsidian + PowerMem)`);
   broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] Session notes written to ${projectName} knowledge base.`, role: 'system' });
 }
 
@@ -2662,18 +2714,63 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
-function toolQueryMemory({ filename } = {}, sessionId) {
+async function toolQueryMemory({ filename, query } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (session && (!session.projectMemory || Object.keys(session.projectMemory).length === 0)) {
     try { buildProjectKnowledgeBlock(readConfig(), session); } catch {}
   }
   const mem = session?.projectMemory;
-  if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
+
+  // If specific file requested, go straight to Obsidian
   if (filename) {
+    if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
     const key = Object.keys(mem).find(k => k.toLowerCase().includes(filename.toLowerCase()));
     return key ? `=== ${key} ===\n${mem[key]}` : `File not found in project memory: ${filename}`;
   }
-  return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
+
+  // General query: try PowerMem first (ranked search), fall back to Obsidian
+  let result = null;
+
+  if (powerMemHealthy) {
+    try {
+      const config = readConfig();
+      const matched = (config.projects || []).find(
+        p => p.workDir && p.workDir.toLowerCase() === session.workDir.toLowerCase()
+      );
+      const projectName = matched?.name || session?.projectName || 'default';
+
+      const memResp = await fetch(`${POWERMEM_HOST}/api/v1/memories/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeout: POWERMEM_TIMEOUT_MS,
+        body: JSON.stringify({
+          query: query || 'general knowledge',
+          project: projectName,
+          limit: 5
+        })
+      });
+
+      if (memResp.ok) {
+        const data = await memResp.json();
+        const results = data.results || [];
+        if (results.length > 0) {
+          result = results
+            .map((r, i) => `[${i+1}] ${r.memory}\n    (relevance: ${(r.score * 100).toFixed(0)}%)`)
+            .join('\n\n');
+        }
+      }
+    } catch (e) {
+      console.warn(`[QueryMemory] PowerMem search failed: ${e.message}`);
+      // Fall through to Obsidian fallback
+    }
+  }
+
+  // Fallback to Obsidian if PowerMem is unavailable or returned no results
+  if (!result && mem && Object.keys(mem).length > 0) {
+    result = Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
+  }
+
+  return result || 'No memories found (PowerMem offline and Obsidian not loaded).';
 }
 
 // ── Skill discovery (all sources) ───────────────────────────────────────────
@@ -5764,7 +5861,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'WebSearch':  return await toolWebSearch(input);
     case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
     case 'TodoWrite':  return toolTodoWrite(input, sessionId);
-    case 'QueryMemory': return toolQueryMemory(input, sessionId);
+    case 'QueryMemory': return await toolQueryMemory(input, sessionId);
     case 'SetProject':  return toolSetProject(input, sessionId);
     case 'SetStatus':   return toolSetStatus(input, sessionId);
     case 'Skill':       return toolSkill(input, sessionId);
@@ -12540,6 +12637,7 @@ fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
+  checkPowerMemHealth(); // Check PowerMem sidecar; graceful fallback if unavailable
   checkVideoDeps(); // non-blocking — results cached in videoDeps
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
