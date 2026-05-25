@@ -779,6 +779,13 @@ const HEALTH_SNAPSHOT_TTL_MS = 30000;
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
 const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
 
+// ─── Chrome extension bridge ──────────────────────────────────────────────────
+// The Polaris Browser Bridge Chrome extension (chrome-extension/) connects here
+// via WebSocket. toolBrowseChrome() uses this path first so it works with the
+// user's existing Chrome session — no restart or profile picker needed.
+let chromeExtensionWs = null;
+const browseChromePending = new Map(); // requestId → callback(result)
+
 // ── Capability Policy ────────────────────────────────────────────────────────
 // Per-session policy object created once at launch and frozen. Tasks #42-#45
 // build on this foundation: command class registry, unified enforcer, audit
@@ -4995,16 +5002,41 @@ function toolWebFetch({ url }) {
   });
 }
 
-// ─── Chrome DevTools Protocol browser tool ────────────────────────────────────
-// Connects to Chrome on port 9222 (started via launch-chrome handler with
-// --remote-debugging-port=9222). Gets the fully-rendered DOM text from the
-// active tab — much richer than WebFetch because JS has already run.
-// Optional url: navigate the tab first. Optional selector: extract a specific
-// CSS element instead of document.body.innerText.
+// ─── Chrome browser tool ──────────────────────────────────────────────────────
+// Two paths, tried in order:
+//
+//   1. Extension bridge (preferred) — the Polaris Browser Bridge Chrome extension
+//      (chrome-extension/ in the Polaris source) connects to the server WS and
+//      forwards requests to the active tab. Works with the user's existing Chrome
+//      session; no restart or profile picker needed.
+//
+//   2. CDP fallback — connects to Chrome on port 9222 via the DevTools Protocol.
+//      Requires Chrome to have been started with --remote-debugging-port=9222.
+//      Use the Launch Chrome button if the extension isn't installed.
+//
+// Optional url: navigate the active tab first.
+// Optional selector: extract a specific CSS element instead of document.body.innerText.
 async function toolBrowseChrome({ url, selector } = {}) {
-  const CDP_PORT = 9222;
 
-  // 1. Discover open tabs via CDP HTTP endpoint
+  // ── Path 1: Extension bridge ─────────────────────────────────────────────────
+  if (chromeExtensionWs && chromeExtensionWs.readyState === WebSocket.OPEN) {
+    return new Promise((resolve) => {
+      const requestId = crypto.randomUUID();
+      const timer = setTimeout(() => {
+        browseChromePending.delete(requestId);
+        resolve('Error: Chrome extension did not respond within 15 s. Is the Polaris Browser Bridge extension active in Chrome?');
+      }, 15000);
+      browseChromePending.set(requestId, (result) => {
+        clearTimeout(timer);
+        browseChromePending.delete(requestId);
+        resolve(result);
+      });
+      chromeExtensionWs.send(JSON.stringify({ type: 'browse-chrome-request', requestId, url, selector }));
+    });
+  }
+
+  // ── Path 2: CDP fallback ─────────────────────────────────────────────────────
+  const CDP_PORT = 9222;
   let tabList;
   try {
     tabList = await new Promise((resolve, reject) => {
@@ -5016,8 +5048,9 @@ async function toolBrowseChrome({ url, selector } = {}) {
           catch { reject(new Error('Invalid CDP response from Chrome')); }
         });
       }).on('error', () => reject(new Error(
-        'Chrome is not running with remote debugging enabled. ' +
-        'Use the Launch Chrome button in Polaris first (it starts Chrome with --remote-debugging-port=9222).'
+        'BrowseChrome: neither the Polaris Browser Bridge extension nor Chrome remote debugging (port 9222) is available. ' +
+        'Install the extension from chrome-extension/ in the Polaris source (see chrome-extension/README.md), ' +
+        'or use the Launch Chrome button to start Chrome with remote debugging.'
       )));
     });
   } catch (e) {
@@ -9173,6 +9206,21 @@ async function handleMessage(ws, raw) {
     return sendTo(ws, { type: 'ui-client-ack', clientId: ws.uiClientId || null, tabId: ws.uiTabId || null });
   }
 
+  // ── Chrome extension bridge ──────────────────────────────────────────────────
+  if (type === 'chrome-extension-ready') {
+    chromeExtensionWs = ws;
+    ws.isChromeExtension = true;
+    console.log(`[polaris] Chrome extension connected (v${msg.version || '?'})`);
+    broadcast({ type: 'chrome-extension-connected', version: msg.version || '?' });
+    return;
+  }
+
+  if (type === 'browse-chrome-response') {
+    const cb = browseChromePending.get(msg.requestId);
+    if (cb) cb(msg.error ? `Error: ${msg.error}` : (msg.content || '(empty response)'));
+    return;
+  }
+
   if (type === 'launch-chat') {
     const { prompt, displayPrompt, workDir, tier, images, docs, audio, videos, chipLabel, chipColor, model: overrideModel } = msg;
     if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length) && !(videos && videos.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
@@ -12577,7 +12625,14 @@ wss.on('connection', (ws, req) => {
   })();
 
   ws.on('message', raw => handleMessage(ws, raw));
-  ws.on('close', () => console.log(`[polaris] WebSocket client disconnected ${ws.uiClientId || ws.clientId || 'unknown'}`));
+  ws.on('close', () => {
+    if (ws.isChromeExtension && chromeExtensionWs === ws) {
+      chromeExtensionWs = null;
+      broadcast({ type: 'chrome-extension-disconnected' });
+      console.log('[polaris] Chrome extension disconnected');
+    }
+    console.log(`[polaris] WebSocket client disconnected ${ws.uiClientId || ws.clientId || 'unknown'}`);
+  });
   ws.on('error', err => console.error('[polaris] WebSocket error:', err));
 });
 
