@@ -4344,6 +4344,7 @@
     lastDeepCheck: 0,
   };
   let healthCheckInFlight = null;
+  let healthPollTimer = null;
 
   function setHealthText(id, value) {
     const el = document.getElementById(id);
@@ -4465,6 +4466,11 @@
     return healthCheckInFlight;
   }
 
+  function startHealthPolling() {
+    if (healthPollTimer) return;
+    healthPollTimer = setInterval(() => runHealthCheck(false), 15000);
+  }
+
   function toggleHealthPanel(force) {
     const panel = document.getElementById('health-panel');
     if (!panel) return;
@@ -4501,6 +4507,7 @@
 
   window.toggleHealthPanel = toggleHealthPanel;
   window.runHealthCheck = runHealthCheck;
+  window.startHealthPolling = startHealthPolling;
   window.openHealthSkillPrompt = openHealthSkillPrompt;
   window.stopMcpHelpersFromHealth = stopMcpHelpersFromHealth;
 
@@ -15591,6 +15598,7 @@ This is your current workflow status across all branches. Review the tasks and P
     wsConnect();
     renderHealthIndicator();
     setTimeout(() => runHealthCheck(false), 250);
+    startHealthPolling();
   });
 
 })();
