@@ -3886,7 +3886,7 @@ function askForInstallerPermission({ sessionId, exePath, command }) {
 // Restoring writes originalContent back to disk directly.
 const pendingPostHocChecks = new Map(); // checkId → { resolve, timer }
 
-async function runPostHocCrossCheck({ sessionId, filePath, operation, originalContent, newContent, workDir }) {
+async function runPostHocCrossCheck({ sessionId, filePath, operation, originalContent, newContent, workDir, unifiedDiff }) {
   const cfg = readConfig();
   if (cfg.crossCheckEnabled === false) return;
   const session = sessions.get(sessionId);
@@ -3904,7 +3904,7 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
   if (!apiKey) {
     review = { verdict: 'ERROR', summary: 'No openRouterApiKey — review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
   } else {
-    review = await crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model: reviewerModel, apiKey });
+    review = await crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model: reviewerModel, apiKey, unifiedDiff });
   }
 
   const origLines = originalContent.split('\n').length;
@@ -6726,7 +6726,12 @@ async function spawnMaxChat(sessionId, prompt, config) {
               originalContent = execSync(`git show HEAD:${relPath.replace(/\\/g, '/')}`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
             } catch {} // new untracked file — originalContent stays ''
             if (newContent !== originalContent) {
-              await runPostHocCrossCheck({ sessionId, filePath: fullPath, operation: 'Max', originalContent, newContent, workDir: session.workDir });
+              // Use git diff for the unified diff — correct multi-hunk output for any file size.
+              let unifiedDiff;
+              try {
+                unifiedDiff = execSync(`git diff HEAD -- "${relPath}"`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, maxBuffer: 4 * 1024 * 1024 }).toString();
+              } catch {}
+              await runPostHocCrossCheck({ sessionId, filePath: fullPath, operation: 'Max', originalContent, newContent, workDir: session.workDir, unifiedDiff });
             }
           } catch {}
         }
@@ -7073,7 +7078,12 @@ async function spawnCodexSession(sessionId, prompt, config) {
               originalContent = execSync(`git show HEAD:${relPath.replace(/\\/g, '/')}`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
             } catch {}
             if (newContent !== originalContent) {
-              await runPostHocCrossCheck({ sessionId, filePath: fullPath, operation: 'Codex', originalContent, newContent, workDir: session.workDir });
+              // Use git diff for the unified diff — correct multi-hunk output for any file size.
+              let unifiedDiff;
+              try {
+                unifiedDiff = execSync(`git diff HEAD -- "${relPath}"`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, maxBuffer: 4 * 1024 * 1024 }).toString();
+              } catch {}
+              await runPostHocCrossCheck({ sessionId, filePath: fullPath, operation: 'Codex', originalContent, newContent, workDir: session.workDir, unifiedDiff });
             }
           } catch {}
         }
