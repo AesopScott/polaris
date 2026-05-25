@@ -191,6 +191,18 @@
       "pr_url": null,
       "plan": null,
       "proofUnits": []
+    },
+    {
+      "number": 48,
+      "title": "Check out notes.",
+      "description": "Notes as a replacement or augmentation for Obsidian?",
+      "category": "feature",
+      "priority": 50,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-25",
+      "completed_at": null,
+      "dependencies": []
     }
   ]
 }
