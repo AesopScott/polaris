@@ -14262,8 +14262,17 @@ This is your current workflow status across all branches. Review the tasks and P
           : isChat
             ? `<span style="font-size:10px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);border-radius:4px;padding:1px 6px;flex-shrink:0;">Max</span>`
             : '';
+      const _ws = s.status === 'hold'
+        ? { label: 'On Hold',   color: '#fbbf24' }
+        : hiddenCards.has(s.id)
+          ? { label: 'Hidden',    color: '#6b7280' }
+          : s.minimized
+            ? { label: 'Minimized', color: '#60a5fa' }
+            : { label: 'Active',    color: '#22c55e' };
+      const winBadge = `<span style="font-size:10px;font-weight:700;color:${_ws.color};background:${_ws.color}22;border:1px solid ${_ws.color}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${_ws.label}</span>`;
       return `<div id="cam-row-${s.id}" class="cam-session-row">
         ${pill}
+        ${winBadge}
         <span class="cam-name">${escHtml(s.name || 'Untitled Session')}</span>
         <button onclick="camRowPush('${s.id}')" style="background:#3b82f6;color:#fff;">Push to Obsidian and Git</button>
         <button onclick="camRowArchive('${s.id}')" style="background:#78350f;color:#fcd34d;">Archive</button>
