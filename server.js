@@ -79,6 +79,7 @@ const STALL_CHECK_MS  = 3000;   // heartbeat interval
 const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
 const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
+const WS_MISSED_PONG_LIMIT = 4;  // tolerate short UI/main-thread stalls before reconnecting
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
@@ -7504,24 +7505,34 @@ const httpServer = http.createServer((req, res) => {
         "$p=Get-Process -Name Polaris -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;",
         "[pscustomobject]@{mcpHelpers=@($m).Count;connections=@($c).Count;topProcess=if($p){$p.ProcessName+':'+$p.Id+' cpu='+[math]::Round($p.CPU,1)+' memMB='+[math]::Round($p.WorkingSet/1MB,0)}else{$null}} | ConvertTo-Json -Compress"
       ].join(' ');
-      const out = execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 3500 });
-      const parsed = JSON.parse(out);
-      snapshot.mcpHelpers = Number(parsed.mcpHelpers || 0);
-      snapshot.connections = Number(parsed.connections || 0);
-      snapshot.topProcess = parsed.topProcess || null;
-      if (snapshot.mcpHelpers >= 10) snapshot.status = 'critical';
-      else if (snapshot.connections >= 20) snapshot.status = 'critical';
-      else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) snapshot.status = 'degraded';
+      execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 3500 }, (err, stdout) => {
+        try {
+          if (err) throw err;
+          const parsed = JSON.parse(stdout);
+          snapshot.mcpHelpers = Number(parsed.mcpHelpers || 0);
+          snapshot.connections = Number(parsed.connections || 0);
+          snapshot.topProcess = parsed.topProcess || null;
+          if (snapshot.mcpHelpers >= 10) snapshot.status = 'critical';
+          else if (snapshot.connections >= 20) snapshot.status = 'critical';
+          else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) snapshot.status = 'degraded';
+        } catch (e) {
+          snapshot.status = 'degraded';
+          snapshot.error = e.message;
+        } finally {
+          healthSnapshotInFlight = false;
+          healthSnapshotCache = snapshot;
+          healthSnapshotCacheAt = Date.now();
+          if (!res.headersSent) res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify(snapshot));
+        }
+      });
     } catch (e) {
+      healthSnapshotInFlight = false;
       snapshot.status = 'degraded';
       snapshot.error = e.message;
-    } finally {
-      healthSnapshotInFlight = false;
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(snapshot));
     }
-    healthSnapshotCache = snapshot;
-    healthSnapshotCacheAt = Date.now();
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify(snapshot));
     return;
   }
 
@@ -12132,10 +12143,18 @@ const wsHeartbeatTimer = setInterval(() => {
   for (const client of wss.clients) {
     if (client.readyState !== WebSocket.OPEN) continue;
     if (client.isAlive === false) {
+      client.missedPongs = (client.missedPongs || 0) + 1;
+      if (client.missedPongs < WS_MISSED_PONG_LIMIT) {
+        try { client.ping(); } catch {
+          try { client.terminate(); } catch {}
+        }
+        continue;
+      }
       console.warn(`[polaris] terminating stale WebSocket client ${client.uiClientId || client.clientId || 'unknown'}`);
       try { client.terminate(); } catch {}
       continue;
     }
+    client.missedPongs = 0;
     client.isAlive = false;
     try { client.ping(); } catch {
       try { client.terminate(); } catch {}
@@ -12191,8 +12210,10 @@ wss.on('connection', (ws, req) => {
   ws.lastSeenAt = ws.connectedAt;
   ws.lastPongAt = ws.connectedAt;
   ws.isAlive = true;
+  ws.missedPongs = 0;
   ws.on('pong', () => {
     ws.isAlive = true;
+    ws.missedPongs = 0;
     ws.lastPongAt = Date.now();
   });
 
@@ -12247,7 +12268,7 @@ wss.on('connection', (ws, req) => {
         height: s.height || null,
         column: s.column != null ? s.column : null,
         pinned: !!s.pinned,
-        lines: (s.lines || []).slice(-300),
+        lines: (s.lines || []).slice(-120),
         lastUsage: s.lastUsage || null,
         totalCost: s.totalCost || 0,
         isForked: !!s.isForked,
@@ -12256,7 +12277,7 @@ wss.on('connection', (ws, req) => {
         taskState: s.taskState || null,
         lastSkill: s.lastSkill || null,
       })),
-      history: readJSON(HISTORY_PATH, []),
+      history: readJSON(HISTORY_PATH, []).slice(-200),
       config:  (() => {
         const cfg = maskedConfig(readConfig());
         const activeIds = new Set(sessions.keys());
