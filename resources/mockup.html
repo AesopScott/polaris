@@ -10966,8 +10966,14 @@ This is your current workflow status across all branches. Review the tasks and P
   window.launchFactory = launchFactory;
 
   function openCourseCreator() {
-    document.getElementById('course-creator-panel')?.classList.remove('hidden');
-    loadPendingCourses();
+    const workDir = config.projects?.find(p => p.name === 'Aesop')?.workDir || null;
+    wsSend({
+      type: 'launch',
+      prompt: '/aesop-course-builder',
+      displayPrompt: 'Aesop Course Development Tool',
+      workDir,
+      projectName: 'Aesop'
+    });
   }
   function closeCourseCreator() {
     const panel = document.getElementById('course-creator-panel');
