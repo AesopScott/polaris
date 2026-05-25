@@ -5073,7 +5073,7 @@ async function toolBrowseChrome({ url, selector } = {}) {
       } catch {}
     });
 
-    wsClient.on('error', e => finish(`Chrome CDP connection error: ${e.message}`));
+    wsClient.on('error', e => finish(`Chrome CDP connection error: ${e.message || 'connection refused or tab closed'}`));
 
     wsClient.on('open', async () => {
       try {
