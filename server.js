@@ -6363,6 +6363,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
 
         s.status = 'done'; s.endAt = Date.now();
         broadcast({ type: 'session-status', sessionId, status: 'done' });
+        extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
         if (s.routineTag?.startsWith('ModGenActivate-')) {
           sessions.delete(sessionId);
           saveSessions();
@@ -6830,6 +6831,9 @@ async function spawnMaxChat(sessionId, prompt, config) {
         for (const relPath of newlyChanged) {
           const fullPath = path.join(session.workDir, relPath);
           if (!fs.existsSync(fullPath)) continue;
+          // Track for autoObsidianForSession
+          if (!session.modifiedFiles) session.modifiedFiles = new Set();
+          session.modifiedFiles.add(relPath);
           try {
             const newContent = fs.readFileSync(fullPath, 'utf8');
             let originalContent = '';
@@ -6848,6 +6852,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
         }
       } catch {}
     }
+    autoObsidianForSession(sessionId);
+    extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   });
 
   proc.on('error', err => {
@@ -7182,6 +7188,9 @@ async function spawnCodexSession(sessionId, prompt, config) {
         for (const relPath of newlyChanged) {
           const fullPath = path.join(session.workDir, relPath);
           if (!fs.existsSync(fullPath)) continue;
+          // Track for autoObsidianForSession
+          if (!session.modifiedFiles) session.modifiedFiles = new Set();
+          session.modifiedFiles.add(relPath);
           try {
             const newContent = fs.readFileSync(fullPath, 'utf8');
             let originalContent = '';
@@ -7200,6 +7209,8 @@ async function spawnCodexSession(sessionId, prompt, config) {
         }
       } catch {}
     }
+    autoObsidianForSession(sessionId);
+    extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
 
     // Keep the session-scoped CODEX_HOME on disk. Codex stores its resumable
     // thread history under CODEX_HOME, so deleting this directory after turn 1
