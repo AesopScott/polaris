@@ -4278,7 +4278,11 @@
   let protectedPatterns = ['*.md']; // file patterns requiring approval before modification
   let versionsStore = {}; // filePath → currentVersion string
   let sessionFilesMap = {}; // sessionId → { filePath → { version, changes, reads, sessionName } }
-  let focusedProject = null; // project name currently focused, or null if no focus
+  let focusedProject = null; // focus key currently active, or null if no focus
+  function getSessionFocusKey(s) {
+    if (!s) return null;
+    return s.projectName || s.chipLabel || null;
+  }
   const sessionStateStore = {}; // sessionId → { scrollTop } — persists terminal scroll across re-renders
   function isTempFilePath(fp) { return /\.tmp\.\d+\.[a-f0-9]+$/i.test(fp); }
   const pendingFiles = [];  // [{ name, content }]
@@ -6321,7 +6325,7 @@
   function isSessionVisibleInGrid(s) {
     if (!s) return false;
     if (s.minimized || hiddenCards.has(s.id)) return false;
-    return !(focusedProject && s.projectName !== focusedProject);
+    return !(focusedProject && getSessionFocusKey(s) !== focusedProject);
   }
 
   function firstFreeGridColumn(counts) {
@@ -6373,7 +6377,7 @@
       wideRow.className = 'session-wide-row';
       wideCards.forEach(s => {
         const card = buildCard(s);
-        const projectMismatch = focusedProject && s.projectName !== focusedProject;
+        const projectMismatch = focusedProject && getSessionFocusKey(s) !== focusedProject;
         if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
         wideRow.appendChild(card);
       });
@@ -6495,10 +6499,11 @@
     const headerChip = chipLabel
       ? `<span class="card-project-chip" style="background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;">${escHtml(chipLabel)}</span>`
       : '';
-    const focusButtonClass = focusedProject === chipLabel ? 'focus-active' : '';
-    const focusButtonTitle = focusedProject === chipLabel ? 'Click to show all sessions' : 'Click to show only this project';
+    const focusKey = getSessionFocusKey(s);
+    const focusButtonClass = focusedProject === focusKey ? 'focus-active' : '';
+    const focusButtonTitle = focusedProject === focusKey ? 'Click to show all sessions' : 'Click to show only this project';
     const focusButton = chipLabel
-      ? `<button class="focus-btn ${focusButtonClass}" data-action="toggle-focus" data-project="${escHtmlAttr(chipLabel)}" title="${focusButtonTitle}">Focus</button>`
+      ? `<button class="focus-btn ${focusButtonClass}" data-action="toggle-focus" data-project="${escHtmlAttr(focusKey || '')}" title="${focusButtonTitle}">Focus</button>`
       : '';
     const titleStyle = chipLabel ? 'margin-left:10px;' : '';
 
@@ -7253,8 +7258,9 @@
         break;
       }
       case 'toggle-focus': {
-        const projectName = cardEl.dataset.project || (s?.projectName);
-        pushDebugLog(`[focus-dbg] clicked — btn.data-project="${cardEl.dataset.project}" s.projectName="${s?.projectName}" resolved="${projectName}"`, true);
+        const btn = e.target.closest('[data-action="toggle-focus"]');
+        const projectName = btn?.dataset.project || getSessionFocusKey(s);
+        pushDebugLog(`[focus-dbg] clicked — btn.data-project="${btn?.dataset.project}" s.projectName="${s?.projectName}" s.chipLabel="${s?.chipLabel}" resolved="${projectName}"`, true);
         if (!projectName) break;
         if (focusedProject === projectName) {
           focusedProject = null;
@@ -7792,7 +7798,7 @@
       if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       const s = sessionStore[sid];
       if (s && s.minimized) { card.style.display = 'none'; return; }
-      if (focusedProject && s && s.projectName !== focusedProject) { card.style.display = 'none'; return; }
+      if (focusedProject && s && getSessionFocusKey(s) !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
       const isRunning = s.status === 'running';
       const isWaiting = s.status === 'waiting';
