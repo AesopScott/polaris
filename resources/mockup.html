@@ -14301,15 +14301,15 @@ This is your current workflow status across all branches. Review the tasks and P
             ? `<span style="font-size:10px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.25);border-radius:4px;padding:1px 6px;flex-shrink:0;">Max</span>`
             : '';
       const _ws = s.status === 'hold'
-        ? { label: 'On Hold',   color: '#fbbf24' }
+        ? { label: 'On Hold',   color: '#fbbf24', state: 'on-hold' }
         : hiddenCards.has(s.id)
-          ? { label: 'Hidden',    color: '#6b7280' }
+          ? { label: 'Hidden',    color: '#6b7280', state: 'hidden' }
           : s.minimized
-            ? { label: 'Minimized', color: '#60a5fa' }
-            : { label: 'Active',    color: '#22c55e' };
+            ? { label: 'Minimized', color: '#60a5fa', state: 'minimized' }
+            : { label: 'Active',    color: '#22c55e', state: 'active' };
       const wsLabel = s.status === 'test' ? _ws.label + '-test' : _ws.label;
       const winBadge = `<span style="font-size:10px;font-weight:700;color:${_ws.color};background:${_ws.color}22;border:1px solid ${_ws.color}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${wsLabel}</span>`;
-      return `<div id="cam-row-${s.id}" class="cam-session-row">
+      return `<div id="cam-row-${s.id}" class="cam-session-row" data-ws-state="${_ws.state}">
         ${pill}
         ${winBadge}
         <span class="cam-name">${escHtml(s.name || 'Untitled Session')}</span>
@@ -14319,14 +14319,25 @@ This is your current workflow status across all branches. Review the tasks and P
       </div>`;
     }).join('');
 
+    const _camHideHidden = localStorage.getItem('cam_filter_hidden') === 'true';
+    const _camHideOnHold = localStorage.getItem('cam_filter_on_hold') === 'true';
+    const _camBtnStyle = (active) => active
+      ? 'padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.15);color:#fff;font-size:10px;font-weight:700;cursor:pointer;'
+      : 'padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.45);font-size:10px;font-weight:700;cursor:pointer;';
+
     modal.innerHTML = `
       <div class="cam-header">
         <span>Close All Sessions</span>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:auto;margin-right:10px;">
+          <button id="cam-btn-hide-hidden" onclick="camToggleFilter('hidden')" style="${_camBtnStyle(_camHideHidden)}" title="Hide sessions that are currently hidden">Hide Hidden</button>
+          <button id="cam-btn-hide-on-hold" onclick="camToggleFilter('on-hold')" style="${_camBtnStyle(_camHideOnHold)}" title="Hide sessions that are on hold">Hide On Hold</button>
+        </div>
         <button onclick="camCancel()" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;line-height:1;">✕</button>
       </div>
-      <div class="cam-list">${rows}</div>
+      <div class="cam-list" id="cam-list-body">${rows}</div>
       <div id="cam-footer" style="padding:12px 16px;display:flex;justify-content:flex-end;"></div>`;
     modal.style.display = 'flex';
+    camApplyFilter();
   }
 
   function camRowPush(sid) {
@@ -14405,6 +14416,33 @@ This is your current workflow status across all branches. Review the tasks and P
     camPending = new Set(); camToClose = []; camOnObsidianDone = null; camCurrentPushSid = null;
     document.getElementById('close-all-modal').style.display = 'none';
   }
+
+  function camApplyFilter() {
+    const hideHidden = localStorage.getItem('cam_filter_hidden') === 'true';
+    const hideOnHold = localStorage.getItem('cam_filter_on_hold') === 'true';
+    const list = document.getElementById('cam-list-body');
+    if (!list) return;
+    list.querySelectorAll('.cam-session-row[data-ws-state]').forEach(row => {
+      const state = row.dataset.wsState;
+      const hide = (state === 'hidden' && hideHidden) || (state === 'on-hold' && hideOnHold);
+      row.style.display = hide ? 'none' : '';
+    });
+    // Update button visual state
+    const btnHidden = document.getElementById('cam-btn-hide-hidden');
+    const btnOnHold = document.getElementById('cam-btn-hide-on-hold');
+    const activeStyle  = 'padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.15);color:#fff;font-size:10px;font-weight:700;cursor:pointer;';
+    const inactiveStyle = 'padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.45);font-size:10px;font-weight:700;cursor:pointer;';
+    if (btnHidden) btnHidden.style.cssText = hideHidden ? activeStyle : inactiveStyle;
+    if (btnOnHold) btnOnHold.style.cssText = hideOnHold ? activeStyle : inactiveStyle;
+  }
+  window.camApplyFilter = camApplyFilter;
+
+  window.camToggleFilter = function(type) {
+    const key = type === 'hidden' ? 'cam_filter_hidden' : 'cam_filter_on_hold';
+    const current = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, String(!current));
+    camApplyFilter();
+  };
 
   function camFinish() {
     document.getElementById('close-all-modal').style.display = 'none';
