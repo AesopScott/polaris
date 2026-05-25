@@ -14288,7 +14288,8 @@ This is your current workflow status across all branches. Review the tasks and P
           : s.minimized
             ? { label: 'Minimized', color: '#60a5fa' }
             : { label: 'Active',    color: '#22c55e' };
-      const winBadge = `<span style="font-size:10px;font-weight:700;color:${_ws.color};background:${_ws.color}22;border:1px solid ${_ws.color}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${_ws.label}</span>`;
+      const wsLabel = s.status === 'test' ? _ws.label + '-test' : _ws.label;
+      const winBadge = `<span style="font-size:10px;font-weight:700;color:${_ws.color};background:${_ws.color}22;border:1px solid ${_ws.color}44;border-radius:4px;padding:1px 6px;flex-shrink:0;">${wsLabel}</span>`;
       return `<div id="cam-row-${s.id}" class="cam-session-row">
         ${pill}
         ${winBadge}
