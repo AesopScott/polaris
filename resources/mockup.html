@@ -7267,7 +7267,7 @@
         break;
       }
       case 'toggle-focus': {
-        const btn = e.target.closest('[data-action="toggle-focus"]');
+        const btn = cardEl.querySelector('[data-action="toggle-focus"]');
         const projectName = btn?.dataset.project || getSessionFocusKey(s);
         pushDebugLog(`[focus-dbg] clicked — btn.data-project="${btn?.dataset.project}" s.projectName="${s?.projectName}" s.chipLabel="${s?.chipLabel}" resolved="${projectName}"`, true);
         if (!projectName) break;
