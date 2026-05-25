@@ -2087,6 +2087,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'GetButton', description: 'Get details about a specific navigation button by ID (e.g., "btn-status", "btn-build").', parameters: { type: 'object', properties: { buttonId: { type: 'string', description: 'Button ID to look up' } }, required: ['buttonId'] } } },
   { type: 'function', function: { name: 'GetPanel', description: 'Get the full HTML content of a specific panel (e.g., "cross-check-panel", "archive-panel").', parameters: { type: 'object', properties: { panelId: { type: 'string', description: 'Panel ID to retrieve' } }, required: ['panelId'] } } },
   { type: 'function', function: { name: 'FindButtonByLabel', description: 'Search for buttons by label text using case-insensitive partial matching.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Label text to search for' } }, required: ['label'] } } },
+  { type: 'function', function: { name: 'BrowseChrome', description: 'Read the fully-rendered text content of the active Chrome tab via the Chrome DevTools Protocol. Unlike WebFetch, this returns text after JavaScript has run — ideal for SPAs, login-walled content, or any page you already have open. Requires Chrome to be running with --remote-debugging-port=9222 (use the Launch Chrome button in Polaris). Optional: pass url to navigate the tab first, selector to extract a specific CSS element.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Optional URL to navigate to before reading content.' }, selector: { type: 'string', description: 'Optional CSS selector (e.g. "main", "#content") to extract a specific element instead of the full page body.' } }, required: [] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = false, continuationContext = null) {
@@ -4916,6 +4917,119 @@ function toolWebFetch({ url }) {
   });
 }
 
+// ─── Chrome DevTools Protocol browser tool ────────────────────────────────────
+// Connects to Chrome on port 9222 (started via launch-chrome handler with
+// --remote-debugging-port=9222). Gets the fully-rendered DOM text from the
+// active tab — much richer than WebFetch because JS has already run.
+// Optional url: navigate the tab first. Optional selector: extract a specific
+// CSS element instead of document.body.innerText.
+async function toolBrowseChrome({ url, selector } = {}) {
+  const CDP_PORT = 9222;
+
+  // 1. Discover open tabs via CDP HTTP endpoint
+  let tabList;
+  try {
+    tabList = await new Promise((resolve, reject) => {
+      http.get({ hostname: 'localhost', port: CDP_PORT, path: '/json' }, res => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch { reject(new Error('Invalid CDP response from Chrome')); }
+        });
+      }).on('error', () => reject(new Error(
+        'Chrome is not running with remote debugging enabled. ' +
+        'Use the Launch Chrome button in Polaris first (it starts Chrome with --remote-debugging-port=9222).'
+      )));
+    });
+  } catch (e) {
+    return e.message;
+  }
+
+  const tab = tabList.find(t => t.type === 'page' && t.webSocketDebuggerUrl);
+  if (!tab) return 'No active Chrome page tab found. Open a web page in Chrome first.';
+
+  // 2. Connect via CDP WebSocket and read/navigate the tab
+  return new Promise((resolve) => {
+    const wsClient = new WebSocket(tab.webSocketDebuggerUrl);
+    let cmdId = 1;
+    const pending = new Map();   // id → { resolve, reject }
+    const eventOnce = new Map(); // method → resolve
+    let settled = false;
+
+    const timer = setTimeout(() => finish('Error: Chrome CDP timed out after 15s'), 15000);
+
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { wsClient.close(); } catch {}
+      resolve(result);
+    }
+
+    function cdpSend(method, params = {}) {
+      const id = cmdId++;
+      return new Promise((res, rej) => {
+        pending.set(id, { resolve: res, reject: rej });
+        wsClient.send(JSON.stringify({ id, method, params }));
+      });
+    }
+
+    function waitForEvent(method) {
+      return new Promise(res => eventOnce.set(method, res));
+    }
+
+    wsClient.on('message', raw => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.id !== undefined && pending.has(msg.id)) {
+          const { resolve: r, reject: rej } = pending.get(msg.id);
+          pending.delete(msg.id);
+          if (msg.error) rej(new Error(msg.error.message));
+          else r(msg.result || {});
+        } else if (msg.method && eventOnce.has(msg.method)) {
+          const h = eventOnce.get(msg.method);
+          eventOnce.delete(msg.method);
+          h(msg.params);
+        }
+      } catch {}
+    });
+
+    wsClient.on('error', e => finish(`Chrome CDP connection error: ${e.message}`));
+
+    wsClient.on('open', async () => {
+      try {
+        // Optionally navigate to a URL and wait for load
+        if (url) {
+          await cdpSend('Page.enable');
+          const loaded = waitForEvent('Page.loadEventFired');
+          await cdpSend('Page.navigate', { url });
+          await Promise.race([loaded, new Promise(r => setTimeout(r, 6000))]);
+        }
+
+        // Extract rendered text content
+        const expr = selector
+          ? `(() => { const el = document.querySelector(${JSON.stringify(selector)}); return el ? el.innerText : 'Selector not found: ' + ${JSON.stringify(selector)}; })()`
+          : 'document.body.innerText';
+
+        const [contentRes, titleRes, urlRes] = await Promise.all([
+          cdpSend('Runtime.evaluate', { expression: expr, returnByValue: true }),
+          cdpSend('Runtime.evaluate', { expression: 'document.title', returnByValue: true }),
+          cdpSend('Runtime.evaluate', { expression: 'location.href', returnByValue: true }),
+        ]);
+
+        const text    = String(contentRes.result?.value || '').trim().slice(0, 20000);
+        const title   = String(titleRes.result?.value || '');
+        const pageUrl = String(urlRes.result?.value || tab.url);
+
+        finish(`URL: ${pageUrl}\nTitle: ${title}\n\n${text}`);
+      } catch (e) {
+        finish(`Error reading Chrome page: ${e.message}`);
+      }
+    });
+  });
+}
+
 function braveSearch(query, count, apiKey) {
   return new Promise((resolve, reject) => {
     const q = encodeURIComponent(query);
@@ -5429,6 +5543,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'GetButton':   return toolGetButton(input);
     case 'GetPanel':    return toolGetPanel(input);
     case 'FindButtonByLabel': return toolFindButtonByLabel(input);
+    case 'BrowseChrome':  return await toolBrowseChrome(input);
     default:           return `Unknown tool: ${name}`;
   }
 }
@@ -5573,6 +5688,7 @@ function toolDisplayLabel(name, input = {}) {
     case 'GetButton':  return `Nav  btn:${input.buttonId || ''}`;
     case 'GetPanel':   return `Nav  panel:${input.panelId || ''}`;
     case 'FindButtonByLabel': return `Nav  find:"${input.label || ''}"`;
+    case 'BrowseChrome':  return `Browser  ${truncate(input.url || '(current tab)')}`;
     default:           return name;
   }
 }
@@ -7949,6 +8065,7 @@ const httpServer = http.createServer((req, res) => {
           { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
           ...(!ORCHESTRATION_QUIET_MODE ? [{ name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } }] : []),
           { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Omit filename to get all project context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' } }, required: [] } },
+          { name: 'BrowseChrome', description: 'Read the fully-rendered text content of the active Chrome tab via Chrome DevTools Protocol. Unlike WebFetch, returns text after JavaScript has run. Requires Chrome launched with --remote-debugging-port=9222 (use the Launch Chrome button in Polaris). Optionally navigate to a URL first or extract a specific CSS element.', inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'Optional URL to navigate to before reading.' }, selector: { type: 'string', description: 'Optional CSS selector to extract a specific element.' } }, required: [] } },
         ]}}));
       }
       if (method === 'tools/call') {
@@ -7958,6 +8075,7 @@ const httpServer = http.createServer((req, res) => {
         else if (name === 'SetStatus') result = toolSetStatus(args || {}, sessionId);
         else if (name === 'SetTaskState') result = toolSetTaskState(args || {}, sessionId);
         else if (name === 'QueryMemory') result = toolQueryMemory(args || {}, sessionId);
+        else if (name === 'BrowseChrome') result = await toolBrowseChrome(args || {});
         else return res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown tool: ${name}` } }));
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(result) }] } }));
       }
