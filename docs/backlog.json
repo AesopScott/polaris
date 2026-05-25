@@ -49,14 +49,14 @@
       "category": "security",
       "priority": 92,
       "impact": "standard",
-      "status": "backlog",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         43,
         44
       ],
-      "branch": null,
+      "branch": "task/45-wire-evaluatepolicy-into-tool-execution",
       "pr_url": null,
       "plan": null,
       "proofUnits": []
