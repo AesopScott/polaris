@@ -11499,24 +11499,34 @@ async function handleMessage(ws, raw) {
       sendTo(ws, { type: 'chrome-ready', text: 'Chrome is already running with remote debugging on port 9222.' });
       return;
     }
-    // 2. If Chrome is already running WITHOUT CDP, warn — launching a second instance
-    //    with the same profile dir won't work; the user needs to close Chrome first.
+    // 2. If Chrome is already running WITHOUT CDP, close it gracefully then relaunch.
+    //    --restore-last-session brings all tabs back; --profile-directory=Default
+    //    bypasses the profile picker so the user's real session is used immediately.
     let chromeRunning = false;
     try { chromeRunning = execSync('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2>NUL').toString().toLowerCase().includes('chrome.exe'); } catch {}
     if (chromeRunning) {
-      sendTo(ws, { type: 'error', text: 'Chrome is already running without remote debugging. Close Chrome completely, then click Launch Chrome again.' });
-      return;
+      sendTo(ws, { type: 'line', sessionId: null, text: '[chrome] Closing existing Chrome to enable remote debugging…', role: 'system' });
+      try { execSync('taskkill /IM chrome.exe /F 2>NUL'); } catch {}
+      // Wait for Chrome to fully exit before relaunching
+      await new Promise(r => setTimeout(r, 1500));
     }
-    // 3. Launch Chrome fresh using the real user profile (no temp dir → no profile picker).
+    // 3. Launch Chrome using the real user profile + restore previous session.
+    //    --profile-directory=Default skips profile picker.
+    //    --restore-last-session reopens the tabs that were open before.
     const userDataDir = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
     const args = [
       '--remote-debugging-port=9222',
       '--remote-allow-origins=*',
       `--user-data-dir=${userDataDir}`,
       '--profile-directory=Default',
+      '--restore-last-session',
+      '--no-first-run',
     ];
     spawn(chromePath, args, { detached: true, stdio: 'ignore' }).unref();
-    sendTo(ws, { type: 'chrome-ready', text: 'Chrome launched with remote debugging on port 9222.' });
+    const msg = chromeRunning
+      ? 'Chrome restarted with remote debugging on port 9222. Your previous tabs are restoring.'
+      : 'Chrome launched with remote debugging on port 9222.';
+    sendTo(ws, { type: 'chrome-ready', text: msg });
     return;
   }
 
