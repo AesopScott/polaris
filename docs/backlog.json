@@ -13,24 +13,6 @@
       "pr_url": null
     },
     {
-      "number": 34,
-      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
-      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        33
-      ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
       "number": 28,
       "title": "Upgrade project memory into ranked retrieval",
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
@@ -41,24 +23,6 @@
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": []
-    },
-    {
-      "number": 46,
-      "title": "Policy unit test suite",
-      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
-      "category": "test",
-      "priority": 88,
-      "impact": "minor",
-      "status": "build-finished",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-25",
-      "dependencies": [
-        43
-      ],
-      "branch": "main",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
-      "plan": null,
-      "proofUnits": []
     },
     {
       "number": 30,
@@ -85,18 +49,32 @@
       "dependencies": []
     },
     {
-      "number": 38,
-      "title": "Wire runtime validation: use compiled contracts in server.js",
-      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic â€” validation only.",
+      "number": 34,
+      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
+      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
       "category": "feature",
-      "priority": 91,
+      "priority": 90,
       "impact": "standard",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": [
-        37
-      ],
+      "dependencies": [33],
+      "branch": null,
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 38,
+      "title": "Wire runtime validation: use compiled contracts in server.js",
+      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic — validation only.",
+      "category": "feature",
+      "priority": 91,
+      "impact": "standard",
+      "status": "planned",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [37],
       "branch": null,
       "pr_url": null,
       "plan": null,
@@ -105,18 +83,32 @@
     {
       "number": 39,
       "title": "Registry generation: generate docs/registries/ from schemas",
-      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script \"generate:registries\". Run it to regenerate all current registries and verify output matches existing hand-written content.",
+      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script generate:registries. Run it to regenerate all current registries and verify output matches existing hand-written content.",
       "category": "feature",
       "priority": 90,
       "impact": "standard",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": [
-        37
-      ],
+      "dependencies": [37],
       "branch": null,
       "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 46,
+      "title": "Policy unit test suite",
+      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server — evaluatePolicy must be importable in isolation.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "build-finished",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-25",
+      "dependencies": [43],
+      "branch": "main",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
       "plan": null,
       "proofUnits": []
     },
@@ -147,6 +139,90 @@
       "created_at": "2026-05-25",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 49,
+      "title": "Memory importance scoring at write time",
+      "description": "Initial strength should reflect memory importance rather than always defaulting to 1.0. The Codex extraction prompt should score each memory 1-5 by type (decision=5, preference=4, feedback=4, pattern=3, fact=2 as defaults). Map score to initial strength in the 0.6-1.0 range so high-signal memories decay slower from birth. Patch addMemory() and addMemories() in lib/memory.js to accept an importance field and set initial strength accordingly. Update the Codex extraction prompt in extractSessionToKnowledge() to request and return importance scores alongside each memory.",
+      "category": "enhancement",
+      "priority": 10,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 50,
+      "title": "Memory consolidation synthesis — deduplication on write",
+      "description": "Before writing new memories from Codex extraction, compare each candidate against existing project memories using Jaccard similarity on tags plus substring overlap on content. Merge near-duplicates (similarity above 0.7) by reinforcing the existing memory rather than creating a new document. Prevents the collection from filling with restatements of the same facts across sessions. Fetch existing memories once per extraction batch, score all candidates against them, and split candidates into new writes vs reinforcements before committing.",
+      "category": "enhancement",
+      "priority": 10,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [49]
+    },
+    {
+      "number": 51,
+      "title": "Proactive memory injection at session start",
+      "description": "At agent session launch, automatically search Firestore for the top-N memories most relevant to the project and task description, then prepend them as a structured context block in the system prompt. Unlike CLAUDE.md injection (static, grows bloated, sessions ignore stale rules), this is dynamic: ranked by BM25 plus strength plus recency, capped at roughly 800 tokens, and scoped per-project per-session. The agent receives context it did not know to ask for — closing the gap between what Polaris knows and what the agent starts with.",
+      "category": "feature",
+      "priority": 15,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [49, 50]
+    },
+    {
+      "number": 52,
+      "title": "Memory editing and correction UI",
+      "description": "Provide a path for Scott to flag, edit, or manually archive a specific memory. Codex misextractions currently persist until natural decay (weeks). A Polaris panel listing memories by project with inline edit and archive controls closes the human feedback loop on extraction quality. The panel should show content, type, tags, strength, accessCount, and age. Editing a memory resets its strength to the importance-based initial value; archiving sets _archived: true immediately.",
+      "category": "feature",
+      "priority": 30,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 53,
+      "title": "Experience-to-skill distillation — higher-order memory consolidation synthesis",
+      "description": "A weekly Codex pass clusters episodic memories by semantic similarity, identifies repeated patterns across them, and writes a single consolidated higher-order memory in their place. For example, 20 individual observations about tool choices synthesize into one durable preference memory. Original episodic memories are archived after synthesis. Implements the PowerMem two-layer experience plus skill architecture. Should run as a routine session on a weekly cron, fire-and-forget, with results logged to the server log.",
+      "category": "feature",
+      "priority": 40,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [50]
+    },
+    {
+      "number": 54,
+      "title": "Cross-project memory tier",
+      "description": "Add a global memory tier alongside project-scoped memories. Memories tagged with project: global are returned in searchMemories calls for any project. Supports facts that are true across all projects: code style preferences, tool preferences, personal working patterns, recurring feedback. Prevents duplication of the same preference memory in every project collection. Requires a Firestore query change to OR-filter on project == requested OR project == global.",
+      "category": "feature",
+      "priority": 50,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [50]
+    },
+    {
+      "number": 55,
+      "title": "Forgetting curve calibration by memory type",
+      "description": "Current decay constants (STABILITY_BASE=7 days, DECAY_THRESHOLD=0.1) are uniform across all memory types. Preferences and decisions should decay slower than facts and observations — a preference is more stable than an incidental observation. Once the collection has enough retrieval history, tune stability multipliers per type. Long-term: use retrieval outcome signals (did the session act on this memory?) to adjust decay rate per document individually.",
+      "category": "enhancement",
+      "priority": 60,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [49, 53]
     }
   ]
 }
