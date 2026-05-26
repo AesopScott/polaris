@@ -7263,9 +7263,11 @@
       }
       case 'transfer': {
         if (!s) break;
-        showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will be asked to continue the work using the same model and project.`, () => {
-          wsSend({ type: 'transfer-session', sessionId });
-          pushDebugLog(`[card] Transfer requested: ${s.name || sessionId}`);
+        showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will be asked to continue the work using your configured model and project.`, () => {
+          const mode = document.querySelector('.mode-btn.active')?.dataset?.mode || 'chat';
+          const tier = document.querySelector('.model-select')?.value || 'balanced';
+          wsSend({ type: 'transfer-session', sessionId, mode, tier });
+          pushDebugLog(`[card] Transfer requested: ${s.name || sessionId} mode=${mode} tier=${tier}`);
         }, 'Yes, Transfer');
         break;
       }

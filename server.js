@@ -10617,23 +10617,50 @@ async function handleMessage(ws, raw) {
       'restate the prior session\'s work; reference it only as needed.\n\n' +
       `--- PRIOR SESSION DIAG (sessionId=${src.id}) ---\n${diagContent}\n--- END DIAG ---`;
 
-    // Pick id prefix and runner to mirror source session type.
-    const isCodex = !!src.isCodex;
-    const isGpt = !!src.isGpt;
-    const isChatLike = !isCodex && !isGpt && !!src.isChat;
+    // Use mode + tier from the UI prompt bar (sent in msg) rather than mirroring
+    // the source session type, so the new session uses the user's active configuration.
+    const transferMode = (msg.mode || '').toLowerCase();
+    const transferTier = (msg.tier || 'balanced').toLowerCase();
+    const isCodex = transferMode === 'codex' || (!transferMode && !!src.isCodex);
+    const isGpt   = transferMode === 'gpt'   || (!transferMode && !!src.isGpt);
+    const isChatLike = transferMode === 'chat' || (!transferMode && !isCodex && !isGpt && !!src.isChat);
     const idPrefix = isCodex ? 'codex' : isGpt ? 'gpt' : isChatLike ? 'chat' : 's';
     const newId = `${idPrefix}_${Date.now()}`;
     const newName = `Transfer: ${src.name || 'session'}`;
     const displayPrompt = `[Transfer from ${src.name || src.id}] Continuing prior session — full diag log handed to new session as context.`;
+
+    // Resolve display model string for the new session based on mode + tier.
+    const cfg = readConfig();
+    let transferModel;
+    if (isChatLike) {
+      const backend = (cfg.chatBackend || 'max').toLowerCase();
+      const maxLabel = transferTier === 'power'
+        ? 'anthropic/claude-opus-4-7 (Max plan)'
+        : transferTier === 'floor'
+          ? 'anthropic/claude-haiku-4-5-20251001 (Max plan)'
+          : 'anthropic/claude-sonnet-4-6 (Max plan)';
+      transferModel = backend === 'max' ? maxLabel : (cfg.chatModel || 'deepseek/deepseek-chat');
+    } else if (isCodex) {
+      transferModel = cfg.codexModel || src.model || null;
+    } else if (isGpt) {
+      transferModel = src.model || null;
+    } else {
+      // Agent (Code) — pick OpenRouter model from tier config
+      transferModel = transferTier === 'power'
+        ? (cfg.openRouterOpusModel    || 'openrouter/auto')
+        : transferTier === 'floor'
+          ? (cfg.openRouterFloorModel || 'openrouter/auto')
+          : (cfg.openRouterSonnetModel || 'openrouter/auto');
+    }
 
     const newSession = {
       id: newId,
       name: newName,
       workDir: src.workDir || null,
       projectName: src.projectName || null,
-      model: src.model || null,
-      tier: src.tier || null,
-      isChat: !!src.isChat,
+      model: transferModel,
+      tier: transferTier,
+      isChat: isChatLike,
       isGpt,
       isCodex,
       status: 'running',
