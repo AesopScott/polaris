@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "polaris",
-  "version": "1.0.610",
-  "description": "Polaris — Claude Code Command Center",
+  "version": "1.0.611",
+  "description": "Polaris â€” Claude Code Command Center",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -73,3 +73,4 @@
     "vitest": "^4.1.7"
   }
 }
+
