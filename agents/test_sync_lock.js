@@ -68,6 +68,12 @@ async function runUnit() {
 
 // ─── Mode B: integration test ────────────────────────────────────────────────
 
+// ⚠ WARNING — DESTRUCTIVE: integration mode sends live POST /sync-state requests
+// that overwrite the statuses of the tasks listed below in docs/backlog.json.
+// Before running against a real server, verify these tasks are at or below the
+// target statuses — if a task has been promoted to staged/production, adjust the
+// task_number/status values below accordingly to avoid a damaging regression.
+// Prefer --unit mode for CI; run integration mode only in a dev environment.
 const WRITES = [
   { task_number: 30, status: 'backlog',       current_node: 'test-lock-1' },
   { task_number: 31, status: 'backlog',       current_node: 'test-lock-2' },

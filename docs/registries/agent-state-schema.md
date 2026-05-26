@@ -199,7 +199,7 @@ The `checkpoint_data` dict (field above) contains string keys that form an impli
 | `plan_complete` | `plan_node` | `task_graph.py:89` | `task_graph.py:79` | ✓ |
 | `branch_created` | `start_build_node` | `task_graph.py:112` | `task_graph.py:97` | ✓ |
 | `pr_opened` | `finish_build_node` | `task_graph.py:184` | `task_graph.py:158` | ✓ |
-| `codex_reviewed` | `codex_review_node` | `task_graph.py:221` | `task_graph.py:204` | ✓ |
+| `codex_reviewed` | `codex_review_node` | `task_graph.py:~221` (`review_evidence`) + `checkpoint_data` (bug-fixed by /review-pr — PR #47 remediation) | `task_graph.py:204` | ✓ |
 | `promoted_to_stage` | `promote_stage_node` | `task_graph.py:248` | `task_graph.py:235` | ✓ |
 | `promoted_to_prod` | `promote_prod_node` | `task_graph.py:266` | `task_graph.py:256` | ✓ |
 

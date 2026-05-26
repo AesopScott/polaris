@@ -129,6 +129,21 @@ def build_node(state: TaskState) -> Dict[str, Any]:
 @safe_node
 def finish_build_node(state: TaskState) -> Dict[str, Any]:
     """Proof gate — verifies all proof units before advancing."""
+    # Idempotent: skip all checks if finish-build already ran (restart safety).
+    # Placed before the proof gate and precondition so a desynchronised status
+    # field after restart cannot block replay through completed work.
+    if _already_done(state, "pr_opened"):
+        clean_checkpoint = {
+            k: v for k, v in state.get("checkpoint_data", {}).items()
+            if k not in ("proof_gate_failed", "unverified_units")
+        }
+        return {
+            "current_node": "finish_build",
+            "status": "build-finished",
+            "pr_url": state.get("pr_url"),
+            "checkpoint_data": clean_checkpoint,
+        }
+
     proof_units = state.get("proof_units", [])
     proof_results = state.get("proof_results", {})
 
@@ -153,19 +168,6 @@ def finish_build_node(state: TaskState) -> Dict[str, Any]:
     ok, failures = validate_transition(state.get("status", ""), "build-finished", state)
     if not ok:
         raise ValueError(f"Precondition failed for build-finished: {failures}")
-
-    # Idempotent: skip dispatch_agent if finish-build already ran (restart safety)
-    if _already_done(state, "pr_opened"):
-        clean_checkpoint = {
-            k: v for k, v in state.get("checkpoint_data", {}).items()
-            if k not in ("proof_gate_failed", "unverified_units")
-        }
-        return {
-            "current_node": "finish_build",
-            "status": "build-finished",
-            "pr_url": state.get("pr_url"),
-            "checkpoint_data": clean_checkpoint,
-        }
 
     task_number = state["task_number"]
     response = dispatch_agent(task_number, "/finish-build", agent="sonnet")
@@ -220,6 +222,10 @@ def codex_review_node(state: TaskState) -> Dict[str, Any]:
             **state.get("review_evidence", {}),
             "codex_reviewed": True,
             "codex_response": response[:500],
+        },
+        "checkpoint_data": {
+            **state.get("checkpoint_data", {}),
+            "codex_reviewed": True,
         },
     }
 
