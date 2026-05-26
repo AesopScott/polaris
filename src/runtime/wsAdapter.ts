@@ -184,7 +184,7 @@ export function buildWsDispatcher(
 /** All known WebSocket message type strings handled by the Polaris server. */
 export const WS_MESSAGE_TYPES = [
   // Session lifecycle
-  'launch', 'launch-chat', 'launch-gpt', 'launch-codex', 'launch-diamond',
+  'launch', 'launch-chat', 'launch-gpt', 'launch-codex', 'launch-diamond', 'launch-design',
   'launch-factory', 'launch-chrome', 'launch-thecard',
   'resume', 'stop', 'close-session', 'archive-session', 'rename-session',
   'transfer-session', 'set-session-status', 'set-task-state',

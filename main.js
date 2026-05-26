@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const http = require('http');
 const { fork } = require('child_process');
 
 const APPDATA = process.env.APPDATA || os.homedir();
@@ -11,9 +12,12 @@ const MOCKUP_SRC = app.isPackaged
   : path.join(__dirname, 'resources', 'mockup.html');
 const MOCKUP_DEST = path.join(POLARIS_DIR, 'mockup.html');
 const SERVER_PORT = 40000;
+const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const SERVER_LOG_PATH = path.join(POLARIS_DIR, 'logs', 'server-stderr.log');
 const RESTART_WINDOW_MS = 30000;
 const MAX_RESTARTS_IN_WINDOW = 3;
+const WINDOW_LOAD_RETRY_MS = 500;
+const WINDOW_LOAD_TIMEOUT_MS = 15000;
 
 let mainWindow = null;
 let serverProcess = null;
@@ -23,6 +27,10 @@ const restartTimes = [];
 
 function appendServerLog(text) {
   try { fs.appendFileSync(SERVER_LOG_PATH, text, 'utf8'); } catch {}
+}
+
+function logMain(text) {
+  appendServerLog(`[main] ${text}\n`);
 }
 
 function ensureAppData() {
@@ -151,6 +159,34 @@ function startServer() {
   });
 }
 
+function pingServer(timeoutMs = 700) {
+  return new Promise(resolve => {
+    const req = http.get(`${SERVER_URL}/health`, res => {
+      res.resume();
+      resolve(res.statusCode >= 200 && res.statusCode < 500);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function loadMainWindowWhenReady(startedAt = Date.now()) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (await pingServer()) {
+    mainWindow.loadURL(SERVER_URL);
+    return;
+  }
+  if (Date.now() - startedAt > WINDOW_LOAD_TIMEOUT_MS) {
+    appendServerLog(`[main] Server did not answer /health within ${WINDOW_LOAD_TIMEOUT_MS}ms before window load\n`);
+    mainWindow.loadURL(SERVER_URL);
+    return;
+  }
+  setTimeout(() => loadMainWindowWhenReady(startedAt), WINDOW_LOAD_RETRY_MS);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -178,13 +214,32 @@ function createWindow() {
 
   mainWindow.maximize();
 
-  // Wait briefly for server to start, then load
-  setTimeout(() => {
-    mainWindow.loadURL(`http://localhost:${SERVER_PORT}`);
-  }, 800);
+  loadMainWindowWhenReady();
 
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    appendServerLog(`[main] Window failed to load ${validatedURL}: ${errorCode} ${errorDescription}; retrying ${SERVER_URL}\n`);
+    setTimeout(() => loadMainWindowWhenReady(), WINDOW_LOAD_RETRY_MS);
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    logMain(`Renderer process gone: reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    logMain('Window became unresponsive');
+  });
+  mainWindow.webContents.on('responsive', () => {
+    logMain('Window became responsive');
+  });
+
+  mainWindow.on('closed', () => {
+    logMain('Window closed');
+    mainWindow = null;
+  });
 }
+
+app.on('child-process-gone', (_event, details) => {
+  logMain(`Child process gone: type=${details.type} reason=${details.reason} exitCode=${details.exitCode} serviceName=${details.serviceName || ''}`);
+});
 
 app.whenReady().then(() => {
   // Allow async Audio.play() calls outside a user gesture (needed for ElevenLabs TTS

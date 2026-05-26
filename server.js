@@ -5241,10 +5241,13 @@ function normalizeMcpAllowlist(allowlist) {
   return allowlist.map(s => String(s || '').trim()).filter(Boolean);
 }
 
-function getMcpServerConfigs(allowlist = null) {
+function getMcpServerConfigs(allowlist = null, { sessionScope = false } = {}) {
   const servers = readClaudeJson().mcpServers || {};
   const normalized = normalizeMcpAllowlist(allowlist);
-  if (normalized === null) return servers; // null allowlist = no filter; return all configured servers
+  // Session-scoped: null allowlist means Polaris-only (no external MCP servers by default).
+  // Infrastructure callers (Brevo check, tool invocation, ElevenLabs) pass sessionScope=false
+  // and still receive all configured servers.
+  if (normalized === null) return sessionScope ? {} : servers;
   const allowed = new Set(normalized);
   return Object.fromEntries(Object.entries(servers).filter(([name]) => allowed.has(name)));
 }
@@ -5377,7 +5380,7 @@ async function discoverMcpTools(allowlist = null) {
   const cached = mcpToolsCache.get(cacheKey);
   if (cached && now - cached.time < MCP_CACHE_TTL) return cached.tools;
 
-  const servers = getMcpServerConfigs(normalized);
+  const servers = getMcpServerConfigs(normalized, { sessionScope: true });
   const allTools = [];
 
   for (const [serverName, serverConfig] of Object.entries(servers)) {
@@ -10760,6 +10763,45 @@ async function handleMessage(ws, raw) {
     } catch (e) {
       sendTo(ws, { type: 'diamond-status', launching: false, error: e.message });
     }
+    return;
+  }
+
+  if (type === 'launch-design') {
+    const DESIGN_URL = 'http://127.0.0.1:62683/';
+    const DESIGN_DIR = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'open-design');
+    const DESIGN_CMD = path.join(DESIGN_DIR, 'node_modules', '.bin', 'tools-dev.CMD');
+    const req = http.get(DESIGN_URL, (res) => {
+      res.resume();
+      if (res.statusCode < 500) {
+        exec(`start "" "${DESIGN_URL}"`);
+        sendTo(ws, { type: 'design-status', running: true, url: DESIGN_URL });
+      } else {
+        sendTo(ws, { type: 'design-status', running: false, error: `Open Design returned HTTP ${res.statusCode}` });
+      }
+    });
+    req.on('error', () => {
+      try {
+        if (!fs.existsSync(DESIGN_CMD)) {
+          sendTo(ws, { type: 'design-status', running: false, error: `Missing launcher at ${DESIGN_CMD}` });
+          return;
+        }
+        const env = { ...process.env };
+        delete env.ELECTRON_RUN_AS_NODE;
+        const child = spawn('cmd', ['/c', `"${DESIGN_CMD}" run web --daemon-port 62682 --web-port 62683`], {
+          cwd: DESIGN_DIR,
+          env,
+          detached: true,
+          stdio: 'ignore',
+          shell: false
+        });
+        child.unref();
+        sendTo(ws, { type: 'design-status', running: false, launching: true, url: DESIGN_URL });
+        setTimeout(() => exec(`start "" "${DESIGN_URL}"`), 8000);
+      } catch (e) {
+        sendTo(ws, { type: 'design-status', running: false, launching: false, error: e.message });
+      }
+    });
+    req.setTimeout(2000, () => req.destroy());
     return;
   }
 

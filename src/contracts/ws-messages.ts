@@ -383,7 +383,7 @@ export const OpenUrlMessage = WebSocketMessage.extend({
 });
 
 export const LaunchExternalAppMessage = WebSocketMessage.extend({
-  type: z.enum(['launch-thecard', 'launch-diamond', 'launch-factory']),
+  type: z.enum(['launch-thecard', 'launch-diamond', 'launch-design', 'launch-factory']),
 });
 
 export const TtsSpeakMessage = WebSocketMessage.extend({

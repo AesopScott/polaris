@@ -377,7 +377,7 @@ export interface OpenUrlMessage extends WebSocketMessage {
 }
 
 export interface LaunchExternalAppMessage extends WebSocketMessage {
-  type: 'launch-thecard' | 'launch-diamond' | 'launch-factory';
+  type: 'launch-thecard' | 'launch-diamond' | 'launch-design' | 'launch-factory';
 }
 
 export interface TtsSpeakMessage extends WebSocketMessage {
