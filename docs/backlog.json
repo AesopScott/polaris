@@ -226,7 +226,7 @@
       "category": "feature",
       "priority": 2,
       "impact": "standard",
-      "status": "review-blocked",
+      "status": "cba-complete",
       "created_at": "2026-05-26",
       "completed_at": null,
       "dependencies": [],
