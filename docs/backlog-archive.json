@@ -1723,6 +1723,27 @@
       "proofUnits": [],
       "project_source": "Polaris",
       "promoted_via_pr": null
+    },
+    {
+      "number": 45,
+      "title": "Wire evaluatePolicy into tool execution",
+      "description": "Replace assertWritable + assertSafeCommand + detectInstallerExe call sites in toolBash, toolPowerShell, toolWrite, and toolEdit with evaluatePolicy. Consolidate the duplicated shell precheck sequence (assertSafeCommand + detectInstallerExe + detectShellWriteTargets + backupBeforeWrite + snapshotForShellEncodingCheck) that currently appears identically in both toolBash and toolPowerShell into a single shellPrecheck(command, workDir, sessionId, policy) helper. No behavior changes â€” enforcement must be identical to what existed before.",
+      "category": "security",
+      "priority": 92,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-26",
+      "dependencies": [
+        43,
+        44
+      ],
+      "branch": "task/45-wire-evaluatepolicy-into-tool-execution",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/45",
+      "plan": null,
+      "proofUnits": [],
+      "project_source": "Polaris",
+      "promoted_via_pr": null
     }
   ]
 }
