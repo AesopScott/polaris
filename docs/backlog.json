@@ -226,11 +226,11 @@
       "category": "feature",
       "priority": 2,
       "impact": "standard",
-      "status": "ready",
+      "status": "build-started",
       "created_at": "2026-05-26",
       "completed_at": null,
       "dependencies": [],
-      "branch": null,
+      "branch": "task/51-proactive-memory-injection",
       "pr_url": null,
       "objective": {
         "statement": "Inject a ranked, project-scoped, <=800-token memory block into chat-session system prompts at turn 1 only, failing soft so Firestore never blocks session start.",
