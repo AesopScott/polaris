@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.598",
+  "version": "1.0.599",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
@@ -13,7 +13,8 @@
     "postdist": "node scripts/prune-dist.js",
     "postdist:fast": "node scripts/prune-dist.js",
     "postdist:public": "node scripts/prune-dist.js",
-    "test:contracts": "vitest run test/contracts"
+    "test:contracts": "vitest run test/contracts",
+    "test:policy": "vitest run test/policy"
   },
   "build": {
     "appId": "com.scott.polaris",
