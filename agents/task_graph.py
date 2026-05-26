@@ -29,6 +29,21 @@ HITL_NODES: Set[str] = {"build", "review"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Idempotent guard — skip dispatch_agent when checkpoint shows work is done
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _already_done(state: Dict[str, Any], checkpoint_key: str) -> bool:
+    """Return True when checkpoint_data[checkpoint_key] is truthy.
+
+    Nodes use this to skip their dispatch_agent call on re-entry after a
+    process restart.  MemorySaver is ephemeral, so after a restart the graph
+    re-runs from the entry point; idempotent guards prevent re-firing
+    expensive /dispatch-agent calls for work that SQLite already recorded.
+    """
+    return bool(state.get("checkpoint_data", {}).get(checkpoint_key))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # dispatch_agent — send a prompt to a Polaris agent via /dispatch-agent
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -61,6 +76,9 @@ def dispatch_agent(task_number: int, prompt: str, agent: str = "sonnet", timeout
 
 @safe_node
 def plan_node(state: TaskState) -> Dict[str, Any]:
+    if _already_done(state, "plan_complete"):
+        return {"current_node": "plan", "status": "planned",
+                "checkpoint_data": state.get("checkpoint_data", {})}
     task_number = state["task_number"]
     response = dispatch_agent(task_number, f"/plan-task {task_number}", agent="sonnet")
     return {
@@ -76,6 +94,13 @@ def plan_node(state: TaskState) -> Dict[str, Any]:
 
 @safe_node
 def start_build_node(state: TaskState) -> Dict[str, Any]:
+    if _already_done(state, "branch_created"):
+        return {
+            "current_node": "start_build",
+            "status": "build-started",
+            "branch_name": state.get("branch_name") or f"task/{state['task_number']}-orchestration",
+            "checkpoint_data": state.get("checkpoint_data", {}),
+        }
     task_number = state["task_number"]
     response = dispatch_agent(task_number, f"/start-build {task_number}", agent="sonnet")
     return {
@@ -129,6 +154,19 @@ def finish_build_node(state: TaskState) -> Dict[str, Any]:
     if not ok:
         raise ValueError(f"Precondition failed for build-finished: {failures}")
 
+    # Idempotent: skip dispatch_agent if finish-build already ran (restart safety)
+    if _already_done(state, "pr_opened"):
+        clean_checkpoint = {
+            k: v for k, v in state.get("checkpoint_data", {}).items()
+            if k not in ("proof_gate_failed", "unverified_units")
+        }
+        return {
+            "current_node": "finish_build",
+            "status": "build-finished",
+            "pr_url": state.get("pr_url"),
+            "checkpoint_data": clean_checkpoint,
+        }
+
     task_number = state["task_number"]
     response = dispatch_agent(task_number, "/finish-build", agent="sonnet")
 
@@ -163,6 +201,13 @@ def review_node(state: TaskState) -> Dict[str, Any]:
 
 @safe_node
 def codex_review_node(state: TaskState) -> Dict[str, Any]:
+    if _already_done(state, "codex_reviewed"):
+        return {
+            "current_node": "codex_review",
+            "status": "cba-complete",
+            "review_evidence": state.get("review_evidence", {}),
+            "checkpoint_data": state.get("checkpoint_data", {}),
+        }
     ok, failures = validate_transition(state.get("status", ""), "cba-complete", state)
     if not ok:
         raise ValueError(f"Precondition failed for cba-complete: {failures}")
@@ -187,6 +232,9 @@ def stage_decision_node(state: TaskState) -> Dict[str, Any]:
 
 @safe_node
 def promote_stage_node(state: TaskState) -> Dict[str, Any]:
+    if _already_done(state, "promoted_to_stage"):
+        return {"current_node": "promote_stage", "status": "staged",
+                "checkpoint_data": state.get("checkpoint_data", {})}
     ok, failures = validate_transition(state.get("status", ""), "staged", state)
     if not ok:
         raise ValueError(f"Precondition failed for staged: {failures}")
@@ -205,6 +253,9 @@ def promote_stage_node(state: TaskState) -> Dict[str, Any]:
 
 @safe_node
 def promote_prod_node(state: TaskState) -> Dict[str, Any]:
+    if _already_done(state, "promoted_to_prod"):
+        return {"current_node": "promote_prod", "status": "production",
+                "checkpoint_data": state.get("checkpoint_data", {})}
     task_number = state["task_number"]
     response = dispatch_agent(task_number, "/promote-to-prod", agent="sonnet")
     return {
