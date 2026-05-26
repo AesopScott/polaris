@@ -5550,26 +5550,30 @@ function purgeStaleWorktrees() {
         if (path.normalize(blockPath).toLowerCase() !== wtNorm) continue;
         isRegistered = true;
         const brRef = (block.match(/^branch (.+)$/m) || [])[1] || '';
-        // Skip branch-named worktrees (task/*, wip/*, any named branch).
-        if (brRef) { isRegistered = false; break; }
+        // Skip branch-named worktrees (task/*, wip/*, any named branch) — never touch these.
+        if (brRef) continue;
         isDetached = block.includes('\ndetached');
         break;
       }
     } catch {
-      // git command failed — directory is an orphaned dir with no git registration.
+      // git command failed — directory has no git registration (orphaned dir).
       isRegistered = false;
       isDetached    = false;
     }
 
-    // Only remove registered detached worktrees or orphaned dirs (unregistered).
+    // Only remove registered detached worktrees, or unregistered dirs whose name matches
+    // the Polaris session-ID pattern (chat_<digits>) — never delete arbitrary directories.
+    const isPolarisSessionDir = /^chat_\d+$/.test(name);
     if (isRegistered && !isDetached) continue;
+    if (!isRegistered && !isPolarisSessionDir) continue;
 
     const ageDays = Math.floor(ageMs / 86400000);
 
     if (isRegistered && isDetached) {
       try {
         const repo = (mainWtPath && fs.existsSync(mainWtPath)) ? mainWtPath : wtPath;
-        execSync(`git worktree remove --force "${wtPath}"`, { cwd: repo, stdio: 'ignore', timeout: 10000 });
+        // Use array form to avoid shell metacharacter injection from directory names.
+        execFileSync('git', ['worktree', 'remove', '--force', wtPath], { cwd: repo, stdio: 'ignore', timeout: 10000 });
       } catch { /* rmSync below handles the directory regardless */ }
     }
 
