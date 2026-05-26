@@ -368,6 +368,20 @@
       ]
     },
     {
+      "number": 56,
+      "title": "Trim CLAUDE.md to invariant-only entries",
+      "description": "CLAUDE.md is currently overloaded with facts that should live in Firestore memories (tool behaviors, encoding rules, session correction history). Once proactive memory injection (#51) is live and proven, audit CLAUDE.md and migrate all non-invariant content into Firestore as high-importance memories. Invariant entries that stay: session startup routine, three-zone file rule, branch isolation policy, build/install commands. Everything else moves to memory. Target: CLAUDE.md shrinks from ~200 lines to ~20-30 invariant lines. Reduces startup token cost and lets memories drift-correct as behavior evolves.",
+      "category": "chore",
+      "priority": 20,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-25",
+      "completed_at": null,
+      "dependencies": [
+        51
+      ]
+    },
+    {
       "number": 57,
       "title": "Agent-session memory injection (gated on agentic flows live)",
       "category": "feature",
@@ -398,20 +412,6 @@
       "proofUnits": []
     },
     {
-      "number": 56,
-      "title": "Trim CLAUDE.md to invariant-only entries",
-      "description": "CLAUDE.md is currently overloaded with facts that should live in Firestore memories (tool behaviors, encoding rules, session correction history). Once proactive memory injection (#51) is live and proven, audit CLAUDE.md and migrate all non-invariant content into Firestore as high-importance memories. Invariant entries that stay: session startup routine, three-zone file rule, branch isolation policy, build/install commands. Everything else moves to memory. Target: CLAUDE.md shrinks from ~200 lines to ~20-30 invariant lines. Reduces startup token cost and lets memories drift-correct as behavior evolves.",
-      "category": "chore",
-      "priority": 20,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-25",
-      "completed_at": null,
-      "dependencies": [
-        51
-      ]
-    },
-    {
       "number": 59,
       "title": "Bi-temporal audit log schema for security tooling (design constraint)",
       "description": "Forward reference and design constraint for future Polaris security tools. Any security audit log system built on top of the memory/knowledge infrastructure must use bi-temporal structure: valid_time (when the fact was true in the real world) and transaction_time (when Polaris recorded it). This enables forensic past-state reconstruction: given an arbitrary past moment T, reconstruct exactly what the system knew and what was true, independently. Critical for answering Were we secure at T vs Did we think we were secure at T -- a meaningful distinction for CMMC, HIPAA, and SOC2 compliance. Compound condition detection: graph traversal over bi-temporal edges can find attack windows where multiple conditions overlapped (e.g. suspended account + live access edge = breach window during interval [T1, T2]). Schema sketch: { entityId, attribute, value, validFrom, validTo, txFrom, txTo }. Do not build this as a flat log -- the temporal indexing is load-bearing.",
@@ -425,6 +425,20 @@
         57,
         58
       ]
+    },
+    {
+      "number": 60,
+      "title": "Isolate backlog writes from the shared primary repo (concurrency hazard)",
+      "category": "Infrastructure",
+      "priority": 2,
+      "status": "backlog",
+      "dependencies": [],
+      "impact": "standard",
+      "branch": null,
+      "pr_url": null,
+      "description": "Multiple parallel sessions edit docs/backlog.json in the shared primary repo (C:\\Users\\scott\\Code\\Polaris) on main at the same time. During task #51 planning, an uncommitted backlog edit was swept into another session's commit (ccf9278) and the working tree briefly showed tasks from 3+ sessions at once (in-flight #56/#59). Fix: backlog reads/writes performed by skills (plan-task, start-build, finish-build, status transitions) should operate in an isolated worktree pinned to a freshly-fetched origin/main, mutate atomically, and push HEAD:main with rebase-on-reject — never edit the shared primary working tree directly. Prevents lost/misattributed backlog changes and task-number collisions.",
+      "plan": null,
+      "proofUnits": []
     }
   ]
 }
