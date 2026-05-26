@@ -6685,6 +6685,9 @@
       const sel = window.getSelection();
       if (sel && sel.toString().length > 0) return;
       enterResumeMode(s.id, null, true);
+      // Scroll terminal to bottom when user clicks a session card
+      const term = el.querySelector('[data-term]');
+      if (term) term.scrollTop = term.scrollHeight;
     });
 
     el.querySelector('.card-title').addEventListener('contextmenu', e => {

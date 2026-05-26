@@ -13,6 +13,103 @@
       "pr_url": null
     },
     {
+      "number": 34,
+      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
+      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "standard",
+      "status": "build-started",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [
+        33
+      ],
+      "branch": "task/34-langgraph-integration-poc-validation",
+      "pr_url": null,
+      "plan": "## Overview\n\nTask #33 delivered the full LangGraph node implementation and HITL wiring.\nTask #34 validates the POC: adds a defensive write-lock to backlog.json writes\nin server.js, adds idempotent checkpoint guards to automation nodes in\ntask_graph.py so restarts do not re-fire already-completed work, writes a\nsmoke-test suite, and documents POC findings.\n\n## Phases\n\n1. Write-lock — Add promise-chain serializer to /sync-state handler in server.js\n2. Idempotent guards — Add _already_done() guard to all 6 automation nodes\n3. Smoke tests — agents/test_poc_validation.py: concurrent lock test + restart survival\n4. POC findings — Obsidian task file ## POC Findings section",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Concurrent /sync-state requests do not corrupt backlog.json",
+          "expectedBehavior": "Three simultaneous POST /sync-state calls (different task numbers) all succeed and all three status changes appear in the resulting backlog.json.",
+          "proofType": "smoke-command",
+          "exactCommand": "node C:\\Users\\scott\\Code\\Polaris\\agents\\test_sync_lock.js",
+          "expectedInitialFailure": "File does not exist (test script not yet written).",
+          "expectedPassingEvidence": "Prints PASS: all 3 updates present; exit code 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "plan_node skips dispatch_agent when plan_complete is in checkpoint_data",
+          "expectedBehavior": "plan_node(state) with checkpoint_data.plan_complete=True returns status=planned without calling dispatch_agent (no HTTP call).",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python test_poc_validation.py --case idempotent-guard",
+          "expectedInitialFailure": "Test script not found, or plan_node calls dispatch_agent causing connection refused.",
+          "expectedPassingEvidence": "Prints PASS idempotent-guard; exit code 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Cold /advance after executor restart returns paused at build gate",
+          "expectedBehavior": "After executor restart (MemorySaver cleared), calling POST /advance for a task with SQLite state showing current_node=build returns {\"status\":\"paused\",\"current_node\":\"build\"} via idempotent guards re-reaching the gate.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python test_poc_validation.py --case restart-survival",
+          "expectedInitialFailure": "Test script not found or executor not running.",
+          "expectedPassingEvidence": "Prints PASS restart-survival; exit code 0.",
+          "waiverGuidance": "Manual verification acceptable: screenshot of /advance response after executor restart."
+        },
+        {
+          "number": 4,
+          "title": "Obsidian task file contains POC Findings section",
+          "expectedBehavior": "Task file exists at Polaris_Build/Tasks/Task-34-langgraph-integration-poc-validation.md and contains ## POC Findings heading.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const fs=require('fs'); const c=fs.readFileSync('G:\\\\\\\\My Drive\\\\\\\\Aesop Academy\\\\\\\\Obsidian\\\\\\\\Polaris_Build\\\\\\\\Tasks\\\\\\\\Task-34-langgraph-integration-poc-validation.md','utf8'); console.assert(c.includes('## POC Findings'),'Missing section'); console.log('PASS');\"",
+          "expectedInitialFailure": "File not found.",
+          "expectedPassingEvidence": "Prints PASS; exit code 0.",
+          "waiverGuidance": "N/A"
+        }
+      ],
+      "objective": {
+        "statement": "Harden the LangGraph POC by adding a backlog.json write-lock, making automation nodes idempotent on restart, validating SQLite-based state survives executor restart, and documenting findings to decide whether /lang can mature beyond POC.",
+        "successCriteria": [
+          "A promise-chain write-lock serializes concurrent /sync-state writes in server.js",
+          "All 6 automation nodes skip dispatch_agent when checkpoint_data shows they already completed",
+          "A cold /advance after executor restart returns paused at the build gate (not an error), proving SQLite-based recovery works with idempotent guards",
+          "Obsidian task file contains a ## POC Findings section documenting what works, known limits, and the maturity verdict"
+        ],
+        "nonGoals": [
+          "Full production run through promote_stage and promote_prod nodes",
+          "Persistent LangGraph checkpointer (SQLite or Redis) replacing MemorySaver",
+          "asyncio.to_thread for non-blocking dispatch_agent calls",
+          "UI controls for /lang orchestration (already shipped in task #33)"
+        ],
+        "stopConditions": [
+          "agents/task_executor.py missing (task #33 delivery not present)",
+          "agents/task_graph.py missing or not importable",
+          "Python langgraph package not installed in agents/ environment"
+        ],
+        "proofMap": [
+          {
+            "criterion": 1,
+            "proofUnit": 1
+          },
+          {
+            "criterion": 2,
+            "proofUnit": 2
+          },
+          {
+            "criterion": 3,
+            "proofUnit": 3
+          },
+          {
+            "criterion": 4,
+            "proofUnit": 4
+          }
+        ]
+      }
+    },
+    {
       "number": 28,
       "title": "Upgrade project memory into ranked retrieval",
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
@@ -23,6 +120,24 @@
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 46,
+      "title": "Policy unit test suite",
+      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "cba-complete",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-25",
+      "dependencies": [
+        43
+      ],
+      "branch": "main",
+      "pr_url": null,
+      "plan": null,
+      "proofUnits": []
     },
     {
       "number": 30,
@@ -49,66 +164,117 @@
       "dependencies": []
     },
     {
-      "number": 34,
-      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
-      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [33],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
       "number": 38,
       "title": "Wire runtime validation: use compiled contracts in server.js",
-      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic — validation only.",
+      "description": "Add tsc build step to package.json scripts so contracts compile to dist/contracts/. In server.js, replace hand-rolled backlog validation (VALID_BACKLOG_STATUSES, _validImpact, field checks) with compiled Zod validators. Add WebSocket receive-side validation so malformed messages are rejected with a structured error. No changes to business logic â€” validation only.",
       "category": "feature",
       "priority": 91,
       "impact": "standard",
-      "status": "planned",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": [37],
-      "branch": null,
+      "dependencies": [
+        37
+      ],
+      "branch": "task/38-wire-runtime-validation-use-compiled-con",
       "pr_url": null,
-      "plan": null,
-      "proofUnits": []
+      "plan": "See Obsidian Task-38-wire-runtime-validation-use-compiled-contracts.md for full plan.\n\n## Overview\n\nWire the compiled Zod contracts from task #37 into server.js. Three changes: (1) add dedicated tsc build step compiling src/contracts/ to compiled/contracts/, (2) replace VALID_BACKLOG_STATUSES Set and _validImpact() with BacklogStatus.safeParse() and ImpactEnum.safeParse(), (3) add WS_SCHEMA_REGISTRY + validation gate in handleMessage() rejecting known-type messages with missing required fields.\n\n## Phases\n\n### Phase A — Compilation Infrastructure\n1. Create tsconfig.contracts.json (rootDir: ./src, outDir: ./compiled, includes only src/contracts/**/*)\n2. Add ImpactEnum named export to src/contracts/backlog.ts\n3. Add build:contracts and prestart scripts to package.json\n4. Run npm run build:contracts — verify compiled/contracts/*.js files exist\n5. git add compiled/ to commit compiled output\n\n### Phase B — Backlog Validation Replacement\n1. Add require(./compiled/contracts/backlog) at top of server.js\n2. Replace _validImpact() body with ImpactEnum.safeParse()-backed check (same signature)\n3. Replace VALID_BACKLOG_STATUSES.has(newStatus) with BacklogStatus.safeParse(newStatus).success\n4. Delete VALID_BACKLOG_STATUSES const block\n\n### Phase C — WS Receive-Side Validation\n1. Add require(./compiled/contracts/ws-messages) at top of server.js\n2. Add WS_SCHEMA_REGISTRY Map (type string -> Zod schema) covering all ~75 client->server message types from AnyClientMessage\n3. In handleMessage(), after JSON.parse, add validation gate: unknown types pass through, known types with wrong fields return { type: error, code: INVALID_MSG, msgType, issues }\n\n### Phase D — Final Compile + Commit\n1. npm run build:contracts — final compile picks up ImpactEnum\n2. Bump package.json version (patch)\n3. git add + commit + push",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Contracts compile to compiled/ and exports are correct",
+          "expectedBehavior": "npm run build:contracts exits 0 and compiled/contracts/backlog.js exports BacklogStatus and ImpactEnum with correct options.",
+          "proofType": "smoke-command",
+          "exactCommand": "cd C:/Users/scott/Code/Polaris && npm run build:contracts && node -e \"const {BacklogStatus,ImpactEnum}=require(\"./compiled/contracts/backlog\"); console.log(BacklogStatus.options.length, ImpactEnum.options)\"",
+          "expectedInitialFailure": "Cannot find tsconfig.contracts.json or compiled/ directory does not exist.",
+          "expectedPassingEvidence": "Prints 20 [ minor, standard, major ] with exit 0."
+        },
+        {
+          "number": 2,
+          "title": "VALID_BACKLOG_STATUSES removed from server.js",
+          "expectedBehavior": "grep finds zero occurrences of VALID_BACKLOG_STATUSES in server.js.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c \"VALID_BACKLOG_STATUSES\" C:/Users/scott/Code/Polaris/server.js",
+          "expectedInitialFailure": "Returns 4 (current count).",
+          "expectedPassingEvidence": "Returns 0."
+        },
+        {
+          "number": 3,
+          "title": "WS receive-side validation rejects malformed resume message",
+          "expectedBehavior": "Sending { type: resume } (no sessionId) over WS returns { type: error, code: INVALID_MSG, msgType: resume }.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c \"INVALID_MSG\" C:/Users/scott/Code/Polaris/server.js",
+          "expectedInitialFailure": "Returns 0.",
+          "expectedPassingEvidence": "Returns 1 or more.",
+          "waiverGuidance": "Manual test via browser WS inspector: send {type:\"resume\"} with no sessionId, observe error response."
+        },
+        {
+          "number": 4,
+          "title": "WS_SCHEMA_REGISTRY defined in server.js",
+          "expectedBehavior": "WS_SCHEMA_REGISTRY Map is defined at module level covering all AnyClientMessage types.",
+          "proofType": "smoke-command",
+          "exactCommand": "grep -c \"WS_SCHEMA_REGISTRY\" C:/Users/scott/Code/Polaris/server.js",
+          "expectedInitialFailure": "Returns 0.",
+          "expectedPassingEvidence": "Returns 2 or more (const definition + .get() call)."
+        }
+      ],
+      "objective": {
+        "statement": "Replace all hand-rolled validation in server.js with compiled Zod validators from src/contracts/, and add WS receive-side schema enforcement so malformed client messages are rejected with a structured error before reaching dispatch handlers.",
+        "successCriteria": [
+          "npm run build:contracts compiles src/contracts/ to compiled/contracts/ and exits 0",
+          "VALID_BACKLOG_STATUSES const is deleted; BacklogStatus.safeParse() used instead",
+          "_validImpact() uses ImpactEnum.safeParse() instead of inline array comparison",
+          "WS_SCHEMA_REGISTRY covers all client->server message types from AnyClientMessage",
+          "handleMessage() validates known-type messages and returns { type: error, code: INVALID_MSG } for malformed ones",
+          "compiled/contracts/ is committed to git and present on fresh checkout"
+        ],
+        "nonGoals": [
+          "New test files (task #40)",
+          "Changes to tsconfig.json or dist/",
+          "Changes to src/runtime/ modules",
+          "Any business logic changes"
+        ],
+        "proofMap": {
+          "npm run build:contracts compiles src/contracts/ to compiled/contracts/ and exits 0": [
+            1
+          ],
+          "VALID_BACKLOG_STATUSES const is deleted; BacklogStatus.safeParse() used instead": [
+            2
+          ],
+          "_validImpact() uses ImpactEnum.safeParse() instead of inline array comparison": [
+            2
+          ],
+          "WS_SCHEMA_REGISTRY covers all client->server message types from AnyClientMessage": [
+            4
+          ],
+          "handleMessage() validates known-type messages and returns { type: error, code: INVALID_MSG } for malformed ones": [
+            3
+          ],
+          "compiled/contracts/ is committed to git and present on fresh checkout": [
+            1
+          ]
+        },
+        "stopConditions": [
+          "tsc version < 4.7",
+          "Zod version < 3.0 (safeParse API not available)"
+        ]
+      }
     },
     {
       "number": 39,
       "title": "Registry generation: generate docs/registries/ from schemas",
-      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script generate:registries. Run it to regenerate all current registries and verify output matches existing hand-written content.",
+      "description": "Write scripts/generate-registries.js that imports compiled contract modules from dist/contracts/ and generates docs/registries/websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md. Add npm script \"generate:registries\". Run it to regenerate all current registries and verify output matches existing hand-written content.",
       "category": "feature",
       "priority": 90,
       "impact": "standard",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": [37],
+      "dependencies": [
+        37
+      ],
       "branch": null,
       "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
-      "number": 46,
-      "title": "Policy unit test suite",
-      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server — evaluatePolicy must be importable in isolation.",
-      "category": "test",
-      "priority": 88,
-      "impact": "minor",
-      "status": "build-finished",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-25",
-      "dependencies": [43],
-      "branch": "main",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
       "plan": null,
       "proofUnits": []
     },
@@ -119,18 +285,18 @@
       "category": "chore",
       "priority": 60,
       "impact": "minor",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-24",
       "completed_at": null,
       "dependencies": [],
-      "branch": null,
+      "branch": "main",
       "pr_url": null,
       "plan": null,
       "proofUnits": []
     },
     {
       "number": 48,
-      "title": "Check out notes vs obsidian",
+      "title": "Check out notes.",
       "description": "Notes as a replacement or augmentation for Obsidian?",
       "category": "feature",
       "priority": 50,
@@ -139,90 +305,6 @@
       "created_at": "2026-05-25",
       "completed_at": null,
       "dependencies": []
-    },
-    {
-      "number": 49,
-      "title": "Memory importance scoring at write time",
-      "description": "Initial strength should reflect memory importance rather than always defaulting to 1.0. The Codex extraction prompt should score each memory 1-5 by type (decision=5, preference=4, feedback=4, pattern=3, fact=2 as defaults). Map score to initial strength in the 0.6-1.0 range so high-signal memories decay slower from birth. Patch addMemory() and addMemories() in lib/memory.js to accept an importance field and set initial strength accordingly. Update the Codex extraction prompt in extractSessionToKnowledge() to request and return importance scores alongside each memory.",
-      "category": "enhancement",
-      "priority": 10,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 50,
-      "title": "Memory consolidation synthesis — deduplication on write",
-      "description": "Before writing new memories from Codex extraction, compare each candidate against existing project memories using Jaccard similarity on tags plus substring overlap on content. Merge near-duplicates (similarity above 0.7) by reinforcing the existing memory rather than creating a new document. Prevents the collection from filling with restatements of the same facts across sessions. Fetch existing memories once per extraction batch, score all candidates against them, and split candidates into new writes vs reinforcements before committing.",
-      "category": "enhancement",
-      "priority": 10,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": [49]
-    },
-    {
-      "number": 51,
-      "title": "Proactive memory injection at session start",
-      "description": "At agent session launch, automatically search Firestore for the top-N memories most relevant to the project and task description, then prepend them as a structured context block in the system prompt. Unlike CLAUDE.md injection (static, grows bloated, sessions ignore stale rules), this is dynamic: ranked by BM25 plus strength plus recency, capped at roughly 800 tokens, and scoped per-project per-session. The agent receives context it did not know to ask for — closing the gap between what Polaris knows and what the agent starts with.",
-      "category": "feature",
-      "priority": 15,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": [49, 50]
-    },
-    {
-      "number": 52,
-      "title": "Memory editing and correction UI",
-      "description": "Provide a path for Scott to flag, edit, or manually archive a specific memory. Codex misextractions currently persist until natural decay (weeks). A Polaris panel listing memories by project with inline edit and archive controls closes the human feedback loop on extraction quality. The panel should show content, type, tags, strength, accessCount, and age. Editing a memory resets its strength to the importance-based initial value; archiving sets _archived: true immediately.",
-      "category": "feature",
-      "priority": 30,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": []
-    },
-    {
-      "number": 53,
-      "title": "Experience-to-skill distillation — higher-order memory consolidation synthesis",
-      "description": "A weekly Codex pass clusters episodic memories by semantic similarity, identifies repeated patterns across them, and writes a single consolidated higher-order memory in their place. For example, 20 individual observations about tool choices synthesize into one durable preference memory. Original episodic memories are archived after synthesis. Implements the PowerMem two-layer experience plus skill architecture. Should run as a routine session on a weekly cron, fire-and-forget, with results logged to the server log.",
-      "category": "feature",
-      "priority": 40,
-      "impact": "major",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": [50]
-    },
-    {
-      "number": 54,
-      "title": "Cross-project memory tier",
-      "description": "Add a global memory tier alongside project-scoped memories. Memories tagged with project: global are returned in searchMemories calls for any project. Supports facts that are true across all projects: code style preferences, tool preferences, personal working patterns, recurring feedback. Prevents duplication of the same preference memory in every project collection. Requires a Firestore query change to OR-filter on project == requested OR project == global.",
-      "category": "feature",
-      "priority": 50,
-      "impact": "standard",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": [50]
-    },
-    {
-      "number": 55,
-      "title": "Forgetting curve calibration by memory type",
-      "description": "Current decay constants (STABILITY_BASE=7 days, DECAY_THRESHOLD=0.1) are uniform across all memory types. Preferences and decisions should decay slower than facts and observations — a preference is more stable than an incidental observation. Once the collection has enough retrieval history, tune stability multipliers per type. Long-term: use retrieval outcome signals (did the session act on this memory?) to adjust decay rate per document individually.",
-      "category": "enhancement",
-      "priority": 60,
-      "impact": "minor",
-      "status": "backlog",
-      "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": [49, 53]
     }
   ]
 }

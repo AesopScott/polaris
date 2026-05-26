@@ -89,6 +89,7 @@ const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
 const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const WS_MISSED_PONG_LIMIT = 4;  // tolerate short UI/main-thread stalls before reconnecting
+const DEFAULT_WORKTREE_TTL_DAYS = 7; // purge detached session worktrees older than this many days
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
@@ -882,7 +883,7 @@ const BACKLOG_STATUS_TO_LAST_SKILL = {
 };
 
 function inferTaskState(session) {
-  const match = (session.name || '').match(/^Task #(\d+):/);
+  const match = (session.name || '').match(/^(?:Task #)?(\d+)[\s:]/);
   if (!match) return null;
   const taskNumber = parseInt(match[1], 10);
   const workDir = session.workDir;
@@ -3281,6 +3282,18 @@ const VALID_BACKLOG_STATUSES = new Set([
   'ready', 'in-progress', 'complete', 'pr-reviewed', 'cba-half-complete', 'smoke-tested'
 ]);
 
+// ─── backlog.json write serializer (task #34) ────────────────────────────────
+// Prevents concurrent /sync-state writes from interleaving as server.js grows
+// async paths during the src/runtime/ module migration (task #25). Node.js
+// serialises sync I/O in the event loop today, so this is defensive for future
+// async-refactored callers rather than a correctness fix for the current path.
+let _backlogWriteQueue = Promise.resolve();
+function withBacklogLock(fn) {
+  const next = _backlogWriteQueue.then(() => fn(), () => fn());
+  _backlogWriteQueue = next.then(() => {}, () => {});
+  return next;
+}
+
 function updateBacklogTaskStatus(scope, taskNumber, newStatus, extraFields = {}) {
   console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
   if (!VALID_BACKLOG_STATUSES.has(newStatus)) {
@@ -5482,6 +5495,93 @@ function removeSessionWorktree(sessionId) {
     execSync(`git worktree remove --force "${worktreePath}"`, { cwd: repo, stdio: 'ignore' });
   } catch {}
   try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {}
+}
+
+// Sweep WORKTREES_DIR for abandoned detached-HEAD worktrees older than DEFAULT_WORKTREE_TTL_DAYS.
+// Called once at startup and then on a daily interval. Skips any worktree whose path is held by
+// an open session (checked against the live sessions Map). Named-branch worktrees (task/*, wip/*)
+// are never touched — only detached-HEAD session temporaries are eligible.
+function purgeStaleWorktrees() {
+  if (!fs.existsSync(WORKTREES_DIR)) return;
+
+  const thresholdMs = DEFAULT_WORKTREE_TTL_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  // Collect worktree paths claimed by currently open sessions — never remove these.
+  const activeWtPaths = new Set();
+  for (const [, s] of sessions) {
+    if (s.worktreePath) activeWtPaths.add(path.normalize(s.worktreePath).toLowerCase());
+  }
+
+  let entries;
+  try { entries = fs.readdirSync(WORKTREES_DIR); } catch { return; }
+
+  for (const name of entries) {
+    const wtPath = path.join(WORKTREES_DIR, name);
+
+    // Never touch an active session's worktree.
+    if (activeWtPaths.has(path.normalize(wtPath).toLowerCase())) continue;
+
+    let stat;
+    try { stat = fs.statSync(wtPath); } catch { continue; }
+    if (!stat.isDirectory()) continue;
+
+    // Age gate — skip anything still within the TTL window.
+    const ageMs = now - stat.mtimeMs;
+    if (ageMs < thresholdMs) continue;
+
+    // Inspect git worktree registration.
+    let isRegistered = false;
+    let isDetached   = false;
+    let mainWtPath   = null;
+    try {
+      const raw = execSync('git worktree list --porcelain', {
+        cwd: wtPath, encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000,
+      });
+      const wtNorm = path.normalize(wtPath).toLowerCase();
+      const blocks = raw.split('\n\n').filter(Boolean);
+      // First block is always the main (non-linked) worktree.
+      const firstMatch = (blocks[0]?.match(/^worktree (.+)$/m) || []);
+      mainWtPath = firstMatch[1] || null;
+      for (const block of blocks) {
+        const blockPath = (block.match(/^worktree (.+)$/m) || [])[1] || '';
+        if (path.normalize(blockPath).toLowerCase() !== wtNorm) continue;
+        isRegistered = true;
+        const brRef = (block.match(/^branch (.+)$/m) || [])[1] || '';
+        // Skip branch-named worktrees (task/*, wip/*, any named branch) — never touch these.
+        if (brRef) continue;
+        isDetached = block.includes('\ndetached');
+        break;
+      }
+    } catch {
+      // git command failed — directory has no git registration (orphaned dir).
+      isRegistered = false;
+      isDetached    = false;
+    }
+
+    // Only remove registered detached worktrees, or unregistered dirs whose name matches
+    // the Polaris session-ID pattern (chat_<digits>) — never delete arbitrary directories.
+    const isPolarisSessionDir = /^chat_\d+$/.test(name);
+    if (isRegistered && !isDetached) continue;
+    if (!isRegistered && !isPolarisSessionDir) continue;
+
+    const ageDays = Math.floor(ageMs / 86400000);
+
+    if (isRegistered && isDetached) {
+      try {
+        const repo = (mainWtPath && fs.existsSync(mainWtPath)) ? mainWtPath : wtPath;
+        // Use array form to avoid shell metacharacter injection from directory names.
+        execFileSync('git', ['worktree', 'remove', '--force', wtPath], { cwd: repo, stdio: 'ignore', timeout: 10000 });
+      } catch { /* rmSync below handles the directory regardless */ }
+    }
+
+    try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch {}
+
+    const msg = `[worktree] purged stale session worktree: ${name} (${ageDays}d old)`;
+    console.log(msg);
+    broadcast({ type: 'debug-log', message: msg, isError: false });
+  }
 }
 
 // ── Orchestrator helpers ──────────────────────────────────────────────────────
@@ -8712,31 +8812,38 @@ const httpServer = http.createServer((req, res) => {
   }
 
   // POST /sync-state — receive canonical status update from LangGraph executor,
-  // write to backlog.json, then broadcast backlogs-data to refresh the UI.
+  // write to backlog.json (serialised via withBacklogLock), then broadcast
+  // backlogs-data to refresh the UI.
   if (req.method === 'POST' && req.url === '/sync-state') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
-      try {
-        const { task_number, status, current_node } = JSON.parse(body);
-        if (!task_number || !status || !current_node) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
-        }
-        updateBacklogTaskStatus('global', task_number, status, { current_node });
-        // Broadcast UI refresh
-        const { global: globalTasks, projects } = loadAllBacklogs();
-        const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
-        const archive = fs.existsSync(archivePath)
-          ? JSON.parse(fs.readFileSync(archivePath, 'utf8')).tasks || []
-          : [];
-        broadcast({ type: 'backlogs-data', global: globalTasks, projects, archive });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
+      let parsed;
+      try { parsed = JSON.parse(body); } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid JSON body' }));
       }
+      const { task_number, status, current_node } = parsed;
+      if (!task_number || !status || !current_node) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
+      }
+      withBacklogLock(() => updateBacklogTaskStatus('global', task_number, status, { current_node }))
+        .then(() => {
+          // Broadcast UI refresh after the locked write completes
+          const { global: globalTasks, projects } = loadAllBacklogs();
+          const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
+          const archive = fs.existsSync(archivePath)
+            ? JSON.parse(fs.readFileSync(archivePath, 'utf8')).tasks || []
+            : [];
+          broadcast({ type: 'backlogs-data', global: globalTasks, projects, archive });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        })
+        .catch(e => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        });
     });
     return;
   }
@@ -9237,7 +9344,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id   = `chat_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
+    const name = msg.taskNumber ? `${msg.taskNumber} ${(msg.taskTitle || 'Backlog Task').split(' ').slice(0, 5).join(' ')}` : generateSessionName(prompt);
     const config = readConfig();
     const chatTier = (tier || 'balanced').toLowerCase();
     // If overrideModel is provided (e.g. cross-check model), use it directly.
@@ -9332,7 +9439,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id = `codex_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
+    const name = msg.taskNumber ? `${msg.taskNumber} ${(msg.taskTitle || 'Backlog Task').split(' ').slice(0, 5).join(' ')}` : generateSessionName(prompt);
     const codexTier = (tier || 'balanced').toLowerCase();
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
@@ -9371,7 +9478,7 @@ async function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Video');
+    const name = msg.taskNumber ? `${msg.taskNumber} ${(msg.taskTitle || 'Backlog Task').split(' ').slice(0, 5).join(' ')}` : generateSessionName(prompt || 'Video');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
@@ -12451,6 +12558,7 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();
+  purgeStaleWorktrees(); // sweep orphaned session worktrees on startup
   // Ensure the 'polaris' MCP server is trusted by the Claude Code CLI
   try {
     const ccSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
@@ -12543,6 +12651,10 @@ setInterval(() => {
     }
   }
 }, STALL_CHECK_MS);
+
+// Daily sweep — purge stale session worktrees that survived past the TTL.
+const worktreePurgeTimer = setInterval(purgeStaleWorktrees, 24 * 60 * 60 * 1000);
+if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
 wss.on('connection', (ws, req) => {
   let queryClientId = null;
