@@ -43,6 +43,8 @@ Zod schemas for backlog task data model: status enum, task structure, proof unit
 
 **Key exports:**
 - `BacklogStatus` — enum of all valid status strings (backlog → production lifecycle + legacy values)
+- `ImpactEnum` — enum of valid impact values (`minor`, `standard`, `major`) *(added task #38 Phase A)*
+- `ImpactType` — inferred TypeScript type for `ImpactEnum` *(added task #38 Phase A)*
 - `ProofUnit` — task proof unit shape (number, title, proofType, exactCommand, expectedInitialFailure, expectedPassingEvidence)
 - `ObjectiveCriteria` — task objective shape (statement, successCriteria, nonGoals, proofMap, stopConditions)
 - `BacklogTask` — full task object schema (all optional except `number` and `title`)
@@ -55,11 +57,11 @@ Zod schemas for backlog task data model: status enum, task structure, proof unit
 
 **Consumers**
 - `test/contracts/backlog.test.ts:1` — Vitest contract tests; exercises all status enum values, ProofUnit required/optional fields, BacklogTask field validation
-- *(task #38 will add)* `server.js` — replaces hand-rolled `VALID_BACKLOG_STATUSES` set and `_validImpact` check
+- *(task #38 adding)* `server.js` — replaces hand-rolled `VALID_BACKLOG_STATUSES` set and `_validImpact` check with `BacklogStatus.safeParse()` and `ImpactEnum.safeParse()`
 
 **Note:** `src/runtime/backlog.ts:20` imports `type { ProofUnit }` from `./contracts` — that's `src/runtime/contracts.ts`, not this Zod module. The TypeScript interface and the Zod schema are currently maintained separately.
 
-**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer pending (task #38)
+**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer being wired (task #38)
 
 ---
 
@@ -83,11 +85,11 @@ Zod schemas for all 14 direct tool input shapes used in agent sessions.
 
 **Consumers**
 - `test/contracts/tools.test.ts:1` — Vitest contract tests; covers all 14 tool inputs, DirectToolName enum, ToolResult variants
-- *(task #38 will add)* `server.js` — runtime tool-call validation before execution
+- *(future task — not task #38)* `server.js` — runtime tool-call validation before execution
 
-**⚠ Shape drift risk:** `server.js:2069–2087` defines inline JSON-schema objects for the same 14 tools (used by the OpenRouter API). These inline schemas are maintained separately from the Zod schemas. If a tool's parameter changes, both must be updated. Task #38 should derive the inline schemas from the Zod definitions.
+**⚠ Shape drift risk:** `server.js:2069–2087` defines inline JSON-schema objects for the same 14 tools (used by the OpenRouter API). These inline schemas are maintained separately from the Zod schemas. If a tool's parameter changes, both must be updated. A future task should derive the inline schemas from the Zod definitions.
 
-**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer pending (task #38)
+**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer deferred (future task)
 
 ---
 
@@ -110,9 +112,9 @@ Zod schemas for MCP (Model Context Protocol) server configuration and tool envel
 
 **Consumers**
 - `test/contracts/mcp.test.ts:1` — Vitest contract tests; covers MCPServer, MCPToolEnvelope, MCPToolCall, MCPToolResult content union (text/image/resource), MCPServerConfig
-- *(task #38 will add)* `server.js` — runtime MCP envelope validation at `mcpGateway.ts`
+- *(future task — not task #38)* `server.js` — runtime MCP envelope validation at `mcpGateway.ts`
 
-**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer pending (task #38)
+**Status:** ⚠ orphan runtime producer — test consumer exists, runtime consumer deferred (future task)
 
 ---
 
@@ -134,17 +136,17 @@ Barrel export re-exporting all four contract modules. Single import point for co
 
 | Module | Test consumer | Runtime consumer | Status |
 |--------|--------------|-----------------|--------|
-| `src/contracts/ws-messages.ts` | `test/contracts/ws-messages.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
-| `src/contracts/backlog.ts` | `test/contracts/backlog.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
-| `src/contracts/tools.ts` | `test/contracts/tools.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
-| `src/contracts/mcp.ts` | `test/contracts/mcp.test.ts` ✓ | none (task #38) | ⚠ orphan runtime |
+| `src/contracts/ws-messages.ts` | `test/contracts/ws-messages.test.ts` ✓ | being wired (task #38) | ⚠ orphan runtime |
+| `src/contracts/backlog.ts` | `test/contracts/backlog.test.ts` ✓ | being wired (task #38) | ⚠ orphan runtime |
+| `src/contracts/tools.ts` | `test/contracts/tools.test.ts` ✓ | none (future task) | ⚠ orphan runtime |
+| `src/contracts/mcp.ts` | `test/contracts/mcp.test.ts` ✓ | none (future task) | ⚠ orphan runtime |
 | `src/contracts/index.ts` | none | none | ⚠ orphan producer |
 
-**All ⚠ findings above are intentional** — the contracts were introduced in task #37 as the foundation for tasks #38 (runtime wiring) and #40 (test suite). Task #40 adds test consumers; task #38 adds runtime consumers. Not a defect.
+**Task #38 scope (runtime wiring):** `backlog.ts` + `ws-messages.ts` only. `tools.ts` and `mcp.ts` runtime consumers are deferred to a future task.
 
-**Shape drift risks** (non-blocking, flag for task #38):
-- `AnyClientMessage` defined in both `src/contracts/ws-messages.ts` and `src/runtime/contracts.ts:611` — task #38 must consolidate
-- 14 inline tool JSON-schemas in `server.js:2069–2087` duplicate the Zod definitions — task #38 should derive from Zod
+**Shape drift risks** (non-blocking):
+- `AnyClientMessage` defined in both `src/contracts/ws-messages.ts` and `src/runtime/contracts.ts:611` — task #38 consolidates via `WS_SCHEMA_REGISTRY`
+- 14 inline tool JSON-schemas in `server.js:2069–2087` duplicate the Zod definitions — deferred to future task
 
 ---
 
@@ -168,5 +170,29 @@ Barrel export re-exporting all four contract modules. Single import point for co
 - `src/contracts/index.ts` barrel has no consumers — acceptable, task #38 will use it
 - `AnyClientMessage` maintained in two places — flag for task #38 consolidation
 - Inline tool JSON-schemas in server.js duplicate Zod schemas — flag for task #38
+
+**Status:** Audit complete
+
+---
+
+## Audit Trail — Pre-Implementation Verification
+
+**Last audit:** 2026-05-25T00:00:00Z (by /cross-boundary-audit for task #38)
+
+**Boundaries checked:** `src/contracts/*.ts` module exports → all consumers in `test/`, `src/runtime/`, `server.js`
+
+**Evidence recorded:**
+- 4 schema modules confirmed — ws-messages, backlog, tools, mcp
+- `ImpactEnum` + `ImpactType` pre-registered (task #38 Phase A will add to `src/contracts/backlog.ts`)
+- tools.ts and mcp.ts runtime consumer attribution corrected: NOT task #38 — deferred to future task
+- ws-messages.ts and backlog.ts runtime consumer attribution confirmed in scope for task #38
+- 2 orphan runtime producers corrected to "future task" (tools.ts, mcp.ts)
+- 2 orphan runtime producers updated to "being wired" (ws-messages.ts, backlog.ts)
+- New identifiers introduced by task #38: `ImpactEnum`, `ImpactType` (backlog.ts); `compiled/contracts/` (compiled output)
+- Registries match current code diff: yes (pre-implementation state)
+
+**Gaps identified:**
+- All `⚠` entries remain intentional — wiring in progress (task #38) or deferred (future task)
+- Scope misattribution for tools.ts/mcp.ts: corrected — these are NOT task #38 consumers
 
 **Status:** Audit complete

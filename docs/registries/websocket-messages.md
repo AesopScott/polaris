@@ -62,22 +62,42 @@ Liveness check / keep-alive.
 
 ---
 
-## Zod Schema Coverage (tasks #37, #40)
+### `error` (INVALID_MSG variant)
 
-All ~50 WebSocket message types that transit the Polaris WS boundary have corresponding Zod schemas in `src/contracts/ws-messages.ts`. Task #37 defined the schemas; task #40 added a Vitest test consumer that validates valid and invalid payloads for all major types. Runtime consumers (server.js receive-side validation) are pending task #38.
+Structured validation-failure response sent by server when a known client message type fails Zod schema validation. Added by task #38 Phase C via `WS_SCHEMA_REGISTRY` + gate in `handleMessage()`.
+
+**Payload:** `{ type: 'error', code: 'INVALID_MSG', msgType: string, issues: ZodIssue[], text: string }`
+
+**⚠ `text` field is required** — the existing `case 'error'` handler at `mockup.html:5886` renders `alert(\`Server error: ${msg.text}\`)`. Without `text`, the alert shows "Server error: undefined".
+
+**Producers (server sends)**
+- *(task #38 adding)* `server.js` — `handleMessage()` validation gate; fires when `WS_SCHEMA_REGISTRY.get(type)` returns a schema and `safeParse(msg).success === false`
+
+**Consumers (client handles)**
+- `resources/mockup.html:5886` — `case 'error'`: `alert(\`Server error: ${msg.text}\`)` + `pushDebugLog(...)`
+
+**Status:** ⚠ producer pending (task #38 Phase C) — consumer already exists at mockup.html:5886
+
+**Note:** Unknown message types (not in `WS_SCHEMA_REGISTRY`) pass through silently; only *known* types with *wrong* fields trigger this response.
+
+---
+
+## Zod Schema Coverage (tasks #37, #38, #40)
+
+All ~75 WebSocket message types that transit the Polaris WS boundary have corresponding Zod schemas in `src/contracts/ws-messages.ts`. Task #37 defined the schemas; task #40 added a Vitest test consumer; task #38 is wiring receive-side validation in `handleMessage()` via `WS_SCHEMA_REGISTRY`.
 
 **Schema location:** `src/contracts/ws-messages.ts`
 **Barrel export:** `src/contracts/index.ts`
 **Test consumer:** `test/contracts/ws-messages.test.ts` — 59 tests covering all major schemas and the `AnyClientMessage` discriminated union ✓
-**Runtime consumer:** none yet (task #38)
+**Runtime consumer:** *(task #38 adding)* `server.js` — `WS_SCHEMA_REGISTRY` map + validation gate in `handleMessage()`
 
 Notable exports:
 - `LaunchMessage`, `ResumeMessage`, `StopMessage`, `CloseSessionMessage` — session lifecycle
 - `CrossCheckDecisionMessage`, `InstallerPermissionDecisionMessage` — agent interaction
 - `AddBacklogTaskMessage`, `UpdateBacklogTaskMessage` — backlog mutations
-- `AnyClientMessage` — discriminated union over all ~50 types (replaces `AnyClientMessage` interface in `src/runtime/contracts.ts` when task #38 wires it)
+- `AnyClientMessage` — discriminated union over all ~75 types; `WS_SCHEMA_REGISTRY` is derived from it
 
-**⚠ Divergence risk:** `AnyClientMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Currently maintained separately. Task #38 should derive the runtime union from the Zod discriminated union. See also `docs/registries/zod-contracts.md` for the full contract module registry.
+**⚠ Divergence risk (task #38 consolidating):** `AnyClientMessage` union type also exists in `src/runtime/contracts.ts:611` as a TypeScript interface union. Task #38 derives the `WS_SCHEMA_REGISTRY` from the Zod discriminated union, making the TypeScript interface union redundant. See also `docs/registries/zod-contracts.md` for the full contract module registry.
 
 ---
 
@@ -166,6 +186,27 @@ Server response after proxying to executor `/signal`.
 ---
 
 ## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-25T00:00:00Z (by /cross-boundary-audit for task #38)
+
+**Task audited:** #38 — Wire runtime validation: use compiled contracts in server.js
+
+**Boundaries checked:** WebSocket `type` message types; new `error` INVALID_MSG shape; `WS_SCHEMA_REGISTRY` coverage
+
+**Evidence recorded:**
+- 0 new WS message types added to the schema yet (pre-implementation audit)
+- New shape variant registered: `{ type: 'error', code: 'INVALID_MSG', msgType, issues, text }` — producer pending (task #38 Phase C), consumer exists at `mockup.html:5886`
+- `text` field requirement confirmed: `mockup.html:5886` reads `msg.text` in the `case 'error'` handler
+- Zod Schema Coverage section updated: task #38 adding `WS_SCHEMA_REGISTRY` runtime consumer
+- `AnyClientMessage` divergence risk updated: task #38 consolidates via `WS_SCHEMA_REGISTRY`
+- Registries match current code diff: yes (pre-implementation state)
+
+**Gaps identified:**
+- `error` (INVALID_MSG) producer pending task #38 Phase C ⚠ — intentional, pre-registered
+
+**Status:** Audit complete
+
+---
 
 **Last audit:** 2026-05-24T00:00:00Z (by /cross-boundary-audit for task #40)
 

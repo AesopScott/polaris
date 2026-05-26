@@ -1,9 +1,11 @@
-﻿{
+{
   "name": "polaris",
   "version": "1.0.611",
-  "description": "Polaris â€” Claude Code Command Center",
+  "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
+    "build:contracts": "tsc -p tsconfig.contracts.json",
+    "prestart": "npm run build:contracts",
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist:fast": "electron-builder --config.compression=store --config.asar=false",
@@ -14,7 +16,8 @@
     "postdist:fast": "node scripts/prune-dist.js",
     "postdist:public": "node scripts/prune-dist.js",
     "test:contracts": "vitest run test/contracts",
-    "test:policy": "vitest run test/policy"
+    "test:policy": "vitest run test/policy",
+    "test:memory": "vitest run test/memory"
   },
   "build": {
     "appId": "com.scott.polaris",
@@ -73,4 +76,3 @@
     "vitest": "^4.1.7"
   }
 }
-
