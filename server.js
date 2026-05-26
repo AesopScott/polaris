@@ -10876,11 +10876,38 @@ async function handleMessage(ws, raw) {
     const DESIGN_URL = 'http://127.0.0.1:62683/';
     const DESIGN_DIR = path.join(process.env.USERPROFILE || 'C:\\Users\\scott', 'Code', 'open-design');
     const DESIGN_CMD = path.join(DESIGN_DIR, 'node_modules', '.bin', 'tools-dev.CMD');
+    const DESIGN_READY_TIMEOUT_MS = 90000; // cold Next.js compile can take ~30-40s before the web port binds
+    const DESIGN_POLL_INTERVAL_MS = 1500;
+    const openDesignBrowser = () => {
+      exec(`start "" "${DESIGN_URL}"`);
+      sendTo(ws, { type: 'design-status', running: true, url: DESIGN_URL });
+    };
+    // Poll the web URL until it answers (<500) or the deadline passes, then open the browser.
+    // Replaces the old blind 8s open, which fired long before a cold start finished binding the port.
+    const pollDesignReady = (deadline) => {
+      const probe = http.get(DESIGN_URL, (res) => {
+        res.resume();
+        if (res.statusCode < 500) {
+          openDesignBrowser();
+        } else if (Date.now() < deadline) {
+          setTimeout(() => pollDesignReady(deadline), DESIGN_POLL_INTERVAL_MS);
+        } else {
+          sendTo(ws, { type: 'design-status', running: false, launching: false, error: `Open Design returned HTTP ${res.statusCode} and never became ready` });
+        }
+      });
+      probe.on('error', () => {
+        if (Date.now() < deadline) {
+          setTimeout(() => pollDesignReady(deadline), DESIGN_POLL_INTERVAL_MS);
+        } else {
+          sendTo(ws, { type: 'design-status', running: false, launching: false, error: `Open Design did not become ready within ${Math.round(DESIGN_READY_TIMEOUT_MS / 1000)}s` });
+        }
+      });
+      probe.setTimeout(2000, () => probe.destroy());
+    };
     const req = http.get(DESIGN_URL, (res) => {
       res.resume();
       if (res.statusCode < 500) {
-        exec(`start "" "${DESIGN_URL}"`);
-        sendTo(ws, { type: 'design-status', running: true, url: DESIGN_URL });
+        openDesignBrowser();
       } else {
         sendTo(ws, { type: 'design-status', running: false, error: `Open Design returned HTTP ${res.statusCode}` });
       }
@@ -10902,7 +10929,7 @@ async function handleMessage(ws, raw) {
         });
         child.unref();
         sendTo(ws, { type: 'design-status', running: false, launching: true, url: DESIGN_URL });
-        setTimeout(() => exec(`start "" "${DESIGN_URL}"`), 8000);
+        setTimeout(() => pollDesignReady(Date.now() + DESIGN_READY_TIMEOUT_MS), DESIGN_POLL_INTERVAL_MS);
       } catch (e) {
         sendTo(ws, { type: 'design-status', running: false, launching: false, error: e.message });
       }
