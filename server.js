@@ -49,6 +49,7 @@ const {
 } = require('./lib/capabilityPolicy');
 const { BacklogStatus, ImpactEnum } = require('./compiled/contracts/backlog');
 const wsSchemas = require('./compiled/contracts/ws-messages');
+const { z } = require('zod');
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const APPDATA      = process.env.APPDATA || os.homedir();
@@ -9313,16 +9314,24 @@ function drainPendingTurns(sessionId) {
 // new schemas are added to src/contracts/ws-messages.ts.
 // Schemas with z.enum type fields (LaunchMessage, TestApiKeyMessage,
 // LaunchExternalAppMessage) register each enum value separately.
+// Uses public Zod API (instanceof + .value / .options) — no _def internals.
 const WS_SCHEMA_REGISTRY = (() => {
   const registry = new Map();
+  const register = (key, schema) => {
+    if (registry.has(key)) {
+      throw new Error(
+        `WS_SCHEMA_REGISTRY: duplicate type "${key}" — two schemas claim the same type string. Fix src/contracts/ws-messages.ts.`
+      );
+    }
+    registry.set(key, schema);
+  };
   for (const schema of wsSchemas.AnyClientMessage.options) {
     const typeField = schema.shape.type;
-    const def = typeField._def;
-    if (def.typeName === 'ZodLiteral') {
-      registry.set(def.value, schema);
-    } else if (def.typeName === 'ZodEnum') {
-      for (const v of def.values) {
-        registry.set(v, schema);
+    if (typeField instanceof z.ZodLiteral) {
+      register(typeField.value, schema);
+    } else if (typeField instanceof z.ZodEnum) {
+      for (const v of typeField.options) {
+        register(v, schema);
       }
     }
   }
