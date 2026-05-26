@@ -884,7 +884,7 @@ const BACKLOG_STATUS_TO_LAST_SKILL = {
 };
 
 function inferTaskState(session) {
-  const match = (session.name || '').match(/^Task #(\d+):/);
+  const match = (session.name || '').match(/^(?:Task #)?(\d+)[\s:]/);
   if (!match) return null;
   const taskNumber = parseInt(match[1], 10);
   const workDir = session.workDir;
@@ -3282,6 +3282,18 @@ const VALID_BACKLOG_STATUSES = new Set([
   // Legacy/deprecated statuses (still allowed for backward compatibility)
   'ready', 'in-progress', 'complete', 'pr-reviewed', 'cba-half-complete', 'smoke-tested'
 ]);
+
+// ─── backlog.json write serializer (task #34) ────────────────────────────────
+// Prevents concurrent /sync-state writes from interleaving as server.js grows
+// async paths during the src/runtime/ module migration (task #25). Node.js
+// serialises sync I/O in the event loop today, so this is defensive for future
+// async-refactored callers rather than a correctness fix for the current path.
+let _backlogWriteQueue = Promise.resolve();
+function withBacklogLock(fn) {
+  const next = _backlogWriteQueue.then(() => fn(), () => fn());
+  _backlogWriteQueue = next.then(() => {}, () => {});
+  return next;
+}
 
 function updateBacklogTaskStatus(scope, taskNumber, newStatus, extraFields = {}) {
   console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
@@ -8797,31 +8809,38 @@ const httpServer = http.createServer((req, res) => {
   }
 
   // POST /sync-state — receive canonical status update from LangGraph executor,
-  // write to backlog.json, then broadcast backlogs-data to refresh the UI.
+  // write to backlog.json (serialised via withBacklogLock), then broadcast
+  // backlogs-data to refresh the UI.
   if (req.method === 'POST' && req.url === '/sync-state') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
-      try {
-        const { task_number, status, current_node } = JSON.parse(body);
-        if (!task_number || !status || !current_node) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
-        }
-        updateBacklogTaskStatus('global', task_number, status, { current_node });
-        // Broadcast UI refresh
-        const { global: globalTasks, projects } = loadAllBacklogs();
-        const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
-        const archive = fs.existsSync(archivePath)
-          ? JSON.parse(fs.readFileSync(archivePath, 'utf8')).tasks || []
-          : [];
-        broadcast({ type: 'backlogs-data', global: globalTasks, projects, archive });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
+      let parsed;
+      try { parsed = JSON.parse(body); } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid JSON body' }));
       }
+      const { task_number, status, current_node } = parsed;
+      if (!task_number || !status || !current_node) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'task_number, status, and current_node are required' }));
+      }
+      withBacklogLock(() => updateBacklogTaskStatus('global', task_number, status, { current_node }))
+        .then(() => {
+          // Broadcast UI refresh after the locked write completes
+          const { global: globalTasks, projects } = loadAllBacklogs();
+          const archivePath = path.join(DOCS_DIR, 'backlog-archive.json');
+          const archive = fs.existsSync(archivePath)
+            ? JSON.parse(fs.readFileSync(archivePath, 'utf8')).tasks || []
+            : [];
+          broadcast({ type: 'backlogs-data', global: globalTasks, projects, archive });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        })
+        .catch(e => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        });
     });
     return;
   }
@@ -9322,7 +9341,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id   = `chat_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
+    const name = msg.taskNumber ? `${msg.taskNumber} ${(msg.taskTitle || 'Backlog Task').split(' ').slice(0, 5).join(' ')}` : generateSessionName(prompt);
     const config = readConfig();
     const chatTier = (tier || 'balanced').toLowerCase();
     // If overrideModel is provided (e.g. cross-check model), use it directly.
@@ -9417,7 +9436,7 @@ async function handleMessage(ws, raw) {
 
     addToHistory(prompt);
     const id = `codex_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt);
+    const name = msg.taskNumber ? `${msg.taskNumber} ${(msg.taskTitle || 'Backlog Task').split(' ').slice(0, 5).join(' ')}` : generateSessionName(prompt);
     const codexTier = (tier || 'balanced').toLowerCase();
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
@@ -9456,7 +9475,7 @@ async function handleMessage(ws, raw) {
     }
 
     const id   = sessionId || `s_${Date.now()}`;
-    const name = msg.taskNumber ? `Task #${msg.taskNumber}: ${msg.taskTitle || 'Backlog Task'}` : generateSessionName(prompt || 'Video');
+    const name = msg.taskNumber ? `${msg.taskNumber} ${(msg.taskTitle || 'Backlog Task').split(' ').slice(0, 5).join(' ')}` : generateSessionName(prompt || 'Video');
     const routineTag = msg.routineTag || null;
     const tier = msg.tier || null;
     const launchImages = Array.isArray(msg.images) ? msg.images.filter(i => i && typeof i.dataUrl === 'string') : [];
