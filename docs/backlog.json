@@ -285,7 +285,7 @@
       "category": "chore",
       "priority": 60,
       "impact": "minor",
-      "status": "build-finished",
+      "status": "pr-reviewed",
       "created_at": "2026-05-24",
       "completed_at": null,
       "dependencies": [],
