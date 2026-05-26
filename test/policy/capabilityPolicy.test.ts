@@ -7,10 +7,15 @@
  * Coverage:
  *   - One test per COMMAND_CLASS_REGISTRY entry (6 entries) — each blocked at
  *     standard trust level when present in blockedCommandClasses.
- *   - Write boundary check: path outside allowedRoots is denied.
+ *   - Write boundary: path outside allowedRoots denied for write and edit actions.
  *   - Extended write mode: Obsidian path in allowedRoots is allowed.
- *   - Installer gate: blocks when installerAllowed=false.
- *   - Installer gate: allows when installerAllowed=true.
+ *   - Fail-closed: unrecognized writeMode values are denied.
+ *   - Missing filePath: denied with clear reason.
+ *   - Shell write boundary: uses allowedRoots (same list as write/edit), not workDir.
+ *   - Installer gate: blocked when installerAllowed=false, allowed when true.
+ *   - buildDefaultPolicy: produces correct allowedRoots structure.
+ *   - Known non-matches: git push --force-with-lease is not blocked (documents
+ *     the intentional registry boundary).
  *
  * Note: Paths use Windows format (C:\...) because Polaris is a Windows-only app.
  */
@@ -22,7 +27,9 @@ import { describe, it, expect } from 'vitest';
 const {
   _evaluatePolicyCore,
   DEFAULT_BLOCKED_CLASSES,
+  KNOWN_WRITE_MODES,
   COMMAND_CLASS_REGISTRY,
+  buildDefaultPolicy,
 } = require('../../lib/capabilityPolicy');
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -52,12 +59,12 @@ const EXTENDED_POLICY = {
 describe('COMMAND_CLASS_REGISTRY — each class is blocked at standard trust level', () => {
   // Each tuple: [className, representative triggering command, action]
   const cases: [string, string, string][] = [
-    ['GIT_FORCE_PUSH',   'git push -f origin main',    'bash'],
-    ['GIT_RESET_HARD',   'git reset --hard HEAD~1',    'bash'],
-    ['GIT_CLEAN',        'git clean -fd .',             'bash'],
-    ['DRIVE_FORMAT',     'format C:',                   'bash'],
-    ['RM_RECURSIVE_ROOT', 'rm -rf /',                   'bash'],
-    ['RD_FULL_DRIVE',    'rd /s /q C:\\',               'powershell'],
+    ['GIT_FORCE_PUSH',    'git push -f origin main',    'bash'],
+    ['GIT_RESET_HARD',    'git reset --hard HEAD~1',    'bash'],
+    ['GIT_CLEAN',         'git clean -fd .',             'bash'],
+    ['DRIVE_FORMAT',      'format C:',                   'bash'],
+    ['RM_RECURSIVE_ROOT', 'rm -rf /',                    'bash'],
+    ['RD_FULL_DRIVE',     'rd /s /q C:\\',               'powershell'],
   ];
 
   it.each(cases)('%s: blocked when in blockedCommandClasses', (className, command, action) => {
@@ -80,6 +87,18 @@ describe('COMMAND_CLASS_REGISTRY — each class is blocked at standard trust lev
       expect(COMMAND_CLASS_REGISTRY.has(name)).toBe(true);
     }
   });
+
+  it('git push --force-with-lease IS blocked (--force\\b matches at the hyphen boundary)', () => {
+    // \b fires between 'e' and '-' (non-word char), so --force-with-lease is caught
+    // by the GIT_FORCE_PUSH detector. Force-with-lease is still a force push.
+    const result = _evaluatePolicyCore(
+      'bash',
+      { command: 'git push --force-with-lease origin main', sessionId: 'test-session' },
+      STANDARD_POLICY,
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/Shell command blocked/);
+  });
 });
 
 // ── Write boundary ────────────────────────────────────────────────────────────
@@ -95,6 +114,17 @@ describe('write boundary check', () => {
     expect(result.allowed).toBe(false);
     expect(result.reason).toMatch(/outside allowed roots/);
     expect(result.auditEvent.allowed).toBe(false);
+  });
+
+  it('blocks an edit to a path outside allowedRoots (edit uses same boundary as write)', () => {
+    const result = _evaluatePolicyCore(
+      'edit',
+      { filePath: 'C:\\Users\\scott\\Desktop\\evil.txt', sessionId: 'test-session' },
+      STANDARD_POLICY,
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/outside allowed roots/);
   });
 
   it('allows a write to a path inside allowedRoots', () => {
@@ -130,12 +160,87 @@ describe('write boundary check', () => {
     expect(result.allowed).toBe(false);
     expect(result.reason).toMatch(/read-only/);
   });
+
+  it('missing filePath is denied with a clear reason', () => {
+    const result = _evaluatePolicyCore(
+      'write',
+      { sessionId: 'test-session' }, // no filePath
+      STANDARD_POLICY,
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/no file path/);
+  });
+
+  it('unrecognized writeMode fails closed (deny-by-default)', () => {
+    const badPolicy = { ...STANDARD_POLICY, writeMode: 'super-extended' };
+    const result = _evaluatePolicyCore(
+      'write',
+      { filePath: `${WORK_DIR}\\src\\index.ts`, sessionId: 'test-session' },
+      badPolicy,
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/unrecognized writeMode/);
+  });
+
+  it('KNOWN_WRITE_MODES contains exactly the three expected values', () => {
+    expect([...KNOWN_WRITE_MODES as string[]].sort()).toEqual(
+      ['extended', 'project-only', 'read-only'],
+    );
+  });
+});
+
+// ── Shell write boundary ──────────────────────────────────────────────────────
+
+describe('shell write boundary (uses allowedRoots, consistent with write/edit)', () => {
+  it('blocks a shell rm targeting a path outside allowedRoots', () => {
+    // rm is in SHELL_WRITE_VERBS; path is an absolute Windows path outside WORK_DIR
+    const result = _evaluatePolicyCore(
+      'bash',
+      { command: 'rm C:\\OtherProject\\secret.txt', sessionId: 'test-session' },
+      STANDARD_POLICY,
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/outside allowed roots/);
+  });
+
+  it('allows a shell rm targeting a path inside allowedRoots', () => {
+    const result = _evaluatePolicyCore(
+      'bash',
+      { command: `rm ${WORK_DIR}\\dist\\old-build.js`, sessionId: 'test-session' },
+      STANDARD_POLICY,
+    );
+
+    expect(result.allowed).toBe(true);
+  });
+
+  it('extended policy allows shell write to a space-free Obsidian path', () => {
+    // NOTE: The shell path extractor stops at whitespace, so paths with spaces
+    // (e.g. "G:\My Drive\...") are not fully extracted and would be falsely blocked.
+    // This is a known limitation documented in capabilityPolicy.js. Use a space-free
+    // vault path in production shell commands, or route writes through the Write tool.
+    const OBSIDIAN_NOSPACE = 'G:\\Obsidian';
+    const extendedNoSpace = {
+      ...STANDARD_POLICY,
+      allowedRoots: [WORK_DIR, OBSIDIAN_NOSPACE],
+      writeMode: 'extended',
+    };
+    const result = _evaluatePolicyCore(
+      'bash',
+      { command: `copy output.md ${OBSIDIAN_NOSPACE}\\Polaris_Build\\note.md`, sessionId: 'test-session' },
+      extendedNoSpace,
+    );
+
+    expect(result.allowed).toBe(true);
+  });
 });
 
 // ── Installer gate ────────────────────────────────────────────────────────────
 
 describe('installer gate', () => {
-  // detectInstallerExe's regex stops at whitespace, so the path must be space-free.
+  // detectInstallerExe's regex stops at whitespace, so path must be space-free.
   // C:\Work\Polaris\dist\installer.exe matches the /dist/*.exe detection rule.
   const INSTALLER_CMD = `${WORK_DIR}\\dist\\installer.exe`;
 
@@ -163,5 +268,61 @@ describe('installer gate', () => {
     // auditEvent.action must be rewritten to 'installer' for the broadcast gate
     expect(result.auditEvent.action).toBe('installer');
     expect(result.auditEvent.commandSnippet).toContain('.exe');
+  });
+});
+
+// ── buildDefaultPolicy ────────────────────────────────────────────────────────
+
+describe('buildDefaultPolicy', () => {
+  it('session with workDir produces extended policy with workDir in allowedRoots', () => {
+    const policy = buildDefaultPolicy(
+      { workDir: WORK_DIR },
+      { obsidianVaultPath: OBSIDIAN_DIR },
+    );
+
+    expect(policy.writeMode).toBe('extended');
+    expect(policy.trustLevel).toBe('standard');
+    expect(policy.installerAllowed).toBe(false);
+    expect(policy.allowedRoots).toContain(WORK_DIR);
+    expect(policy.allowedRoots).toContain(OBSIDIAN_DIR);
+    expect(policy.blockedCommandClasses).toEqual(DEFAULT_BLOCKED_CLASSES);
+  });
+
+  it('session without workDir produces read-only policy with empty allowedRoots', () => {
+    const policy = buildDefaultPolicy({}, {});
+
+    expect(policy.writeMode).toBe('read-only');
+    expect(policy.trustLevel).toBe('restricted');
+    expect(policy.allowedRoots).toHaveLength(0);
+  });
+
+  it('buildDefaultPolicy output passes _evaluatePolicyCore write check for workDir path', () => {
+    const policy = buildDefaultPolicy(
+      { workDir: WORK_DIR },
+      { obsidianVaultPath: OBSIDIAN_DIR },
+    );
+
+    const result = _evaluatePolicyCore(
+      'write',
+      { filePath: `${WORK_DIR}\\src\\index.ts`, sessionId: 'test-session' },
+      policy,
+    );
+
+    expect(result.allowed).toBe(true);
+  });
+
+  it('buildDefaultPolicy output blocks write outside allowedRoots', () => {
+    const policy = buildDefaultPolicy(
+      { workDir: WORK_DIR },
+      { obsidianVaultPath: OBSIDIAN_DIR },
+    );
+
+    const result = _evaluatePolicyCore(
+      'write',
+      { filePath: 'C:\\Windows\\System32\\evil.dll', sessionId: 'test-session' },
+      policy,
+    );
+
+    expect(result.allowed).toBe(false);
   });
 });

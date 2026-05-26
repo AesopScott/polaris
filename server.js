@@ -43,7 +43,6 @@ const memory   = require('./lib/memory');
 const {
   DEFAULT_BLOCKED_CLASSES,
   COMMAND_CLASS_REGISTRY,
-  SHELL_WRITE_VERBS,
   detectInstallerExe,
   buildDefaultPolicy,
   _evaluatePolicyCore,
