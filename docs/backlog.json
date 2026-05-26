@@ -279,22 +279,6 @@
       "proofUnits": []
     },
     {
-      "number": 47,
-      "title": "Auto-purge stale session worktrees",
-      "description": "Polaris creates a git worktree under %TEMP%\\polaris-wt\\ for every chat session but never cleans them up. Over time these accumulate (60+ directories observed). Add a startup sweep (and optionally a periodic timer) that removes worktrees older than 7 days: (1) list all registered worktrees via git worktree list --porcelain, (2) skip the main worktree and any branch-named worktrees (task/* or wip/*), (3) for detached-HEAD worktrees whose directory mtime is older than the threshold, run git worktree remove --force, (4) log each removal to the existing Polaris health/log channel. Threshold should be a constant (DEFAULT_WORKTREE_TTL_DAYS = 7) near the top of server.js. The sweep must never remove a worktree whose session is still open (check against active sessionStore entries by matching the worktree path).",
-      "category": "chore",
-      "priority": 60,
-      "impact": "minor",
-      "status": "pr-reviewed",
-      "created_at": "2026-05-24",
-      "completed_at": null,
-      "dependencies": [],
-      "branch": "main",
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
-    },
-    {
       "number": 48,
       "title": "Check out notes.",
       "description": "Notes as a replacement or augmentation for Obsidian?",
