@@ -3613,58 +3613,6 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) 
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
-// assertWritable — enforces two rules before any write:
-//   1. file_path must be inside workDir (hard boundary)
-//   2. file must not be locked in the global locks.json
-function assertWritable(file_path, workDir) {
-  if (!workDir) return; // no workDir (e.g. chat sessions) — skip enforcement
-
-  const resolved = path.resolve(file_path);
-  const wd       = path.resolve(workDir);
-
-  // Rule 1: path must be within workDir OR the Obsidian vault (agents write session notes/changelog there)
-  const isInsideDir = (p, dir) => {
-    const d = path.resolve(dir);
-    return p.toLowerCase() === d.toLowerCase() || p.toLowerCase().startsWith(d.toLowerCase() + path.sep);
-  };
-  const cfg = readConfig();
-  const downloadsDir = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Downloads') : null;
-  const inWorkDir   = isInsideDir(resolved, wd);
-  const inObsidian  = cfg.obsidianVaultPath && isInsideDir(resolved, cfg.obsidianVaultPath);
-  const inDownloads = downloadsDir && isInsideDir(resolved, downloadsDir);
-  if (!inWorkDir && !inObsidian && !inDownloads) {
-    const allowed = [
-      `  workDir: ${workDir}`,
-      cfg.obsidianVaultPath ? `  Obsidian vault: ${cfg.obsidianVaultPath}` : null,
-      downloadsDir ? `  Downloads: ${downloadsDir}` : null,
-    ].filter(Boolean).join('\n');
-    throw new Error(
-      `Write blocked: "${path.basename(file_path)}" is outside any allowed path.\n` +
-      `Allowed:\n${allowed}\n` +
-      `Attempted: ${resolved}`
-    );
-  }
-
-  // Rule 2: check global locks.json
-  try {
-    const locks = readJSON(LOCKS_PATH, {});
-    const rel   = path.relative(wd, resolved);
-    const isLocked = (
-      (locks[resolved]                && locks[resolved].sessions?.length)                ||
-      (locks[rel]                     && locks[rel].sessions?.length)                     ||
-      (locks[path.basename(resolved)] && locks[path.basename(resolved)].sessions?.length)
-    );
-    if (isLocked) {
-      throw new Error(
-        `Write blocked: "${path.basename(file_path)}" is locked. Unlock it in Polaris before writing.`
-      );
-    }
-  } catch (e) {
-    if (e.message.startsWith('Write blocked:')) throw e;
-    // locks.json missing or unreadable — treat as no locks
-  }
-}
-
 // assertLocks — only the lock-file check extracted from assertWritable.
 // Called after evaluatePolicy handles the path-boundary check so enforcement
 // is identical: path boundary via policy, lock gate via this helper.
@@ -4910,11 +4858,13 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
  *   backupBeforeWrite + snapshotForShellEncodingCheck
  *
  * Order:
- *   1. Installer detection — interactive user gate first so blocked non-installer
- *      commands (command-class violations) throw before the installer dialog opens.
- *      If user denies installer, throws immediately (no evaluatePolicy call).
- *   2. evaluatePolicy — replaces assertSafeCommand; handles command-class registry,
- *      write-boundary, and installer audit event for user-approved installs.
+ *   1. Installer detection — interactive user gate. Runs before evaluatePolicy so that
+ *      if the user approves, evaluatePolicy receives installerAllowed: true and emits an
+ *      'installer' audit event rather than a block event. If user denies, throws
+ *      immediately. Note: command-class violations are caught in step 2, not here; in
+ *      practice no COMMAND_CLASS_REGISTRY entry matches an installer path.
+ *   2. evaluatePolicy — handles command-class registry, write-boundary, and installer
+ *      audit event for user-approved installs.
  *   3. Write-target detection, backups, and encoding snapshots.
  *
  * @param {string} command
