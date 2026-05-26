@@ -19,14 +19,14 @@
       "category": "feature",
       "priority": 90,
       "impact": "standard",
-      "status": "build-started",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         33
       ],
       "branch": "task/34-langgraph-integration-poc-validation",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/47",
       "plan": "## Overview\n\nTask #33 delivered the full LangGraph node implementation and HITL wiring.\nTask #34 validates the POC: adds a defensive write-lock to backlog.json writes\nin server.js, adds idempotent checkpoint guards to automation nodes in\ntask_graph.py so restarts do not re-fire already-completed work, writes a\nsmoke-test suite, and documents POC findings.\n\n## Phases\n\n1. Write-lock — Add promise-chain serializer to /sync-state handler in server.js\n2. Idempotent guards — Add _already_done() guard to all 6 automation nodes\n3. Smoke tests — agents/test_poc_validation.py: concurrent lock test + restart survival\n4. POC findings — Obsidian task file ## POC Findings section",
       "proofUnits": [
         {
