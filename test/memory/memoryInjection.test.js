@@ -114,6 +114,15 @@ describe('formatMemoryBlock', () => {
     const result = formatMemoryBlock(memories);
     expect(result).toContain('Always use node -e with utf8 encoding on Windows');
   });
+
+  it('truncates (not drops) a single entry that alone exceeds the cap', () => {
+    const hugeContent = 'x'.repeat(5000);
+    const result = formatMemoryBlock([{ type: 'fact', strength: 0.8, content: hugeContent }], { cap: 100 });
+    expect(result).not.toBe('');
+    expect(result).toMatch(/^\[POLARIS MEMORY\]/);
+    expect(result).toMatch(/\[END MEMORY\]$/);
+    expect(result.length).toBeLessThanOrEqual(100);
+  });
 });
 
 // ─── PU3: buildMemoryInjectionBlock DI + orchestration ───────────────────────
@@ -176,5 +185,12 @@ describe('buildMemoryInjectionBlock', () => {
     const result = await buildMemoryInjectionBlock(fakeMemory, null, 'test');
     expect(result).toBe('');
     expect(fakeMemory.searchMemories).not.toHaveBeenCalled();
+  });
+
+  it('returns empty string when searchMemories hangs past the timeout', async () => {
+    // Never-resolving promise simulates a hanging Firestore read.
+    fakeMemory.searchMemories.mockImplementation(() => new Promise(() => {}));
+    const result = await buildMemoryInjectionBlock(fakeMemory, 'Polaris', 'test query here', { searchTimeoutMs: 10 });
+    expect(result).toBe('');
   });
 });
