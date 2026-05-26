@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.597",
+  "version": "1.0.598",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
@@ -56,6 +56,7 @@
     ]
   },
   "dependencies": {
+    "firebase-admin": "^13.10.0",
     "mammoth": "^1.12.0",
     "monaco-editor": "^0.55.1",
     "pdf-parse": "^1.1.1",

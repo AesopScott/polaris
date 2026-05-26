@@ -39,6 +39,7 @@ const dns = require('dns').promises;
 const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+const memory   = require('./lib/memory');
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const APPDATA      = process.env.APPDATA || os.homedir();
@@ -1814,7 +1815,9 @@ async function scaffoldGitRepo(project) {
   }
 }
 
-// Extract signal-rich session content and distill into numbered Obsidian knowledge files
+// Extract signal-rich session content and distill into:
+//   1. Firestore (polaris_memories) — via Codex as independent extractor
+//   2. Obsidian knowledge files    — structured project data (architecture, build plan, changelog)
 async function extractSessionToKnowledge(sessionId) {
   const s = sessions.get(sessionId);
   if (!s || !s.workDir) return;
@@ -1823,7 +1826,12 @@ async function extractSessionToKnowledge(sessionId) {
     p => p.workDir && p.workDir.toLowerCase() === s.workDir.toLowerCase()
   );
   if (!matched || !matched.obsidianDir) return;
-  if (!config.deepSeekApiKey) return;
+
+  const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
+  if (!apiKey) {
+    console.warn('[extract-knowledge] no openRouterApiKey — extraction skipped');
+    return;
+  }
 
   const ACTION_PREFIXES = ['⚙ Write(', '⚙ Edit(', '⚙ Bash(', '⚙ PowerShell('];
   const signalLines = (s.lines || []).filter(l => {
@@ -1841,63 +1849,97 @@ async function extractSessionToKnowledge(sessionId) {
   const today = new Date().toISOString().slice(0, 10);
   const projectName = matched.name || s.projectName || 'Project';
 
-  const extractionPrompt = `You are a knowledge extractor for a software project called "${projectName}".
+  // ─── Codex extraction (single call, returns both memories + structured data) ──
+  const extractionPrompt = `You are an independent knowledge extractor reviewing a session transcript for the project "${projectName}". Your job is to identify what is worth preserving long-term.
 
-Analyze this session transcript and extract structured updates. Return ONLY valid JSON with these keys (omit a key or set to null if nothing relevant was found):
+Return ONLY valid JSON with these keys (omit a key or set to null if nothing relevant was found):
 
 {
+  "memories": [
+    {
+      "content": "concise fact, decision, preference, or pattern worth remembering (1-2 sentences)",
+      "type": "decision | preference | pattern | feedback | fact",
+      "tags": ["keyword1", "keyword2"]
+    }
+  ],
   "architecture": "new architectural decisions, patterns, or component changes (string or null)",
   "buildPlan": "roadmap changes, shipped features, open questions, or deferred items (string or null)",
   "integrations": "new external APIs, tools, services, or configuration changes (string or null)",
   "changelog": {
-    "version": "version number from a package.json bump, like 1.0.114 — only if an explicit version bump was detected in this session, else null",
+    "version": "version number from a package.json bump — only if an explicit bump was detected, else null",
     "date": "${today}",
-    "description": "Multi-sentence markdown-formatted entry following the project's changelog convention. MUST start with one of these bold-prefixed type tags: **feat:** (new feature), **fix:** (bug fix), **refactor:**, **chore:**, **docs:**, **perf:**, **test:**, **ci:**. Follow the prefix with a detailed description of what landed AND why — root cause if it's a fix, scope if it's a feature. Use backticks around filenames (mockup.html, server.js), function names (runDirectAgent), identifiers, and code-level references. 2-6 sentences typical. Match the depth and tone of existing entries in 4-Changelog.md, e.g.: '**fix:** Critical parser bug — every cell in the eval re-run was failing instantly with HTTP 400 because the queue parser only stripped lines starting with #, not inline trailing comments...'"
+    "description": "Multi-sentence markdown changelog entry. MUST start with **feat:**, **fix:**, **refactor:**, **chore:**, **docs:**, **perf:**, **test:**, or **ci:**. Describe what landed AND why. Use backticks around filenames and function names. 2-6 sentences."
   }
 }
+
+Rules for memories[]:
+- Only include facts that would still be useful in a future session with no context
+- Prefer decisions, constraints, preferences, and non-obvious patterns
+- Skip ephemeral details (what file was edited, step-by-step actions taken)
+- Maximum 8 memories per session
 
 Session transcript:
 ${transcript}`;
 
   let extracted;
   try {
-    const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.deepSeekApiKey}`
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://polaris.app',
+        'X-Title': 'Polaris'
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'openai/gpt-4.1-mini',
         messages: [{ role: 'user', content: extractionPrompt }],
         temperature: 0.2,
-        max_tokens: 1000
+        max_tokens: 1500
       })
     });
     const data = await resp.json();
-    if (!resp.ok) {
-      const errMsg = data?.error?.message || data?.message || `HTTP ${resp.status}`;
-      throw new Error(errMsg);
-    }
+    if (!resp.ok) throw new Error(data?.error?.message || `HTTP ${resp.status}`);
     const raw = (data.choices?.[0]?.message?.content || '').trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.warn('[extract-knowledge] no JSON in DeepSeek response');
-      broadcast({ type: 'line', sessionId, text: '[Obsidian Rite] DeepSeek returned no usable response — session notes not saved.', role: 'error' });
+      console.warn('[extract-knowledge] no JSON in Codex response');
+      broadcast({ type: 'line', sessionId, text: '[Obsidian Rite] Codex returned no usable response — session notes not saved.', role: 'error' });
       return;
     }
     const _raw = JSON.parse(jsonMatch[0]);
     const _sf = v => (v == null) ? null : typeof v === 'string' ? v : JSON.stringify(v);
-    extracted = { ..._raw, architecture: _sf(_raw.architecture), buildPlan: _sf(_raw.buildPlan), integrations: _sf(_raw.integrations) };
+    extracted = {
+      ..._raw,
+      memories:     Array.isArray(_raw.memories) ? _raw.memories : [],
+      architecture: _sf(_raw.architecture),
+      buildPlan:    _sf(_raw.buildPlan),
+      integrations: _sf(_raw.integrations)
+    };
   } catch (e) {
-    console.error('[extract-knowledge] DeepSeek call failed:', e.message);
-    broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] DeepSeek call failed: ${e.message}`, role: 'error' });
+    console.error('[extract-knowledge] Codex call failed:', e.message);
+    broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] Codex extraction failed: ${e.message}`, role: 'error' });
     return;
   }
 
+  // ─── Write memories to Firestore ──────────────────────────────────────────────
+  if (extracted.memories.length > 0 && memory.isReady()) {
+    const toWrite = extracted.memories.map(m => ({
+      project:     projectName,
+      content:     m.content,
+      type:        m.type || 'fact',
+      tags:        m.tags || [],
+      sessionId,
+      sessionType: s.type || 'chat',
+      source:      'codex'
+    }));
+    const ids = await memory.addMemories(toWrite);
+    console.log(`[extract-knowledge] ${ids.length} memories → Firestore`);
+  }
+
+  // ─── Write structured data to Obsidian (unchanged) ────────────────────────────
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath) return;
-  // obsidianDir may be absolute or relative to vault
   const obsDir = path.isAbsolute(matched.obsidianDir)
     ? matched.obsidianDir
     : path.join(vaultPath, matched.obsidianDir);
@@ -1913,10 +1955,6 @@ ${transcript}`;
   appendBlock('3-Build-Plan.md', extracted.buildPlan);
   appendBlock('7-Integrations.md', extracted.integrations);
 
-  // Changelog: insert table row after the header separator line.
-  // Backwards-compatible: prefers extracted.changelog.description (the new
-  // markdown-formatted style with **type:** prefix and multi-sentence
-  // detail), falls back to .headline if an older extraction sent that.
   if (extracted.changelog?.version) {
     const clPath = path.join(obsDir, '4-Changelog.md');
     try {
@@ -1925,7 +1963,6 @@ ${transcript}`;
       if (dividerMatch) {
         const insertAt = clContent.indexOf(dividerMatch[0]) + dividerMatch[0].length;
         const text = extracted.changelog.description || extracted.changelog.headline || '';
-        // Strip pipe characters that would break the markdown table.
         const safe = String(text).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
         const row = `| ${extracted.changelog.version} | ${extracted.changelog.date} | ${safe} |\n`;
         clContent = clContent.slice(0, insertAt) + row + clContent.slice(insertAt);
@@ -1935,7 +1972,7 @@ ${transcript}`;
     } catch (_e) { /* skip */ }
   }
 
-  console.log(`[extract-knowledge] ${sessionId} -> ${projectName} knowledge updated`);
+  console.log(`[extract-knowledge] ${sessionId} -> ${projectName} (Firestore + Obsidian)`);
   broadcast({ type: 'line', sessionId, text: `[Obsidian Rite] Session notes written to ${projectName} knowledge base.`, role: 'system' });
 }
 
@@ -2697,17 +2734,46 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
-function toolQueryMemory({ filename } = {}, sessionId) {
+async function toolQueryMemory({ filename, query } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (session && (!session.projectMemory || Object.keys(session.projectMemory).length === 0)) {
     try { buildProjectKnowledgeBlock(readConfig(), session); } catch {}
   }
   const mem = session?.projectMemory;
-  if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
+
+  // Specific file request → go straight to Obsidian
   if (filename) {
+    if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
     const key = Object.keys(mem).find(k => k.toLowerCase().includes(filename.toLowerCase()));
     return key ? `=== ${key} ===\n${mem[key]}` : `File not found in project memory: ${filename}`;
   }
+
+  // General query → Firestore (ranked) with Obsidian fallback
+  if (memory.isReady()) {
+    try {
+      const config = readConfig();
+      const matched = (config.projects || []).find(
+        p => p.workDir && p.workDir.toLowerCase() === (session?.workDir || '').toLowerCase()
+      );
+      const projectName = matched?.name || session?.projectName || 'default';
+      const results = await memory.searchMemories(projectName, query || '', 5);
+
+      if (results.length > 0) {
+        // Reinforce each accessed memory (fire-and-forget)
+        for (const r of results) {
+          if (r.id) memory.reinforceMemory(r.id).catch(() => {});
+        }
+        return results
+          .map((r, i) => `[${i + 1}] ${r.content}\n    type: ${r.type} | tags: ${(r.tags || []).join(', ')}`)
+          .join('\n\n');
+      }
+    } catch (e) {
+      console.warn('[QueryMemory] Firestore search failed:', e.message);
+    }
+  }
+
+  // Fallback: Obsidian files
+  if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
@@ -5874,7 +5940,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'WebSearch':  return await toolWebSearch(input);
     case 'AskUserQuestion': return await toolAskUserQuestion(input, sessionId);
     case 'TodoWrite':  return toolTodoWrite(input, sessionId);
-    case 'QueryMemory': return toolQueryMemory(input, sessionId);
+    case 'QueryMemory': return await toolQueryMemory(input, sessionId);
     case 'SetProject':  return toolSetProject(input, sessionId);
     case 'SetStatus':   return toolSetStatus(input, sessionId);
     case 'Skill':       return toolSkill(input, sessionId);
