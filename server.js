@@ -41,6 +41,7 @@ const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 const memory   = require('./lib/memory');
+const memInj   = require('./lib/memoryInjection');
 const {
   DEFAULT_BLOCKED_CLASSES,
   COMMAND_CLASS_REGISTRY,
@@ -6669,6 +6670,12 @@ async function spawnMaxChat(sessionId, prompt, config) {
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
     hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
+    // Inject top project memories at turn 1 so the model starts context-aware.
+    // Fire-and-forget: errors inside buildMemoryInjectionBlock are swallowed.
+    if (session.projectName) {
+      const memBlock = await memInj.buildMemoryInjectionBlock(memory, session.projectName, prompt);
+      if (memBlock) hiddenSystemPrompt += '\n\n' + memBlock;
+    }
     fullPrompt = history || prompt;
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
