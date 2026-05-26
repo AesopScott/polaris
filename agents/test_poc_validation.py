@@ -2,7 +2,7 @@
 test_poc_validation.py — Task #34 POC validation smoke tests.
 
 Cases:
-  --case idempotent-guard   PU2: plan_node skips dispatch_agent when plan_complete set
+  --case idempotent-guard   PU2: all 6 guarded nodes skip dispatch_agent when checkpoint key set
   --case restart-survival   PU3: cold /advance after executor restart returns paused at build gate
 
 Usage:
@@ -17,6 +17,7 @@ import json
 import sys
 import urllib.request
 import urllib.error
+from typing import Optional
 from unittest.mock import patch
 
 EXECUTOR_PORT = 4001
@@ -28,11 +29,12 @@ TEST_TASK = 9901   # synthetic task number; must not exist in backlog.json
 # ─────────────────────────────────────────────────────────────────────────────
 
 def case_idempotent_guard() -> bool:
-    """Verify plan_node, start_build_node, codex_review_node, promote_stage_node,
-    and promote_prod_node all skip dispatch_agent when their checkpoint key is set.
+    """Verify all 6 guarded nodes skip dispatch_agent when their checkpoint key is set:
+    plan_node, start_build_node, finish_build_node, codex_review_node,
+    promote_stage_node, promote_prod_node.
     """
     from task_graph import (
-        plan_node, start_build_node,
+        plan_node, start_build_node, finish_build_node,
         codex_review_node, promote_stage_node, promote_prod_node,
     )
 
@@ -77,6 +79,20 @@ def case_idempotent_guard() -> bool:
         failures.append(f"start_build_node: expected 'build-started', got '{result.get('status')}'")
     else:
         print("  OK start_build_node: skipped dispatch_agent [OK]")
+
+    # --- finish_build_node ---
+    called.clear()
+    with patch("task_graph.dispatch_agent", side_effect=lambda *a, **kw: called.append(a) or "MOCK"):
+        # Guard fires at top of function (before proof gate), so proof_units/results irrelevant
+        state = _base_state(pr_opened=True)
+        state["status"] = "build-started"
+        result = finish_build_node(state)
+    if called:
+        failures.append("finish_build_node: dispatch_agent called despite pr_opened=True")
+    elif result.get("status") != "build-finished":
+        failures.append(f"finish_build_node: expected 'build-finished', got '{result.get('status')}'")
+    else:
+        print("  OK finish_build_node: skipped dispatch_agent [OK]")
 
     # --- codex_review_node ---
     called.clear()
@@ -129,7 +145,7 @@ def case_idempotent_guard() -> bool:
 # Case: restart-survival (PU3)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _post(path: str, body: dict | None = None, method: str = "POST") -> dict:
+def _post(path: str, body: Optional[dict] = None, method: str = "POST") -> dict:
     data = json.dumps(body or {}).encode() if body is not None else None
     url = f"http://127.0.0.1:{EXECUTOR_PORT}{path}"
     req = urllib.request.Request(
@@ -148,25 +164,27 @@ def _get(path: str) -> dict:
 
 
 def case_restart_survival() -> bool:
-    """Validate that a task paused at the build gate survives executor restart.
+    """Automated pre-check for PU3 restart-survival (requires live executor on port 4001).
 
-    Strategy: inject a task row directly into the executor's SQLite DB via the
-    /state endpoint (which initialises it), then simulate a cold advance by
-    deleting the MemorySaver checkpoint from inside the executor process.
+    This case verifies that task #{TEST_TASK} reaches and PAUSES at the build gate
+    after a first /advance call.  That paused state is the precondition for the
+    manual restart procedure below.
 
-    Since we cannot actually restart the executor from a test script, we
-    instead verify the *mechanism*: that a task with SQLite state showing
-    current_node='build' and checkpoint_data having plan_complete+branch_created
-    returns "paused at build" when /advance is called with a fresh MemorySaver
-    (simulated by providing state that triggers both idempotent guards and then
-    reaches the build interrupt).
+    PASS requires: status == "paused" AND current_node == "build".
+    Any other outcome (precondition_failed, ok, error) is a FAIL — do not mask
+    setup errors as passes.
 
-    This test validates the executor is reachable and the advance endpoint works.
-    For a true restart test, the manual procedure is:
-      1. POST /advance task_number=9901 → paused at build
-      2. Kill the executor
-      3. Restart the executor
-      4. POST /advance task_number=9901 → should still return paused at build
+    Prerequisites:
+      - Task executor running: cd agents && python task_executor.py
+      - Task #{TEST_TASK} must exist in backlog.json in 'planned' or 'build-started' status.
+        Use a real task number if 9901 does not exist.
+
+    For the full restart test, after this case passes run the manual procedure:
+      1. Confirm task is paused at build gate (this case shows paused)
+      2. Kill the executor (Ctrl+C or kill process)
+      3. Restart: cd agents && python task_executor.py
+      4. POST /advance task_number={TEST_TASK}
+      5. Expected: {{"status": "paused", "current_node": "build"}}
     """
     print("  Checking executor health...")
     try:
@@ -193,15 +211,16 @@ def case_restart_survival() -> bool:
     if status == "paused" and node == "build":
         print("  OK: task paused at build gate after first advance [OK]")
     elif status == "precondition_failed":
-        print(f"  NOTE: precondition_failed — task may have wrong starting status: {r}")
-        print("  This is expected for tasks not in a proper planned/build-started state.")
-        print("  Restart-survival test requires a real task in the backlog.")
-        return True  # Accept this — the mechanism is correct
+        print(f"  FAIL: precondition_failed — task #{TEST_TASK} is not in a runnable state: {r}")
+        print(f"  Ensure task #{TEST_TASK} exists in backlog.json with status 'planned' or")
+        print("  'build-started', then retry.")
+        return False
     elif status == "ok":
-        print(f"  NOTE: graph completed (task may have reached end): {r}")
-        return True
+        print(f"  FAIL: graph completed without pausing at build gate — task #{TEST_TASK}")
+        print(f"  may have reached a terminal state. Check backlog.json status: {r}")
+        return False
     else:
-        print(f"  FAIL: unexpected advance result: {r}")
+        print(f"  FAIL: unexpected /advance result: {r}")
         return False
 
     # Verify state endpoint shows build gate
@@ -218,15 +237,15 @@ def case_restart_survival() -> bool:
         print(f"  NOTE: current_node={state.get('current_node')} (may vary by task state)")
 
     print()
-    print("  MANUAL RESTART PROCEDURE (to fully validate PU3):")
-    print("  1. Confirm task is paused at build gate (above shows paused)")
+    print("  MANUAL RESTART PROCEDURE (next step to fully validate PU3):")
+    print("  1. Task is paused at build gate (confirmed above)")
     print("  2. Kill the executor (Ctrl+C or kill process)")
     print(f"  3. Restart: cd agents && python task_executor.py")
     print(f"  4. POST /advance task_number={TEST_TASK}")
     print("  5. Expected: {\"status\": \"paused\", \"current_node\": \"build\"}")
-    print("  6. This works because: plan_node and start_build_node have idempotent guards")
-    print("     that skip dispatch_agent when plan_complete/branch_created are in SQLite state,")
-    print("     so the graph replays past them instantly and re-suspends at build_node.")
+    print("  6. Mechanism: plan_node and start_build_node have idempotent guards")
+    print("     (checkpoint_data[plan_complete/branch_created] in SQLite) so the graph")
+    print("     replays past them instantly on cold start and re-suspends at build_node.")
 
     return True
 

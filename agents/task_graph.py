@@ -98,6 +98,9 @@ def start_build_node(state: TaskState) -> Dict[str, Any]:
         return {
             "current_node": "start_build",
             "status": "build-started",
+            # SQLite should have persisted branch_name from the original run.
+            # The -orchestration fallback is a POC placeholder; it will not match
+            # the real task branch if state is missing. TODO: raise instead when empty.
             "branch_name": state.get("branch_name") or f"task/{state['task_number']}-orchestration",
             "checkpoint_data": state.get("checkpoint_data", {}),
         }

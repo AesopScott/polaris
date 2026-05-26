@@ -102,6 +102,11 @@ function post(payload) {
 }
 
 async function runIntegration() {
+  if (!process.env.POLARIS_ALLOW_DESTRUCTIVE_SYNC_TEST) {
+    console.error('[test_sync_lock] ERROR: integration mode overwrites live backlog.json task statuses.');
+    console.error('  Set POLARIS_ALLOW_DESTRUCTIVE_SYNC_TEST=1 to proceed, or use --unit instead.');
+    process.exit(1);
+  }
   console.log(`[test_sync_lock] mode=integration — ${WRITES.length} concurrent POSTs to localhost:${SERVER_PORT}/sync-state`);
 
   const results = await Promise.allSettled(WRITES.map(w => post(w)));
