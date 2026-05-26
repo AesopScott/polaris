@@ -10998,7 +10998,7 @@ This is your current workflow status across all branches. Review the tasks and P
     const aesop = (projectsList || []).find(p => p.name === 'Aesop');
     const wDir  = aesop ? (aesop.workDir || '') : '';
     wsSend({
-      type: 'launch',
+      type: 'launch-chat',
       prompt: '/aesop-course-builder',
       displayPrompt: 'Aesop Course Development Tool',
       workDir: wDir,
