@@ -898,8 +898,9 @@ function _evaluatePolicyCore(action, context, policy) {
 
     let isAllowed = false;
     for (const root of policy.allowedRoots) {
-      const resolvedRoot = path.resolve(root);
-      if (filePath.startsWith(resolvedRoot)) {
+      const rr = path.resolve(root).toLowerCase();
+      const fp = filePath.toLowerCase();
+      if (fp === rr || fp.startsWith(rr + path.sep)) {
         isAllowed = true;
         break;
       }
@@ -915,11 +916,12 @@ function _evaluatePolicyCore(action, context, policy) {
 
   if (action === 'bash' || action === 'powershell') {
     const command = context.command || '';
+    const flat    = command.replace(/\r?\n/g, ' ');  // normalise newlines once; used for both checks below
     auditEvent.commandSnippet = command.slice(0, 120);
 
-    // Command class registry check
+    // Command class registry check — use newline-flattened `flat` to match assertSafeCommand behaviour
     for (const entry of COMMAND_CLASS_REGISTRY.values()) {
-      if (entry.detect(command)) {
+      if (entry.detect(flat)) {
         if (policy.blockedCommandClasses && policy.blockedCommandClasses.includes(entry.name)) {
           const reason = `Shell command blocked: ${entry.reason}`;
           auditEvent.allowed = false;
@@ -930,7 +932,6 @@ function _evaluatePolicyCore(action, context, policy) {
     }
 
     // Write boundary check for shell commands
-    const flat = command.replace(/\r?\n/g, ' ');
     if (SHELL_WRITE_VERBS.test(flat)) {
       const absPathRe = /[a-zA-Z]:[\\\/][^\s'">,;|&)>]*/g;
       const wd = context.workDir ? path.resolve(context.workDir).toLowerCase() : null;
@@ -5118,8 +5119,12 @@ function detectInstallerExe(command) {
  * @returns {Promise<{ writeTargets: string[], snapshots: Map, priorContents: Map }>}
  */
 async function shellPrecheck(command, workDir, sessionId, policy, action) {
-  // Step 1: Interactive installer gate (must precede evaluatePolicy so the audit
-  // event reflects the user-approved state, not a pre-permission block).
+  // Step 1: Interactive installer gate. Runs before evaluatePolicy so that if the
+  // user approves the installer, evaluatePolicy receives installerAllowed: true and
+  // emits an 'installer' audit event rather than a block event.
+  // NOTE: command-class violations are caught in Step 2 (evaluatePolicy), not here.
+  // In practice no COMMAND_CLASS_REGISTRY entry matches an installer path, so the
+  // installer-first order has no enforcement impact.
   const installerPath = detectInstallerExe(command);
   let effectivePolicy = policy;
   if (installerPath) {
