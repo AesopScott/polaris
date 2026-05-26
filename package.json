@@ -51,6 +51,7 @@
     "files": [
       "main.js",
       "server.js",
+      "lib/**/*",
       "secrets.js",
       "package.json",
       "node_modules/**/*"
