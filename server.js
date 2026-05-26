@@ -898,8 +898,9 @@ function _evaluatePolicyCore(action, context, policy) {
 
     let isAllowed = false;
     for (const root of policy.allowedRoots) {
-      const resolvedRoot = path.resolve(root);
-      if (filePath.startsWith(resolvedRoot)) {
+      const rr = path.resolve(root).toLowerCase();
+      const fp = filePath.toLowerCase();
+      if (fp === rr || fp.startsWith(rr + path.sep)) {
         isAllowed = true;
         break;
       }
@@ -915,11 +916,12 @@ function _evaluatePolicyCore(action, context, policy) {
 
   if (action === 'bash' || action === 'powershell') {
     const command = context.command || '';
+    const flat    = command.replace(/\r?\n/g, ' ');  // normalise newlines once; used for both checks below
     auditEvent.commandSnippet = command.slice(0, 120);
 
-    // Command class registry check
+    // Command class registry check — use newline-flattened `flat` to match assertSafeCommand behaviour
     for (const entry of COMMAND_CLASS_REGISTRY.values()) {
-      if (entry.detect(command)) {
+      if (entry.detect(flat)) {
         if (policy.blockedCommandClasses && policy.blockedCommandClasses.includes(entry.name)) {
           const reason = `Shell command blocked: ${entry.reason}`;
           auditEvent.allowed = false;
@@ -930,7 +932,6 @@ function _evaluatePolicyCore(action, context, policy) {
     }
 
     // Write boundary check for shell commands
-    const flat = command.replace(/\r?\n/g, ' ');
     if (SHELL_WRITE_VERBS.test(flat)) {
       const absPathRe = /[a-zA-Z]:[\\\/][^\s'">,;|&)>]*/g;
       const wd = context.workDir ? path.resolve(context.workDir).toLowerCase() : null;
@@ -3762,6 +3763,32 @@ function assertWritable(file_path, workDir) {
   }
 }
 
+// assertLocks — only the lock-file check extracted from assertWritable.
+// Called after evaluatePolicy handles the path-boundary check so enforcement
+// is identical: path boundary via policy, lock gate via this helper.
+function assertLocks(file_path, workDir) {
+  if (!workDir) return;
+  const resolved = path.resolve(file_path);
+  const wd       = path.resolve(workDir);
+  try {
+    const locks = readJSON(LOCKS_PATH, {});
+    const rel   = path.relative(wd, resolved);
+    const isLocked = (
+      (locks[resolved]                && locks[resolved].sessions?.length)                ||
+      (locks[rel]                     && locks[rel].sessions?.length)                     ||
+      (locks[path.basename(resolved)] && locks[path.basename(resolved)].sessions?.length)
+    );
+    if (isLocked) {
+      throw new Error(
+        `Write blocked: "${path.basename(file_path)}" is locked. Unlock it in Polaris before writing.`
+      );
+    }
+  } catch (e) {
+    if (e.message.startsWith('Write blocked:')) throw e;
+    // locks.json missing or unreadable — treat as no locks
+  }
+}
+
 // assertSafeWriteSize — hard cap on file write size to prevent corruption
 // Catches catastrophic writes (e.g. agent interleaving CSS rules between every
 // character of an HTML file, exploding 8K lines to 1.7M lines as in v1.0.91).
@@ -4166,7 +4193,11 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
 }
 
 async function toolWrite({ file_path, content }, workDir, sessionId) {
-  assertWritable(file_path, workDir);
+  const _wSess = sessions.get(sessionId);
+  const _wPolicy = _wSess?.policy || buildDefaultPolicy({ workDir }, readConfig());
+  const _wResult = evaluatePolicy('write', { filePath: file_path, workDir, sessionId, tool: 'Write' }, _wPolicy);
+  if (!_wResult.allowed) throw new Error(_wResult.reason);
+  assertLocks(file_path, workDir);
   assertSafeWriteSize(content, file_path);
   backupBeforeWrite(file_path, workDir);
   const originalContent = fs.existsSync(file_path) ? fs.readFileSync(file_path, 'utf8') : '';
@@ -4183,7 +4214,11 @@ async function toolWrite({ file_path, content }, workDir, sessionId) {
 }
 
 async function toolEdit({ file_path, old_string, new_string, replace_all }, workDir, sessionId) {
-  assertWritable(file_path, workDir);
+  const _eSess = sessions.get(sessionId);
+  const _ePolicy = _eSess?.policy || buildDefaultPolicy({ workDir }, readConfig());
+  const _eResult = evaluatePolicy('edit', { filePath: file_path, workDir, sessionId, tool: 'Edit' }, _ePolicy);
+  if (!_eResult.allowed) throw new Error(_eResult.reason);
+  assertLocks(file_path, workDir);
   backupBeforeWrite(file_path, workDir);
   const content = fs.readFileSync(file_path, 'utf8');
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
@@ -5062,23 +5097,74 @@ function detectInstallerExe(command) {
   return null;
 }
 
-async function toolBash({ command, timeout: tms }, workDir, sessionId) {
-  assertSafeCommand(command, workDir);
+/**
+ * Pre-execution checks shared by toolBash and toolPowerShell.
+ * Consolidates the identical sequence that previously appeared in both handlers:
+ *   assertSafeCommand + detectInstallerExe + detectShellWriteTargets +
+ *   backupBeforeWrite + snapshotForShellEncodingCheck
+ *
+ * Order:
+ *   1. Installer detection — interactive user gate first so blocked non-installer
+ *      commands (command-class violations) throw before the installer dialog opens.
+ *      If user denies installer, throws immediately (no evaluatePolicy call).
+ *   2. evaluatePolicy — replaces assertSafeCommand; handles command-class registry,
+ *      write-boundary, and installer audit event for user-approved installs.
+ *   3. Write-target detection, backups, and encoding snapshots.
+ *
+ * @param {string} command
+ * @param {string|null} workDir
+ * @param {string} sessionId
+ * @param {CapabilityPolicy} policy
+ * @param {'bash'|'powershell'} action
+ * @returns {Promise<{ writeTargets: string[], snapshots: Map, priorContents: Map }>}
+ */
+async function shellPrecheck(command, workDir, sessionId, policy, action) {
+  // Step 1: Interactive installer gate. Runs before evaluatePolicy so that if the
+  // user approves the installer, evaluatePolicy receives installerAllowed: true and
+  // emits an 'installer' audit event rather than a block event.
+  // NOTE: command-class violations are caught in Step 2 (evaluatePolicy), not here.
+  // In practice no COMMAND_CLASS_REGISTRY entry matches an installer path, so the
+  // installer-first order has no enforcement impact.
   const installerPath = detectInstallerExe(command);
+  let effectivePolicy = policy;
   if (installerPath) {
     const decision = await askForInstallerPermission({ sessionId, exePath: installerPath, command });
-    if (decision !== 'allow') throw new Error(`Installer blocked: permission not granted for ${installerPath}`);
+    if (decision !== 'allow') {
+      throw new Error(`Installer blocked: permission not granted for ${installerPath}`);
+    }
+    // Allow installer in the effective policy so evaluatePolicy emits an
+    // 'installer' audit event (action: 'installer', allowed: true).
+    effectivePolicy = Object.freeze({ ...policy, installerAllowed: true });
   }
+
+  // Step 2: Full policy evaluation — command-class registry + write-boundary checks.
+  // Replaces assertSafeCommand; also emits audit JSONL + tool-audit broadcast.
+  const r = evaluatePolicy(
+    action,
+    { command, workDir, sessionId, tool: action === 'bash' ? 'Bash' : 'PowerShell' },
+    effectivePolicy
+  );
+  if (!r.allowed) throw new Error(r.reason);
+
+  // Step 3: Write-target detection, backups, and encoding snapshots.
   const writeTargets = detectShellWriteTargets(command, workDir);
   for (const target of writeTargets) backupBeforeWrite(target, workDir);
   const snapshots = snapshotForShellEncodingCheck(writeTargets);
-  // Capture pre-exec content for post-hoc cross-check comparison.
   const priorContents = new Map();
   for (const target of writeTargets) {
     if (fs.existsSync(target)) {
       try { priorContents.set(target, fs.readFileSync(target, 'utf8')); } catch {}
     }
   }
+  return { writeTargets, snapshots, priorContents };
+}
+
+async function toolBash({ command, timeout: tms }, workDir, sessionId) {
+  const _bSess = sessions.get(sessionId);
+  const _bPolicy = _bSess?.policy || buildDefaultPolicy({ workDir }, readConfig());
+  // shellPrecheck: installer gate → evaluatePolicy → write-target backup/snapshot.
+  // Replaces: assertSafeCommand + detectInstallerExe + the three-step precheck block.
+  const { writeTargets, snapshots, priorContents } = await shellPrecheck(command, workDir, sessionId, _bPolicy, 'bash');
   let output;
   try {
     output = execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
@@ -5104,21 +5190,11 @@ async function toolBash({ command, timeout: tms }, workDir, sessionId) {
 }
 
 async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
-  assertSafeCommand(command, workDir);
-  const installerPath = detectInstallerExe(command);
-  if (installerPath) {
-    const decision = await askForInstallerPermission({ sessionId, exePath: installerPath, command });
-    if (decision !== 'allow') throw new Error(`Installer blocked: permission not granted for ${installerPath}`);
-  }
-  const writeTargets = detectShellWriteTargets(command, workDir);
-  for (const target of writeTargets) backupBeforeWrite(target, workDir);
-  const snapshots = snapshotForShellEncodingCheck(writeTargets);
-  const priorContents = new Map();
-  for (const target of writeTargets) {
-    if (fs.existsSync(target)) {
-      try { priorContents.set(target, fs.readFileSync(target, 'utf8')); } catch {}
-    }
-  }
+  const _psSess = sessions.get(sessionId);
+  const _psPolicy = _psSess?.policy || buildDefaultPolicy({ workDir }, readConfig());
+  // shellPrecheck: installer gate → evaluatePolicy → write-target backup/snapshot.
+  // Replaces: assertSafeCommand + detectInstallerExe + the three-step precheck block.
+  const { writeTargets, snapshots, priorContents } = await shellPrecheck(command, workDir, sessionId, _psPolicy, 'powershell');
   let output;
   try {
     const psExe = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
