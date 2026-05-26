@@ -77,8 +77,9 @@
   /* Locked nav manifest: four rows only. Add buttons by assigning a fixed slot here. */
   .btn-grid > .hbtn { display: none; }
   .nav-spacer { min-width: 0; min-height: 38px; }
-  .nav-spacer-row-1 { grid-row: 1; grid-column: 1; }
+  .nav-spacer-row-1 { display: none; }
   .nav-spacer-row-2 { display: none; }
+  #btn-design { grid-row: 1; grid-column: 1; }
   #btn-course-creator { grid-row: 1; grid-column: 2; }
   #btn-factory { grid-row: 1; grid-column: 3; }
   #btn-build { grid-row: 1; grid-column: 4; }
@@ -110,7 +111,7 @@
   #btn-close { grid-row: 4; grid-column: 6; }
   #btn-balance { grid-row: 4; grid-column: 7; }
   #btn-support { grid-row: 4; grid-column: 8; }
-  #btn-course-creator, #btn-factory, #btn-build, #btn-files, #btn-restart, #btn-routines, #btn-settings,
+  #btn-design, #btn-course-creator, #btn-factory, #btn-build, #btn-files, #btn-restart, #btn-routines, #btn-settings,
   #btn-orchestrator, #btn-diamond, #btn-manifest, #btn-cross-check, #btn-archive, #btn-reload, #btn-projects, #btn-walkthrough,
   #btn-summary, #btn-skills, #btn-web, #btn-code-health, #btn-versions, #btn-reset, #btn-connect, #btn-docs,
   #btn-review, #btn-backlog, #btn-preview, #btn-monaco, #btn-obsidian, #btn-close, #btn-balance, #btn-support { display: flex; }
@@ -1445,6 +1446,7 @@
         <canvas id="nav-divider-canvas"></canvas>
         <!-- Row 1 -->
         <div class="nav-spacer nav-spacer-row-1"></div>
+        <button id="btn-design" class="hbtn btn-config" onclick="openDesign()" data-tooltip="Design - launch Open Design for complete website and visual generation workflows"><span class="lbl">Design</span></button>
         <button id="btn-course-creator" class="hbtn btn-interface" onclick="openCourseCreator()" data-tooltip="Aesop Academy — develop and activate courses via the ModGen pipeline"><span class="lbl">Courses</span></button>
         <button id="btn-factory" class="hbtn btn-gold" onclick="launchFactory()" data-tooltip="Launch the AI Factory autonomous build pipeline for the selected project"><span class="lbl">Factory</span></button>
         <button id="btn-build" class="hbtn btn-tracking" onclick="executeBuild()" data-tooltip="Run the full build and install loop (&amp; scripts\build-install.ps1) — gated on a fresh pre-build cross-check"><span class="lbl">Build</span></button>
@@ -4301,7 +4303,8 @@
       clearTimeout(wsReconnectTimer);
       wsReconnectTimer = null;
     }
-    ws = new WebSocket(`ws://localhost:40000?clientId=${encodeURIComponent(uiWsClientId)}`);
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${wsProto}//${location.host}?clientId=${encodeURIComponent(uiWsClientId)}`);
     ws.onopen  = () => {
       setConnIndicator(true);
       pushDebugLog('[ws] connected');
@@ -4319,7 +4322,14 @@
       }
     };
     ws.onerror = () => { setConnIndicator(false); pushDebugLog('[ws] connection error', true); };
-    ws.onmessage = e => { try { onWsMessage(JSON.parse(e.data)); } catch {} };
+    ws.onmessage = e => {
+      try {
+        onWsMessage(JSON.parse(e.data));
+      } catch (err) {
+        console.error('[ws] message handler failed', err);
+        pushDebugLog(`[ws] message handler failed: ${err?.message || err}`, true);
+      }
+    };
   }
 
   window.addEventListener('beforeunload', () => {
@@ -4568,6 +4578,16 @@
           pushDebugLog('[factory] AI Factory already running on :40100');
         } else if (msg.launching) {
           pushDebugLog('[factory] AI Factory launching — npm install && npm start...');
+        }
+        break;
+      }
+      case 'design-status': {
+        if (msg.error) {
+          pushDebugLog(`[design] launch error: ${msg.error}`, true);
+        } else if (msg.running) {
+          pushDebugLog(`[design] Open Design already running at ${msg.url || 'http://127.0.0.1:62683/'}`);
+        } else if (msg.launching) {
+          pushDebugLog(`[design] Open Design launching at ${msg.url || 'http://127.0.0.1:62683/'}...`);
         }
         break;
       }
@@ -10959,6 +10979,12 @@ This is your current workflow status across all branches. Review the tasks and P
   }
   window.openDiamond = openDiamond;
 
+  function openDesign() {
+    pushDebugLog('[design] checking Open Design status...');
+    wsSend({ type: 'launch-design' });
+  }
+  window.openDesign = openDesign;
+
   function launchFactory() {
     pushDebugLog('[factory] checking AI Factory status...');
     wsSend({ type: 'launch-factory' });
@@ -10966,12 +10992,13 @@ This is your current workflow status across all branches. Review the tasks and P
   window.launchFactory = launchFactory;
 
   function openCourseCreator() {
-    const workDir = config.projects?.find(p => p.name === 'Aesop')?.workDir || null;
+    const aesop = (projectsList || []).find(p => p.name === 'Aesop');
+    const wDir  = aesop ? (aesop.workDir || '') : '';
     wsSend({
       type: 'launch',
       prompt: '/aesop-course-builder',
       displayPrompt: 'Aesop Course Development Tool',
-      workDir,
+      workDir: wDir,
       projectName: 'Aesop'
     });
   }
@@ -14422,11 +14449,19 @@ This is your current workflow status across all branches. Review the tasks and P
     const hideOnHold = localStorage.getItem('cam_filter_on_hold') === 'true';
     const list = document.getElementById('cam-list-body');
     if (!list) return;
-    list.querySelectorAll('.cam-session-row[data-ws-state]').forEach(row => {
+    const rows = Array.from(list.querySelectorAll('.cam-session-row[data-ws-state]'));
+    let visibleCount = 0;
+    rows.forEach(row => {
       const state = row.dataset.wsState;
       const hide = (state === 'hidden' && hideHidden) || (state === 'on-hold' && hideOnHold);
       row.style.display = hide ? 'none' : '';
+      if (!hide) visibleCount++;
     });
+    if (rows.length > 0 && visibleCount === 0) {
+      localStorage.setItem('cam_filter_hidden', 'false');
+      localStorage.setItem('cam_filter_on_hold', 'false');
+      rows.forEach(row => { row.style.display = ''; });
+    }
     // Update button visual state
     const btnHidden = document.getElementById('cam-btn-hide-hidden');
     const btnOnHold = document.getElementById('cam-btn-hide-on-hold');
@@ -14758,7 +14793,7 @@ This is your current workflow status across all branches. Review the tasks and P
     }
 
     const NAV_BUTTON_MANIFEST = new Set([
-      'btn-course-creator', 'btn-factory', 'btn-build', 'btn-files', 'btn-restart', 'btn-routines', 'btn-settings',
+      'btn-design', 'btn-course-creator', 'btn-factory', 'btn-build', 'btn-files', 'btn-restart', 'btn-routines', 'btn-settings',
       'btn-orchestrator', 'btn-diamond', 'btn-manifest', 'btn-cross-check', 'btn-archive', 'btn-reload', 'btn-projects', 'btn-walkthrough',
       'btn-summary', 'btn-skills', 'btn-web', 'btn-code-health', 'btn-versions', 'btn-reset', 'btn-connect', 'btn-docs',
       'btn-review', 'btn-backlog', 'btn-preview', 'btn-monaco', 'btn-obsidian', 'btn-close', 'btn-balance', 'btn-support'
