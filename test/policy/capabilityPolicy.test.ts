@@ -172,6 +172,18 @@ describe('write boundary check', () => {
     expect(result.reason).toMatch(/no file path/);
   });
 
+  it('relative filePath is rejected — callers must supply an absolute path', () => {
+    const result = _evaluatePolicyCore(
+      'write',
+      { filePath: 'src/index.ts', sessionId: 'test-session' },
+      STANDARD_POLICY,
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/relative filePath/);
+    expect(result.auditEvent.allowed).toBe(false);
+  });
+
   it('unrecognized writeMode fails closed (deny-by-default)', () => {
     const badPolicy = { ...STANDARD_POLICY, writeMode: 'super-extended' };
     const result = _evaluatePolicyCore(
