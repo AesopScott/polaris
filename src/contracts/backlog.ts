@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+export const ImpactEnum = z.enum(['minor', 'standard', 'major']);
+export type ImpactType = z.infer<typeof ImpactEnum>;
+
 export const BacklogStatus = z.enum([
   'backlog',
   'planned',

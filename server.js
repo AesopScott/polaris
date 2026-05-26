@@ -47,6 +47,9 @@ const {
   buildDefaultPolicy,
   _evaluatePolicyCore,
 } = require('./lib/capabilityPolicy');
+const { BacklogStatus, ImpactEnum } = require('./compiled/contracts/backlog');
+const wsSchemas = require('./compiled/contracts/ws-messages');
+const { z } = require('zod');
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const APPDATA      = process.env.APPDATA || os.homedir();
@@ -3076,7 +3079,7 @@ function loadAllBacklogs() {
 
 function _validImpact(v) {
   const s = String(v || '').trim();
-  return ['minor', 'standard', 'major'].includes(s) ? s : 'standard';
+  return ImpactEnum.safeParse(s).success ? s : 'standard';
 }
 
 function _nextBacklogTaskNumber(currentTasks, archivedTasks) {
@@ -3269,19 +3272,6 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
   return tasksToArchive;
 }
 
-const VALID_BACKLOG_STATUSES = new Set([
-  // Skill-written statuses (plan-task → start-build → finish-build → codex-review → promote-stage → promote-to-prod)
-  'backlog', 'planned', 'build-started', 'build-finished', 'cba-complete', 'review-blocked', 'staged', 'production',
-  // Manual post-production status: set when smoke tests fail after production deployment
-  'failed-smoke-test',
-  // State machine statuses written by LangGraph executor (task #26)
-  'stalled', 'failed',
-  // Special states
-  'blocked', 'on-hold', 'cancelled',
-  // Legacy/deprecated statuses (still allowed for backward compatibility)
-  'ready', 'in-progress', 'complete', 'pr-reviewed', 'cba-half-complete', 'smoke-tested'
-]);
-
 // ─── backlog.json write serializer (task #34) ────────────────────────────────
 // Prevents concurrent /sync-state writes from interleaving as server.js grows
 // async paths during the src/runtime/ module migration (task #25). Node.js
@@ -3296,9 +3286,9 @@ function withBacklogLock(fn) {
 
 function updateBacklogTaskStatus(scope, taskNumber, newStatus, extraFields = {}) {
   console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
-  if (!VALID_BACKLOG_STATUSES.has(newStatus)) {
-    console.warn(`[backlog] REJECTED status "${newStatus}" — not in VALID_BACKLOG_STATUSES`);
-    throw new Error('Invalid status "' + newStatus + '". Valid: ' + [...VALID_BACKLOG_STATUSES].join(', '));
+  if (!BacklogStatus.safeParse(newStatus).success) {
+    console.warn(`[backlog] REJECTED status "${newStatus}" — not in BacklogStatus enum`);
+    throw new Error('Invalid status "' + newStatus + '". Valid: ' + BacklogStatus.options.join(', '));
   }
   const cfg = readConfig();
   const taskNum = parseInt(taskNumber, 10);
@@ -9318,6 +9308,36 @@ function drainPendingTurns(sessionId) {
 }
 
 
+// ─── WS receive-side schema registry (task #38) ──────────────────────────────
+// Maps every known client→server type string to its Zod schema. Built from the
+// AnyClientMessage discriminated union so it stays in sync automatically when
+// new schemas are added to src/contracts/ws-messages.ts.
+// Schemas with z.enum type fields (LaunchMessage, TestApiKeyMessage,
+// LaunchExternalAppMessage) register each enum value separately.
+// Uses public Zod API (instanceof + .value / .options) — no _def internals.
+const WS_SCHEMA_REGISTRY = (() => {
+  const registry = new Map();
+  const register = (key, schema) => {
+    if (registry.has(key)) {
+      throw new Error(
+        `WS_SCHEMA_REGISTRY: duplicate type "${key}" — two schemas claim the same type string. Fix src/contracts/ws-messages.ts.`
+      );
+    }
+    registry.set(key, schema);
+  };
+  for (const schema of wsSchemas.AnyClientMessage.options) {
+    const typeField = schema.shape.type;
+    if (typeField instanceof z.ZodLiteral) {
+      register(typeField.value, schema);
+    } else if (typeField instanceof z.ZodEnum) {
+      for (const v of typeField.options) {
+        register(v, schema);
+      }
+    }
+  }
+  return registry;
+})();
+
 // ─── WebSocket message handler ────────────────────────────────────────────────
 async function handleMessage(ws, raw) {
   let msg;
@@ -9325,6 +9345,25 @@ async function handleMessage(ws, raw) {
 
   ws.lastSeenAt = Date.now();
   const { type } = msg;
+
+  // Validate known message types against their Zod schema.
+  // Unknown types pass through silently. Known types with invalid fields
+  // are rejected with a structured error the client's case 'error' handler
+  // can render (msg.text is required by mockup.html:5886).
+  const _wsSchema = WS_SCHEMA_REGISTRY.get(type);
+  if (_wsSchema) {
+    const _wsResult = _wsSchema.safeParse(msg);
+    if (!_wsResult.success) {
+      console.warn(`[polaris] Rejected malformed "${type}" message:`, _wsResult.error.issues);
+      return sendTo(ws, {
+        type: 'error',
+        code: 'INVALID_MSG',
+        msgType: type,
+        issues: _wsResult.error.issues,
+        text: `Malformed "${type}" message`,
+      });
+    }
+  }
 
   if (type === 'ui-client-hello') {
     ws.uiClientId = typeof msg.clientId === 'string' ? msg.clientId.slice(0, 80) : ws.uiClientId;

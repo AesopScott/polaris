@@ -117,15 +117,16 @@ Current lifecycle state of the task (backlog, planned, build-started, in-review,
 - `resources/mockup.html:9103` — Status picker displays current status
 - `resources/mockup.html:3395` — BACKLOG_STATUS_OPTIONS defines valid values
 
-**Validation:** VALID_BACKLOG_STATUSES set at server.js:3194 — backlog, planned, build-started, build-finished, cba-complete, review-blocked, staged, production, failed-smoke-test, stalled, failed, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).** `stalled` and `failed` are written by the LangGraph executor (task #26) when a human gate times out or a node throws an unhandled exception.
+**Validation:** `VALID_BACKLOG_STATUSES` set at `server.js:3272` — backlog, planned, build-started, build-finished, cba-complete, review-blocked, staged, production, failed-smoke-test, stalled, failed, blocked, on-hold, cancelled. Legacy (deprecated): ready, in-progress, complete, pr-reviewed, cba-half-complete, smoke-tested. **CRITICAL: `in-review` is NOT valid. Correct workflow: backlog → planned (/plan-task) → build-started (/start-build) → build-finished (/finish-build) → cba-complete (/codex-review) → staged (/promote-stage) → production (/promote-to-prod).** `stalled` and `failed` are written by the LangGraph executor (task #26) when a human gate times out or a node throws an unhandled exception.
 
-**⚠ Divergence risk — BacklogStatus defined independently in three places:**
-- `src/contracts/backlog.ts:3` — Zod enum (20 values: 14 active + 6 legacy, task #37; fixed in /review-pr)
-- `src/runtime/backlog.ts:30` — `VALID_BACKLOG_STATUSES` Set (14 active + 6 legacy = 20 values)
-- `src/runtime/backlog.ts:53` — TypeScript union type (20 values)
-All three now in sync. Maintained separately — drift possible. Task #38 should consolidate to derive runtime validation from the Zod enum.
+**⚠ Pending deletion (task #38 Phase B):** `VALID_BACKLOG_STATUSES` Set at `server.js:3272` will be deleted. Validation will use `BacklogStatus.safeParse(newStatus).success` from `compiled/contracts/backlog.js`. Error message will use `BacklogStatus.options.join(', ')` instead of spread-join. Same 20 values — new source of truth is the Zod enum.
 
-**Status:** ✓ Balanced (validation enforced server-side) — ⚠ three-way status enum divergence risk (see above)
+**⚠ Divergence risk (task #38 consolidating) — BacklogStatus defined independently in three places:**
+- `src/contracts/backlog.ts:3` — Zod enum (20 values: 14 active + 6 legacy, task #37)
+- `server.js:3272` — `VALID_BACKLOG_STATUSES` Set (same 20 values; ⚠ pending deletion in task #38 Phase B)
+- `src/contracts/backlog.ts:3` — `BacklogStatus` (compiled to `compiled/contracts/backlog.js`) will become the single source of truth after task #38
+
+**Status:** ✓ Balanced (validation enforced server-side) — ⚠ consolidation in progress (task #38 Phase B)
 
 ---
 
@@ -273,9 +274,11 @@ Workflow significance: determines whether /plan-task is gated out (minor), requi
 **Schema / shape:** String, enum: "minor" | "standard" | "major", optional, defaults to "standard". Server validates and coerces invalid values to "standard".
 
 **Producers (write)**
-- `server.js:2726` — `addBacklogTask()` stores impact via `_validImpact()` helper (defaults to 'standard')
-- `server.js:2964` — `updateBacklogTask()` updates impact via `_validImpact()` helper (global scope)
-- `server.js:2983` — `updateBacklogTask()` updates impact via `_validImpact()` helper (per-project scope)
+- `server.js:3102` — `addBacklogTask()` stores impact via `_validImpact()` helper (defaults to 'standard')
+- `server.js:3374` — `updateBacklogTask()` updates impact via `_validImpact()` helper (global scope)
+- `server.js:3393` — `updateBacklogTask()` updates impact via `_validImpact()` helper (per-project scope)
+
+**⚠ Pending replacement (task #38 Phase B):** `_validImpact()` at `server.js:3077` (inline `['minor','standard','major'].includes(s)`) will be replaced with `ImpactEnum.safeParse(s).success` from `compiled/contracts/backlog.js`. Call sites at lines 3102, 3374, 3393 are unchanged — only the function body changes.
 
 **Consumers (read)**
 - `resources/mockup.html:2052` — Add Task modal `<select id="backlog-add-impact">` (minor/standard/major)
@@ -371,6 +374,28 @@ Active LangGraph node name for the task. Written by the executor via `/sync-stat
 ---
 
 ## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-25T00:00:00Z (by /cross-boundary-audit for task #38)
+
+**Task audited:** #38 — Wire runtime validation: use compiled contracts in server.js
+
+**Boundaries checked:** `status` field validation source; `impact` field validation source and line refs
+
+**Evidence recorded:**
+- Stale line ref corrected: `status` field `VALID_BACKLOG_STATUSES` location `server.js:3194` → `server.js:3272` (confirmed by grep)
+- Stale line refs corrected (3): `impact` field `_validImpact()` call sites `server.js:2726,2964,2983` → `server.js:3102,3374,3393` (confirmed by grep)
+- Pending deletion noted: `VALID_BACKLOG_STATUSES` Set at `server.js:3272` — task #38 Phase B deletes it, replaces with `BacklogStatus.safeParse()`
+- Pending replacement noted: `_validImpact()` body at `server.js:3077` — task #38 Phase B replaces with `ImpactEnum.safeParse()`
+- New identifiers introduced by task #38: none in backlog-task-fields (ImpactEnum is in zod-contracts.md)
+- Registries match current code diff: yes (pre-implementation; stale refs now corrected)
+
+**Gaps identified:**
+- Stale line refs (5 total) — now corrected ✓
+- Pending deletions flagged — pre-registered for task #38 Phase B
+
+**Status:** Audit complete
+
+---
 
 **Last audit:** 2026-05-23T00:00:00Z (by /cross-boundary-audit for task #29 planning)
 
