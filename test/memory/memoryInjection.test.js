@@ -80,7 +80,7 @@ describe('formatMemoryBlock', () => {
 
   it('wraps output in [POLARIS MEMORY] delimiters', () => {
     const result = formatMemoryBlock(memories);
-    expect(result).toMatch(/^\[POLARIS MEMORY\]/);
+    expect(result).toMatch(/^\[POLARIS MEMORY/);
     expect(result).toMatch(/\[END MEMORY\]$/);
   });
 
@@ -116,12 +116,14 @@ describe('formatMemoryBlock', () => {
   });
 
   it('truncates (not drops) a single entry that alone exceeds the cap', () => {
+    // cap must exceed the preamble (~310 chars) so at least some content fits;
+    // 500 is enough to fit the header + a truncated entry but well below 5000.
     const hugeContent = 'x'.repeat(5000);
-    const result = formatMemoryBlock([{ type: 'fact', strength: 0.8, content: hugeContent }], { cap: 100 });
+    const result = formatMemoryBlock([{ type: 'fact', strength: 0.8, content: hugeContent }], { cap: 500 });
     expect(result).not.toBe('');
-    expect(result).toMatch(/^\[POLARIS MEMORY\]/);
+    expect(result).toMatch(/^\[POLARIS MEMORY/);
     expect(result).toMatch(/\[END MEMORY\]$/);
-    expect(result.length).toBeLessThanOrEqual(100);
+    expect(result.length).toBeLessThanOrEqual(500);
   });
 });
 
@@ -160,7 +162,7 @@ describe('buildMemoryInjectionBlock', () => {
       { id: 'abc', type: 'decision', strength: 0.9, content: 'Use Firestore' },
     ]);
     const result = await buildMemoryInjectionBlock(fakeMemory, 'Polaris', 'test');
-    expect(result).toContain('[POLARIS MEMORY]');
+    expect(result).toContain('[POLARIS MEMORY');
     expect(result).toContain('Use Firestore');
   });
 
