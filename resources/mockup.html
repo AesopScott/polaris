@@ -6353,6 +6353,7 @@
 
   function isSessionVisibleInGrid(s) {
     if (!s) return false;
+    if (s.pinned) return true; // pinned cards are always visible
     if (s.minimized || hiddenCards.has(s.id)) return false;
     return !(focusedProject && getSessionFocusKey(s) !== focusedProject);
   }
@@ -7722,6 +7723,7 @@
   }
 
   function hideCard(sid) {
+    if (sessionStore[sid]?.pinned) { pushDebugLog('[card] Hide blocked — card is pinned'); return; }
     hiddenCards.add(sid);
     const card = document.querySelector(`.card[data-sid="${sid}"]`);
     if (card) card.style.display = 'none';
@@ -7832,8 +7834,9 @@
     if (!grid) return;
     grid.querySelectorAll('.card').forEach(card => {
       const sid = card.dataset.sid;
-      if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       const s = sessionStore[sid];
+      if (s?.pinned) { card.style.display = ''; return; } // pinned cards are always visible
+      if (hiddenCards.has(sid)) { card.style.display = 'none'; return; }
       if (s && s.minimized) { card.style.display = 'none'; return; }
       if (focusedProject && s && getSessionFocusKey(s) !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
