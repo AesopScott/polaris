@@ -12469,6 +12469,21 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 
 wss = new WebSocket.Server({ server: httpServer });
 
+// ─── Memory decay — runs 30 s after startup then every 24 h ──────────────────
+const MEMORY_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+async function runMemoryDecay() {
+  try {
+    const result = await memory.decayMemories();
+    if (result.updated > 0) console.log(`[memory] decay complete: ${result.updated} updated, ${result.archived} archived`);
+  } catch (e) {
+    console.warn('[memory] decay error:', e.message);
+  }
+}
+setTimeout(() => {
+  runMemoryDecay();
+  setInterval(runMemoryDecay, MEMORY_DECAY_INTERVAL_MS);
+}, 30_000);
+
 const wsHeartbeatTimer = setInterval(() => {
   if (!wss) return;
   for (const client of wss.clients) {
