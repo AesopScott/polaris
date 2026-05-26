@@ -90,6 +90,7 @@ const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
 const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const WS_MISSED_PONG_LIMIT = 4;  // tolerate short UI/main-thread stalls before reconnecting
+const DEFAULT_WORKTREE_TTL_DAYS = 7; // purge detached session worktrees older than this many days
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
@@ -5483,6 +5484,89 @@ function removeSessionWorktree(sessionId) {
     execSync(`git worktree remove --force "${worktreePath}"`, { cwd: repo, stdio: 'ignore' });
   } catch {}
   try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch {}
+}
+
+// Sweep WORKTREES_DIR for abandoned detached-HEAD worktrees older than DEFAULT_WORKTREE_TTL_DAYS.
+// Called once at startup and then on a daily interval. Skips any worktree whose path is held by
+// an open session (checked against the live sessions Map). Named-branch worktrees (task/*, wip/*)
+// are never touched — only detached-HEAD session temporaries are eligible.
+function purgeStaleWorktrees() {
+  if (!fs.existsSync(WORKTREES_DIR)) return;
+
+  const thresholdMs = DEFAULT_WORKTREE_TTL_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  // Collect worktree paths claimed by currently open sessions — never remove these.
+  const activeWtPaths = new Set();
+  for (const [, s] of sessions) {
+    if (s.worktreePath) activeWtPaths.add(path.normalize(s.worktreePath).toLowerCase());
+  }
+
+  let entries;
+  try { entries = fs.readdirSync(WORKTREES_DIR); } catch { return; }
+
+  for (const name of entries) {
+    const wtPath = path.join(WORKTREES_DIR, name);
+
+    // Never touch an active session's worktree.
+    if (activeWtPaths.has(path.normalize(wtPath).toLowerCase())) continue;
+
+    let stat;
+    try { stat = fs.statSync(wtPath); } catch { continue; }
+    if (!stat.isDirectory()) continue;
+
+    // Age gate — skip anything still within the TTL window.
+    const ageMs = now - stat.mtimeMs;
+    if (ageMs < thresholdMs) continue;
+
+    // Inspect git worktree registration.
+    let isRegistered = false;
+    let isDetached   = false;
+    let mainWtPath   = null;
+    try {
+      const raw = execSync('git worktree list --porcelain', {
+        cwd: wtPath, encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000,
+      });
+      const wtNorm = path.normalize(wtPath).toLowerCase();
+      const blocks = raw.split('\n\n').filter(Boolean);
+      // First block is always the main (non-linked) worktree.
+      const firstMatch = (blocks[0]?.match(/^worktree (.+)$/m) || []);
+      mainWtPath = firstMatch[1] || null;
+      for (const block of blocks) {
+        const blockPath = (block.match(/^worktree (.+)$/m) || [])[1] || '';
+        if (path.normalize(blockPath).toLowerCase() !== wtNorm) continue;
+        isRegistered = true;
+        const brRef = (block.match(/^branch (.+)$/m) || [])[1] || '';
+        // Skip branch-named worktrees (task/*, wip/*, any named branch).
+        if (brRef) { isRegistered = false; break; }
+        isDetached = block.includes('\ndetached');
+        break;
+      }
+    } catch {
+      // git command failed — directory is an orphaned dir with no git registration.
+      isRegistered = false;
+      isDetached    = false;
+    }
+
+    // Only remove registered detached worktrees or orphaned dirs (unregistered).
+    if (isRegistered && !isDetached) continue;
+
+    const ageDays = Math.floor(ageMs / 86400000);
+
+    if (isRegistered && isDetached) {
+      try {
+        const repo = (mainWtPath && fs.existsSync(mainWtPath)) ? mainWtPath : wtPath;
+        execSync(`git worktree remove --force "${wtPath}"`, { cwd: repo, stdio: 'ignore', timeout: 10000 });
+      } catch { /* rmSync below handles the directory regardless */ }
+    }
+
+    try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch {}
+
+    const msg = `[worktree] purged stale session worktree: ${name} (${ageDays}d old)`;
+    console.log(msg);
+    broadcast({ type: 'debug-log', message: msg, isError: false });
+  }
 }
 
 // ── Orchestrator helpers ──────────────────────────────────────────────────────
@@ -12452,6 +12536,7 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();
+  purgeStaleWorktrees(); // sweep orphaned session worktrees on startup
   // Ensure the 'polaris' MCP server is trusted by the Claude Code CLI
   try {
     const ccSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
@@ -12544,6 +12629,10 @@ setInterval(() => {
     }
   }
 }, STALL_CHECK_MS);
+
+// Daily sweep — purge stale session worktrees that survived past the TTL.
+const worktreePurgeTimer = setInterval(purgeStaleWorktrees, 24 * 60 * 60 * 1000);
+if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
 wss.on('connection', (ws, req) => {
   let queryClientId = null;
