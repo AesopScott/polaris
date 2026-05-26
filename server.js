@@ -89,7 +89,7 @@ const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
 const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
 const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const WS_MISSED_PONG_LIMIT = 4;  // tolerate short UI/main-thread stalls before reconnecting
-const DEFAULT_WORKTREE_TTL_DAYS = 7; // purge detached session worktrees older than this many days
+const DEFAULT_WORKTREE_TTL_DAYS = 2; // purge detached/merged-branch session worktrees older than this many days
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
@@ -5534,6 +5534,7 @@ function purgeStaleWorktrees() {
     let isRegistered = false;
     let isDetached   = false;
     let mainWtPath   = null;
+    let namedBranch  = null;
     try {
       const raw = execSync('git worktree list --porcelain', {
         cwd: wtPath, encoding: 'utf8',
@@ -5549,8 +5550,12 @@ function purgeStaleWorktrees() {
         if (path.normalize(blockPath).toLowerCase() !== wtNorm) continue;
         isRegistered = true;
         const brRef = (block.match(/^branch (.+)$/m) || [])[1] || '';
-        // Skip branch-named worktrees (task/*, wip/*, any named branch) — never touch these.
-        if (brRef) continue;
+        if (brRef) {
+          // Named-branch worktree (task/*, wip/*, ...). Normally protected; eligibility
+          // for already-merged branches is decided below via a merge-base check.
+          namedBranch = brRef.replace(/^refs\/heads\//, '');
+          break;
+        }
         isDetached = block.includes('\ndetached');
         break;
       }
@@ -5560,15 +5565,31 @@ function purgeStaleWorktrees() {
       isDetached    = false;
     }
 
-    // Only remove registered detached worktrees, or unregistered dirs whose name matches
-    // the Polaris session-ID pattern (chat_<digits>) — never delete arbitrary directories.
+    // A named-branch worktree is normally protected, but once its branch is fully
+    // merged into main it is just a shipped-task leftover and safe to reclaim. The
+    // branch ref itself is left intact (branch deletion is the promote skill's job).
+    // main/stage are never eligible — only feature/task branches.
+    let isMergedNamed = false;
+    if (namedBranch && namedBranch !== 'main' && namedBranch !== 'stage'
+        && mainWtPath && fs.existsSync(mainWtPath)) {
+      try {
+        // exit 0 => namedBranch is an ancestor of main (merged). Non-zero throws.
+        execFileSync('git', ['merge-base', '--is-ancestor', namedBranch, 'main'],
+          { cwd: mainWtPath, stdio: 'ignore', timeout: 5000 });
+        isMergedNamed = true;
+      } catch { isMergedNamed = false; } // not merged (or check failed) => keep protecting
+    }
+
+    // Only remove registered detached worktrees, registered named worktrees whose branch
+    // is already merged into main, or unregistered dirs whose name matches the Polaris
+    // session-ID pattern (chat_<digits>) — never delete arbitrary directories.
     const isPolarisSessionDir = /^chat_\d+$/.test(name);
-    if (isRegistered && !isDetached) continue;
+    if (isRegistered && !isDetached && !isMergedNamed) continue;
     if (!isRegistered && !isPolarisSessionDir) continue;
 
     const ageDays = Math.floor(ageMs / 86400000);
 
-    if (isRegistered && isDetached) {
+    if (isRegistered && (isDetached || isMergedNamed)) {
       try {
         const repo = (mainWtPath && fs.existsSync(mainWtPath)) ? mainWtPath : wtPath;
         // Use array form to avoid shell metacharacter injection from directory names.
@@ -5578,7 +5599,8 @@ function purgeStaleWorktrees() {
 
     try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch {}
 
-    const msg = `[worktree] purged stale session worktree: ${name} (${ageDays}d old)`;
+    const reason = isMergedNamed ? `merged branch ${namedBranch}` : 'detached';
+    const msg = `[worktree] purged stale session worktree: ${name} (${ageDays}d old, ${reason})`;
     console.log(msg);
     broadcast({ type: 'debug-log', message: msg, isError: false });
   }
