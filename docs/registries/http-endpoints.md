@@ -459,6 +459,29 @@ Append a timestamped session summary (branch, worktree, modified files, contenti
 
 ---
 
+---
+
+## Audit Trail — task #34
+
+**Last audit:** 2026-05-25T00:00:00Z (by /cross-boundary-audit for task #34)
+
+**Task:** #34 — LangGraph: Integration + POC Validation (Phases 6-7)
+
+**Boundaries checked:** HTTP endpoints in server.js — specifically `/sync-state` internal change
+
+**Evidence recorded:**
+- `/sync-state` handler updated: now wraps `updateBacklogTaskStatus()` in `withBacklogLock()` at `server.js:3292` — serialises concurrent writes via promise chain
+- No shape change to `/sync-state` request or response payloads
+- `backlogs-data` WS broadcast from `/sync-state` confirmed as implemented (was "planned" in websocket-events.md — corrected there)
+- 0 new endpoints introduced by task #34
+- 0 shape mismatches
+
+**Gaps identified:** None new. All pre-existing gaps (planned endpoints for task #36 scope) unchanged.
+
+**Status:** Audit complete
+
+---
+
 ## Maintenance Rule
 
 Every PR that adds, removes, or modifies an HTTP endpoint **must update this registry in the same commit**. Changes include:

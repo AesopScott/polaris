@@ -43,7 +43,7 @@ Response from server with backlog content (global, project-specific, archived).
 - `server.js:7779` — Archive load
 - `server.js:7791` — All backlogs (vault + projects)
 - `server.js:7803` — Project backlog load
-- `server.js:/sync-state handler` — ⚠ planned (task #26, Task 6.3) — broadcast after executor pushes status update via POST /sync-state
+- `server.js:8838` — ✓ implemented (task #34) — broadcast inside `/sync-state` handler after `withBacklogLock` write completes
 
 **Consumers (Client receives)**
 - `resources/mockup.html:4640` — Message handler calls `renderBacklog()` with payload
@@ -354,6 +354,24 @@ Server broadcast emitted for every `evaluatePolicy()` call that results in a blo
 **Gaps identified:** `backlogs-data` planned producer (task #26) still pending /sync-state implementation. All task #36 orch events are now fully wired.
 
 **Status:** Audit complete — WS events registry verified for task #36 scope. All Phase 4 events fully wired.
+
+---
+
+**Last audit:** 2026-05-25T00:00:00Z (by /cross-boundary-audit for task #34)
+
+**Task:** #34 — LangGraph: Integration + POC Validation (Phases 6-7)
+
+**Boundaries checked:** WebSocket event types — specifically `backlogs-data` producer from `/sync-state`
+
+**Evidence recorded:**
+- 12 entries total (unchanged)
+- `backlogs-data`: `/sync-state` producer updated from "⚠ planned (task #26)" to "✓ implemented (task #34)" — `server.js:8838` broadcasts after `withBacklogLock` write
+- 0 new WS event types introduced by task #34
+- 0 shape mismatches
+
+**Gaps identified:** None new. Pre-existing `emit-debug-log`/`debug-log` intentional orphans unchanged.
+
+**Status:** Audit complete
 
 ---
 

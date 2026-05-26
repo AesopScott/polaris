@@ -186,13 +186,45 @@ The `status` field written by the executor must be accepted by `updateBacklogTas
 
 ---
 
+## `checkpoint_data` Guard Keys (task #34)
+
+The `checkpoint_data` dict (field above) contains string keys that form an implicit cross-boundary contract: node functions write them during one execution, SQLite persists them, and `_already_done()` reads them after a restart to skip repeat `dispatch_agent` calls. If a key name drifts between writer and reader the guard silently stops working.
+
+**Boundary:** `agents/task_graph.py` node functions (writers) → SQLite `checkpoint_data TEXT` column → `_already_done()` helper in `agents/task_graph.py` (reader at `task_graph.py:35`).
+
+### Idempotent-guard keys (task #34 — restart safety)
+
+| Key | Written by | Line | Read by `_already_done` at | Status |
+|-----|-----------|------|---------------------------|--------|
+| `plan_complete` | `plan_node` | `task_graph.py:89` | `task_graph.py:79` | ✓ |
+| `branch_created` | `start_build_node` | `task_graph.py:112` | `task_graph.py:97` | ✓ |
+| `pr_opened` | `finish_build_node` | `task_graph.py:184` | `task_graph.py:158` | ✓ |
+| `codex_reviewed` | `codex_review_node` | `task_graph.py:~221` (`review_evidence`) + `checkpoint_data` (bug-fixed by /review-pr — PR #47 remediation) | `task_graph.py:204` | ✓ |
+| `promoted_to_stage` | `promote_stage_node` | `task_graph.py:248` | `task_graph.py:235` | ✓ |
+| `promoted_to_prod` | `promote_prod_node` | `task_graph.py:266` | `task_graph.py:256` | ✓ |
+
+### Routing / marker keys (pre-existing — not guarded by `_already_done`)
+
+| Key | Written by | Line | Consumed by | Consumption line | Status |
+|-----|-----------|------|-------------|-----------------|--------|
+| `code_done` | `build_node` | `task_graph.py:125` | HITL marker only — not read for routing | — | ✓ (informational) |
+| `proof_gate_failed` | `finish_build_node` | `task_graph.py:147` | `_route_finish_build` | `task_graph.py:287` | ✓ |
+| `unverified_units` | `finish_build_node` | `task_graph.py:148` (list) | written alongside `proof_gate_failed` for debug | — | ✓ (informational) |
+| `review_complete` | `review_node` | `task_graph.py:198` | HITL marker only — not read for routing | — | ✓ (informational) |
+| `smoke_failed` | `failed_smoke_node` | `task_graph.py:277` | ⚠ **never read from `checkpoint_data`** — routing reads `review_evidence["smoke_failed"]` instead (`task_graph.py:297`) | — | ⚠ orphan write — see gap below |
+
+**Gap — `review_evidence["smoke_failed"]` (pre-existing from task #33):**
+`_route_stage_decision` at `task_graph.py:297` routes to `failed_smoke` when `state["review_evidence"]["smoke_failed"]` is truthy. No node in the graph writes `review_evidence["smoke_failed"]`. `failed_smoke_node` writes `checkpoint_data["smoke_failed"]` (a different dict). **Result: the `failed_smoke` routing branch from `stage_decision` is unreachable as written.** Recommended fix: either wire a signal or node to set `review_evidence["smoke_failed"]`, or remove the routing branch until the smoke-test flow is designed.
+
+---
+
 ## Summary
 
 | Field | TypedDict | SQLite | Pydantic | Status |
 |-------|-----------|--------|----------|--------|
 | `task_number` | ✓ | ✓ | ✓ | ✓ |
 | `current_node` | ✓ | ✓ | ✓ | ✓ |
-| `status` | ✓ (wrong Literal) | ✓ | ✓ | ⚠ mismatch |
+| `status` | ✓ | ✓ | ✓ | ✓ (task #26 fix) |
 | `branch_name` | ✓ | ✓ | ✓ | ✓ |
 | `pr_url` | ✓ | ✓ | ✓ | ✓ |
 | `proof_results` | ✓ | ✓ | ✓ | ✓ |
@@ -223,3 +255,23 @@ The `status` field written by the executor must be accepted by `updateBacklogTas
 - None — all planned fields from pre-build baseline are now implemented
 
 **Status:** ✓ Audit current — all fields shipped in task #26
+
+---
+
+**Last audit:** 2026-05-25T00:00:00Z (by /cross-boundary-audit for task #34)
+
+**Task:** #34 — LangGraph: Integration + POC Validation (Phases 6-7)
+
+**Boundaries checked:** `checkpoint_data` dict keys as implicit contracts between node writers and `_already_done()` reader; `review_evidence` keys for routing
+
+**Evidence recorded:**
+- 12 TaskState field entries: all aligned across TypedDict/SQLite/Pydantic ✓ (unchanged)
+- `status` summary table corrected: was "⚠ mismatch" (stale from pre-task-#26 era); now "✓ (task #26 fix)"
+- 6 new idempotent-guard `checkpoint_data` keys documented: `plan_complete`, `branch_created`, `pr_opened`, `codex_reviewed`, `promoted_to_stage`, `promoted_to_prod` — all balanced ✓
+- 5 pre-existing routing/marker `checkpoint_data` keys documented: `code_done`, `proof_gate_failed`, `unverified_units`, `review_complete`, `smoke_failed`
+- New identifiers introduced on task #34: 6 guard keys above + `_already_done()` helper at `task_graph.py:35`
+
+**Gaps identified:**
+- `review_evidence["smoke_failed"]` — ⚠ orphan consumer: consumed at `task_graph.py:297` by `_route_stage_decision`, never produced by any node. `failed_smoke_node:277` writes `checkpoint_data["smoke_failed"]` (different dict). The `failed_smoke` routing path from `stage_decision` is unreachable. Pre-existing from task #33.
+
+**Status:** Audit complete
