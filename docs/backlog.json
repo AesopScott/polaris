@@ -13,103 +13,6 @@
       "pr_url": null
     },
     {
-      "number": 34,
-      "title": "LangGraph: Integration + POC Validation (Phases 6-7)",
-      "description": "Add backlog.json write-locking, validate checkpoint restart survival mid-task, run one complete task end-to-end through /lang, and document POC findings. Determines whether /lang is ready to mature beyond POC. Depends on Task #33.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "cba-complete",
-      "created_at": "2026-05-22",
-      "completed_at": null,
-      "dependencies": [
-        33
-      ],
-      "branch": "task/34-langgraph-integration-poc-validation",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/47",
-      "plan": "## Overview\n\nTask #33 delivered the full LangGraph node implementation and HITL wiring.\nTask #34 validates the POC: adds a defensive write-lock to backlog.json writes\nin server.js, adds idempotent checkpoint guards to automation nodes in\ntask_graph.py so restarts do not re-fire already-completed work, writes a\nsmoke-test suite, and documents POC findings.\n\n## Phases\n\n1. Write-lock — Add promise-chain serializer to /sync-state handler in server.js\n2. Idempotent guards — Add _already_done() guard to all 6 automation nodes\n3. Smoke tests — agents/test_poc_validation.py: concurrent lock test + restart survival\n4. POC findings — Obsidian task file ## POC Findings section",
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "Concurrent /sync-state requests do not corrupt backlog.json",
-          "expectedBehavior": "Three simultaneous POST /sync-state calls (different task numbers) all succeed and all three status changes appear in the resulting backlog.json.",
-          "proofType": "smoke-command",
-          "exactCommand": "node C:\\Users\\scott\\Code\\Polaris\\agents\\test_sync_lock.js",
-          "expectedInitialFailure": "File does not exist (test script not yet written).",
-          "expectedPassingEvidence": "Prints PASS: all 3 updates present; exit code 0.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 2,
-          "title": "plan_node skips dispatch_agent when plan_complete is in checkpoint_data",
-          "expectedBehavior": "plan_node(state) with checkpoint_data.plan_complete=True returns status=planned without calling dispatch_agent (no HTTP call).",
-          "proofType": "smoke-command",
-          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python test_poc_validation.py --case idempotent-guard",
-          "expectedInitialFailure": "Test script not found, or plan_node calls dispatch_agent causing connection refused.",
-          "expectedPassingEvidence": "Prints PASS idempotent-guard; exit code 0.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 3,
-          "title": "Cold /advance after executor restart returns paused at build gate",
-          "expectedBehavior": "After executor restart (MemorySaver cleared), calling POST /advance for a task with SQLite state showing current_node=build returns {\"status\":\"paused\",\"current_node\":\"build\"} via idempotent guards re-reaching the gate.",
-          "proofType": "smoke-command",
-          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris\\agents && python test_poc_validation.py --case restart-survival",
-          "expectedInitialFailure": "Test script not found or executor not running.",
-          "expectedPassingEvidence": "Prints PASS restart-survival; exit code 0.",
-          "waiverGuidance": "Manual verification acceptable: screenshot of /advance response after executor restart."
-        },
-        {
-          "number": 4,
-          "title": "Obsidian task file contains POC Findings section",
-          "expectedBehavior": "Task file exists at Polaris_Build/Tasks/Task-34-langgraph-integration-poc-validation.md and contains ## POC Findings heading.",
-          "proofType": "smoke-command",
-          "exactCommand": "node -e \"const fs=require('fs'); const c=fs.readFileSync('G:\\\\\\\\My Drive\\\\\\\\Aesop Academy\\\\\\\\Obsidian\\\\\\\\Polaris_Build\\\\\\\\Tasks\\\\\\\\Task-34-langgraph-integration-poc-validation.md','utf8'); console.assert(c.includes('## POC Findings'),'Missing section'); console.log('PASS');\"",
-          "expectedInitialFailure": "File not found.",
-          "expectedPassingEvidence": "Prints PASS; exit code 0.",
-          "waiverGuidance": "N/A"
-        }
-      ],
-      "objective": {
-        "statement": "Harden the LangGraph POC by adding a backlog.json write-lock, making automation nodes idempotent on restart, validating SQLite-based state survives executor restart, and documenting findings to decide whether /lang can mature beyond POC.",
-        "successCriteria": [
-          "A promise-chain write-lock serializes concurrent /sync-state writes in server.js",
-          "All 6 automation nodes skip dispatch_agent when checkpoint_data shows they already completed",
-          "A cold /advance after executor restart returns paused at the build gate (not an error), proving SQLite-based recovery works with idempotent guards",
-          "Obsidian task file contains a ## POC Findings section documenting what works, known limits, and the maturity verdict"
-        ],
-        "nonGoals": [
-          "Full production run through promote_stage and promote_prod nodes",
-          "Persistent LangGraph checkpointer (SQLite or Redis) replacing MemorySaver",
-          "asyncio.to_thread for non-blocking dispatch_agent calls",
-          "UI controls for /lang orchestration (already shipped in task #33)"
-        ],
-        "stopConditions": [
-          "agents/task_executor.py missing (task #33 delivery not present)",
-          "agents/task_graph.py missing or not importable",
-          "Python langgraph package not installed in agents/ environment"
-        ],
-        "proofMap": [
-          {
-            "criterion": 1,
-            "proofUnit": 1
-          },
-          {
-            "criterion": 2,
-            "proofUnit": 2
-          },
-          {
-            "criterion": 3,
-            "proofUnit": 3
-          },
-          {
-            "criterion": 4,
-            "proofUnit": 4
-          }
-        ]
-      }
-    },
-    {
       "number": 28,
       "title": "Upgrade project memory into ranked retrieval",
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
@@ -120,24 +23,6 @@
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": []
-    },
-    {
-      "number": 46,
-      "title": "Policy unit test suite",
-      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
-      "category": "test",
-      "priority": 88,
-      "impact": "minor",
-      "status": "production",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-26",
-      "dependencies": [
-        43
-      ],
-      "branch": "main",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
-      "plan": null,
-      "proofUnits": []
     },
     {
       "number": 30,
@@ -170,14 +55,14 @@
       "category": "feature",
       "priority": 91,
       "impact": "standard",
-      "status": "build-started",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         37
       ],
       "branch": "task/38-wire-runtime-validation-use-compiled-con",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/49",
       "plan": "See Obsidian Task-38-wire-runtime-validation-use-compiled-contracts.md for full plan.\n\n## Overview\n\nWire the compiled Zod contracts from task #37 into server.js. Three changes: (1) add dedicated tsc build step compiling src/contracts/ to compiled/contracts/, (2) replace VALID_BACKLOG_STATUSES Set and _validImpact() with BacklogStatus.safeParse() and ImpactEnum.safeParse(), (3) add WS_SCHEMA_REGISTRY + validation gate in handleMessage() rejecting known-type messages with missing required fields.\n\n## Phases\n\n### Phase A — Compilation Infrastructure\n1. Create tsconfig.contracts.json (rootDir: ./src, outDir: ./compiled, includes only src/contracts/**/*)\n2. Add ImpactEnum named export to src/contracts/backlog.ts\n3. Add build:contracts and prestart scripts to package.json\n4. Run npm run build:contracts — verify compiled/contracts/*.js files exist\n5. git add compiled/ to commit compiled output\n\n### Phase B — Backlog Validation Replacement\n1. Add require(./compiled/contracts/backlog) at top of server.js\n2. Replace _validImpact() body with ImpactEnum.safeParse()-backed check (same signature)\n3. Replace VALID_BACKLOG_STATUSES.has(newStatus) with BacklogStatus.safeParse(newStatus).success\n4. Delete VALID_BACKLOG_STATUSES const block\n\n### Phase C — WS Receive-Side Validation\n1. Add require(./compiled/contracts/ws-messages) at top of server.js\n2. Add WS_SCHEMA_REGISTRY Map (type string -> Zod schema) covering all ~75 client->server message types from AnyClientMessage\n3. In handleMessage(), after JSON.parse, add validation gate: unknown types pass through, known types with wrong fields return { type: error, code: INVALID_MSG, msgType, issues }\n\n### Phase D — Final Compile + Commit\n1. npm run build:contracts — final compile picks up ImpactEnum\n2. Bump package.json version (patch)\n3. git add + commit + push",
       "proofUnits": [
         {
@@ -279,6 +164,24 @@
       "proofUnits": []
     },
     {
+      "number": 46,
+      "title": "Policy unit test suite",
+      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-26",
+      "dependencies": [
+        43
+      ],
+      "branch": "main",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
+      "plan": null,
+      "proofUnits": []
+    },
+    {
       "number": 48,
       "title": "Check out notes.",
       "description": "Notes as a replacement or augmentation for Obsidian?",
@@ -289,6 +192,239 @@
       "created_at": "2026-05-25",
       "completed_at": null,
       "dependencies": []
+    },
+    {
+      "number": 49,
+      "title": "Memory importance scoring at write time",
+      "description": "Initial strength should reflect memory importance rather than always defaulting to 1.0. The Codex extraction prompt should score each memory 1-5 by type (decision=5, preference=4, feedback=4, pattern=3, fact=2 as defaults). Map score to initial strength in the 0.6-1.0 range so high-signal memories decay slower from birth. Patch addMemory() and addMemories() in lib/memory.js to accept an importance field and set initial strength accordingly. Update the Codex extraction prompt in extractSessionToKnowledge() to request and return importance scores alongside each memory.",
+      "category": "enhancement",
+      "priority": 10,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 50,
+      "title": "Memory consolidation synthesis — deduplication on write",
+      "description": "Before writing new memories from Codex extraction, compare each candidate against existing project memories using Jaccard similarity on tags plus substring overlap on content. Merge near-duplicates (similarity above 0.7) by reinforcing the existing memory rather than creating a new document. Prevents the collection from filling with restatements of the same facts across sessions. Fetch existing memories once per extraction batch, score all candidates against them, and split candidates into new writes vs reinforcements before committing.",
+      "category": "enhancement",
+      "priority": 10,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [
+        49
+      ]
+    },
+    {
+      "number": 51,
+      "title": "Proactive memory injection at session start",
+      "description": "At chat-session turn 1, search Firestore for the top project-scoped memories (BM25+strength+recency; strength+recency fallback for terse first messages) and prepend a <=800-token [POLARIS MEMORY] block to the hidden system prompt. Chat-only scope; agent-session injection deferred to #57. Logic extracted to lib/memoryInjection.js (DI memory module) for testability; no change to lib/memory.js.",
+      "category": "feature",
+      "priority": 2,
+      "impact": "standard",
+      "status": "ready",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "pr_url": null,
+      "objective": {
+        "statement": "Inject a ranked, project-scoped, <=800-token memory block into chat-session system prompts at turn 1 only, failing soft so Firestore never blocks session start.",
+        "successCriteria": [
+          "classifyQuery routes terse first messages to strength+recency and rich ones to BM25+strength+recency",
+          "formatMemoryBlock emits a [POLARIS MEMORY] block for populated input, '' for empty, never exceeding 800 tokens (~3200 chars)",
+          "buildMemoryInjectionBlock returns '' on empty/error (never throws) and reinforces each returned memory",
+          "spawnMaxChat injects the block only on the turn-1 (!isResume) path and appends to hiddenSystemPrompt",
+          "a live chat session on a project with memories shows the block at turn 1 and none on resume"
+        ],
+        "nonGoals": [
+          "Agent-session injection (runDirectAgent) — deferred to #57",
+          "Changing the ranking math inside searchMemories",
+          "Trimming CLAUDE.md (downstream)"
+        ],
+        "proofMap": {
+          "1": 1,
+          "2": 2,
+          "3": 3,
+          "4": 4,
+          "5": 5
+        },
+        "stopConditions": [
+          "lib/memory.js not present on the build branch",
+          "Firebase service account missing AND a live e2e (PU5) is required (PU1-3 still pass via fail-soft)"
+        ]
+      },
+      "plan": "## Overview\nProactive memory injection for chat sessions. Extract pure+DI logic to lib/memoryInjection.js; wire into spawnMaxChat turn-1 hook (server.js:6654). Project-top fallback handles terse first messages by passing an empty query into searchMemories existing strength+recency path.\n\n## Phases\n1. Retrieval helper (TDD): classifyQuery, formatMemoryBlock, buildMemoryInjectionBlock(memory, project, query) in lib/memoryInjection.js; vitest suite test/memory/.\n2. Chat wiring: call helper in spawnMaxChat !isResume branch, append to hiddenSystemPrompt.\n3. Verify + formalize: manual e2e, version bump, changelog, this backlog entry.\n\n## First Proof Unit\nPU1 classifyQuery — npx vitest run test/memory — RED: lib/memoryInjection.js absent; GREEN: terse->strength+recency, rich->BM25.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Query classifier routes terse vs rich queries",
+          "expectedBehavior": "classifyQuery flags low-signal first messages and blanks their query so retrieval falls back to strength+recency.",
+          "proofType": "failing-test",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris && npx vitest run test/memory",
+          "expectedInitialFailure": "Cannot find module './lib/memoryInjection' — file absent.",
+          "expectedPassingEvidence": "classifyQuery(\"yes\")/(\"1\")/(\"ok\") -> lowSignal:true, effectiveQuery:\"\"; classifyQuery(\"wire memory injection into spawnMaxChat\") -> lowSignal:false, effectiveQuery equals input.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "Block format + 800-token cap",
+          "expectedBehavior": "formatMemoryBlock returns a delimited block for populated input and '' for empty, never exceeding the cap.",
+          "proofType": "failing-test",
+          "exactCommand": "npx vitest run test/memory",
+          "expectedInitialFailure": "module/function absent.",
+          "expectedPassingEvidence": "formatMemoryBlock([])===''; populated -> string starting [POLARIS MEMORY containing each memory's type, strength, content; 50 memories -> length <= 3200.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Orchestrator is fail-soft and reinforces",
+          "expectedBehavior": "buildMemoryInjectionBlock returns '' on empty or error (never throws) and reinforces each returned memory.",
+          "proofType": "failing-test",
+          "exactCommand": "npx vitest run test/memory",
+          "expectedInitialFailure": "function absent.",
+          "expectedPassingEvidence": "fake searchMemories that throws -> resolves ''; returns [] -> ''; returns 2 docs -> non-empty block and reinforceMemory called twice.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "Turn-1-only wiring in spawnMaxChat",
+          "expectedBehavior": "The injection call sits in the !isResume branch and appends to hiddenSystemPrompt; resume turns are untouched.",
+          "proofType": "smoke-command",
+          "exactCommand": "git diff main -- server.js",
+          "expectedInitialFailure": "diff shows no buildMemoryInjectionBlock call.",
+          "expectedPassingEvidence": "diff shows the guarded call + append on turn 1 only, near line 6654; no call in resume path.",
+          "waiverGuidance": "N/A — diff review suffices."
+        },
+        {
+          "number": 5,
+          "title": "End-to-end injection in a live chat session",
+          "expectedBehavior": "A real chat session on a project with memories begins turn 1 with a [POLARIS MEMORY] block; resume adds none.",
+          "proofType": "manual-script",
+          "exactCommand": "1) npm start; 2) ensure >=1 memory exists for the project; 3) open a chat session on that project, send a first message; 4) inspect the hidden system-prompt temp file (or diag) for [POLARIS MEMORY]; 5) send a second message (resume) and confirm no second block.",
+          "expectedInitialFailure": "no [POLARIS MEMORY] block at turn 1.",
+          "expectedPassingEvidence": "block present turn 1, absent on resume; no added latency/errors. Scott signs off.",
+          "waiverGuidance": "Manual sign-off is the proof; the live chat path cannot be exercised headless."
+        }
+      ]
+    },
+    {
+      "number": 52,
+      "title": "Memory editing and correction UI",
+      "description": "Provide a path for Scott to flag, edit, or manually archive a specific memory. Codex misextractions currently persist until natural decay (weeks). A Polaris panel listing memories by project with inline edit and archive controls closes the human feedback loop on extraction quality. The panel should show content, type, tags, strength, accessCount, and age. Editing a memory resets its strength to the importance-based initial value; archiving sets _archived: true immediately.",
+      "category": "feature",
+      "priority": 30,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": []
+    },
+    {
+      "number": 53,
+      "title": "Experience-to-skill distillation — higher-order memory consolidation synthesis",
+      "description": "A weekly Codex pass clusters episodic memories by semantic similarity, identifies repeated patterns across them, and writes a single consolidated higher-order memory in their place. For example, 20 individual observations about tool choices synthesize into one durable preference memory. Original episodic memories are archived after synthesis. Implements the PowerMem two-layer experience plus skill architecture. Should run as a routine session on a weekly cron, fire-and-forget, with results logged to the server log.",
+      "category": "feature",
+      "priority": 40,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [
+        50
+      ]
+    },
+    {
+      "number": 54,
+      "title": "Cross-project memory tier",
+      "description": "Add a global memory tier alongside project-scoped memories. Memories tagged with project: global are returned in searchMemories calls for any project. Supports facts that are true across all projects: code style preferences, tool preferences, personal working patterns, recurring feedback. Prevents duplication of the same preference memory in every project collection. Requires a Firestore query change to OR-filter on project == requested OR project == global.",
+      "category": "feature",
+      "priority": 50,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [
+        50
+      ]
+    },
+    {
+      "number": 55,
+      "title": "Forgetting curve calibration by memory type",
+      "description": "Current decay constants (STABILITY_BASE=7 days, DECAY_THRESHOLD=0.1) are uniform across all memory types. Preferences and decisions should decay slower than facts and observations — a preference is more stable than an incidental observation. Once the collection has enough retrieval history, tune stability multipliers per type. Long-term: use retrieval outcome signals (did the session act on this memory?) to adjust decay rate per document individually.",
+      "category": "enhancement",
+      "priority": 60,
+      "impact": "minor",
+      "status": "backlog",
+      "created_at": "2026-05-26",
+      "completed_at": null,
+      "dependencies": [
+        49,
+        53
+      ]
+    },
+    {
+      "number": 57,
+      "title": "Agent-session memory injection (gated on agentic flows live)",
+      "category": "feature",
+      "priority": 5,
+      "status": "backlog",
+      "dependencies": [
+        51
+      ],
+      "impact": "standard",
+      "branch": null,
+      "pr_url": null,
+      "description": "Wire buildMemoryInjectionBlock into runDirectAgent's turn-1 system-prompt assembly — the agent counterpart of #51. Deferred from #51 because agent runs are near-zero today; gated on agentic flows going live (next-gen query engine, AESOP->diamond automation). Full spec in docs/task-51-handoff.md.",
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 58,
+      "title": "Reconcile duplicate build-plan files (3-Build_Plan.md vs 3-Build-Plan.md)",
+      "category": "Infrastructure",
+      "priority": 1,
+      "status": "backlog",
+      "dependencies": [],
+      "impact": "standard",
+      "branch": null,
+      "pr_url": null,
+      "description": "Planning skills (design-discussion/outline-plan/write-plan) write 3-Build_Plan.md (underscore, ~1734 lines) while CLAUDE.md and vault git track 3-Build-Plan.md (hyphen, ~2085 lines) — two divergent build-plan files. Reconcile: pick the canonical, merge unique planning history, update the ~3 skill SKILL.md references, retire the other. Related: the Obsidian vault git repo has NO remote configured — wire the intended remote so Build docs are backed up off-machine.",
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 56,
+      "title": "Trim CLAUDE.md to invariant-only entries",
+      "description": "CLAUDE.md is currently overloaded with facts that should live in Firestore memories (tool behaviors, encoding rules, session correction history). Once proactive memory injection (#51) is live and proven, audit CLAUDE.md and migrate all non-invariant content into Firestore as high-importance memories. Invariant entries that stay: session startup routine, three-zone file rule, branch isolation policy, build/install commands. Everything else moves to memory. Target: CLAUDE.md shrinks from ~200 lines to ~20-30 invariant lines. Reduces startup token cost and lets memories drift-correct as behavior evolves.",
+      "category": "chore",
+      "priority": 20,
+      "impact": "standard",
+      "status": "backlog",
+      "created_at": "2026-05-25",
+      "completed_at": null,
+      "dependencies": [
+        51
+      ]
+    },
+    {
+      "number": 59,
+      "title": "Bi-temporal audit log schema for security tooling (design constraint)",
+      "description": "Forward reference and design constraint for future Polaris security tools. Any security audit log system built on top of the memory/knowledge infrastructure must use bi-temporal structure: valid_time (when the fact was true in the real world) and transaction_time (when Polaris recorded it). This enables forensic past-state reconstruction: given an arbitrary past moment T, reconstruct exactly what the system knew and what was true, independently. Critical for answering Were we secure at T vs Did we think we were secure at T -- a meaningful distinction for CMMC, HIPAA, and SOC2 compliance. Compound condition detection: graph traversal over bi-temporal edges can find attack windows where multiple conditions overlapped (e.g. suspended account + live access edge = breach window during interval [T1, T2]). Schema sketch: { entityId, attribute, value, validFrom, validTo, txFrom, txTo }. Do not build this as a flat log -- the temporal indexing is load-bearing.",
+      "category": "feature",
+      "priority": 70,
+      "impact": "major",
+      "status": "backlog",
+      "created_at": "2026-05-25",
+      "completed_at": null,
+      "dependencies": [
+        57,
+        58
+      ]
     }
   ]
 }
