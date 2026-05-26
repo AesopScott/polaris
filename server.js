@@ -33,6 +33,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn, exec, execFile, execSync, execFileSync, spawnSync } = require('child_process');
+const execAsync = require('util').promisify(exec); // non-blocking async shell — keeps event loop free
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -4827,7 +4828,7 @@ function toolGlob({ pattern, path: searchPath }, workDir) {
   return results.slice(0, 500).join('\n') || '(no matches)';
 }
 
-function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, context: ctx }, workDir) {
+async function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, context: ctx }, workDir) {
   const searchIn = searchPath || workDir || process.cwd();
 
   if (process.platform !== 'win32') {
@@ -4842,7 +4843,8 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
       rgCmd = `rg -n ${ctxFlag} ${globFlag} ${JSON.stringify(pattern)} ${JSON.stringify(searchIn)}`;
     }
     try {
-      return execSync(rgCmd, { shell: true, timeout: 30000, maxBuffer: 5 * 1024 * 1024 }).toString().trim() || '(no matches)';
+      const { stdout: _rgOut } = await execAsync(rgCmd, { shell: true, timeout: 30000, maxBuffer: 5 * 1024 * 1024 });
+      return _rgOut.toString().trim() || '(no matches)';
     } catch (e) {
       return e.stdout?.toString().trim() || '(no matches)';
     }
@@ -4855,7 +4857,8 @@ function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mode, co
   if (output_mode === 'files_with_matches') cmd += ' | Select-Object -ExpandProperty Path -Unique';
   else if (output_mode === 'count')         cmd += ' | Measure-Object | Select-Object -ExpandProperty Count';
   try {
-    return execSync(`powershell.exe -NoProfile -Command "${cmd.replace(/"/g, '\\"')}"`, { timeout: 30000, maxBuffer: 5 * 1024 * 1024 }).toString().trim() || '(no matches)';
+    const { stdout: _psGrepOut } = await execAsync(`powershell.exe -NoProfile -Command "${cmd.replace(/"/g, '\\"')}"`, { timeout: 30000, maxBuffer: 5 * 1024 * 1024 });
+    return _psGrepOut.toString().trim() || '(no matches)';
   } catch (e) { return e.stdout?.toString().trim() || '(no matches)'; }
 }
 
@@ -4935,7 +4938,8 @@ async function toolBash({ command, timeout: tms }, workDir, sessionId) {
   const { writeTargets, snapshots, priorContents } = await shellPrecheck(command, workDir, sessionId, _bPolicy, 'bash');
   let output;
   try {
-    output = execSync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+    const { stdout: _bashOut } = await execAsync(command, { cwd: workDir, shell: true, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 });
+    output = _bashOut.toString();
   } catch (e) {
     const out = e.stdout ? e.stdout.toString() : '';
     const err = e.stderr ? e.stderr.toString() : '';
@@ -4966,7 +4970,8 @@ async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
   let output;
   try {
     const psExe = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
-    output = execSync(`${psExe} -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 }).toString();
+    const { stdout: _psOut } = await execAsync(`${psExe} -NoProfile -Command ${JSON.stringify(command)}`, { cwd: workDir, timeout: Math.min(tms || 60000, 120000), maxBuffer: 5 * 1024 * 1024 });
+    output = _psOut.toString();
   } catch (e) {
     const out = e.stdout ? e.stdout.toString() : '';
     const err = e.stderr ? e.stderr.toString() : '';
@@ -5747,7 +5752,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
     case 'Write':      return await toolWrite(input, workDir, sessionId);
     case 'Edit':       return await toolEdit(input, workDir, sessionId);
     case 'Glob':       return toolGlob(input, workDir);
-    case 'Grep':       return toolGrep(input, workDir);
+    case 'Grep':       return await toolGrep(input, workDir);
     case 'Bash':       return await toolBash(input, workDir, sessionId);
     case 'PowerShell': return await toolPowerShell(input, workDir, sessionId);
     case 'WebFetch':   return await toolWebFetch(input);
