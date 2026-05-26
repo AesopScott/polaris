@@ -231,7 +231,7 @@
       "completed_at": null,
       "dependencies": [],
       "branch": null,
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/53",
       "objective": {
         "statement": "Inject a ranked, project-scoped, <=800-token memory block into chat-session system prompts at turn 1 only, failing soft so Firestore never blocks session start.",
         "successCriteria": [
