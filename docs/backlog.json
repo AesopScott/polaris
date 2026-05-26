@@ -170,13 +170,13 @@
       "category": "feature",
       "priority": 91,
       "impact": "standard",
-      "status": "planned",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         37
       ],
-      "branch": null,
+      "branch": "task/38-wire-runtime-validation-use-compiled-con",
       "pr_url": null,
       "plan": "See Obsidian Task-38-wire-runtime-validation-use-compiled-contracts.md for full plan.\n\n## Overview\n\nWire the compiled Zod contracts from task #37 into server.js. Three changes: (1) add dedicated tsc build step compiling src/contracts/ to compiled/contracts/, (2) replace VALID_BACKLOG_STATUSES Set and _validImpact() with BacklogStatus.safeParse() and ImpactEnum.safeParse(), (3) add WS_SCHEMA_REGISTRY + validation gate in handleMessage() rejecting known-type messages with missing required fields.\n\n## Phases\n\n### Phase A — Compilation Infrastructure\n1. Create tsconfig.contracts.json (rootDir: ./src, outDir: ./compiled, includes only src/contracts/**/*)\n2. Add ImpactEnum named export to src/contracts/backlog.ts\n3. Add build:contracts and prestart scripts to package.json\n4. Run npm run build:contracts — verify compiled/contracts/*.js files exist\n5. git add compiled/ to commit compiled output\n\n### Phase B — Backlog Validation Replacement\n1. Add require(./compiled/contracts/backlog) at top of server.js\n2. Replace _validImpact() body with ImpactEnum.safeParse()-backed check (same signature)\n3. Replace VALID_BACKLOG_STATUSES.has(newStatus) with BacklogStatus.safeParse(newStatus).success\n4. Delete VALID_BACKLOG_STATUSES const block\n\n### Phase C — WS Receive-Side Validation\n1. Add require(./compiled/contracts/ws-messages) at top of server.js\n2. Add WS_SCHEMA_REGISTRY Map (type string -> Zod schema) covering all ~75 client->server message types from AnyClientMessage\n3. In handleMessage(), after JSON.parse, add validation gate: unknown types pass through, known types with wrong fields return { type: error, code: INVALID_MSG, msgType, issues }\n\n### Phase D — Final Compile + Commit\n1. npm run build:contracts — final compile picks up ImpactEnum\n2. Bump package.json version (patch)\n3. git add + commit + push",
       "proofUnits": [
