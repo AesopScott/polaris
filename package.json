@@ -1,7 +1,7 @@
 {
-  “name”: “polaris”,
-  “version”: “1.0.622”,
-  “description”: “Polaris — Claude Code Command Center”,
+  "name": "polaris",
+  "version": "1.0.622",
+  "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
     "build:contracts": "tsc -p tsconfig.contracts.json",
