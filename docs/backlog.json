@@ -18,7 +18,7 @@
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
       "category": "feature",
       "priority": 90,
-      "impact": "major",
+      "impact": "standard",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
