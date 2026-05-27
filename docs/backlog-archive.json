@@ -2158,6 +2158,59 @@
       "project_source": "Polaris",
       "promoted_via_pr": "56",
       "promoted_at": "2026-05-27T18:27:37.989Z"
+    },
+    {
+      "number": 46,
+      "title": "Policy unit test suite",
+      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server â€” evaluatePolicy must be importable in isolation.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-27",
+      "dependencies": [
+        43
+      ],
+      "branch": "main",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
+      "plan": null,
+      "proofUnits": [],
+      "project_source": "Polaris",
+      "promoted_via_pr": null
+    },
+    {
+      "number": 61,
+      "title": "Fix health monitor: async remediation, single-flight guard, inbox cap, auth",
+      "category": "fix",
+      "priority": 5,
+      "branch": "task/61-fix-health-monitor-async-remediation",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/58",
+      "dependencies": [],
+      "description": "Codex review (ad-hoc, 4feb32e..657582b) flagged CRITICAL: autoRemediateHealth() uses spawnSync (blocking up to 10s+N*5s) on the main event loop every 5 minutes, which can directly cause the server timeouts it is meant to fix. Also: no single-flight guard on runDirectAgent() calls, unbounded healthMonitorInbox, no auth on /health-monitor/prompt, no session cross-reference before process kills, and no debounce on degraded-state analysis. Fix all 10 findings.",
+      "plan": "Fix 1+2: Replace spawnSync with async execFile in autoRemediateHealth(); decouple from snapshot broadcast (broadcast first, remediate async after). Fix 3: Add healthMonitorAgentRunning single-flight flag around all runDirectAgent() calls targeting health monitor. Fix 4: Cross-reference mcpProcesses Map before any Stop-Process to avoid killing live session MCP helpers. Fix 5: Increase age threshold 15->30 min. Fix 6: Hard cap healthMonitorInbox at 50 items with 429 on overflow. Fix 7: Auth /health-monitor/prompt with UI_TOKEN header check. Fix 8: Graceful shutdown before force-kill. Fix 9: Debounce degraded-state analysis (10 min min interval). Fix 10: Log auto-kills to persistent file.",
+      "objective": {
+        "statement": "Health monitor auto-remediation must not block the Node.js event loop, must not kill live session MCP helpers, and must be safe to run unsupervised with 6-10 concurrent sessions.",
+        "successCriteria": [
+          "autoRemediateHealth() is fully async (no spawnSync)",
+          "injectHealthSnapshot() broadcasts before any remediation runs",
+          "Single-flight guard prevents overlapping runDirectAgent() calls on health monitor session",
+          "No MCP helper PID in mcpProcesses is killed",
+          "healthMonitorInbox capped at 50 with 429 response on overflow",
+          "/health-monitor/prompt requires UI_TOKEN header"
+        ],
+        "nonGoals": [
+          "Changes to health probe script",
+          "Changes to runDirectAgent() internals",
+          "Changes to session spawning"
+        ],
+        "proofMap": [],
+        "stopConditions": []
+      },
+      "status": "production",
+      "completed_at": "2026-05-27",
+      "project_source": "Polaris",
+      "promoted_via_pr": "https://github.com/AesopScott/polaris/pull/58"
     }
   ]
 }
