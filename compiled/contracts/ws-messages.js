@@ -40,17 +40,17 @@ exports.TransferSessionMessage = WebSocketMessage.extend({
 exports.SessionHeightMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('session-height'),
     sessionId: zod_1.z.string(),
-    height: zod_1.z.number(),
+    height: zod_1.z.number().nullable(),
 });
 exports.SessionColumnMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('session-column'),
     sessionId: zod_1.z.string(),
-    column: zod_1.z.number().int(),
+    column: zod_1.z.number().int().nullable(),
 });
 exports.SessionColumnSpanMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('session-column-span'),
     sessionId: zod_1.z.string(),
-    span: zod_1.z.number().int(),
+    columnSpan: zod_1.z.number().int(),
 });
 exports.SessionPinnedMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('session-pinned'),

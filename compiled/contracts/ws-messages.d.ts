@@ -80,41 +80,41 @@ export declare const TransferSessionMessage: z.ZodObject<{} & {
 export declare const SessionHeightMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"session-height">;
     sessionId: z.ZodString;
-    height: z.ZodNumber;
+    height: z.ZodNullable<z.ZodNumber>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"session-height">;
     sessionId: z.ZodString;
-    height: z.ZodNumber;
+    height: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"session-height">;
     sessionId: z.ZodString;
-    height: z.ZodNumber;
+    height: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SessionColumnMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"session-column">;
     sessionId: z.ZodString;
-    column: z.ZodNumber;
+    column: z.ZodNullable<z.ZodNumber>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"session-column">;
     sessionId: z.ZodString;
-    column: z.ZodNumber;
+    column: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"session-column">;
     sessionId: z.ZodString;
-    column: z.ZodNumber;
+    column: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SessionColumnSpanMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
-    span: z.ZodNumber;
+    columnSpan: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
-    span: z.ZodNumber;
+    columnSpan: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
-    span: z.ZodNumber;
+    columnSpan: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SessionPinnedMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"session-pinned">;
@@ -888,15 +888,15 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
-    span: z.ZodNumber;
+    columnSpan: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
-    span: z.ZodNumber;
+    columnSpan: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
-    span: z.ZodNumber;
+    columnSpan: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"session-pinned">;
     sessionId: z.ZodString;

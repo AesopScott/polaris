@@ -174,6 +174,15 @@ describe('SessionColumnMessage', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts null column (reset path)', () => {
+    const result = SessionColumnMessage.safeParse({
+      type: 'session-column',
+      sessionId: 's1',
+      column: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects non-integer column', () => {
     const result = SessionColumnMessage.safeParse({
       type: 'session-column',
@@ -185,11 +194,11 @@ describe('SessionColumnMessage', () => {
 });
 
 describe('SessionColumnSpanMessage', () => {
-  it('accepts valid integer span', () => {
+  it('accepts valid integer columnSpan', () => {
     const result = SessionColumnSpanMessage.safeParse({
       type: 'session-column-span',
       sessionId: 's1',
-      span: 2,
+      columnSpan: 2,
     });
     expect(result.success).toBe(true);
   });

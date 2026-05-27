@@ -47,19 +47,19 @@ export const TransferSessionMessage = WebSocketMessage.extend({
 export const SessionHeightMessage = WebSocketMessage.extend({
   type: z.literal('session-height'),
   sessionId: z.string(),
-  height: z.number(),
+  height: z.number().nullable(),
 });
 
 export const SessionColumnMessage = WebSocketMessage.extend({
   type: z.literal('session-column'),
   sessionId: z.string(),
-  column: z.number().int(),
+  column: z.number().int().nullable(),
 });
 
 export const SessionColumnSpanMessage = WebSocketMessage.extend({
   type: z.literal('session-column-span'),
   sessionId: z.string(),
-  span: z.number().int(),
+  columnSpan: z.number().int(),
 });
 
 export const SessionPinnedMessage = WebSocketMessage.extend({
