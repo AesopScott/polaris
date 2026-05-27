@@ -47,19 +47,19 @@ export const TransferSessionMessage = WebSocketMessage.extend({
 export const SessionHeightMessage = WebSocketMessage.extend({
   type: z.literal('session-height'),
   sessionId: z.string(),
-  height: z.number(),
+  height: z.number().nullable(),
 });
 
 export const SessionColumnMessage = WebSocketMessage.extend({
   type: z.literal('session-column'),
   sessionId: z.string(),
-  column: z.number().int(),
+  column: z.number().int().nullable(),
 });
 
 export const SessionColumnSpanMessage = WebSocketMessage.extend({
   type: z.literal('session-column-span'),
   sessionId: z.string(),
-  span: z.number().int(),
+  columnSpan: z.number().int(),
 });
 
 export const SessionPinnedMessage = WebSocketMessage.extend({
@@ -72,27 +72,27 @@ export const SessionPinnedMessage = WebSocketMessage.extend({
 
 export const UserQuestionAnswerMessage = WebSocketMessage.extend({
   type: z.literal('user-question-answer'),
-  sessionId: z.string(),
+  questionId: z.string(),
   answer: z.string(),
 });
 
 export const CrossCheckDecisionMessage = WebSocketMessage.extend({
   type: z.literal('cross-check-decision'),
-  sessionId: z.string(),
+  checkId: z.string(),
   decision: z.enum(['approve', 'reject']),
   reason: z.string().optional(),
 });
 
 export const CrossCheckPostHocDecisionMessage = WebSocketMessage.extend({
   type: z.literal('cross-check-post-hoc-decision'),
-  sessionId: z.string(),
+  checkId: z.string(),
   decision: z.enum(['approve', 'reject']),
   reason: z.string().optional(),
 });
 
 export const InstallerPermissionDecisionMessage = WebSocketMessage.extend({
   type: z.literal('installer-permission-decision'),
-  sessionId: z.string(),
+  checkId: z.string(),
   decision: z.enum(['allow', 'deny']),
 });
 
@@ -101,14 +101,17 @@ export const InstallerPermissionDecisionMessage = WebSocketMessage.extend({
 export const DeleteQueueMessageMessage = WebSocketMessage.extend({
   type: z.literal('delete-queue-message'),
   sessionId: z.string(),
-  messageId: z.string(),
+  queueType: z.string(),
+  index: z.number().int(),
 });
 
 export const EditQueueMessageMessage = WebSocketMessage.extend({
   type: z.literal('edit-queue-message'),
   sessionId: z.string(),
-  messageId: z.string(),
-  newContent: z.string(),
+  queueType: z.string(),
+  index: z.number().int(),
+  prompt: z.string().optional(),
+  displayPrompt: z.string().optional(),
 });
 
 // ─── Cost & Metrics ──────────────────────────────────────────────────────────
@@ -116,7 +119,7 @@ export const EditQueueMessageMessage = WebSocketMessage.extend({
 export const CostUpdateMessage = WebSocketMessage.extend({
   type: z.literal('cost-update'),
   sessionId: z.string(),
-  cost: z.number(),
+  totalCost: z.number(),
 });
 
 // ─── Backlog ─────────────────────────────────────────────────────────────────
@@ -198,7 +201,7 @@ export const DebugLogMessage = WebSocketMessage.extend({
 
 export const DismissRoutineNotificationMessage = WebSocketMessage.extend({
   type: z.literal('dismiss-routine-notification'),
-  notificationId: z.string(),
+  id: z.string(),
 });
 
 export const GetRoutineNotificationsMessage = WebSocketMessage.extend({
@@ -209,7 +212,6 @@ export const GetRoutineNotificationsMessage = WebSocketMessage.extend({
 
 export const DomainScoutMessage = WebSocketMessage.extend({
   type: z.literal('domain-scout'),
-  domain: z.string(),
 });
 
 export const DomainScoutClearMessage = WebSocketMessage.extend({
@@ -257,8 +259,8 @@ export const TestApiKeyMessage = WebSocketMessage.extend({
 export const TestModelMessage = WebSocketMessage.extend({
   type: z.literal('test-model'),
   model: z.string(),
-  prompt: z.string(),
-  apiKey: z.string().optional(),
+  tier: z.string().optional(),
+  provider: z.string().nullable().optional(),
 });
 
 // ─── Agent Eval ──────────────────────────────────────────────────────────────
@@ -269,12 +271,13 @@ export const AgentEvalLoadQueueMessage = WebSocketMessage.extend({
 
 export const StartAgentEvalMessage = WebSocketMessage.extend({
   type: z.literal('start-agent-eval'),
-  config: z.unknown(),
+  models: z.array(z.unknown()),
+  fixtures: z.array(z.string()).optional(),
+  runs: z.union([z.number(), z.string()]).optional(),
 });
 
 export const CancelAgentEvalMessage = WebSocketMessage.extend({
   type: z.literal('cancel-agent-eval'),
-  evalId: z.string(),
 });
 
 export const SaveAgentEvalResultsMessage = WebSocketMessage.extend({
@@ -300,8 +303,10 @@ export const GetPreBuildCheckStatusMessage = WebSocketMessage.extend({
 
 export const RunBuildMessage = WebSocketMessage.extend({
   type: z.literal('run-build'),
-  projectPath: z.string(),
-  buildType: z.string(),
+  sourcePath: z.string().optional(),
+  projectName: z.string().optional(),
+  buildType: z.string().optional(),
+  skipCheck: z.boolean().optional(),
 });
 
 // ─── Benchmark ───────────────────────────────────────────────────────────────
@@ -312,7 +317,12 @@ export const BenchmarkLoadQueueMessage = WebSocketMessage.extend({
 
 export const BenchmarkSaveResultMessage = WebSocketMessage.extend({
   type: z.literal('benchmark-save-result'),
-  result: z.unknown(),
+  model: z.string(),
+  provider: z.string().nullable().optional(),
+  ttft: z.number(),
+  tps: z.number(),
+  tokens: z.number(),
+  totalMs: z.number(),
 });
 
 // ─── Space ───────────────────────────────────────────────────────────────────
@@ -330,13 +340,12 @@ export const GetSpaceAnalysisMessage = WebSocketMessage.extend({
 
 export const SavePanelStateMessage = WebSocketMessage.extend({
   type: z.literal('save-panel-state'),
-  panelId: z.string(),
-  state: z.unknown(),
+  panelState: z.unknown(),
 });
 
 export const SaveHiddenSessionsMessage = WebSocketMessage.extend({
   type: z.literal('save-hidden-sessions'),
-  sessionIds: z.array(z.string()),
+  hiddenSessions: z.array(z.string()),
 });
 
 // ─── Project & Routine ───────────────────────────────────────────────────────
@@ -348,7 +357,7 @@ export const UpsertProjectMessage = WebSocketMessage.extend({
 
 export const DeleteProjectMessage = WebSocketMessage.extend({
   type: z.literal('delete-project'),
-  projectName: z.string(),
+  name: z.string(),
 });
 
 export const UpsertRoutineMessage = WebSocketMessage.extend({
@@ -358,7 +367,7 @@ export const UpsertRoutineMessage = WebSocketMessage.extend({
 
 export const DeleteRoutineMessage = WebSocketMessage.extend({
   type: z.literal('delete-routine'),
-  routineId: z.string(),
+  name: z.string(),
 });
 
 // ─── Utility ─────────────────────────────────────────────────────────────────

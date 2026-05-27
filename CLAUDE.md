@@ -3,7 +3,7 @@
 Scott's personal AI command center — parallel agent sessions, real API control, Electron desktop UI.
 
 ## Session startup
-Run `gh repo set-default AesopScott/polaris` at the start of every session before using any `gh` commands.
+Run `gh repo set-default AesopScott/polaris` at the start of every session before using any `gh` commands. The session worktree is already a linked git repo — run this from the current working directory, no `cd` required.
 
 ## Critical rules
 1. **Propose before writing.** For file edits and writes, state the planned change and wait for explicit yes. Reads, searches, and tool calls proceed without asking.
@@ -11,7 +11,7 @@ Run `gh repo set-default AesopScott/polaris` at the start of every session befor
 3. **Versioning:** state file's current version before editing, new version after. Versions in `%APPDATA%\.claude\polaris\file-versions.json`.
 4. **Locks:** check `locks.json` before any write; locked files need explicit approval.
 5. **Server restarts:** never from code — tell Scott.
-6. **Windows:** backslash paths, no Unix shell tools. Use PowerShell or Node `fs`.
+6. **Windows:** Use PowerShell or Node `fs` for file operations. When `gh` or `git` must run in Bash, use forward-slash paths (`C:/Users/scott/Code/Polaris`) — backslash paths silently corrupt in bash and will fail.
 7. **Commit after every change:** After any file edit or write, immediately commit with a conventional message (feat, fix, refactor, docs, chore, perf, ci). Never leave changes uncommitted. Bump `package.json` version **at delivery time** — in the same edit as the code change, not retroactively, not at end of session, not when the build runs.
 8. **Never give up after one tool failure.** If `QueryMemory` returns an error or empty content, fall back to `Read`, `Glob`, or `Grep` against the filesystem — do not stop and ask the user. Canonical paths to try first: `C:\Users\scott\Code\Polaris\CLAUDE.md` (project rules) and `G:\My Drive\Aesop Academy\Obsidian\Polaris_Build\1-Soul.md` through `8-Logs.md` (project knowledge base, listed in detail under "Project knowledge base" below). Bash and PowerShell tools are available — use them. Asking the user to "advise" or "provide the path" is a last resort, not a first response.
 9. **Config archives.** Every write to `%APPDATA%\.claude\polaris\config.json` auto-copies the prior content to `%APPDATA%\.claude\polaris\config-archive\config.<ISO>.json`. Append-only, capped at 200 files / 10 MB total — oldest pruned first. If a save corrupts or wipes config (the 2026-05-05 incident wiped `obsidianDir`, MCP servers, and routines from every project), restore from the most recent pre-incident archive. Do not trust `config.backup.json` alone — single-level, gets rotated past loss points.

@@ -1,7 +1,7 @@
-{
-  "name": "polaris",
-  "version": "1.0.616",
-  "description": "Polaris — Claude Code Command Center",
+﻿{
+  “name”: “polaris”,
+  “version”: “1.0.616”,
+  “description”: “Polaris — Claude Code Command Center”,
   "main": "main.js",
   "scripts": {
     "build:contracts": "tsc -p tsconfig.contracts.json",
@@ -55,6 +55,7 @@
       "main.js",
       "server.js",
       "lib/**/*",
+      "compiled/**/*",
       "secrets.js",
       "package.json",
       "node_modules/**/*"
@@ -76,3 +77,4 @@
     "vitest": "^4.1.7"
   }
 }
+

@@ -3790,7 +3790,9 @@
     if (chipLabel) {
       const chipEl = document.createElement('span');
       chipEl.className = 'card-project-chip';
-      chipEl.style.cssText = `background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;`;
+      const chipLuma = 0.299 * r + 0.587 * g + 0.114 * b;
+      const chipTextColor = chipLuma < 128 ? '#fff' : '#000';
+      chipEl.style.cssText = `background:${chipColor};color:${chipTextColor};font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;`;
       chipEl.textContent = chipLabel;
       if (existingChip) {
         existingChip.replaceWith(chipEl);
@@ -6644,6 +6646,8 @@
             <button class="workflow-btn" data-action="workflow-cba" title="Cross-boundary audit — build has started">CBA</button>
             <button class="workflow-btn" data-action="workflow-review" title="Independent PR review for active task">Review</button>
             <button class="workflow-btn" data-action="workflow-codex" title="Independent Codex review for active task">Codex</button>
+            <button class="workflow-btn" data-action="workflow-start" title="Start build for this session">/Start</button>
+            <button class="workflow-btn" data-action="workflow-finish" title="Finish build for this session">/Finish</button>
           </div>
         </div>
       </div>
@@ -7334,6 +7338,20 @@
       case 'workflow-codex':
         if (s) {
           const msg = 'The session is /clear and independent. Run a /codex-review on the task work tree for the active task and PR in this session.';
+          wsSend({ type: 'resume', sessionId, prompt: msg, displayPrompt: msg, resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'workflow-start':
+        if (s) {
+          const msg = '/start-build for this session';
+          wsSend({ type: 'resume', sessionId, prompt: msg, displayPrompt: msg, resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'workflow-finish':
+        if (s) {
+          const msg = '/finish-build for this session';
           wsSend({ type: 'resume', sessionId, prompt: msg, displayPrompt: msg, resumeId: s.resumeId, model: null });
           enterResumeMode(sessionId, null);
         }
@@ -10440,9 +10458,7 @@ This is your current workflow status across all branches. Review the tasks and P
       prompt += '**Depends on:** ' + task.dependencies.map(d => '#' + d).join(', ') + '\n\n';
     }
     prompt += '**Status:** ' + (task.status || 'backlog') + ' · **Priority:** ' + (task.priority || '?');
-    if (!ORCHESTRATION_QUIET_MODE) {
-      prompt += '\n\nWhen complete, run `/ship-task ' + taskNumber + '`.';
-    }
+    prompt += '\n\nRun `/ship-task ' + taskNumber + '` to manage this task through its full lifecycle.';
     _pendingTaskLaunch = {
       prompt: prompt,
       displayPrompt: prompt,
@@ -14346,6 +14362,17 @@ This is your current workflow status across all branches. Review the tasks and P
       modal.style.display = 'flex';
       return;
     }
+    // Sort: project name A–Z (no-project sessions last), then oldest startAt first within each project
+    all.sort((a, b) => {
+      const pa = a.projectName || '';
+      const pb = b.projectName || '';
+      if (!pa && pb) return 1;
+      if (pa && !pb) return -1;
+      const cmp = pa.toLowerCase().localeCompare(pb.toLowerCase());
+      if (cmp !== 0) return cmp;
+      return (a.startAt || 0) - (b.startAt || 0);
+    });
+
     camToClose = all.map(s => s.id);
     camPending = new Set(camToClose);
 
