@@ -349,6 +349,19 @@
       "description": "Multiple parallel sessions edit docs/backlog.json in the shared primary repo (C:\\Users\\scott\\Code\\Polaris) on main at the same time. During task #51 planning, an uncommitted backlog edit was swept into another session's commit (ccf9278) and the working tree briefly showed tasks from 3+ sessions at once (in-flight #56/#59). Fix: backlog reads/writes performed by skills (plan-task, start-build, finish-build, status transitions) should operate in an isolated worktree pinned to a freshly-fetched origin/main, mutate atomically, and push HEAD:main with rebase-on-reject — never edit the shared primary working tree directly. Prevents lost/misattributed backlog changes and task-number collisions.",
       "plan": null,
       "proofUnits": []
+    },
+    {
+      "number": 61,
+      "title": "Orchestrator skill: multi-session conflict detection",
+      "description": "Build /orchestrate — a universal Claude Code skill that monitors open PRs across all active sessions for a project, detects file-set intersections, classifies conflict types (additive / same-line / correctness divergence), and writes merger guides to Obsidian. Invoked automatically when a second session opens on the same project. General-first with per-project config block.",
+      "category": "tooling",
+      "priority": 40,
+      "status": "backlog",
+      "plan": null,
+      "proofUnits": [],
+      "branch": null,
+      "pr_url": null,
+      "impact": "standard"
     }
   ]
 }
