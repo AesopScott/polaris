@@ -336,7 +336,7 @@ export const SavePanelStateMessage = WebSocketMessage.extend({
 
 export const SaveHiddenSessionsMessage = WebSocketMessage.extend({
   type: z.literal('save-hidden-sessions'),
-  sessionIds: z.array(z.string()),
+  hiddenSessions: z.array(z.string()),
 });
 
 // ─── Project & Routine ───────────────────────────────────────────────────────

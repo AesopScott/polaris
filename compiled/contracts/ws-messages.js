@@ -268,7 +268,7 @@ exports.SavePanelStateMessage = WebSocketMessage.extend({
 });
 exports.SaveHiddenSessionsMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('save-hidden-sessions'),
-    sessionIds: zod_1.z.array(zod_1.z.string()),
+    hiddenSessions: zod_1.z.array(zod_1.z.string()),
 });
 // ─── Project & Routine ───────────────────────────────────────────────────────
 exports.UpsertProjectMessage = WebSocketMessage.extend({

@@ -640,13 +640,13 @@ export declare const SavePanelStateMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SaveHiddenSessionsMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
-    sessionIds: z.ZodArray<z.ZodString, "many">;
+    hiddenSessions: z.ZodArray<z.ZodString, "many">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
-    sessionIds: z.ZodArray<z.ZodString, "many">;
+    hiddenSessions: z.ZodArray<z.ZodString, "many">;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
-    sessionIds: z.ZodArray<z.ZodString, "many">;
+    hiddenSessions: z.ZodArray<z.ZodString, "many">;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const UpsertProjectMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"upsert-project">;
@@ -1316,13 +1316,13 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     state: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
-    sessionIds: z.ZodArray<z.ZodString, "many">;
+    hiddenSessions: z.ZodArray<z.ZodString, "many">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
-    sessionIds: z.ZodArray<z.ZodString, "many">;
+    hiddenSessions: z.ZodArray<z.ZodString, "many">;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
-    sessionIds: z.ZodArray<z.ZodString, "many">;
+    hiddenSessions: z.ZodArray<z.ZodString, "many">;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"upsert-project">;
     project: z.ZodUnknown;

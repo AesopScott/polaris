@@ -332,7 +332,7 @@ export interface SavePanelStateMessage extends WebSocketMessage {
 
 export interface SaveHiddenSessionsMessage extends WebSocketMessage {
   type: 'save-hidden-sessions';
-  sessionIds: string[];
+  hiddenSessions: string[];
 }
 
 // Project & Routine Messages
