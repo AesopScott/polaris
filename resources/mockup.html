@@ -10440,9 +10440,7 @@ This is your current workflow status across all branches. Review the tasks and P
       prompt += '**Depends on:** ' + task.dependencies.map(d => '#' + d).join(', ') + '\n\n';
     }
     prompt += '**Status:** ' + (task.status || 'backlog') + ' · **Priority:** ' + (task.priority || '?');
-    if (!ORCHESTRATION_QUIET_MODE) {
-      prompt += '\n\nWhen complete, run `/ship-task ' + taskNumber + '`.';
-    }
+    prompt += '\n\nRun `/ship-task ' + taskNumber + '` to manage this task through its full lifecycle.';
     _pendingTaskLaunch = {
       prompt: prompt,
       displayPrompt: prompt,
