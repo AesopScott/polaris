@@ -12951,8 +12951,6 @@ This is your current workflow status across all branches. Review the tasks and P
     wsSend({ type: 'restart' });
   }
   function resetLayout() {
-    // Clear search
-    if (typeof clearSessionSearch === 'function') clearSessionSearch();
     // Deselect all cards and clear resume mode
     window.clearResumeMode();
     // Pack every visible card into row-major grid slots: 1/1, 2/1, 3/1,
