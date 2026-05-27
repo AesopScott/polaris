@@ -6371,7 +6371,7 @@
   }
 
   function compactSessionGrid({ clearHeights = false, collapseWide = false } = {}) {
-    const counts = [0, 0, 0];
+    let slot = 0;
     sessionOrder
       .filter(id => sessionStore[id] && !sessionStore[id].silent)
       .map(id => sessionStore[id])
@@ -6389,8 +6389,8 @@
           wsSend({ type: 'session-column', sessionId: s.id, column: null });
           return;
         }
-        const idx = firstFreeGridColumn(counts);
-        counts[idx]++;
+        const idx = slot % 3;
+        slot++;
         if (s.column !== idx) {
           s.column = idx;
           wsSend({ type: 'session-column', sessionId: s.id, column: idx });
@@ -6631,6 +6631,7 @@
           <button class="fbtn" data-action="yes">Yes</button>
           <button class="fbtn" data-action="no">No</button>
           <button class="fbtn" data-action="write">Continue</button>
+          <button class="fbtn" data-action="confirm">Confirm</button>
           ${rerunSnippet}
         </div>
         <div class="color-controls" style="flex-direction:column;align-items:stretch;gap:3px;justify-content:center;">
@@ -7252,6 +7253,12 @@
       case 'write':
         if (s) {
           wsSend({ type: 'resume', sessionId, prompt: 'Write an update to Git and Obsidian and then continue', displayPrompt: 'Continue', resumeId: s.resumeId, model: null });
+          enterResumeMode(sessionId, null);
+        }
+        break;
+      case 'confirm':
+        if (s) {
+          wsSend({ type: 'resume', sessionId, prompt: 'Confirmed', displayPrompt: 'Confirmed', resumeId: s.resumeId, model: null });
           enterResumeMode(sessionId, null);
         }
         break;
