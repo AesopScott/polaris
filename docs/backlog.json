@@ -184,7 +184,7 @@
       "category": "chore",
       "priority": 20,
       "impact": "standard",
-      "status": "planned",
+      "status": "build-started",
       "created_at": "2026-05-25",
       "completed_at": null,
       "dependencies": [
@@ -269,7 +269,8 @@
           "lib/memory.js cannot be called standalone (no Firestore credentials available) -- stop and resolve credentials before migrating",
           "Scott rejects the classification table -- stop and re-classify before writing to Firestore"
         ]
-      }
+      },
+      "branch": "task/56-trim-claude-md-to-invariant-only-entries"
     },
     {
       "number": 57,
