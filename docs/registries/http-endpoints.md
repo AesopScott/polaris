@@ -229,6 +229,26 @@ Health check for the executor process.
 
 ---
 
+**Last audit:** 2026-05-27T00:00:00Z (by /cross-boundary-audit for task #56)
+
+**Task:** #56 — Trim CLAUDE.md to invariant-only entries
+
+**Boundaries checked:** HTTP endpoints in server.js and consumers in resources/mockup.html
+
+**Evidence recorded:**
+- 28 server.js endpoints verified; no new endpoints introduced by task #56
+- Previously "planned" task #36 endpoints (`/branch-state`, `/push-git`, `/push-obsidian`, `/reserve-merge-slot`, `/release-merge-slot`, `/dry-run-merge`) confirmed implemented and in production
+- `/api/launch-routine` and `/dispatch-agent` confirmed as intentional non-UI callers (Python LangGraph and programmatic dispatch respectively)
+- 0 shape changes
+- New identifiers introduced on task #56: none
+- Registries match current code diff: yes
+
+**Gaps identified:** None new. Previously noted intentional orphans remain intentional.
+
+**Status:** Audit complete — no boundary changes for task #56.
+
+---
+
 ### `/sync-state`
 
 Receive a canonical status update from the LangGraph executor and write it to `backlog.json`, then broadcast a `backlogs-data` WebSocket event to refresh the UI.
