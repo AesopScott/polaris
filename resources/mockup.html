@@ -14360,6 +14360,17 @@ This is your current workflow status across all branches. Review the tasks and P
       modal.style.display = 'flex';
       return;
     }
+    // Sort: project name A–Z (no-project sessions last), then oldest startAt first within each project
+    all.sort((a, b) => {
+      const pa = a.projectName || '';
+      const pb = b.projectName || '';
+      if (!pa && pb) return 1;
+      if (pa && !pb) return -1;
+      const cmp = pa.toLowerCase().localeCompare(pb.toLowerCase());
+      if (cmp !== 0) return cmp;
+      return (a.startAt || 0) - (b.startAt || 0);
+    });
+
     camToClose = all.map(s => s.id);
     camPending = new Set(camToClose);
 
