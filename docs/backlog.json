@@ -18,7 +18,7 @@
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
       "category": "feature",
       "priority": 90,
-      "impact": "standard",
+      "impact": "major",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
@@ -42,7 +42,7 @@
       "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
       "category": "feature",
       "priority": 90,
-      "impact": "standard",
+      "impact": "major",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
@@ -63,6 +63,24 @@
       ],
       "branch": null,
       "pr_url": null,
+      "plan": null,
+      "proofUnits": []
+    },
+    {
+      "number": 46,
+      "title": "Policy unit test suite",
+      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server — evaluatePolicy must be importable in isolation.",
+      "category": "test",
+      "priority": 88,
+      "impact": "minor",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": "2026-05-26",
+      "dependencies": [
+        43
+      ],
+      "branch": "main",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
       "plan": null,
       "proofUnits": []
     },
@@ -223,7 +241,6 @@
       "title": "Fix health monitor: async remediation, single-flight guard, inbox cap, auth",
       "category": "fix",
       "priority": 5,
-      "status": "cba-complete",
       "branch": "task/61-fix-health-monitor-async-remediation",
       "pr_url": "https://github.com/AesopScott/polaris/pull/58",
       "dependencies": [],
@@ -246,7 +263,8 @@
         ],
         "proofMap": [],
         "stopConditions": []
-      }
+      },
+      "status": "cba-complete"
     }
   ]
 }

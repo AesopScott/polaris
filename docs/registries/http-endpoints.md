@@ -162,6 +162,41 @@ Health check for the executor process.
 
 ---
 
+### `POST /health-monitor/prompt`
+
+Inject a prompt into the health monitor agent's inbox from the UI, another session, or external tooling. The health monitor session processes queued prompts on its 30-second poll cycle.
+
+**Method:** `POST`
+**Auth:** `X-Polaris-Token` header must match `UI_TOKEN` (server-startup secret). Returns 401 on mismatch.
+**Producer:** `resources/mockup.html` — health monitor panel (UI injection); external tooling via PowerShell/curl
+**Consumer:** `server.js` health monitor inbox handler — queues prompt for `runDirectAgent()` on next poll tick
+
+**Request Payload:**
+```json
+{ "text": "string — prompt text (truncated to 2000 chars)", "source": "string (optional)" }
+```
+
+**Response Payload (success):**
+```json
+{ "ok": true, "queued": number }
+```
+
+**Response Payload (inbox full — 50 item cap):**
+```json
+{ "ok": false, "error": "inbox full", "max": 50 }
+```
+HTTP status: 429
+
+**Response Payload (unauthorized):**
+```json
+{ "ok": false, "error": "unauthorized" }
+```
+HTTP status: 401
+
+**Status:** ✓ Documented (Task #61) — endpoint pre-existed as undocumented; Task #61 added auth (`X-Polaris-Token`) and 429 overflow guard
+
+---
+
 ## Audit Trail — Proof of Registry Verification
 
 **Last audit:** 2026-05-22T00:00:00Z (post-fix update for task #26 second Codex review)
