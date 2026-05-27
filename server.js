@@ -12700,25 +12700,56 @@ function formatHealthSnapshot(data) {
   return lines.join('\n');
 }
 
+// Kill confirmed stale MCP helper processes (matched by command-line pattern, age > 15 min).
+// Returns array of { pid, age, cmd } for each process killed.
+function autoRemediateHealth(data) {
+  const killed = [];
+  if (!data || !(data.processCounts?.mcpHelpers > 0)) return killed;
+  try {
+    const result = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+      `Get-CimInstance Win32_Process -Filter "name = 'node.exe' or name = 'Polaris.exe'" | ` +
+      `Where-Object { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' } | ` +
+      `Select-Object ProcessId, CommandLine, CreationDate | ConvertTo-Json -Depth 2`,
+    ], { encoding: 'utf8', timeout: 10000 });
+    if (result.status !== 0 || !result.stdout?.trim()) return killed;
+    let procs;
+    try { procs = JSON.parse(result.stdout.trim()); } catch { return killed; }
+    if (!Array.isArray(procs)) procs = [procs];
+    const now = Date.now();
+    for (const proc of procs) {
+      if (!proc?.ProcessId) continue;
+      const ageMs = proc.CreationDate ? now - new Date(proc.CreationDate).getTime() : Infinity;
+      if (ageMs < 15 * 60 * 1000) continue; // skip processes < 15 min old (may be a live deploy)
+      spawnSync('powershell', ['-Command', `Stop-Process -Id ${proc.ProcessId} -Force`], { timeout: 5000 });
+      const ageMin = Math.round(ageMs / 60000);
+      killed.push({ pid: proc.ProcessId, age: ageMin, cmd: String(proc.CommandLine || '').slice(0, 80) });
+      console.log(`[health-monitor] auto-killed MCP helper PID ${proc.ProcessId} (age: ${ageMin}m)`);
+    }
+  } catch (e) {
+    console.error('[health-monitor] auto-remediate error:', e.message);
+  }
+  return killed;
+}
+
 function injectHealthSnapshot() {
   if (!healthMonitorSessionId) return;
   const session = sessions.get(healthMonitorSessionId);
   if (!session) { healthMonitorSessionId = null; return; }
 
-  const data     = runHealthProbe();
-  const snapshot = formatHealthSnapshot(data);
+  let data = runHealthProbe();
 
-  // Push visible line to session terminal
-  broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: snapshot, role: 'system' });
-
-  // Persist into message history so agent has context when the user asks questions
-  if (!session.messages) session.messages = [];
-  session.messages.push({ role: 'user', content: snapshot });
-  if (session.messages.length > MAX_AGENT_MESSAGES) {
-    session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
+  // Auto-remediate: kill stale MCP helper processes matched by command-line pattern
+  const killed = autoRemediateHealth(data);
+  if (killed.length > 0) {
+    const killLog = killed.map(k => `PID ${k.pid} (age ${k.age}m)`).join(', ');
+    broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: `[health-monitor] Auto-killed MCP helper(s): ${killLog}`, role: 'system' });
+    data = runHealthProbe(); // re-probe so snapshot reflects the fix
   }
 
-  // Update card color: green=done, orange=test, red=error — but don't interrupt a live conversation
+  const snapshot = formatHealthSnapshot(data);
+  broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: snapshot, role: 'system' });
+
+  // Update card color: green=done, orange=test, red=error — don't interrupt a live conversation
   if (session.status !== 'running') {
     const cardStatus = !data
       ? 'error'
@@ -12731,8 +12762,24 @@ function injectHealthSnapshot() {
     }
   }
 
-  saveSessions();
-  console.log(`[health-monitor] snapshot: ${data?.status || 'probe-failed'}`);
+  if (!session.messages) session.messages = [];
+
+  if (data && data.status !== 'Healthy' && session.status !== 'running') {
+    // Degraded/Critical and idle: wake agent to analyze and recommend specific fixes
+    const killNote = killed.length > 0 ? `\n[auto-remediated: killed ${killed.length} MCP helper(s): ${killed.map(k => `PID ${k.pid}`).join(', ')}]` : '';
+    const analysisPrompt = `${snapshot}${killNote}\n\nAnalyze what's wrong and state the specific actions needed to resolve each remaining issue.`;
+    saveSessions();
+    console.log(`[health-monitor] snapshot: ${data.status} — triggering agent analysis`);
+    // runDirectAgent pushes analysisPrompt to session.messages internally
+    runDirectAgent(healthMonitorSessionId, analysisPrompt, session.workDir, false)
+      .catch(err => console.error('[health-monitor] agent analysis error:', err.message));
+  } else {
+    // Healthy or mid-conversation: quietly log snapshot to message history for future context
+    session.messages.push({ role: 'user', content: snapshot });
+    if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
+    saveSessions();
+    console.log(`[health-monitor] snapshot: ${data?.status || 'probe-failed'}`);
+  }
 }
 
 function startHealthMonitorSession() {
