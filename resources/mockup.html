@@ -3790,7 +3790,9 @@
     if (chipLabel) {
       const chipEl = document.createElement('span');
       chipEl.className = 'card-project-chip';
-      chipEl.style.cssText = `background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;`;
+      const chipLuma = 0.299 * r + 0.587 * g + 0.114 * b;
+      const chipTextColor = chipLuma < 128 ? '#fff' : '#000';
+      chipEl.style.cssText = `background:${chipColor};color:${chipTextColor};font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;`;
       chipEl.textContent = chipLabel;
       if (existingChip) {
         existingChip.replaceWith(chipEl);
