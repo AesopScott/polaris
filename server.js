@@ -795,6 +795,8 @@ const HEALTH_MONITOR_NAME        = 'Health Monitor Session';
 const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 let   healthMonitorSessionId     = null;
 let   healthMonitorIntervalTimer = null;
+let   healthMonitorInputPollTimer = null;
+const healthMonitorInbox         = []; // cross-session prompt injection queue
 
 // Connect-tab write protection — token is generated at startup and sent only to the main UI window.
 // Any WebSocket message that modifies MCP server config must include this token; otherwise the
@@ -7849,6 +7851,25 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // POST /health-monitor/prompt — inject a question from the UI, another session, or external tooling.
+  // Any agent can call: Invoke-WebRequest -Method POST http://127.0.0.1:40000/health-monitor/prompt -Body '{"text":"Is CPU normal?"}'
+  if (req.method === 'POST' && req.url === '/health-monitor/prompt') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const { text, source } = JSON.parse(body || '{}');
+        if (!text) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'text required' })); return; }
+        healthMonitorInbox.push({ text: String(text).slice(0, 2000), source: source || 'external', at: Date.now() });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, queued: healthMonitorInbox.length }));
+      } catch (e) {
+        res.writeHead(400); res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/api/health-snapshot') {
     const now = Date.now();
     if (healthSnapshotCache && now - healthSnapshotCacheAt < HEALTH_SNAPSHOT_TTL_MS) {
@@ -12821,12 +12842,36 @@ function startHealthMonitorSession() {
   // First snapshot immediately
   injectHealthSnapshot();
 
-  // Recurring snapshots
+  // Recurring snapshots (every 5 minutes)
   if (healthMonitorIntervalTimer) clearInterval(healthMonitorIntervalTimer);
   healthMonitorIntervalTimer = setInterval(injectHealthSnapshot, HEALTH_MONITOR_INTERVAL_MS);
   if (healthMonitorIntervalTimer.unref) healthMonitorIntervalTimer.unref();
 
-  console.log(`[health-monitor] session started: ${id} (every ${HEALTH_MONITOR_INTERVAL_MS / 60000}m)`);
+  // 30-second input poll: processes cross-session inbox injections and catches any
+  // stuck pendingTurns from UI typing (safety net — resume handler normally fires immediately)
+  if (healthMonitorInputPollTimer) clearInterval(healthMonitorInputPollTimer);
+  healthMonitorInputPollTimer = setInterval(() => {
+    if (!healthMonitorSessionId) return;
+    const session = sessions.get(healthMonitorSessionId);
+    if (!session || session.status === 'running') return; // don't interrupt active agent turn
+
+    // Cross-session injection: process next queued inbox prompt
+    if (healthMonitorInbox.length > 0) {
+      const { text, source } = healthMonitorInbox.shift();
+      const prompt = (source && source !== 'external') ? `[from ${source}] ${text}` : text;
+      runDirectAgent(healthMonitorSessionId, prompt, session.workDir, true)
+        .catch(err => console.error('[health-monitor] inbox error:', err.message));
+      return;
+    }
+
+    // UI typing safety net: drain any pending turns that weren't auto-processed
+    if (Array.isArray(session.pendingTurns) && session.pendingTurns.length > 0) {
+      drainPendingTurns(healthMonitorSessionId);
+    }
+  }, 30 * 1000);
+  if (healthMonitorInputPollTimer.unref) healthMonitorInputPollTimer.unref();
+
+  console.log(`[health-monitor] session started: ${id} (probe every ${HEALTH_MONITOR_INTERVAL_MS / 60000}m, input poll every 30s)`);
 }
 
 httpServer.listen(PORT, '127.0.0.1', () => {
