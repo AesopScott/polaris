@@ -356,9 +356,110 @@
       "description": "Build /orchestrate — a universal Claude Code skill that monitors open PRs across all active sessions for a project, detects file-set intersections, classifies conflict types (additive / same-line / correctness divergence), and writes merger guides to Obsidian. Invoked automatically when a second session opens on the same project. General-first with per-project config block.",
       "category": "tooling",
       "priority": 40,
-      "status": "backlog",
-      "plan": null,
-      "proofUnits": [],
+      "status": "planned",
+      "plan": "## Overview\n\nBuild /orchestrate: a universal Claude Code skill that monitors all active session branches for a\nproject, detects file-set intersections between branches, classifies conflict types (additive /\nsame-line / correctness-divergence), and writes merger guides to Obsidian. Auto-spawned by server.js\nas a dedicated chat session when a project reaches 2 active sessions; torn down when the last session closes.\n\n## Phases\n\nPhase 0: Spike -- validate spawnMaxChat auto-invocation mechanism\nPhase 1: server.js orchestrator lifecycle (per-project session-count map, spawn at 2, teardown at 0,\n         dedup guard, title \"Project Orchestrator\")\nPhase 2: orchestrate.md scaffold + init (CLAUDE.md startup, gh pr list, git diff watch list, gh failure handling)\nPhase 3: Monitor loop (health monitor pattern, 30s default, collect-and-flush debounce,\n         GIT:COMMITS refresh, BACKLOG:CHANGED dep check, REGISTRY:CHANGED note)\nPhase 4: Conflict classification engine (additive / same-line / correctness-divergence via git diff deep read)\nPhase 5: Output artifacts + UI (status table, merger guide to Obsidian, dep-violation alert,\n         mockup.html amber-gold pulsing glow CSS 2.5s)\nPhase 6: Fixture branches + end-to-end proof run\n\n## First Proof Unit\n\nOpen a second session on any project; \"Project Orchestrator\" session card with pulsing amber-gold\nglow appears within 2s. Verified via manual observation in Polaris UI.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Orchestrator spawns on second session open",
+          "expectedBehavior": "When a second session opens on the same project, a session card titled Project Orchestrator with pulsing glow appears.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Launch Polaris, project = Polaris. (2) Open first session. (3) Open second session on same project. (4) Observe: Project Orchestrator card appears.",
+          "expectedInitialFailure": "No orchestrator card; session-count logic not yet in server.js.",
+          "expectedPassingEvidence": "Project Orchestrator card visible within 2s of second session launch.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "Orchestrator closes when last session closes",
+          "expectedBehavior": "When the last build session on a project closes, the orchestrator session also closes and its card disappears.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Two sessions + orchestrator open on Polaris. (2) Close one build session: orchestrator stays. (3) Close second: orchestrator card disappears.",
+          "expectedInitialFailure": "Orchestrator stays open after all build sessions close (leak).",
+          "expectedPassingEvidence": "Orchestrator card gone within 3s of last session close.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Init builds file set for branch with no open PR",
+          "expectedBehavior": "Watch list includes file sets built from git diff directly for branches with no open PR.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Create local branch test-no-pr touching server.js, no PR opened. (2) Launch orchestrator. (3) Confirm server.js in watch list for test-no-pr in status table.",
+          "expectedInitialFailure": "test-no-pr missing from watch list (only PR branches tracked).",
+          "expectedPassingEvidence": "Init status table shows test-no-pr with server.js in its file set.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "gh failure surfaces error and asks for next steps",
+          "expectedBehavior": "gh failure at init prints the exact error and asks Scott whether to continue in git-only mode or halt.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) gh auth logout. (2) Launch orchestrator. (3) Observe init output for error message and prompt.",
+          "expectedInitialFailure": "Orchestrator silently skips PR metadata or hangs.",
+          "expectedPassingEvidence": "Init shows exact gh error + prompt: Continue in git-only mode or halt?",
+          "waiverGuidance": "N/A -- restore gh auth after test."
+        },
+        {
+          "number": 5,
+          "title": "Watch list refreshes after new commit on a branch",
+          "expectedBehavior": "After a new commit lands on branch-a, the next tick refreshes branch-a file set before running intersection check.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Orchestrator running with branch-a touching file X. (2) Commit change to file Y on branch-a. (3) Wait for next tick. (4) File Y appears in branch-a file set in status table.",
+          "expectedInitialFailure": "File Y not in watch list after commit (stale list from init).",
+          "expectedPassingEvidence": "Status table shows file Y in branch-a file set on the next tick.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 6,
+          "title": "Debounce collapses burst events to one analysis run",
+          "expectedBehavior": "Three GIT:COMMITS events arriving within one tick window produce exactly one conflict analysis run.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Set interval to 10s. (2) Push three rapid commits to a watched branch within one window. (3) Count conflict-check log entries in orchestrator output for that tick.",
+          "expectedInitialFailure": "Three separate conflict analysis runs logged for the same tick.",
+          "expectedPassingEvidence": "Exactly one conflict-check entry in orchestrator log for that tick.",
+          "waiverGuidance": "N/A -- reset interval to 30s after test."
+        },
+        {
+          "number": 7,
+          "title": "Conflict detected and merger guide generated",
+          "expectedBehavior": "Fixture branches with overlapping files trigger intersection detection and merger guide written to Obsidian.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Create fixture branches both touching server.js + src/runtime/contracts.ts. (2) Open two sessions, one per branch. (3) Wait for tick. (4) Merger guide present in Obsidian Polaris_Sessions/.",
+          "expectedInitialFailure": "No merger guide written; intersection not detected.",
+          "expectedPassingEvidence": "Merger guide in Polaris_Sessions/ with all template fields populated.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 8,
+          "title": "Merger guide written to correct Obsidian path",
+          "expectedBehavior": "Merger guide path uses the active project name read from CLAUDE.md, not a hardcoded value.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Run on Polaris: guide in Polaris_Sessions/. (2) Run on ScanMeNow: guide in scanmenow_Sessions/.",
+          "expectedInitialFailure": "Guide always writes to a hardcoded path regardless of project.",
+          "expectedPassingEvidence": "Separate guide files in each project Sessions folder.",
+          "waiverGuidance": "Can test with Polaris only and verify path logic in skill file if second project unavailable."
+        },
+        {
+          "number": 9,
+          "title": "Dependency-violation alert fires correctly",
+          "expectedBehavior": "Task moved to build-started with an unmerged blocking PR triggers an inline alert in the orchestrator session.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Set task A to build-started; task A has dependencies: [B]; task B has open unmerged PR. (2) Wait for BACKLOG:CHANGED tick. (3) Observe orchestrator session for alert.",
+          "expectedInitialFailure": "No alert fires.",
+          "expectedPassingEvidence": "Alert: Task A started before blocking task B (PR #N) is merged.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 10,
+          "title": "Pulsing glow visible on orchestrator card only",
+          "expectedBehavior": "Orchestrator session card has slowly pulsing amber-gold glow; all other session cards have no glow.",
+          "proofType": "ui-check",
+          "exactCommand": "(1) Open Polaris with orchestrator + 2 build sessions. (2) DevTools: inspect .session-card[data-title=\"Project Orchestrator\"]. (3) Confirm animation: orchestrator-pulse 2.5s ease-in-out infinite. (4) Inspect normal card: no animation.",
+          "expectedInitialFailure": "No animation on orchestrator card, or animation bleeds to other cards.",
+          "expectedPassingEvidence": "Orchestrator card pulses visibly; other cards static; animation confirmed in computed styles.",
+          "waiverGuidance": "N/A"
+        }
+      ],
       "branch": null,
       "pr_url": null,
       "impact": "standard"
