@@ -217,6 +217,36 @@
       "description": "Multiple parallel sessions edit docs/backlog.json in the shared primary repo (C:\\Users\\scott\\Code\\Polaris) on main at the same time. During task #51 planning, an uncommitted backlog edit was swept into another session's commit (ccf9278) and the working tree briefly showed tasks from 3+ sessions at once (in-flight #56/#59). Fix: backlog reads/writes performed by skills (plan-task, start-build, finish-build, status transitions) should operate in an isolated worktree pinned to a freshly-fetched origin/main, mutate atomically, and push HEAD:main with rebase-on-reject — never edit the shared primary working tree directly. Prevents lost/misattributed backlog changes and task-number collisions.",
       "plan": null,
       "proofUnits": []
+    },
+    {
+      "number": 61,
+      "title": "Fix health monitor: async remediation, single-flight guard, inbox cap, auth",
+      "category": "fix",
+      "priority": 5,
+      "status": "build-started",
+      "branch": "task/61-fix-health-monitor-async-remediation",
+      "pr_url": null,
+      "dependencies": [],
+      "description": "Codex review (ad-hoc, 4feb32e..657582b) flagged CRITICAL: autoRemediateHealth() uses spawnSync (blocking up to 10s+N*5s) on the main event loop every 5 minutes, which can directly cause the server timeouts it is meant to fix. Also: no single-flight guard on runDirectAgent() calls, unbounded healthMonitorInbox, no auth on /health-monitor/prompt, no session cross-reference before process kills, and no debounce on degraded-state analysis. Fix all 10 findings.",
+      "plan": "Fix 1+2: Replace spawnSync with async execFile in autoRemediateHealth(); decouple from snapshot broadcast (broadcast first, remediate async after). Fix 3: Add healthMonitorAgentRunning single-flight flag around all runDirectAgent() calls targeting health monitor. Fix 4: Cross-reference mcpProcesses Map before any Stop-Process to avoid killing live session MCP helpers. Fix 5: Increase age threshold 15->30 min. Fix 6: Hard cap healthMonitorInbox at 50 items with 429 on overflow. Fix 7: Auth /health-monitor/prompt with UI_TOKEN header check. Fix 8: Graceful shutdown before force-kill. Fix 9: Debounce degraded-state analysis (10 min min interval). Fix 10: Log auto-kills to persistent file.",
+      "objective": {
+        "statement": "Health monitor auto-remediation must not block the Node.js event loop, must not kill live session MCP helpers, and must be safe to run unsupervised with 6-10 concurrent sessions.",
+        "successCriteria": [
+          "autoRemediateHealth() is fully async (no spawnSync)",
+          "injectHealthSnapshot() broadcasts before any remediation runs",
+          "Single-flight guard prevents overlapping runDirectAgent() calls on health monitor session",
+          "No MCP helper PID in mcpProcesses is killed",
+          "healthMonitorInbox capped at 50 with 429 response on overflow",
+          "/health-monitor/prompt requires UI_TOKEN header"
+        ],
+        "nonGoals": [
+          "Changes to health probe script",
+          "Changes to runDirectAgent() internals",
+          "Changes to session spawning"
+        ],
+        "proofMap": [],
+        "stopConditions": []
+      }
     }
   ]
 }

@@ -796,7 +796,12 @@ const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 let   healthMonitorSessionId     = null;
 let   healthMonitorIntervalTimer = null;
 let   healthMonitorInputPollTimer = null;
-const healthMonitorInbox         = []; // cross-session prompt injection queue
+const healthMonitorInbox          = []; // cross-session prompt injection queue
+let   healthMonitorAgentRunning   = false;                   // Fix 3: single-flight guard
+let   lastHealthAnalysisAt        = 0;                       // Fix 9: debounce degraded-state analysis
+const HEALTH_MONITOR_INBOX_MAX    = 50;                      // Fix 6: hard cap
+const HEALTH_ANALYSIS_DEBOUNCE_MS = 10 * 60 * 1000;         // 10 min between analysis triggers
+const HEALTH_AUTO_KILL_LOG        = path.join(os.homedir(), '.claude', 'polaris-health-kills.log');
 
 // Connect-tab write protection — token is generated at startup and sent only to the main UI window.
 // Any WebSocket message that modifies MCP server config must include this token; otherwise the
@@ -7852,14 +7857,21 @@ const httpServer = http.createServer((req, res) => {
   }
 
   // POST /health-monitor/prompt — inject a question from the UI, another session, or external tooling.
-  // Any agent can call: Invoke-WebRequest -Method POST http://127.0.0.1:40000/health-monitor/prompt -Body '{"text":"Is CPU normal?"}'
+  // Requires X-Polaris-Token header matching UI_TOKEN (Fix 7: auth).
+  // Invoke-WebRequest -Method POST http://127.0.0.1:40000/health-monitor/prompt -Headers @{'X-Polaris-Token'='<token>'} -Body '{"text":"Is CPU normal?"}'
   if (req.method === 'POST' && req.url === '/health-monitor/prompt') {
+    if (req.headers['x-polaris-token'] !== UI_TOKEN) {
+      res.writeHead(401); res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); return;
+    }
     let body = '';
     req.on('data', c => body += c);
     req.on('end', () => {
       try {
         const { text, source } = JSON.parse(body || '{}');
         if (!text) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'text required' })); return; }
+        if (healthMonitorInbox.length >= HEALTH_MONITOR_INBOX_MAX) {
+          res.writeHead(429); res.end(JSON.stringify({ ok: false, error: 'inbox full', max: HEALTH_MONITOR_INBOX_MAX })); return;
+        }
         healthMonitorInbox.push({ text: String(text).slice(0, 2000), source: source || 'external', at: Date.now() });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, queued: healthMonitorInbox.length }));
@@ -12721,29 +12733,63 @@ function formatHealthSnapshot(data) {
   return lines.join('\n');
 }
 
-// Kill confirmed stale MCP helper processes (matched by command-line pattern, age > 15 min).
+// Kill confirmed stale MCP helper processes (matched by command-line pattern, age > 30 min,
+// and NOT tracked as a live MCP helper in mcpProcesses). Fully async — never blocks event loop.
 // Returns array of { pid, age, cmd } for each process killed.
-function autoRemediateHealth(data) {
+async function autoRemediateHealth(data) {
   const killed = [];
   if (!data || !(data.processCounts?.mcpHelpers > 0)) return killed;
+
+  // Fix 4: build set of PIDs currently tracked as live MCP helpers — never kill these
+  const livePids = new Set([...mcpProcesses.values()].map(s => s.proc?.pid).filter(Boolean));
+
   try {
-    const result = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-      `Get-CimInstance Win32_Process -Filter "name = 'node.exe' or name = 'Polaris.exe'" | ` +
-      `Where-Object { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' } | ` +
-      `Select-Object ProcessId, CommandLine, CreationDate | ConvertTo-Json -Depth 2`,
-    ], { encoding: 'utf8', timeout: 10000 });
-    if (result.status !== 0 || !result.stdout?.trim()) return killed;
+    const { stdout } = await new Promise((resolve, reject) => {
+      execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+        `Get-CimInstance Win32_Process -Filter "name = 'node.exe' or name = 'Polaris.exe'" | ` +
+        `Where-Object { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' } | ` +
+        `Select-Object ProcessId, CommandLine, CreationDate | ConvertTo-Json -Depth 2`,
+      ], { encoding: 'utf8', timeout: 10000 },
+      (err, stdout) => err ? reject(err) : resolve({ stdout }));
+    });
+
+    if (!stdout?.trim()) return killed;
     let procs;
-    try { procs = JSON.parse(result.stdout.trim()); } catch { return killed; }
+    try { procs = JSON.parse(stdout.trim()); } catch { return killed; }
     if (!Array.isArray(procs)) procs = [procs];
+
     const now = Date.now();
     for (const proc of procs) {
       if (!proc?.ProcessId) continue;
+      // Fix 4: skip any PID that is a live tracked MCP helper
+      if (livePids.has(proc.ProcessId)) {
+        console.log(`[health-monitor] skip kill PID ${proc.ProcessId} — tracked as live MCP helper`);
+        continue;
+      }
+      // Fix 5: raise age threshold to 30 min
       const ageMs = proc.CreationDate ? now - new Date(proc.CreationDate).getTime() : Infinity;
-      if (ageMs < 15 * 60 * 1000) continue; // skip processes < 15 min old (may be a live deploy)
-      spawnSync('powershell', ['-Command', `Stop-Process -Id ${proc.ProcessId} -Force`], { timeout: 5000 });
+      if (ageMs < 30 * 60 * 1000) continue;
       const ageMin = Math.round(ageMs / 60000);
-      killed.push({ pid: proc.ProcessId, age: ageMin, cmd: String(proc.CommandLine || '').slice(0, 80) });
+      const cmd    = String(proc.CommandLine || '').slice(0, 80);
+
+      // Fix 8: try graceful shutdown first, then force-kill after 2s
+      await new Promise(resolve => {
+        execFile('powershell', ['-Command', `Stop-Process -Id ${proc.ProcessId} -ErrorAction SilentlyContinue`],
+          { timeout: 4000 }, () => resolve());
+      });
+      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(resolve => {
+        execFile('powershell', ['-Command', `Stop-Process -Id ${proc.ProcessId} -Force -ErrorAction SilentlyContinue`],
+          { timeout: 3000 }, () => resolve());
+      });
+
+      // Fix 10: append to persistent kill log
+      try {
+        fs.appendFileSync(HEALTH_AUTO_KILL_LOG,
+          `${new Date().toISOString()} PID=${proc.ProcessId} age=${ageMin}m cmd=${cmd}\n`);
+      } catch {}
+
+      killed.push({ pid: proc.ProcessId, age: ageMin, cmd });
       console.log(`[health-monitor] auto-killed MCP helper PID ${proc.ProcessId} (age: ${ageMin}m)`);
     }
   } catch (e) {
@@ -12757,23 +12803,14 @@ function injectHealthSnapshot() {
   const session = sessions.get(healthMonitorSessionId);
   if (!session) { healthMonitorSessionId = null; return; }
 
-  let data = runHealthProbe();
-
-  // Auto-remediate: kill stale MCP helper processes matched by command-line pattern
-  const killed = autoRemediateHealth(data);
-  if (killed.length > 0) {
-    const killLog = killed.map(k => `PID ${k.pid} (age ${k.age}m)`).join(', ');
-    broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: `[health-monitor] Auto-killed MCP helper(s): ${killLog}`, role: 'system' });
-    data = runHealthProbe(); // re-probe so snapshot reflects the fix
-  }
-
+  // Fix 2: broadcast snapshot immediately — never block on remediation
+  const data     = runHealthProbe();
   const snapshot = formatHealthSnapshot(data);
   broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: snapshot, role: 'system' });
 
-  // Update card color: green=done, orange=test, red=error — don't interrupt a live conversation
+  // Update card color — don't interrupt a live conversation
   if (session.status !== 'running') {
-    const cardStatus = !data
-      ? 'error'
+    const cardStatus = !data ? 'error'
       : data.status === 'Healthy'  ? 'done'
       : data.status === 'Critical' ? 'error'
       : 'test';
@@ -12785,22 +12822,44 @@ function injectHealthSnapshot() {
 
   if (!session.messages) session.messages = [];
 
-  if (data && data.status !== 'Healthy' && session.status !== 'running') {
-    // Degraded/Critical and idle: wake agent to analyze and recommend specific fixes
-    const killNote = killed.length > 0 ? `\n[auto-remediated: killed ${killed.length} MCP helper(s): ${killed.map(k => `PID ${k.pid}`).join(', ')}]` : '';
-    const analysisPrompt = `${snapshot}${killNote}\n\nAnalyze what's wrong and state the specific actions needed to resolve each remaining issue.`;
+  // Fix 1+2: remediation and agent analysis run fully async — event loop never blocked
+  (async () => {
+    if (!healthMonitorSessionId) return;
+    const sess = sessions.get(healthMonitorSessionId);
+    if (!sess) return;
+
+    // Auto-remediate stale MCP helpers (async execFile — no spawnSync)
+    const killed = await autoRemediateHealth(data);
+    if (killed.length > 0) {
+      const killLog = killed.map(k => `PID ${k.pid} (age ${k.age}m)`).join(', ');
+      broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: `[health-monitor] Auto-killed MCP helper(s): ${killLog}`, role: 'system' });
+    }
+
+    if (data && data.status !== 'Healthy' && sess.status !== 'running') {
+      // Fix 3+9: single-flight guard + debounce — only trigger agent analysis when safe
+      const now = Date.now();
+      if (!healthMonitorAgentRunning && (now - lastHealthAnalysisAt) > HEALTH_ANALYSIS_DEBOUNCE_MS) {
+        lastHealthAnalysisAt = now;
+        const killNote = killed.length > 0
+          ? `\n[auto-remediated: killed ${killed.length} MCP helper(s): ${killed.map(k => `PID ${k.pid}`).join(', ')}]` : '';
+        const analysisPrompt = `${snapshot}${killNote}\n\nAnalyze what's wrong and state the specific actions needed to resolve each remaining issue.`;
+        saveSessions();
+        console.log(`[health-monitor] snapshot: ${data.status} — triggering agent analysis`);
+        healthMonitorAgentRunning = true;
+        runDirectAgent(healthMonitorSessionId, analysisPrompt, sess.workDir, false)
+          .catch(err => console.error('[health-monitor] agent analysis error:', err.message))
+          .finally(() => { healthMonitorAgentRunning = false; });
+        return;
+      }
+      console.log(`[health-monitor] snapshot: ${data.status} — analysis ${healthMonitorAgentRunning ? 'in-flight (skipped)' : `debounced (last ${Math.round((Date.now() - lastHealthAnalysisAt) / 60000)}m ago)`}`);
+    } else {
+      console.log(`[health-monitor] snapshot: ${data?.status || 'probe-failed'}`);
+    }
+
+    sess.messages.push({ role: 'user', content: snapshot });
+    if (sess.messages.length > MAX_AGENT_MESSAGES) sess.messages = sess.messages.slice(-MAX_AGENT_MESSAGES);
     saveSessions();
-    console.log(`[health-monitor] snapshot: ${data.status} — triggering agent analysis`);
-    // runDirectAgent pushes analysisPrompt to session.messages internally
-    runDirectAgent(healthMonitorSessionId, analysisPrompt, session.workDir, false)
-      .catch(err => console.error('[health-monitor] agent analysis error:', err.message));
-  } else {
-    // Healthy or mid-conversation: quietly log snapshot to message history for future context
-    session.messages.push({ role: 'user', content: snapshot });
-    if (session.messages.length > MAX_AGENT_MESSAGES) session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
-    saveSessions();
-    console.log(`[health-monitor] snapshot: ${data?.status || 'probe-failed'}`);
-  }
+  })().catch(err => console.error('[health-monitor] async snapshot error:', err.message));
 }
 
 function startHealthMonitorSession() {
@@ -12855,12 +12914,15 @@ function startHealthMonitorSession() {
     const session = sessions.get(healthMonitorSessionId);
     if (!session || session.status === 'running') return; // don't interrupt active agent turn
 
-    // Cross-session injection: process next queued inbox prompt
+    // Cross-session injection: process next queued inbox prompt (Fix 3: single-flight guard)
     if (healthMonitorInbox.length > 0) {
+      if (healthMonitorAgentRunning) return; // don't stack on top of in-flight analysis
       const { text, source } = healthMonitorInbox.shift();
       const prompt = (source && source !== 'external') ? `[from ${source}] ${text}` : text;
+      healthMonitorAgentRunning = true;
       runDirectAgent(healthMonitorSessionId, prompt, session.workDir, true)
-        .catch(err => console.error('[health-monitor] inbox error:', err.message));
+        .catch(err => console.error('[health-monitor] inbox error:', err.message))
+        .finally(() => { healthMonitorAgentRunning = false; });
       return;
     }
 
