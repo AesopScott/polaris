@@ -60,43 +60,46 @@ exports.SessionPinnedMessage = WebSocketMessage.extend({
 // ─── Agent Interaction ───────────────────────────────────────────────────────
 exports.UserQuestionAnswerMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('user-question-answer'),
-    sessionId: zod_1.z.string(),
+    questionId: zod_1.z.string(),
     answer: zod_1.z.string(),
 });
 exports.CrossCheckDecisionMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('cross-check-decision'),
-    sessionId: zod_1.z.string(),
+    checkId: zod_1.z.string(),
     decision: zod_1.z.enum(['approve', 'reject']),
     reason: zod_1.z.string().optional(),
 });
 exports.CrossCheckPostHocDecisionMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('cross-check-post-hoc-decision'),
-    sessionId: zod_1.z.string(),
+    checkId: zod_1.z.string(),
     decision: zod_1.z.enum(['approve', 'reject']),
     reason: zod_1.z.string().optional(),
 });
 exports.InstallerPermissionDecisionMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('installer-permission-decision'),
-    sessionId: zod_1.z.string(),
+    checkId: zod_1.z.string(),
     decision: zod_1.z.enum(['allow', 'deny']),
 });
 // ─── Queue & Message Editing ─────────────────────────────────────────────────
 exports.DeleteQueueMessageMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('delete-queue-message'),
     sessionId: zod_1.z.string(),
-    messageId: zod_1.z.string(),
+    queueType: zod_1.z.string(),
+    index: zod_1.z.number().int(),
 });
 exports.EditQueueMessageMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('edit-queue-message'),
     sessionId: zod_1.z.string(),
-    messageId: zod_1.z.string(),
-    newContent: zod_1.z.string(),
+    queueType: zod_1.z.string(),
+    index: zod_1.z.number().int(),
+    prompt: zod_1.z.string().optional(),
+    displayPrompt: zod_1.z.string().optional(),
 });
 // ─── Cost & Metrics ──────────────────────────────────────────────────────────
 exports.CostUpdateMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('cost-update'),
     sessionId: zod_1.z.string(),
-    cost: zod_1.z.number(),
+    totalCost: zod_1.z.number(),
 });
 // ─── Backlog ─────────────────────────────────────────────────────────────────
 exports.ListBacklogsMessage = WebSocketMessage.extend({
@@ -162,7 +165,7 @@ exports.DebugLogMessage = WebSocketMessage.extend({
 // ─── Routine Notifications ───────────────────────────────────────────────────
 exports.DismissRoutineNotificationMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('dismiss-routine-notification'),
-    notificationId: zod_1.z.string(),
+    id: zod_1.z.string(),
 });
 exports.GetRoutineNotificationsMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('get-routine-notifications'),
@@ -170,7 +173,6 @@ exports.GetRoutineNotificationsMessage = WebSocketMessage.extend({
 // ─── Domain Scout ────────────────────────────────────────────────────────────
 exports.DomainScoutMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('domain-scout'),
-    domain: zod_1.z.string(),
 });
 exports.DomainScoutClearMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('domain-scout-clear'),
@@ -208,8 +210,8 @@ exports.TestApiKeyMessage = WebSocketMessage.extend({
 exports.TestModelMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('test-model'),
     model: zod_1.z.string(),
-    prompt: zod_1.z.string(),
-    apiKey: zod_1.z.string().optional(),
+    tier: zod_1.z.string().optional(),
+    provider: zod_1.z.string().nullable().optional(),
 });
 // ─── Agent Eval ──────────────────────────────────────────────────────────────
 exports.AgentEvalLoadQueueMessage = WebSocketMessage.extend({
@@ -217,11 +219,12 @@ exports.AgentEvalLoadQueueMessage = WebSocketMessage.extend({
 });
 exports.StartAgentEvalMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('start-agent-eval'),
-    config: zod_1.z.unknown(),
+    models: zod_1.z.array(zod_1.z.unknown()),
+    fixtures: zod_1.z.array(zod_1.z.string()).optional(),
+    runs: zod_1.z.union([zod_1.z.number(), zod_1.z.string()]).optional(),
 });
 exports.CancelAgentEvalMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('cancel-agent-eval'),
-    evalId: zod_1.z.string(),
 });
 exports.SaveAgentEvalResultsMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('save-agent-eval-results'),
@@ -241,8 +244,10 @@ exports.GetPreBuildCheckStatusMessage = WebSocketMessage.extend({
 });
 exports.RunBuildMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('run-build'),
-    projectPath: zod_1.z.string(),
-    buildType: zod_1.z.string(),
+    sourcePath: zod_1.z.string().optional(),
+    projectName: zod_1.z.string().optional(),
+    buildType: zod_1.z.string().optional(),
+    skipCheck: zod_1.z.boolean().optional(),
 });
 // ─── Benchmark ───────────────────────────────────────────────────────────────
 exports.BenchmarkLoadQueueMessage = WebSocketMessage.extend({
@@ -250,7 +255,12 @@ exports.BenchmarkLoadQueueMessage = WebSocketMessage.extend({
 });
 exports.BenchmarkSaveResultMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('benchmark-save-result'),
-    result: zod_1.z.unknown(),
+    model: zod_1.z.string(),
+    provider: zod_1.z.string().nullable().optional(),
+    ttft: zod_1.z.number(),
+    tps: zod_1.z.number(),
+    tokens: zod_1.z.number(),
+    totalMs: zod_1.z.number(),
 });
 // ─── Space ───────────────────────────────────────────────────────────────────
 exports.GetSpaceDataMessage = WebSocketMessage.extend({
@@ -263,8 +273,7 @@ exports.GetSpaceAnalysisMessage = WebSocketMessage.extend({
 // ─── Panel State ─────────────────────────────────────────────────────────────
 exports.SavePanelStateMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('save-panel-state'),
-    panelId: zod_1.z.string(),
-    state: zod_1.z.unknown(),
+    panelState: zod_1.z.unknown(),
 });
 exports.SaveHiddenSessionsMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('save-hidden-sessions'),
@@ -277,7 +286,7 @@ exports.UpsertProjectMessage = WebSocketMessage.extend({
 });
 exports.DeleteProjectMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('delete-project'),
-    projectName: zod_1.z.string(),
+    name: zod_1.z.string(),
 });
 exports.UpsertRoutineMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('upsert-routine'),
@@ -285,7 +294,7 @@ exports.UpsertRoutineMessage = WebSocketMessage.extend({
 });
 exports.DeleteRoutineMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('delete-routine'),
-    routineId: zod_1.z.string(),
+    name: zod_1.z.string(),
 });
 // ─── Utility ─────────────────────────────────────────────────────────────────
 exports.RefreshOpenrouterCatalogMessage = WebSocketMessage.extend({
