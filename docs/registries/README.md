@@ -6,6 +6,7 @@ A boundary is anywhere two pieces of code refer to the same name independently a
 
 | File | Boundary kind | Names | Gaps |
 |------|---------------|-------|------|
+| [collections.md](collections.md) | Firestore collections: producers, consumers, schema shape | 1 | 0 |
 | [websocket-messages.md](websocket-messages.md) | WebSocket `type` strings between client (mockup.html) and server (server.js) | ~100 | 4 orphan server handlers (pre-existing) |
 | [websocket-events.md](websocket-events.md) | WS event types with full payload docs (server→client push events) | ~20 | 0 |
 | [http-endpoints.md](http-endpoints.md) | HTTP endpoints: Polaris server + Python LangGraph executor | ~15 | 0 |
