@@ -30,6 +30,7 @@
 
 const http = require('http');
 const fs = require('fs');
+const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const { spawn, exec, execFile, execSync, execFileSync, spawnSync } = require('child_process');
@@ -788,6 +789,13 @@ let healthSnapshotCacheAt = 0;
 let healthSnapshotInFlight = false;
 const HEALTH_SNAPSHOT_TTL_MS = 30000;
 
+// ─── Health Monitor Session ───────────────────────────────────────────────────
+const HEALTH_PROBE_PATH          = path.join(os.homedir(), '.claude', 'skills', 'health', 'scripts', 'polaris-health.ps1');
+const HEALTH_MONITOR_NAME        = 'Health Monitor Session';
+const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+let   healthMonitorSessionId     = null;
+let   healthMonitorIntervalTimer = null;
+
 // Connect-tab write protection — token is generated at startup and sent only to the main UI window.
 // Any WebSocket message that modifies MCP server config must include this token; otherwise the
 // request is queued and broadcast as an approval prompt so the user can allow or deny it.
@@ -1478,10 +1486,10 @@ async function pushSessionNoteToObsidian(sessionName, content, projectName, ws) 
   const sessionsDir = proj?.obsidianSessionsDir && path.isAbsolute(path.normalize(proj.obsidianSessionsDir))
     ? path.normalize(proj.obsidianSessionsDir)
     : path.join(vaultRoot, proj?.obsidianSessionsDir || `${projectName || 'Polaris'}_Sessions`);
-  fs.mkdirSync(sessionsDir, { recursive: true });
+  await fsp.mkdir(sessionsDir, { recursive: true });
   const safeName = (sessionName || 'Session').replace(/[<>:"/\\|?*]/g, '_');
   const filePath = path.join(sessionsDir, `${safeName}.md`);
-  fs.writeFileSync(filePath, content || '', 'utf8');
+  await fsp.writeFile(filePath, content || '', 'utf8');
   sendTo(ws, { type: 'obsidian-progress', step: 'file-written', filePath });
   const codeGit = proj && proj.workDir
     ? runGit(['push'], proj.workDir).then(() => sendTo(ws, { type: 'obsidian-progress', step: 'code-git' }))
@@ -1491,7 +1499,7 @@ async function pushSessionNoteToObsidian(sessionName, content, projectName, ws) 
 }
 
 // Auto-fire Obsidian Up when a session completes with file modifications
-function autoObsidianForSession(sessionId) {
+async function autoObsidianForSession(sessionId) {
   const s = sessions.get(sessionId);
   if (!s) return;
   if (!s.modifiedFiles || s.modifiedFiles.size === 0) return;
@@ -1505,7 +1513,7 @@ function autoObsidianForSession(sessionId) {
   const sessionsFolder = matchedProj.obsidianSessionsDir;
   try {
     const dir = path.join(vaultPath, sessionsFolder);
-    fs.mkdirSync(dir, { recursive: true });
+    await fsp.mkdir(dir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const safeName = (s.name || 'Session').replace(/[<>:"/\\|?*]/g, '_').slice(0, 60);
     const filePath = path.join(dir, `${safeName} ${ts}.md`);
@@ -1520,7 +1528,7 @@ function autoObsidianForSession(sessionId) {
       `- **Status:** ${s.status || 'done'}\n` +
       `- **Files modified (${fileList.length}):**\n${fileList.map(f => `  - ${f}`).join('\n')}\n\n` +
       `## Transcript\n\n\`\`\`\n${transcript}\n\`\`\`\n`;
-    fs.writeFileSync(filePath, content, 'utf8');
+    await fsp.writeFile(filePath, content, 'utf8');
     broadcast({ type: 'obsidian-auto-pushed', sessionId, filePath, fileCount: fileList.length });
     console.log(`[obsidian-auto] ${sessionId} → ${filePath} (${fileList.length} files)`);
   } catch (e) {
@@ -7858,7 +7866,7 @@ const httpServer = http.createServer((req, res) => {
     const snapshot = { status: 'ok', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: null };
     try {
       const ps = [
-        "$m=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' };",
+        "$m=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match '@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' };",
         "$c=@(Get-NetTCPConnection -LocalPort 40000 -State Established -ErrorAction SilentlyContinue);",
         "$p=Get-Process -Name Polaris -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;",
         "[pscustomobject]@{mcpHelpers=@($m).Count;connections=@($c).Count;topProcess=if($p){$p.ProcessName+':'+$p.Id+' cpu='+[math]::Round($p.CPU,1)+' memMB='+[math]::Round($p.WorkingSet/1MB,0)}else{$null}} | ConvertTo-Json -Compress"
@@ -7898,11 +7906,11 @@ const httpServer = http.createServer((req, res) => {
     const result = { ok: true, stopped: 0, remaining: null };
     try {
       const ps = [
-        "$targets=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' };",
+        "$targets=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match '@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' };",
         "$count=@($targets).Count;",
         "foreach($p in $targets){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} };",
         "Start-Sleep -Milliseconds 500;",
-        "$remaining=@(Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match 'firebase-tools|@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' }).Count;",
+        "$remaining=@(Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match '@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' -and $_.CommandLine -notmatch 'codex|app-server|kernel.js' }).Count;",
         "[pscustomobject]@{stopped=$count;remaining=$remaining} | ConvertTo-Json -Compress"
       ].join(' ');
       const out = execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 5000 });
@@ -11927,30 +11935,30 @@ async function handleMessage(ws, raw) {
       const proj = (config.projects || []).find(p => p.name === projectName);
       if (proj?.obsidianDir) {
         const obsDir = path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir);
-        const appendBlock = (fileName, blockContent) => {
+        const appendBlock = async (fileName, blockContent) => {
           if (!blockContent) return;
           const safeContent = typeof blockContent === 'string' ? blockContent : JSON.stringify(blockContent);
           const fp = path.join(obsDir, fileName);
-          try { fs.appendFileSync(fp, `\n\n## Session Update (${today})\n\n${safeContent}\n`, 'utf8'); } catch {}
+          try { await fsp.appendFile(fp, `\n\n## Session Update (${today})\n\n${safeContent}\n`, 'utf8'); } catch {}
         };
-        appendBlock('2-Architecture.md', analysis.architecture);
-        appendBlock('3-Build-Plan.md', analysis.buildPlan);
+        await appendBlock('2-Architecture.md', analysis.architecture);
+        await appendBlock('3-Build-Plan.md', analysis.buildPlan);
       }
-      const writeNote = (dir, nextNum, noteContent, label) => {
+      const writeNote = async (dir, nextNum, noteContent, label) => {
         if (!noteContent || !nextNum) return;
         try {
-          fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(
+          await fsp.mkdir(dir, { recursive: true });
+          await fsp.writeFile(
             path.join(dir, `${nextNum}.md`),
             `# ${label} ${nextNum}\n\n**Date:** ${today}\n**Project:** ${projectName || '—'}\n\n${noteContent}\n`,
             'utf8'
           );
         } catch (e) { console.error(`[obsidian-commit] ${label} write failed:`, e.message); }
       };
-      writeNote(path.join(vaultPath, 'Decisions'), analysis._nextDecision, analysis.decision,  'Decision');
-      writeNote(path.join(vaultPath, 'Patterns'),  analysis._nextPattern,  analysis.pattern,   'Pattern');
-      writeNote(path.join(vaultPath, 'Lessons'),   analysis._nextLesson,   analysis.lesson,    'Lesson');
-      writeNote(path.join(vaultPath, 'Backlog'),   analysis._nextBacklog,  analysis.backlog,   'Backlog');
+      await writeNote(path.join(vaultPath, 'Decisions'), analysis._nextDecision, analysis.decision,  'Decision');
+      await writeNote(path.join(vaultPath, 'Patterns'),  analysis._nextPattern,  analysis.pattern,   'Pattern');
+      await writeNote(path.join(vaultPath, 'Lessons'),   analysis._nextLesson,   analysis.lesson,    'Lesson');
+      await writeNote(path.join(vaultPath, 'Backlog'),   analysis._nextBacklog,  analysis.backlog,   'Backlog');
     }
     try {
       await pushSessionNoteToObsidian(sessionName, content, projectName, ws);
@@ -11972,18 +11980,19 @@ async function handleMessage(ws, raw) {
     const statusDir = path.join(vaultPath, 'Project Status');
     const statuses = {};
     try {
-      if (fs.existsSync(statusDir)) {
-        const files = fs.readdirSync(statusDir).filter(f => f.endsWith('.md'));
+      await fsp.access(statusDir);
+      {
+        const files = (await fsp.readdir(statusDir)).filter(f => f.endsWith('.md'));
         for (const f of files) {
           const projectName = f.replace(/\.md$/, '');
-          let content = fs.readFileSync(path.join(statusDir, f), 'utf8');
+          let content = await fsp.readFile(path.join(statusDir, f), 'utf8');
 
           // If main file is empty or near-empty, auto-load most recent archive
           if (!content.trim() || content.trim().length < 50) {
             const archiveDir = path.join(statusDir, 'archive');
-            if (fs.existsSync(archiveDir)) {
+            try {
               const safeName = projectName.replace(/[<>:"/\\|?*]/g, '_');
-              const archiveFiles = fs.readdirSync(archiveDir)
+              const archiveFiles = (await fsp.readdir(archiveDir))
                 .filter(af => af.startsWith(safeName + '.') && af.endsWith('.md'))
                 .sort()
                 .reverse();
@@ -11991,13 +12000,13 @@ async function handleMessage(ws, raw) {
               if (archiveFiles.length > 0) {
                 const mostRecent = archiveFiles[0];
                 try {
-                  content = fs.readFileSync(path.join(archiveDir, mostRecent), 'utf8');
+                  content = await fsp.readFile(path.join(archiveDir, mostRecent), 'utf8');
                   console.log(`[project-status] loaded archive for ${projectName}: ${mostRecent}`);
                 } catch (archErr) {
                   console.log(`[project-status] failed to load archive ${mostRecent}: ${archErr.message}`);
                 }
               }
-            }
+            } catch {}
           }
 
           statuses[projectName] = content;
@@ -12020,33 +12029,34 @@ async function handleMessage(ws, raw) {
     }
     try {
       const statusDir = path.join(vaultPath, 'Project Status');
-      fs.mkdirSync(statusDir, { recursive: true });
+      await fsp.mkdir(statusDir, { recursive: true });
       const safeName = (projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(statusDir, `${safeName}.md`);
 
       // Archive prior content before overwrite — guards against accidental clobbers.
-      if (fs.existsSync(filePath)) {
-        try {
+      try {
+        await fsp.access(filePath);
+        {
           const archiveDir = path.join(statusDir, 'archive');
-          fs.mkdirSync(archiveDir, { recursive: true });
+          await fsp.mkdir(archiveDir, { recursive: true });
           const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-          fs.copyFileSync(filePath, path.join(archiveDir, `${safeName}.${stamp}.md`));
+          await fsp.copyFile(filePath, path.join(archiveDir, `${safeName}.${stamp}.md`));
           const KEEP = 20;
           const prefix = `${safeName}.`;
-          const olderFirst = fs.readdirSync(archiveDir)
+          const olderFirst = (await fsp.readdir(archiveDir))
             .filter(f => f.startsWith(prefix) && f.endsWith('.md'))
             .sort();
           while (olderFirst.length > KEEP) {
-            try { fs.unlinkSync(path.join(archiveDir, olderFirst.shift())); } catch {}
+            try { await fsp.unlink(path.join(archiveDir, olderFirst.shift())); } catch {}
           }
-        } catch (archErr) {
-          console.log(`[project-status] archive failed for ${safeName}: ${archErr.message}`);
         }
+      } catch (archErr) {
+        if (archErr && archErr.code !== 'ENOENT') console.log(`[project-status] archive failed for ${safeName}: ${archErr.message}`);
       }
 
       const now = new Date().toISOString().split('T')[0];
       const content = `# ${projectName} — Status\n\n**Last Updated:** ${now}\n\n${note || ''}`;
-      fs.writeFileSync(filePath, content, 'utf8');
+      await fsp.writeFile(filePath, content, 'utf8');
       sendTo(ws, { type: 'project-status-saved', projectName, filePath });
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Project status save failed: ${e.message}` });
@@ -12652,13 +12662,142 @@ Return ONLY a valid JSON array with exactly 30 items.`;
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
+// ─── Health Monitor Session ───────────────────────────────────────────────────
+
+function runHealthProbe() {
+  try {
+    if (!fs.existsSync(HEALTH_PROBE_PATH)) return null;
+    const result = spawnSync('powershell', [
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', HEALTH_PROBE_PATH,
+    ], { encoding: 'utf8', timeout: 30000 });
+    if (result.status !== 0 || !result.stdout) return null;
+    return JSON.parse(result.stdout.trim());
+  } catch (e) {
+    console.error('[health-monitor] probe error:', e.message);
+    return null;
+  }
+}
+
+function formatHealthSnapshot(data) {
+  if (!data) return '⚠️ Health probe failed — could not run script';
+  const ts = new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const icon    = data.status === 'Healthy' ? '✅' : data.status === 'Degraded' ? '⚠️' : '🔴';
+  const healthMs = data.endpoints?.health?.ms ?? '?';
+  const rootMs   = data.endpoints?.root?.ms   ?? '?';
+  const helpers  = data.processCounts?.mcpHelpers               ?? '?';
+  const conns    = data.processCounts?.port40000Established     ?? '?';
+  const lines = [
+    `[${ts}] ${icon} ${data.status}  /health: ${healthMs}ms  root: ${rootMs}ms  MCP helpers: ${helpers}  connections: ${conns}`,
+  ];
+  if (data.status !== 'Healthy') {
+    if (typeof helpers === 'number' && helpers > 0)  lines.push(`  └─ ⚠️ ${helpers} MCP helper process(es) running`);
+    if (typeof healthMs === 'number' && healthMs > 2000) lines.push(`  └─ ⚠️ /health latency high (${healthMs}ms)`);
+    if (typeof rootMs   === 'number' && rootMs   > 2000) lines.push(`  └─ ⚠️ root latency high (${rootMs}ms)`);
+  }
+  return lines.join('\n');
+}
+
+function injectHealthSnapshot() {
+  if (!healthMonitorSessionId) return;
+  const session = sessions.get(healthMonitorSessionId);
+  if (!session) { healthMonitorSessionId = null; return; }
+
+  const data     = runHealthProbe();
+  const snapshot = formatHealthSnapshot(data);
+
+  // Push visible line to session terminal
+  broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: snapshot, role: 'system' });
+
+  // Persist into message history so agent has context when the user asks questions
+  if (!session.messages) session.messages = [];
+  session.messages.push({ role: 'user', content: snapshot });
+  if (session.messages.length > MAX_AGENT_MESSAGES) {
+    session.messages = session.messages.slice(-MAX_AGENT_MESSAGES);
+  }
+
+  // Update card color: green=done, orange=test, red=error — but don't interrupt a live conversation
+  if (session.status !== 'running') {
+    const cardStatus = !data
+      ? 'error'
+      : data.status === 'Healthy'  ? 'done'
+      : data.status === 'Critical' ? 'error'
+      : 'test';
+    if (session.status !== cardStatus) {
+      session.status = cardStatus;
+      broadcast({ type: 'session-status', sessionId: healthMonitorSessionId, status: cardStatus });
+    }
+  }
+
+  saveSessions();
+  console.log(`[health-monitor] snapshot: ${data?.status || 'probe-failed'}`);
+}
+
+function startHealthMonitorSession() {
+  // Close any pre-existing Health Monitor Session (handles Polaris restarts)
+  for (const [id, s] of sessions) {
+    if (s.name === HEALTH_MONITOR_NAME) {
+      sessions.delete(id);
+      broadcast({ type: 'session-closed', sessionId: id });
+      console.log(`[health-monitor] closed stale session ${id}`);
+      break;
+    }
+  }
+  saveSessions();
+
+  // Create fresh agent session
+  if (!fs.existsSync(CHAT_DIR)) fs.mkdirSync(CHAT_DIR, { recursive: true });
+  const id         = `s_${Date.now()}`;
+  const newSession = {
+    id, name: HEALTH_MONITOR_NAME,
+    workDir: CHAT_DIR, projectName: 'Polaris',
+    model: null, tier: 'floor',
+    isChat: false,
+    status: 'done',
+    startAt: Date.now(), lastActivityAt: Date.now(),
+    stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null,
+    proc: null, watcher: null, timeout: null,
+    lines: [], messages: [],
+    lastPrompt: 'Health Monitor',
+    claudeSessionId: null, routineTag: null,
+    pendingImages: [], pendingDocs: [], pendingAudio: [], pendingVideos: [],
+  };
+  newSession.policy = buildDefaultPolicy(newSession, readConfig());
+  sessions.set(id, newSession);
+  healthMonitorSessionId = id;
+
+  broadcast({ type: 'session-created', sessionId: id, name: HEALTH_MONITOR_NAME, workDir: CHAT_DIR, projectName: 'Polaris', model: null });
+  saveSessions();
+
+  // First snapshot immediately
+  injectHealthSnapshot();
+
+  // Recurring snapshots
+  if (healthMonitorIntervalTimer) clearInterval(healthMonitorIntervalTimer);
+  healthMonitorIntervalTimer = setInterval(injectHealthSnapshot, HEALTH_MONITOR_INTERVAL_MS);
+  if (healthMonitorIntervalTimer.unref) healthMonitorIntervalTimer.unref();
+
+  console.log(`[health-monitor] session started: ${id} (every ${HEALTH_MONITOR_INTERVAL_MS / 60000}m)`);
+}
+
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
   checkVideoDeps(); // non-blocking — results cached in videoDeps
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();
-  purgeStaleWorktrees(); // sweep orphaned session worktrees on startup
+  const startupPurgeTimer = setTimeout(() => {
+    try { purgeStaleWorktrees(); }
+    catch (e) { console.error('[worktree] startup purge failed:', e.message); }
+  }, 30000);
+  if (startupPurgeTimer.unref) startupPurgeTimer.unref();
+  const hmStartTimer = setTimeout(() => {
+    try { startHealthMonitorSession(); }
+    catch (e) { console.error('[health-monitor] startup error:', e.message); }
+  }, 10000); // 10 s — lets persisted sessions finish loading before creating the new card
+  if (hmStartTimer.unref) hmStartTimer.unref();
   // Ensure the 'polaris' MCP server is trusted by the Claude Code CLI
   try {
     const ccSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
