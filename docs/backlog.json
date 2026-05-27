@@ -223,7 +223,7 @@
       "title": "Fix health monitor: async remediation, single-flight guard, inbox cap, auth",
       "category": "fix",
       "priority": 5,
-      "status": "pr-reviewed",
+      "status": "cba-complete",
       "branch": "task/61-fix-health-monitor-async-remediation",
       "pr_url": "https://github.com/AesopScott/polaris/pull/58",
       "dependencies": [],
