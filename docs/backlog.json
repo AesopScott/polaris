@@ -42,7 +42,7 @@
       "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
       "category": "feature",
       "priority": 90,
-      "impact": "major",
+      "impact": "standard",
       "status": "backlog",
       "created_at": "2026-05-22",
       "completed_at": null,
