@@ -1469,6 +1469,7 @@
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
         <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
+        <button id="btn-injections" class="hbtn btn-config" onclick="toggleInjectionPanel()" data-tooltip="Memory Injections — see what Firestore memories were injected into each chat session at turn 1, with rankings and scores" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:4px;"><span class="lbl">Injections</span></button>
       </div>
     </div>
 
@@ -2383,6 +2384,21 @@
   </div>
 
   <!-- Project Status Panel -->
+  <!-- Memory Injections Panel -->
+  <div class="projects-panel hidden palette" id="injection-panel" style="width:680px;max-height:700px;">
+    <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar">
+      <span class="preview-drag-handle">⠿⠿</span>
+      <span style="flex:1;font-size:13px;font-weight:800;">Memory Injections</span>
+      <button class="preview-close-btn" onclick="closeInjectionPanel()">✕</button>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+      <span style="font-size:11px;opacity:0.5;">Firestore memories injected into each chat session at turn 1, ranked by strength + recency.</span>
+      <button onclick="refreshInjectionPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    </div>
+    <div id="injection-panel-body" style="overflow-y:auto;flex:1;max-height:580px;"></div>
+  </div>
+
   <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:640px;">
     <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
     <div class="preview-toolbar">
@@ -5655,6 +5671,9 @@
         break;
       case 'cross-check-history':
         renderCrossCheckHistory(msg.entries || []);
+        break;
+      case 'injection-history':
+        if (typeof renderInjectionPanel === 'function') renderInjectionPanel(msg.entries || []);
         break;
       case 'archive-search-results':
         renderArchiveList(msg.results || [], true);
@@ -12913,6 +12932,66 @@ This is your current workflow status across all branches. Review the tasks and P
     pendingStatusProject = s.projectName || null;
   }
   window.obsidianUp = obsidianUp;
+  // ── Memory Injections Panel ───────────────────────────────────────────────────
+  const TYPE_COLORS = { instruction: '#f59e0b', preference: '#60a5fa', fact: '#34d399', feedback: '#a78bfa' };
+
+  function openInjectionPanel() {
+    document.getElementById('injection-panel').classList.remove('hidden');
+    document.getElementById('overlay-bg').classList.remove('hidden');
+    refreshInjectionPanel();
+  }
+  function closeInjectionPanel() {
+    document.getElementById('injection-panel').classList.add('hidden');
+    document.getElementById('overlay-bg').classList.add('hidden');
+  }
+  function toggleInjectionPanel() {
+    const panel = document.getElementById('injection-panel');
+    if (panel.classList.contains('hidden')) openInjectionPanel();
+    else closeInjectionPanel();
+  }
+  function refreshInjectionPanel() {
+    wsSend({ type: 'get-injection-history', limit: 50 });
+  }
+  function renderInjectionPanel(entries) {
+    const body = document.getElementById('injection-panel-body');
+    if (!body) return;
+    if (!entries || entries.length === 0) {
+      body.innerHTML = '<div style="padding:24px;text-align:center;opacity:0.4;font-size:12px;">No injections logged yet — start a chat session on a project to see entries here.</div>';
+      return;
+    }
+    body.innerHTML = entries.slice().reverse().map(e => {
+      const dt = e.ts ? new Date(e.ts).toLocaleString() : '—';
+      const qtBadge = e.queryType === 'high-signal'
+        ? '<span style="background:#1d4ed8;color:#93c5fd;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">BM25</span>'
+        : '<span style="background:#374151;color:#9ca3af;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">strength+recency</span>';
+      const mems = (e.memories || []).map(m => {
+        const col = TYPE_COLORS[m.type] || '#9ca3af';
+        const str = m.strength != null ? m.strength.toFixed(2) : '—';
+        return `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;align-items:baseline;">
+          <span style="color:${col};font-weight:700;min-width:72px;flex-shrink:0;">${escHtml(m.type || 'fact')}</span>
+          <span style="color:#60a5fa;font-family:Consolas,monospace;min-width:32px;flex-shrink:0;">${escHtml(str)}</span>
+          <span style="opacity:0.8;line-height:1.4;">${escHtml((m.content || '').slice(0, 160))}${(m.content || '').length > 160 ? '…' : ''}</span>
+        </div>`;
+      }).join('');
+      const query = e.query ? `<div style="margin:6px 0 2px;font-size:11px;opacity:0.6;font-style:italic;">"${escHtml(e.query.slice(0, 120))}${e.query.length > 120 ? '…' : ''}"</div>` : '';
+      return `<div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+          <span style="color:#e2e8f0;font-weight:700;font-size:12px;">${escHtml(e.project || '—')}</span>
+          ${qtBadge}
+          <span style="opacity:0.35;font-size:10px;margin-left:auto;">${escHtml(dt)}</span>
+        </div>
+        ${e.sessionName ? `<div style="font-size:10px;opacity:0.4;margin-bottom:4px;">${escHtml(e.sessionName)}</div>` : ''}
+        ${query}
+        <div style="margin-top:6px;">${mems || '<div style="opacity:0.35;font-size:11px;">No memories injected</div>'}</div>
+      </div>`;
+    }).join('');
+  }
+  window.openInjectionPanel   = openInjectionPanel;
+  window.closeInjectionPanel  = closeInjectionPanel;
+  window.toggleInjectionPanel = toggleInjectionPanel;
+  window.refreshInjectionPanel = refreshInjectionPanel;
+  window.renderInjectionPanel  = renderInjectionPanel;
+
   // ── Project Status Panel ──────────────────────────────────────────────────────
   let projectStatusCache = {};
   let pendingStatusProject = null;
@@ -14809,6 +14888,7 @@ This is your current workflow status across all branches. Review the tasks and P
     closeCrossCheckPanel();
     closeManifest();
     closeStatusPanel();
+    closeInjectionPanel();
     closeBacklogPanel();
   }
   window.closeActivePanel = closeActivePanel;
