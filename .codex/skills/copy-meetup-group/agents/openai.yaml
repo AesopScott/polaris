@@ -1,0 +1,4 @@
+interface:
+  display_name: "Copy Meetup Group"
+  short_description: "Copy the Advanced AI Concepts Meetup group to a requested city."
+  default_prompt: "Copy the Advanced AI Concepts Meetup group to a new city."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Copy Meetup Events"
+  short_description: "Copy Meetup events without duplicates."
+  default_prompt: "Copy the Advanced AI Concepts events to another city group."
