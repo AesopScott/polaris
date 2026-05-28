@@ -63,6 +63,21 @@
   .header-buttons { display: flex; justify-content: flex-end; }
   .app-title { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 800; }
   .app-icon { display: flex; align-items: center; }
+  .meetup-reservations-chip {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 86px; padding: 5px 8px; border-radius: 7px;
+    background: linear-gradient(180deg, rgba(96,165,250,0.16), rgba(14,165,233,0.05));
+    border: 1px solid rgba(96,165,250,0.28);
+    box-shadow: 0 0 10px rgba(96,165,250,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .meetup-reservations-label {
+    font-size: 8px; font-weight: 800; line-height: 1.1; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #93c5fd; white-space: nowrap;
+  }
+  .meetup-reservations-count {
+    margin-top: 2px; font-family: Consolas, monospace; font-size: 19px; line-height: 1;
+    font-weight: 800; color: #e0f2fe;
+  }
   .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; }
   .header-stats { display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .stats { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; align-items: flex-start; }
@@ -1443,8 +1458,14 @@
     <div class="header-identity">
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
         <div style="display:flex;align-items:center;gap:14px;">
-          <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
-          <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
+          <div id="meetup-reservations-chip" class="meetup-reservations-chip" title="Meetup reservations across Advanced AI Concepts events">
+            <div class="meetup-reservations-label">Meet up reservations</div>
+            <div id="meetup-reservations-count" class="meetup-reservations-count">--</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
+            <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
+          </div>
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
         <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
@@ -1637,7 +1658,7 @@
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
       <span class="stat"><span data-stat-done style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-done" id="filter-done-label" onclick="toggleSessionFilter('done')" style="cursor:pointer;" title="Filter to done sessions">Done Sessions</span></span>
-      <span id="stat-orchestrator-wrap" class="stat" style="display:none;"><span data-stat-orchestrator style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-orchestrator" id="filter-orchestrator-label" onclick="toggleSessionFilter('orchestrator')" style="cursor:pointer;" title="Filter to orchestrator sessions">Orchestrator Sessions</span></span>
+      <span id="stat-orchestrator-wrap" class="stat"><span data-stat-orchestrator style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-orchestrator" id="filter-orchestrator-label" onclick="toggleSessionFilter('orchestrator')" style="cursor:pointer;" title="Filter to orchestrator sessions">Orchestrator Sessions</span></span>
       <span id="stat-testing-wrap" class="stat" style="display:none;"><span data-stat-testing style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-testing" id="filter-testing-label" onclick="toggleTestingFilter()" style="cursor:pointer;" title="Hide/show testing sessions">Testing</span></span>
       <span id="stat-hidden-wrap" class="stat" style="display:none;"><span id="stat-hidden-count" style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span onclick="unhideAll()" style="cursor:pointer;color:#94a3b8;" title="Show all hidden sessions">Hidden · Show</span></span>
     </div>
@@ -7788,8 +7809,6 @@
     document.querySelectorAll('[data-stat-done]').forEach(el => el.textContent = done);
     document.querySelectorAll('[data-stat-orchestrator]').forEach(el => el.textContent = orchestrator);
     document.querySelectorAll('[data-stat-testing]').forEach(el => el.textContent = testing);
-    const orchestratorWrap = document.getElementById('stat-orchestrator-wrap');
-    if (orchestratorWrap) orchestratorWrap.style.display = orchestrator > 0 ? '' : 'none';
     const testingWrap = document.getElementById('stat-testing-wrap');
     if (testingWrap) testingWrap.style.display = testing > 0 ? '' : 'none';
     applySessionFilter();
@@ -15766,6 +15785,28 @@ This is your current workflow status across all branches. Review the tasks and P
   }
   window.runPreBuildCheck = runPreBuildCheck;
 
+  async function refreshMeetupReservations() {
+    const countEl = document.getElementById('meetup-reservations-count');
+    const chipEl = document.getElementById('meetup-reservations-chip');
+    if (!countEl) return;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const res = await fetch('/api/meetup-reservations', { cache: 'no-store', signal: ctrl.signal });
+      clearTimeout(timer);
+      const data = await res.json();
+      if (!res.ok || !data.ok || typeof data.count !== 'number') {
+        throw new Error(data.error || 'Reservation count unavailable');
+      }
+      countEl.textContent = String(data.count);
+      if (chipEl) chipEl.title = `Meetup reservations across Advanced AI Concepts events${data.cached ? ' (cached)' : ''}`;
+    } catch (err) {
+      countEl.textContent = '--';
+      if (chipEl) chipEl.title = `Meetup reservations unavailable: ${err.message || err}`;
+    }
+  }
+  window.refreshMeetupReservations = refreshMeetupReservations;
+
   // ── Boot ──────────────────────────────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -15775,6 +15816,8 @@ This is your current workflow status across all branches. Review the tasks and P
     startTimers();
     wsConnect();
     renderHealthIndicator();
+    refreshMeetupReservations();
+    setInterval(refreshMeetupReservations, 5 * 60 * 1000);
     setTimeout(() => runHealthCheck(false), 250);
     startHealthPolling();
   });
