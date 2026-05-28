@@ -1447,6 +1447,7 @@
           <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
+        <button id="btn-memory" class="hbtn btn-config" onclick="toggleMemoryPanel()" data-tooltip="Memory — Obsidian retrieval index stats and last 20 QueryMemory retrieval events" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Memory</span></button>
         <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
       </div>
     </div>
@@ -2374,6 +2375,24 @@
       <button onclick="wsSend({type:'get-project-statuses'})" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
     </div>
     <div class="projects-panel-body" id="status-panel-body" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;overflow-y:auto;"></div>
+  </div>
+
+  <!-- Memory Panel (task #28) -->
+  <div class="projects-panel hidden palette" id="memory-panel" style="width:680px;max-height:700px;">
+    <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar">
+      <span class="preview-drag-handle">⠿⠿</span>
+      <span style="flex:1;font-size:13px;font-weight:800;">Memory Index</span>
+      <button class="preview-close-btn" onclick="closeMemoryPanel()">✕</button>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+      <span style="font-size:11px;opacity:0.5;">Obsidian retrieval index stats and last 20 QueryMemory events.</span>
+      <button onclick="refreshMemoryPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    </div>
+    <div id="memory-panel-stats" style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;display:flex;gap:24px;flex-wrap:wrap;min-height:44px;align-items:center;">
+      <span style="opacity:0.4;">No index loaded — call QueryMemory with a query to build one.</span>
+    </div>
+    <div id="memory-panel-history" style="padding:0;overflow-y:auto;flex:1;max-height:520px;"></div>
   </div>
 
   <!-- Status Update Modal -->
@@ -5267,6 +5286,10 @@
         }
         break;
       }
+
+      case 'memory-status':
+        if (typeof renderMemoryPanel === 'function') renderMemoryPanel(msg.stats, msg.history);
+        break;
 
       case 'backlog-error':
         if (typeof showBacklogError === 'function') showBacklogError(msg.error || 'Unknown error');
@@ -12984,6 +13007,68 @@ This is your current workflow status across all branches. Review the tasks and P
   window.openStatusModal   = openStatusModal;
   window.closeStatusModal  = closeStatusModal;
   window.saveStatusNote    = saveStatusNote;
+
+  // ── Memory Panel (task #28) ───────────────────────────────────────────────────
+  function openMemoryPanel() {
+    document.getElementById('memory-panel').classList.remove('hidden');
+    document.getElementById('overlay-bg').classList.remove('hidden');
+    refreshMemoryPanel();
+  }
+  function closeMemoryPanel() {
+    document.getElementById('memory-panel').classList.add('hidden');
+    document.getElementById('overlay-bg').classList.add('hidden');
+  }
+  function toggleMemoryPanel() {
+    const panel = document.getElementById('memory-panel');
+    if (panel.classList.contains('hidden')) openMemoryPanel();
+    else closeMemoryPanel();
+  }
+  function refreshMemoryPanel() {
+    const focusedSessionId = resumeTarget ? resumeTarget.sessionId : null;
+    wsSend({ type: 'get-memory-status', sessionId: focusedSessionId });
+  }
+  function renderMemoryPanel(stats, history) {
+    const statsEl = document.getElementById('memory-panel-stats');
+    const histEl  = document.getElementById('memory-panel-history');
+    if (!statsEl || !histEl) return;
+
+    if (stats) {
+      const ts = stats.lastIndexed ? new Date(stats.lastIndexed).toLocaleString() : '—';
+      statsEl.innerHTML = [
+        `<span style="color:#60a5fa;font-weight:700;">${stats.chunkCount}</span><span style="opacity:0.5;"> chunks</span>`,
+        `<span style="color:#34d399;font-weight:700;">${stats.fileCount}</span><span style="opacity:0.5;"> files</span>`,
+        `<span style="opacity:0.5;">indexed </span><span style="color:#e2e8f0;">${escHtml(ts)}</span>`,
+      ].join('<span style="opacity:0.2;margin:0 4px;">·</span>');
+    } else {
+      statsEl.innerHTML = '<span style="opacity:0.4;">No index loaded for the focused session — call QueryMemory with a query first.</span>';
+    }
+
+    if (!history || history.length === 0) {
+      histEl.innerHTML = '<div style="padding:16px;opacity:0.4;font-size:12px;">No retrieval history yet.</div>';
+      return;
+    }
+
+    histEl.innerHTML = history.slice().reverse().map(r => {
+      const ts  = r.ts ? new Date(r.ts).toLocaleTimeString() : '—';
+      const src = (r.topSources || []).map((s, i) => {
+        const sc = r.scores && r.scores[i] != null ? ` <span style="opacity:0.4;">${r.scores[i]}</span>` : '';
+        return `<div style="padding:2px 0;opacity:0.75;">${escHtml(s)}${sc}</div>`;
+      }).join('');
+      return `<div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+          <span style="color:#60a5fa;font-weight:700;font-family:Consolas,monospace;">${escHtml(r.query || '')}</span>
+          <span style="opacity:0.35;font-size:10px;">${escHtml(ts)}</span>
+        </div>
+        ${src}
+      </div>`;
+    }).join('');
+  }
+
+  window.openMemoryPanel   = openMemoryPanel;
+  window.closeMemoryPanel  = closeMemoryPanel;
+  window.toggleMemoryPanel = toggleMemoryPanel;
+  window.refreshMemoryPanel = refreshMemoryPanel;
+  window.renderMemoryPanel  = renderMemoryPanel;
 
   // ── Restart & Reset Layout ────────────────────────────────────────────────────
   function doRestart() {
