@@ -315,6 +315,33 @@ Server broadcast emitted for every `evaluatePolicy()` call that results in a blo
 
 ---
 
+## `session-created` — `isOrchestrator` field (task #62)
+
+The pre-existing `session-created` broadcast gained a new optional field in task #62.
+
+**Schema addition:**
+```javascript
+{
+  type: 'session-created',
+  sessionId: String,
+  name: String,
+  workDir: String,
+  projectName: String,
+  isOrchestrator: Boolean   // NEW (task #62) — true only for orchestrator sessions
+}
+```
+
+**Producers (Server sends)**
+- `server.js` — `spawnOrchestratorSession()` broadcasts with `isOrchestrator: true` when orchestrator spawns
+
+**Consumers (Client receives)**
+- `resources/mockup.html:4921` — `session-created` handler stores `isOrchestrator: msg.isOrchestrator || false` in sessionStore
+- `resources/mockup.html:6516` — `buildCard()` reads `s.isOrchestrator` to apply `status-orchestrator-card` CSS class
+
+**Status:** ✓ Balanced — new field has producer and consumer
+
+---
+
 ## Summary
 
 | Event | Producers | Consumers | Status |
@@ -331,6 +358,7 @@ Server broadcast emitted for every `evaluatePolicy()` call that results in a blo
 | `orchAmber` | 1 (server checked) | 1 (client checked) | fully wired (Phase 4) |
 | `orchSlotReady` | 2 (server checked) | 1 (client checked) | fully wired (review fixes) |
 | `tool-audit` | 1 (server, planned) | 1 (client, planned) | planned (task #29/#44) |
+| `session-created.isOrchestrator` | 1 (server) | 2 (client) | ✓ (task #62) |
 
 ---
 
@@ -394,3 +422,24 @@ Server broadcast emitted for every `evaluatePolicy()` call that results in a blo
 **Gaps identified:** `tool-audit` is an orphan producer until task #44 builds it. Intentional — pre-registered so build session has contract to implement against.
 
 **Status:** Audit complete — registries updated for task #29 planning scope.
+
+---
+
+**Last audit:** 2026-05-27T00:00:00Z (by /finish-build for task #62)
+
+**Task:** #62 — Orchestrator skill: multi-session conflict detection
+
+**Boundaries checked:** WebSocket event types — `session-created` payload extension with `isOrchestrator` field
+
+**Evidence recorded:**
+- 13 entries total (12 previous + `session-created.isOrchestrator` added)
+- New field `isOrchestrator: boolean` added to `session-created` payload schema
+- Producer: `server.js` `spawnOrchestratorSession()` broadcasts with `isOrchestrator: true`
+- Consumers: `mockup.html:4921` (sessionStore), `mockup.html:6516` (buildCard CSS class)
+- 0 hard-fail findings
+- 0 shape mismatches
+- 0 orphan producers or consumers
+
+**Gaps identified:** None.
+
+**Status:** Audit complete — `isOrchestrator` field documented; all other task #62 changes are internal to server.js (Maps, lifecycle functions) with no cross-boundary exposure.

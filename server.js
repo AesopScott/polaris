@@ -782,12 +782,98 @@ function watchGlobalFiles() {
 // ─── State ────────────────────────────────────────────────────────────────────
 const sessions = new Map();   // sessionId → session object
 const forkMap  = new Map();   // primarySessionId → forkSessionId
+const projectSessionCounts = new Map(); // projectName → Set<sessionId> (excludes orchestrators)
+const orchestratorSessions = new Map(); // projectName → orchestratorSessionId
 let   wss      = null;
 const ORCHESTRATION_QUIET_MODE = process.env.POLARIS_ORCHESTRATION_QUIET_MODE !== '0';
 let healthSnapshotCache = null;
 let healthSnapshotCacheAt = 0;
 let healthSnapshotInFlight = false;
 const HEALTH_SNAPSHOT_TTL_MS = 30000;
+
+// ─── Orchestrator Session Lifecycle ──────────────────────────────────────────
+// Rule: 1 session on a project → writes backlog directly.
+//       2+ sessions → only the orchestrator writes backlog.
+// "Alone" is determined by projectSessionCounts, never by worktree isolation.
+
+function onSessionOpened(sessionId, projectName) {
+  if (!projectName) return;
+  const session = sessions.get(sessionId);
+  if (!session || session.isOrchestrator) return;
+  if (!projectSessionCounts.has(projectName)) projectSessionCounts.set(projectName, new Set());
+  const set = projectSessionCounts.get(projectName);
+  set.add(sessionId);
+  if (set.size === 2 && !orchestratorSessions.has(projectName)) {
+    spawnOrchestratorSession(projectName).catch(err =>
+      console.error('[orchestrator] spawn failed for', projectName, err));
+  }
+}
+
+function onSessionClosed(sessionId) {
+  const session = sessions.get(sessionId); // look up BEFORE sessions.delete()
+  if (!session || !session.projectName) return;
+  const { projectName } = session;
+
+  if (orchestratorSessions.get(projectName) === sessionId) {
+    orchestratorSessions.delete(projectName);
+    return;
+  }
+
+  const set = projectSessionCounts.get(projectName);
+  if (!set) return;
+  set.delete(sessionId);
+
+  // Tear down when concurrency drops to 1 — the remaining solo session writes directly.
+  if (set.size <= 1) {
+    const orchId = orchestratorSessions.get(projectName);
+    if (orchId) teardownOrchestratorSession(orchId, projectName);
+  }
+}
+
+async function spawnOrchestratorSession(projectName) {
+  const config = readConfig();
+  const project = (config.projects || []).find(p => p.name === projectName);
+  if (!project) {
+    console.warn('[orchestrator] no project config found for', projectName);
+    return;
+  }
+  const orchId = `orch_${Date.now()}`;
+  const orchSession = {
+    id: orchId,
+    name: 'Project Orchestrator',
+    workDir: project.workDir,
+    projectName,
+    isChat: true,
+    isOrchestrator: true,
+    status: 'running',
+    startAt: Date.now(),
+    lastActivityAt: Date.now(),
+    stallCount: 0,
+    lines: [],
+    proc: null, watcher: null, timeout: null,
+    pendingImages: [], pendingDocs: [], pendingAudio: [], pendingVideos: [],
+    claudeSessionId: null, routineTag: null, taskNumber: null, taskState: null, lastSkill: null,
+    keepAliveInjected: false, lastKeepAliveAt: null,
+  };
+  sessions.set(orchId, orchSession);
+  orchestratorSessions.set(projectName, orchId);
+  broadcast({ type: 'session-created', sessionId: orchId, name: 'Project Orchestrator',
+    workDir: project.workDir, projectName, isOrchestrator: true });
+  broadcast({ type: 'line', sessionId: orchId, role: 'user', text: '/orchestrate' });
+  saveSessions();
+  await spawnMaxChat(orchId, '/orchestrate', config);
+}
+
+function teardownOrchestratorSession(orchId, projectName) {
+  const orchSession = sessions.get(orchId);
+  if (!orchSession) return;
+  try { if (orchSession.proc) orchSession.proc.kill(); } catch (_) {}
+  try { if (orchSession.watcher) orchSession.watcher.close(); } catch (_) {}
+  sessions.delete(orchId);
+  orchestratorSessions.delete(projectName);
+  broadcast({ type: 'session-closed', sessionId: orchId });
+  saveSessions();
+}
 
 // ─── Health Monitor Session ───────────────────────────────────────────────────
 const HEALTH_PROBE_PATH          = path.join(os.homedir(), '.claude', 'skills', 'health', 'scripts', 'polaris-health.ps1');
@@ -858,7 +944,7 @@ function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
     chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
-    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
+    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
     claudeSessionId: s.claudeSessionId || null,
@@ -928,6 +1014,7 @@ function loadPersistedSessions() {
     if (!Array.isArray(arr)) return;
     for (const s of arr) {
       if (!s.id) continue;
+      if (s.isOrchestrator) continue; // orchestrators are ephemeral — never reload after restart
       const loaded = {
         ...s,
         status: s.status === 'running' ? 'done' : s.status,
@@ -949,6 +1036,18 @@ function loadPersistedSessions() {
     for (const s of arr) {
       if (s.isForked && s.primarySessionId) {
         forkMap.set(s.primarySessionId, s.id);
+      }
+    }
+    // Spawn orchestrators for projects already at 2+ sessions on startup
+    const postLoadCounts = new Map();
+    for (const s of sessions.values()) {
+      if (!s.projectName || s.isOrchestrator) continue;
+      postLoadCounts.set(s.projectName, (postLoadCounts.get(s.projectName) || 0) + 1);
+    }
+    for (const [projectName, count] of postLoadCounts) {
+      if (count >= 2 && !orchestratorSessions.has(projectName)) {
+        spawnOrchestratorSession(projectName).catch(err =>
+          console.error('[orchestrator] post-load spawn failed for', projectName, err));
       }
     }
   } catch {}
@@ -9605,6 +9704,7 @@ async function handleMessage(ws, raw) {
       if (inf) { newSession.taskState = inf.taskState; newSession.lastSkill = inf.lastSkill; }
     }
     sessions.set(id, newSession);
+    onSessionOpened(id, projectName || null);
 
     // Provision an isolated git worktree so concurrent sessions on the same project
     // never share branch state. Skips CHAT_DIR and non-git directories gracefully.
@@ -9881,6 +9981,7 @@ async function handleMessage(ws, raw) {
         const linkedForkId = forkMap.get(msg.sessionId);
         if (linkedForkId) forkMap.delete(msg.sessionId);
       }
+      onSessionClosed(msg.sessionId);
       sessions.delete(msg.sessionId);
       saveSessions();
     }
