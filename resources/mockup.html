@@ -1469,7 +1469,6 @@
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
         <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
-        <button id="btn-injections" class="hbtn btn-config" onclick="toggleInjectionPanel()" data-tooltip="Memory Injections — see what Firestore memories were injected into each chat session at turn 1, with rankings and scores" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:4px;"><span class="lbl">Injections</span></button>
       </div>
     </div>
 
@@ -2384,33 +2383,30 @@
   </div>
 
   <!-- Project Status Panel -->
-  <!-- Memory Injections Panel -->
-  <div class="projects-panel hidden palette" id="injection-panel" style="width:680px;max-height:700px;">
+  <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:700px;">
     <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
     <div class="preview-toolbar">
       <span class="preview-drag-handle">⠿⠿</span>
-      <span style="flex:1;font-size:13px;font-weight:800;">Memory Injections</span>
-      <button class="preview-close-btn" onclick="closeInjectionPanel()">✕</button>
+      <button id="status-tab-status" onclick="switchStatusTab('status')" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:5px;color:#e2e8f0;font-size:11px;font-weight:700;padding:3px 12px;cursor:pointer;font-family:inherit;">Status</button>
+      <button id="status-tab-injections" onclick="switchStatusTab('injections')" style="background:transparent;border:1px solid transparent;border-radius:5px;color:#9ca3af;font-size:11px;font-weight:600;padding:3px 12px;cursor:pointer;font-family:inherit;">Injections</button>
+      <button class="preview-close-btn" style="margin-left:auto;" onclick="closeStatusPanel()">✕</button>
     </div>
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
-      <span style="font-size:11px;opacity:0.5;">Firestore memories injected into each chat session at turn 1, ranked by strength + recency.</span>
-      <button onclick="refreshInjectionPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    <!-- Status tab -->
+    <div id="status-tab-content-status">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+        <span style="font-size:11px;opacity:0.5;">Where each project stands — updated every time you push a session to Obsidian.</span>
+        <button onclick="wsSend({type:'get-project-statuses'})" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+      </div>
+      <div class="projects-panel-body" id="status-panel-body" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;overflow-y:auto;max-height:580px;"></div>
     </div>
-    <div id="injection-panel-body" style="overflow-y:auto;flex:1;max-height:580px;"></div>
-  </div>
-
-  <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:640px;">
-    <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
-    <div class="preview-toolbar">
-      <span class="preview-drag-handle">⠿⠿</span>
-      <span style="flex:1;font-size:13px;font-weight:800;">Project Status</span>
-      <button class="preview-close-btn" onclick="closeStatusPanel()">✕</button>
+    <!-- Injections tab -->
+    <div id="status-tab-content-injections" style="display:none;">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+        <span style="font-size:11px;opacity:0.5;">Firestore memories injected into each chat session at turn 1, ranked by strength + recency.</span>
+        <button onclick="refreshInjectionPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+      </div>
+      <div id="injection-panel-body" style="overflow-y:auto;max-height:580px;"></div>
     </div>
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
-      <span style="font-size:11px;opacity:0.5;">Where each project stands — updated every time you push a session to Obsidian.</span>
-      <button onclick="wsSend({type:'get-project-statuses'})" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
-    </div>
-    <div class="projects-panel-body" id="status-panel-body" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;overflow-y:auto;"></div>
   </div>
 
   <!-- Status Update Modal -->
@@ -12932,22 +12928,33 @@ This is your current workflow status across all branches. Review the tasks and P
     pendingStatusProject = s.projectName || null;
   }
   window.obsidianUp = obsidianUp;
-  // ── Memory Injections Panel ───────────────────────────────────────────────────
+  // ── Memory Injections Panel (tab inside Status panel) ─────────────────────────
   const TYPE_COLORS = { instruction: '#f59e0b', preference: '#60a5fa', fact: '#34d399', feedback: '#a78bfa' };
 
+  function switchStatusTab(tab) {
+    ['status', 'injections'].forEach(t => {
+      const content = document.getElementById('status-tab-content-' + t);
+      const btn     = document.getElementById('status-tab-' + t);
+      if (!content || !btn) return;
+      const active = t === tab;
+      content.style.display = active ? '' : 'none';
+      btn.style.background  = active ? 'rgba(255,255,255,0.12)' : 'transparent';
+      btn.style.border      = active ? '1px solid rgba(255,255,255,0.25)' : '1px solid transparent';
+      btn.style.color       = active ? '#e2e8f0' : '#9ca3af';
+      btn.style.fontWeight  = active ? '700' : '600';
+    });
+    if (tab === 'injections') refreshInjectionPanel();
+  }
+
   function openInjectionPanel() {
-    document.getElementById('injection-panel').classList.remove('hidden');
-    document.getElementById('overlay-bg').classList.remove('hidden');
-    refreshInjectionPanel();
+    openStatusPanel();
+    switchStatusTab('injections');
   }
   function closeInjectionPanel() {
-    document.getElementById('injection-panel').classList.add('hidden');
-    document.getElementById('overlay-bg').classList.add('hidden');
+    closeStatusPanel();
   }
   function toggleInjectionPanel() {
-    const panel = document.getElementById('injection-panel');
-    if (panel.classList.contains('hidden')) openInjectionPanel();
-    else closeInjectionPanel();
+    openInjectionPanel();
   }
   function refreshInjectionPanel() {
     wsSend({ type: 'get-injection-history', limit: 50 });
@@ -14888,7 +14895,6 @@ This is your current workflow status across all branches. Review the tasks and P
     closeCrossCheckPanel();
     closeManifest();
     closeStatusPanel();
-    closeInjectionPanel();
     closeBacklogPanel();
   }
   window.closeActivePanel = closeActivePanel;
