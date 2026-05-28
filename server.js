@@ -9594,6 +9594,7 @@ async function handleMessage(ws, raw) {
       pendingAudio:  Array.isArray(audio)  ? audio.filter(a => a && typeof a.dataUrl === 'string')  : [],
       pendingVideos: Array.isArray(videos) ? videos.filter(v => v && typeof v.dataUrl === 'string') : [],
     });
+    onSessionOpened(id, projectName || null);
     if (effectiveWorkDir) {
       const wtPath = createSessionWorktree(id, effectiveWorkDir);
       if (wtPath) {
@@ -9635,6 +9636,7 @@ async function handleMessage(ws, raw) {
       lines: [], lastPrompt: prompt,
       gptConversationStarted: false,
     });
+    onSessionOpened(id, projectName || null);
     broadcast({ type: 'session-created', sessionId: id, name, workDir: null, projectName: projectName || null, model: modelDisplay, isChat: true, isGpt: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
@@ -9669,6 +9671,7 @@ async function handleMessage(ws, raw) {
       lines: [], lastPrompt: prompt, codexThreadId: null,
       pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos,
     });
+    onSessionOpened(id, projectName || null);
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: 'openai/codex-1 (Codex CLI)', isChat: true, isCodex: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
