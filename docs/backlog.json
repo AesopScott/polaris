@@ -181,24 +181,6 @@
       "proofUnits": []
     },
     {
-      "number": 46,
-      "title": "Policy unit test suite",
-      "description": "Write unit tests for evaluatePolicy covering: one test per COMMAND_CLASS_REGISTRY entry (each class is blocked at standard trust level), write boundary check (path outside allowedRoots is denied), extended write mode allows Obsidian path, installer gate blocks when installerAllowed=false, installer gate allows when installerAllowed=true. Tests should run without a live server — evaluatePolicy must be importable in isolation.",
-      "category": "test",
-      "priority": 88,
-      "impact": "minor",
-      "status": "production",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-26",
-      "dependencies": [
-        43
-      ],
-      "branch": "main",
-      "pr_url": "https://github.com/AesopScott/polaris/pull/46",
-      "plan": null,
-      "proofUnits": []
-    },
-    {
       "number": 48,
       "title": "Check out notes.",
       "description": "Notes as a replacement or augmentation for Obsidian?",
