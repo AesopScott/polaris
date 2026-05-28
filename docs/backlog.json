@@ -158,10 +158,73 @@
       "category": "feature",
       "priority": 90,
       "impact": "major",
-      "status": "backlog",
+      "status": "planned",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "plan": "## Overview\n\nMake the ship-task pipeline observable and actionable from within the Polaris UI. Surface pipeline step position, cross-boundary audit findings as a coding checklist, and review findings as a prioritized severity list. Add a trusted-caller bypass so pipeline skill writes to backlog.json do not trigger approval prompts.\n\n## Phases\n\n1. Server trust bypass: Add isPipelineSkill flag to server.js write-approval gate (additive only)\n2. Skill output format contract: Add structured ## FINDINGS blocks to /cross-boundary-audit, /review-pr, /codex-review\n3. Task Lane panel: 8-step pipeline progress indicator in mockup.html with live WS updates\n4. Cross-check + review UI redesign: Compact verdict+rationale in cross-check panel; CRITICAL/HIGH/MEDIUM/LOW findings list\n\n## First Proof Unit\n\nA session flagged isPipelineSkill writes to backlog.json without triggering an approval modal. Verified by launching a test agent session, having it write a no-op status change, and confirming no approval prompt appears.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Server trust bypass — pipeline writes skip approval",
+          "expectedBehavior": "A session flagged as isPipelineSkill writes to backlog.json without triggering the approval modal.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Launch test agent session with isPipelineSkill:true set in session metadata. (2) Have it write a no-op status change to a test task in backlog.json. (3) Confirm no approval prompt appears in the UI; confirm write lands.",
+          "expectedInitialFailure": "Write triggers approval modal and stalls.",
+          "expectedPassingEvidence": "Write completes silently; task status updated in backlog.json without any approval prompt.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "Cross-boundary-audit emits structured findings checklist",
+          "expectedBehavior": "Running /cross-boundary-audit appends a ## FINDINGS section with numbered checklist items to the audit output.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Run /cross-boundary-audit on any task branch. (2) Scroll to the bottom of the output. (3) Confirm ## FINDINGS section is present with at least one numbered item.",
+          "expectedInitialFailure": "Audit output ends with unstructured prose; no ## FINDINGS section.",
+          "expectedPassingEvidence": "Output contains ## FINDINGS block with numbered checklist items.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "Review skills emit structured severity block",
+          "expectedBehavior": "/review-pr and /codex-review output begins with a ## FINDINGS block containing CRITICAL/HIGH/MEDIUM/LOW tagged items before prose.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Run /review-pr on any PR. (2) Confirm output starts with ## FINDINGS section with severity labels. (3) Confirm existing prose review follows unchanged.",
+          "expectedInitialFailure": "Output is free prose with no ## FINDINGS section.",
+          "expectedPassingEvidence": "Output contains ## FINDINGS block with severity-tagged items followed by existing prose.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "Task Lane panel shows live pipeline position",
+          "expectedBehavior": "Opening the Task Lane panel displays the 8-step pipeline with the current step highlighted based on backlog.json status for the active task.",
+          "proofType": "ui-check",
+          "exactCommand": "(1) Open Polaris and select a task in build-started status. (2) Open the Task Lane panel. (3) Confirm step 4 (coding) is highlighted and steps 1-3 show as complete. (4) Update task status to build-finished. (5) Confirm panel updates live.",
+          "expectedInitialFailure": "No Task Lane panel exists; pipeline state not visible.",
+          "expectedPassingEvidence": "Panel renders 8-step track; correct step highlighted; updates live on status change.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 5,
+          "title": "Cross-check panel shows verdict + rationale (not raw diff)",
+          "expectedBehavior": "The cross-check panel shows a verdict badge and one-paragraph rationale per result, with raw diff collapsed behind a toggle.",
+          "proofType": "ui-check",
+          "exactCommand": "(1) Run a pre-build check to generate a cross-check result. (2) Open the cross-check panel. (3) Confirm results show PASS/WARN/FAIL badge + rationale paragraph. (4) Confirm no raw diff visible by default. (5) Click Show diff toggle and confirm diff expands.",
+          "expectedInitialFailure": "Cross-check panel shows raw diff wall with no verdict badge or rationale.",
+          "expectedPassingEvidence": "Panel shows compact verdict + rationale; diff hidden behind toggle.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 6,
+          "title": "End-to-end pipeline walkthrough with Task Lane visible",
+          "expectedBehavior": "Running /ship-task on a test task while the Task Lane panel is open shows the step indicator advancing in real time at each skill boundary.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) Pick a planned task. (2) Open the Task Lane panel. (3) Run /start-build — confirm panel advances to step 2. (4) Run /cross-boundary-audit — confirm findings appear as checklist in step 3. (5) Signal coding done — confirm step 4 clears. (6) Run /finish-build — confirm panel advances to step 5.",
+          "expectedInitialFailure": "Task Lane panel does not update; pipeline position invisible.",
+          "expectedPassingEvidence": "Panel step indicator advances at each transition; no approval prompts appear during backlog writes.",
+          "waiverGuidance": "N/A"
+        }
+      ]
     },
     {
       "number": 39,

@@ -131,103 +131,112 @@ export declare const SessionPinnedMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const UserQuestionAnswerMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"user-question-answer">;
-    sessionId: z.ZodString;
+    questionId: z.ZodString;
     answer: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"user-question-answer">;
-    sessionId: z.ZodString;
+    questionId: z.ZodString;
     answer: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"user-question-answer">;
-    sessionId: z.ZodString;
+    questionId: z.ZodString;
     answer: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const CrossCheckDecisionMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"cross-check-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cross-check-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cross-check-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const CrossCheckPostHocDecisionMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"cross-check-post-hoc-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cross-check-post-hoc-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cross-check-post-hoc-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const InstallerPermissionDecisionMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"installer-permission-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["allow", "deny"]>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"installer-permission-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["allow", "deny"]>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"installer-permission-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["allow", "deny"]>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const DeleteQueueMessageMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"delete-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"delete-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"delete-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const EditQueueMessageMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"edit-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
-    newContent: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
+    prompt: z.ZodOptional<z.ZodString>;
+    displayPrompt: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"edit-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
-    newContent: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
+    prompt: z.ZodOptional<z.ZodString>;
+    displayPrompt: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"edit-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
-    newContent: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
+    prompt: z.ZodOptional<z.ZodString>;
+    displayPrompt: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const CostUpdateMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"cost-update">;
     sessionId: z.ZodString;
-    cost: z.ZodNumber;
+    totalCost: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cost-update">;
     sessionId: z.ZodString;
-    cost: z.ZodNumber;
+    totalCost: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cost-update">;
     sessionId: z.ZodString;
-    cost: z.ZodNumber;
+    totalCost: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const ListBacklogsMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"list-backlogs">;
@@ -419,13 +428,13 @@ export declare const DebugLogMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const DismissRoutineNotificationMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"dismiss-routine-notification">;
-    notificationId: z.ZodString;
+    id: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"dismiss-routine-notification">;
-    notificationId: z.ZodString;
+    id: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"dismiss-routine-notification">;
-    notificationId: z.ZodString;
+    id: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const GetRoutineNotificationsMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"get-routine-notifications">;
@@ -436,13 +445,10 @@ export declare const GetRoutineNotificationsMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const DomainScoutMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"domain-scout">;
-    domain: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"domain-scout">;
-    domain: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"domain-scout">;
-    domain: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const DomainScoutClearMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"domain-scout-clear">;
@@ -501,18 +507,18 @@ export declare const TestApiKeyMessage: z.ZodObject<{} & {
 export declare const TestModelMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"test-model">;
     model: z.ZodString;
-    prompt: z.ZodString;
-    apiKey: z.ZodOptional<z.ZodString>;
+    tier: z.ZodOptional<z.ZodString>;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"test-model">;
     model: z.ZodString;
-    prompt: z.ZodString;
-    apiKey: z.ZodOptional<z.ZodString>;
+    tier: z.ZodOptional<z.ZodString>;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"test-model">;
     model: z.ZodString;
-    prompt: z.ZodString;
-    apiKey: z.ZodOptional<z.ZodString>;
+    tier: z.ZodOptional<z.ZodString>;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const AgentEvalLoadQueueMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"agent-eval-load-queue">;
@@ -523,23 +529,26 @@ export declare const AgentEvalLoadQueueMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const StartAgentEvalMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"start-agent-eval">;
-    config: z.ZodUnknown;
+    models: z.ZodArray<z.ZodUnknown, "many">;
+    fixtures: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    runs: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"start-agent-eval">;
-    config: z.ZodUnknown;
+    models: z.ZodArray<z.ZodUnknown, "many">;
+    fixtures: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    runs: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"start-agent-eval">;
-    config: z.ZodUnknown;
+    models: z.ZodArray<z.ZodUnknown, "many">;
+    fixtures: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    runs: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const CancelAgentEvalMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"cancel-agent-eval">;
-    evalId: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cancel-agent-eval">;
-    evalId: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cancel-agent-eval">;
-    evalId: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SaveAgentEvalResultsMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"save-agent-eval-results">;
@@ -580,16 +589,22 @@ export declare const GetPreBuildCheckStatusMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const RunBuildMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"run-build">;
-    projectPath: z.ZodString;
-    buildType: z.ZodString;
+    sourcePath: z.ZodOptional<z.ZodString>;
+    projectName: z.ZodOptional<z.ZodString>;
+    buildType: z.ZodOptional<z.ZodString>;
+    skipCheck: z.ZodOptional<z.ZodBoolean>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"run-build">;
-    projectPath: z.ZodString;
-    buildType: z.ZodString;
+    sourcePath: z.ZodOptional<z.ZodString>;
+    projectName: z.ZodOptional<z.ZodString>;
+    buildType: z.ZodOptional<z.ZodString>;
+    skipCheck: z.ZodOptional<z.ZodBoolean>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"run-build">;
-    projectPath: z.ZodString;
-    buildType: z.ZodString;
+    sourcePath: z.ZodOptional<z.ZodString>;
+    projectName: z.ZodOptional<z.ZodString>;
+    buildType: z.ZodOptional<z.ZodString>;
+    skipCheck: z.ZodOptional<z.ZodBoolean>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const BenchmarkLoadQueueMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"benchmark-load-queue">;
@@ -600,13 +615,28 @@ export declare const BenchmarkLoadQueueMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const BenchmarkSaveResultMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"benchmark-save-result">;
-    result: z.ZodUnknown;
+    model: z.ZodString;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    ttft: z.ZodNumber;
+    tps: z.ZodNumber;
+    tokens: z.ZodNumber;
+    totalMs: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"benchmark-save-result">;
-    result: z.ZodUnknown;
+    model: z.ZodString;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    ttft: z.ZodNumber;
+    tps: z.ZodNumber;
+    tokens: z.ZodNumber;
+    totalMs: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"benchmark-save-result">;
-    result: z.ZodUnknown;
+    model: z.ZodString;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    ttft: z.ZodNumber;
+    tps: z.ZodNumber;
+    tokens: z.ZodNumber;
+    totalMs: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const GetSpaceDataMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"get-space-data">;
@@ -627,16 +657,13 @@ export declare const GetSpaceAnalysisMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SavePanelStateMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"save-panel-state">;
-    panelId: z.ZodString;
-    state: z.ZodUnknown;
+    panelState: z.ZodUnknown;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"save-panel-state">;
-    panelId: z.ZodString;
-    state: z.ZodUnknown;
+    panelState: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"save-panel-state">;
-    panelId: z.ZodString;
-    state: z.ZodUnknown;
+    panelState: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const SaveHiddenSessionsMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
@@ -660,13 +687,13 @@ export declare const UpsertProjectMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const DeleteProjectMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"delete-project">;
-    projectName: z.ZodString;
+    name: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"delete-project">;
-    projectName: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"delete-project">;
-    projectName: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const UpsertRoutineMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"upsert-routine">;
@@ -680,13 +707,13 @@ export declare const UpsertRoutineMessage: z.ZodObject<{} & {
 }, z.ZodTypeAny, "passthrough">>;
 export declare const DeleteRoutineMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"delete-routine">;
-    routineId: z.ZodString;
+    name: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"delete-routine">;
-    routineId: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"delete-routine">;
-    routineId: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const RefreshOpenrouterCatalogMessage: z.ZodObject<{} & {
     type: z.ZodLiteral<"refresh-openrouter-catalog">;
@@ -864,27 +891,27 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"session-height">;
     sessionId: z.ZodString;
-    height: z.ZodNumber;
+    height: z.ZodNullable<z.ZodNumber>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"session-height">;
     sessionId: z.ZodString;
-    height: z.ZodNumber;
+    height: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"session-height">;
     sessionId: z.ZodString;
-    height: z.ZodNumber;
+    height: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"session-column">;
     sessionId: z.ZodString;
-    column: z.ZodNumber;
+    column: z.ZodNullable<z.ZodNumber>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"session-column">;
     sessionId: z.ZodString;
-    column: z.ZodNumber;
+    column: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"session-column">;
     sessionId: z.ZodString;
-    column: z.ZodNumber;
+    column: z.ZodNullable<z.ZodNumber>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"session-column-span">;
     sessionId: z.ZodString;
@@ -911,97 +938,106 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     pinned: z.ZodBoolean;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"user-question-answer">;
-    sessionId: z.ZodString;
+    questionId: z.ZodString;
     answer: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"user-question-answer">;
-    sessionId: z.ZodString;
+    questionId: z.ZodString;
     answer: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"user-question-answer">;
-    sessionId: z.ZodString;
+    questionId: z.ZodString;
     answer: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"cross-check-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cross-check-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cross-check-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"cross-check-post-hoc-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cross-check-post-hoc-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cross-check-post-hoc-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["approve", "reject"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"installer-permission-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["allow", "deny"]>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"installer-permission-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["allow", "deny"]>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"installer-permission-decision">;
-    sessionId: z.ZodString;
+    checkId: z.ZodString;
     decision: z.ZodEnum<["allow", "deny"]>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"delete-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"delete-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"delete-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"edit-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
-    newContent: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
+    prompt: z.ZodOptional<z.ZodString>;
+    displayPrompt: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"edit-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
-    newContent: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
+    prompt: z.ZodOptional<z.ZodString>;
+    displayPrompt: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"edit-queue-message">;
     sessionId: z.ZodString;
-    messageId: z.ZodString;
-    newContent: z.ZodString;
+    queueType: z.ZodString;
+    index: z.ZodNumber;
+    prompt: z.ZodOptional<z.ZodString>;
+    displayPrompt: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"cost-update">;
     sessionId: z.ZodString;
-    cost: z.ZodNumber;
+    totalCost: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cost-update">;
     sessionId: z.ZodString;
-    cost: z.ZodNumber;
+    totalCost: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cost-update">;
     sessionId: z.ZodString;
-    cost: z.ZodNumber;
+    totalCost: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"list-backlogs">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
@@ -1145,13 +1181,13 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     isError: z.ZodOptional<z.ZodBoolean>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"dismiss-routine-notification">;
-    notificationId: z.ZodString;
+    id: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"dismiss-routine-notification">;
-    notificationId: z.ZodString;
+    id: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"dismiss-routine-notification">;
-    notificationId: z.ZodString;
+    id: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"get-routine-notifications">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
@@ -1160,13 +1196,10 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     type: z.ZodLiteral<"get-routine-notifications">;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"domain-scout">;
-    domain: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"domain-scout">;
-    domain: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"domain-scout">;
-    domain: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"domain-scout-clear">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
@@ -1211,22 +1244,25 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     type: z.ZodLiteral<"agent-eval-load-queue">;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"start-agent-eval">;
-    config: z.ZodUnknown;
+    models: z.ZodArray<z.ZodUnknown, "many">;
+    fixtures: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    runs: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"start-agent-eval">;
-    config: z.ZodUnknown;
+    models: z.ZodArray<z.ZodUnknown, "many">;
+    fixtures: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    runs: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"start-agent-eval">;
-    config: z.ZodUnknown;
+    models: z.ZodArray<z.ZodUnknown, "many">;
+    fixtures: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    runs: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"cancel-agent-eval">;
-    evalId: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"cancel-agent-eval">;
-    evalId: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"cancel-agent-eval">;
-    evalId: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"save-agent-eval-results">;
     results: z.ZodUnknown;
@@ -1262,16 +1298,22 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     checkId: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"run-build">;
-    projectPath: z.ZodString;
-    buildType: z.ZodString;
+    sourcePath: z.ZodOptional<z.ZodString>;
+    projectName: z.ZodOptional<z.ZodString>;
+    buildType: z.ZodOptional<z.ZodString>;
+    skipCheck: z.ZodOptional<z.ZodBoolean>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"run-build">;
-    projectPath: z.ZodString;
-    buildType: z.ZodString;
+    sourcePath: z.ZodOptional<z.ZodString>;
+    projectName: z.ZodOptional<z.ZodString>;
+    buildType: z.ZodOptional<z.ZodString>;
+    skipCheck: z.ZodOptional<z.ZodBoolean>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"run-build">;
-    projectPath: z.ZodString;
-    buildType: z.ZodString;
+    sourcePath: z.ZodOptional<z.ZodString>;
+    projectName: z.ZodOptional<z.ZodString>;
+    buildType: z.ZodOptional<z.ZodString>;
+    skipCheck: z.ZodOptional<z.ZodBoolean>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"benchmark-load-queue">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
@@ -1280,13 +1322,28 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     type: z.ZodLiteral<"benchmark-load-queue">;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"benchmark-save-result">;
-    result: z.ZodUnknown;
+    model: z.ZodString;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    ttft: z.ZodNumber;
+    tps: z.ZodNumber;
+    tokens: z.ZodNumber;
+    totalMs: z.ZodNumber;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"benchmark-save-result">;
-    result: z.ZodUnknown;
+    model: z.ZodString;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    ttft: z.ZodNumber;
+    tps: z.ZodNumber;
+    tokens: z.ZodNumber;
+    totalMs: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"benchmark-save-result">;
-    result: z.ZodUnknown;
+    model: z.ZodString;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    ttft: z.ZodNumber;
+    tps: z.ZodNumber;
+    tokens: z.ZodNumber;
+    totalMs: z.ZodNumber;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"get-space-data">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
@@ -1304,16 +1361,13 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     filter: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"save-panel-state">;
-    panelId: z.ZodString;
-    state: z.ZodUnknown;
+    panelState: z.ZodUnknown;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"save-panel-state">;
-    panelId: z.ZodString;
-    state: z.ZodUnknown;
+    panelState: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"save-panel-state">;
-    panelId: z.ZodString;
-    state: z.ZodUnknown;
+    panelState: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"save-hidden-sessions">;
     hiddenSessions: z.ZodArray<z.ZodString, "many">;
@@ -1334,13 +1388,13 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     project: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"delete-project">;
-    projectName: z.ZodString;
+    name: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"delete-project">;
-    projectName: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"delete-project">;
-    projectName: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"upsert-routine">;
     routine: z.ZodUnknown;
@@ -1352,13 +1406,13 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
     routine: z.ZodUnknown;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"delete-routine">;
-    routineId: z.ZodString;
+    name: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"delete-routine">;
-    routineId: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"delete-routine">;
-    routineId: z.ZodString;
+    name: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"refresh-openrouter-catalog">;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
@@ -1413,18 +1467,18 @@ export declare const AnyClientMessage: z.ZodDiscriminatedUnion<"type", [z.ZodObj
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"test-model">;
     model: z.ZodString;
-    prompt: z.ZodString;
-    apiKey: z.ZodOptional<z.ZodString>;
+    tier: z.ZodOptional<z.ZodString>;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{} & {
     type: z.ZodLiteral<"test-model">;
     model: z.ZodString;
-    prompt: z.ZodString;
-    apiKey: z.ZodOptional<z.ZodString>;
+    tier: z.ZodOptional<z.ZodString>;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{} & {
     type: z.ZodLiteral<"test-model">;
     model: z.ZodString;
-    prompt: z.ZodString;
-    apiKey: z.ZodOptional<z.ZodString>;
+    tier: z.ZodOptional<z.ZodString>;
+    provider: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, z.ZodTypeAny, "passthrough">>, z.ZodObject<{} & {
     type: z.ZodLiteral<"tts-speak">;
     text: z.ZodString;

@@ -139,6 +139,19 @@
     "prerequisiteWarning": null
   },
   {
+    "id": "polaris-context",
+    "name": "Polaris Context",
+    "emoji": "🧭",
+    "description": "Cross-project intelligence for Polaris: list projects, search active tasks, compare backlog context, and query project knowledge notes",
+    "transport": "stdio",
+    "command": "node",
+    "localPath": "mcp/polaris-context/index.js",
+    "args": [],
+    "env": {},
+    "credentials": [],
+    "prerequisiteWarning": null
+  },
+  {
     "id": "you-com",
     "name": "You.com Search",
     "emoji": "🔍",
@@ -160,14 +173,6 @@
       }
     ],
     "prerequisiteWarning": null
-  },
-  {
-    "id": "wispr",
-    "name": "Wispr Flow",
-    "emoji": "🎤",
-    "description": "Manage Espanso text replacements for Wispr Flow voice dictation — fix misheard words without editing YAML files",
-    "type": "local-tool",
-    "localTool": "espanso"
   },
   {
     "id": "elevenlabs",

@@ -180,8 +180,9 @@ async function loadMainWindowWhenReady(startedAt = Date.now()) {
     return;
   }
   if (Date.now() - startedAt > WINDOW_LOAD_TIMEOUT_MS) {
-    appendServerLog(`[main] Server did not answer /health within ${WINDOW_LOAD_TIMEOUT_MS}ms before window load\n`);
+    appendServerLog(`[main] Server did not answer /health within ${WINDOW_LOAD_TIMEOUT_MS}ms before window load; loading fallback and continuing retries\n`);
     mainWindow.loadURL(SERVER_URL);
+    setTimeout(() => loadMainWindowWhenReady(Date.now()), WINDOW_LOAD_RETRY_MS);
     return;
   }
   setTimeout(() => loadMainWindowWhenReady(startedAt), WINDOW_LOAD_RETRY_MS);

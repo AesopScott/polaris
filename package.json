@@ -55,6 +55,7 @@
       "main.js",
       "server.js",
       "lib/**/*",
+      "mcp/**/*",
       "compiled/**/*",
       "secrets.js",
       "package.json",
