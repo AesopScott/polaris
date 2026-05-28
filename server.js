@@ -823,7 +823,8 @@ function onSessionClosed(sessionId) {
   if (!set) return;
   set.delete(sessionId);
 
-  if (set.size === 0) {
+  // Tear down when concurrency drops to 1 — the remaining solo session writes directly.
+  if (set.size <= 1) {
     const orchId = orchestratorSessions.get(projectName);
     if (orchId) teardownOrchestratorSession(orchId, projectName);
   }
@@ -943,7 +944,7 @@ function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
     chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
-    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
+    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
     claudeSessionId: s.claudeSessionId || null,
@@ -1013,6 +1014,7 @@ function loadPersistedSessions() {
     if (!Array.isArray(arr)) return;
     for (const s of arr) {
       if (!s.id) continue;
+      if (s.isOrchestrator) continue; // orchestrators are ephemeral — never reload after restart
       const loaded = {
         ...s,
         status: s.status === 'running' ? 'done' : s.status,
