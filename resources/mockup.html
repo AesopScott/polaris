@@ -69,8 +69,8 @@
   .stat { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
   .stat-waiting, .stat-running, .stat-done { display: inline; white-space: nowrap; }
   .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
-  #filter-waiting-label, #filter-running-label, #filter-done-label { transition: opacity 0.15s; }
-  #filter-waiting-label:hover, #filter-running-label:hover, #filter-done-label:hover { text-decoration: underline; }
+  #filter-waiting-label, #filter-running-label, #filter-done-label, #filter-orchestrator-label { transition: opacity 0.15s; }
+  #filter-waiting-label:hover, #filter-running-label:hover, #filter-done-label:hover, #filter-orchestrator-label:hover { text-decoration: underline; }
 
   /* Button Grid — Neumorphic body + Holographic morphing text (Style 11) */
   .btn-grid { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(4, minmax(38px, auto)); grid-auto-rows: 0; gap: 8px; position: relative; }
@@ -1637,6 +1637,7 @@
       <span class="stat"><span data-stat-waiting style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-waiting" id="filter-waiting-label" onclick="toggleSessionFilter('waiting')" style="cursor:pointer;" title="Filter to waiting sessions">Waiting Sessions</span></span>
       <span class="stat"><span data-stat-running style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-running" id="filter-running-label" onclick="toggleSessionFilter('running')" style="cursor:pointer;" title="Filter to running sessions">Running Sessions</span></span>
       <span class="stat"><span data-stat-done style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-done" id="filter-done-label" onclick="toggleSessionFilter('done')" style="cursor:pointer;" title="Filter to done sessions">Done Sessions</span></span>
+      <span id="stat-orchestrator-wrap" class="stat" style="display:none;"><span data-stat-orchestrator style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-orchestrator" id="filter-orchestrator-label" onclick="toggleSessionFilter('orchestrator')" style="cursor:pointer;" title="Filter to orchestrator sessions">Orchestrator Sessions</span></span>
       <span id="stat-testing-wrap" class="stat" style="display:none;"><span data-stat-testing style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span class="stat-testing" id="filter-testing-label" onclick="toggleTestingFilter()" style="cursor:pointer;" title="Hide/show testing sessions">Testing</span></span>
       <span id="stat-hidden-wrap" class="stat" style="display:none;"><span id="stat-hidden-count" style="color:#fff;display:inline-block;width:14px;text-align:center;">0</span> <span onclick="unhideAll()" style="cursor:pointer;color:#94a3b8;" title="Show all hidden sessions">Hidden · Show</span></span>
     </div>
@@ -7780,11 +7781,15 @@
     const running  = vals.filter(s => s.status === 'running').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
     const done     = vals.filter(s => s.status === 'done').length;
+    const orchestrator = vals.filter(s => s.status === 'orchestrator').length;
     const testing  = vals.filter(s => s.status === 'test').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
     document.querySelectorAll('[data-stat-done]').forEach(el => el.textContent = done);
+    document.querySelectorAll('[data-stat-orchestrator]').forEach(el => el.textContent = orchestrator);
     document.querySelectorAll('[data-stat-testing]').forEach(el => el.textContent = testing);
+    const orchestratorWrap = document.getElementById('stat-orchestrator-wrap');
+    if (orchestratorWrap) orchestratorWrap.style.display = orchestrator > 0 ? '' : 'none';
     const testingWrap = document.getElementById('stat-testing-wrap');
     if (testingWrap) testingWrap.style.display = testing > 0 ? '' : 'none';
     applySessionFilter();
@@ -7894,6 +7899,7 @@
       waiting: document.getElementById('filter-waiting-label'),
       running: document.getElementById('filter-running-label'),
       done:    document.getElementById('filter-done-label'),
+      orchestrator: document.getElementById('filter-orchestrator-label'),
     };
     Object.entries(labels).forEach(([key, el]) => {
       if (!el) return;
