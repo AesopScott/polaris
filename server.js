@@ -1038,6 +1038,18 @@ function loadPersistedSessions() {
         forkMap.set(s.primarySessionId, s.id);
       }
     }
+    // Spawn orchestrators for projects already at 2+ sessions on startup
+    const postLoadCounts = new Map();
+    for (const s of sessions.values()) {
+      if (!s.projectName || s.isOrchestrator) continue;
+      postLoadCounts.set(s.projectName, (postLoadCounts.get(s.projectName) || 0) + 1);
+    }
+    for (const [projectName, count] of postLoadCounts) {
+      if (count >= 2 && !orchestratorSessions.has(projectName)) {
+        spawnOrchestratorSession(projectName).catch(err =>
+          console.error('[orchestrator] post-load spawn failed for', projectName, err));
+      }
+    }
   } catch {}
 }
 
