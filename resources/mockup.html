@@ -14876,6 +14876,7 @@ This is your current workflow status across all branches. Review the tasks and P
     closeManifest();
     closeStatusPanel();
     closeBacklogPanel();
+    if (typeof closeMemoryPanel === 'function') closeMemoryPanel();
   }
   window.closeActivePanel = closeActivePanel;
 
