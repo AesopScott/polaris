@@ -985,6 +985,7 @@ function teardownOrchestratorSession(orchId, projectName) {
   if (!orchSession) return;
   try { if (orchSession.proc) orchSession.proc.kill(); } catch (_) {}
   try { if (orchSession.watcher) orchSession.watcher.close(); } catch (_) {}
+  deleteSessionStateFile(orchId);
   sessions.delete(orchId);
   orchestratorSessions.delete(projectName);
   broadcast({ type: 'session-closed', sessionId: orchId });
@@ -1301,6 +1302,9 @@ function writeJSON(filePath, data) {
   try {
     fs.renameSync(tmpPath, filePath);
   } catch {
+    // Rename failed (e.g. cross-device). Fall back to direct write — not atomic,
+    // but acceptable for session guidance files which are ephemeral and re-created
+    // every 3 minutes. Config writes never hit this path (same-volume guarantee).
     fs.writeFileSync(filePath, serialized, 'utf8');
     try { fs.unlinkSync(tmpPath); } catch {}
   }
@@ -1324,16 +1328,17 @@ function getSessionStateFilePath(sessionId) {
 function writeSessionState(sessionId, session) {
   if (!session || session.status === 'closed') return;
 
+  const wtInfo = session.worktreePath ? getWorktreeBranchInfo(session.worktreePath) : null;
   const stateFile = getSessionStateFilePath(sessionId);
   const state = {
     sessionId,
     type: session.isChat ? 'chat' : (session.isCodex ? 'codex' : 'agent'),
     taskNumber: session.taskNumber || null,
-    currentBranch: session.currentBranch || null,
+    currentBranch: wtInfo?.branch || session.currentBranch || null,
     lastUpdate: new Date().toISOString(),
     status: session.status || 'unknown',
     nextAction: session.nextAction || null,
-    filesChanged: session.filesChanged || [],
+    filesChanged: wtInfo?.filesChanged || session.filesChanged || [],
   };
 
   try {
@@ -5792,8 +5797,12 @@ function verifyWorktreeOwnership(sessionId) {
   if (!s?.worktreePath) return null;
   const wtPath = s.worktreePath;
   for (const [id, sess] of sessions) {
-    if (id !== sessionId && sess.worktreePath === wtPath)
-      return `Worktree conflict: session ${id} also claims this path`;
+    if (id !== sessionId && sess.worktreePath === wtPath) {
+      const msg = `Worktree conflict: session ${id} also claims this path`;
+      writeOrchestratorAlert(sessionId, 'warning', msg);
+      writeOrchestratorAlert(id, 'warning', msg);
+      return msg;
+    }
   }
   try {
     const raw = execSync('git worktree list --porcelain', { cwd: wtPath, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
@@ -5801,7 +5810,11 @@ function verifyWorktreeOwnership(sessionId) {
     const found = raw.split('\n')
       .filter(l => l.startsWith('worktree '))
       .some(l => path.normalize(l.slice('worktree '.length).trim()).toLowerCase() === wtNorm);
-    if (!found) return 'Session worktree is no longer registered — isolation may be compromised';
+    if (!found) {
+      const msg = 'Session worktree is no longer registered — isolation may be compromised';
+      writeOrchestratorAlert(sessionId, 'error', msg);
+      return msg;
+    }
   } catch (e) {
     return `Worktree verification failed: ${e.message}`;
   }
@@ -6797,6 +6810,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
         broadcast({ type: 'session-status', sessionId, status: 'done' });
         extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
         if (s.routineTag?.startsWith('ModGenActivate-')) {
+          deleteSessionStateFile(sessionId);
           sessions.delete(sessionId);
           saveSessions();
           broadcast({ type: 'session-closed', sessionId });
@@ -8842,12 +8856,14 @@ const httpServer = http.createServer((req, res) => {
             const response = responses.join('\n');
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true, response }));
+            deleteSessionStateFile(id);
             sessions.delete(id);
           })
           .catch(err => {
             broadcast = originalBroadcast;
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: false, error: err.message }));
+            deleteSessionStateFile(id);
             sessions.delete(id);
           });
       } catch (e) {
@@ -13375,16 +13391,26 @@ if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
 // ── Session guidance polling (every 3 minutes) ────────────────────────────────
 // Each session writes its state and reads orchestrator alerts.
-// Alerts targeted at a session are broadcast as system lines on that session's card.
+// Alerts targeted at a session are broadcast once as system lines; seen timestamps
+// prevent repeat broadcasts across polling ticks until the alert is pruned.
+const _seenAlerts = new Map(); // sessionId → Set<alert timestamp>
 setInterval(() => {
   const alertsData = readOrchestratorAlerts();
   for (const [sessionId, session] of sessions) {
     if (session.status === 'closed') continue;
     writeSessionState(sessionId, session);
     const mine = alertsData.alerts.filter(a => a.sessionId === sessionId);
+    if (!_seenAlerts.has(sessionId)) _seenAlerts.set(sessionId, new Set());
+    const seen = _seenAlerts.get(sessionId);
     for (const alert of mine) {
+      if (seen.has(alert.timestamp)) continue;
+      seen.add(alert.timestamp);
       broadcast({ type: 'line', sessionId, text: `[orchestrator] ${alert.severity}: ${alert.message}`, role: 'system' });
     }
+  }
+  // Drop seen-sets for sessions that no longer exist
+  for (const id of _seenAlerts.keys()) {
+    if (!sessions.has(id)) _seenAlerts.delete(id);
   }
 }, SESSION_GUIDANCE_POLL_MS);
 
