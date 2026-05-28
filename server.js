@@ -102,6 +102,13 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
+// ─── Session guidance coordination (inter-session state sharing) ────────────────
+const SESSION_GUIDANCE_DIR = path.join(POLARIS_DIR, 'session-guidance');
+const ORCHESTRATOR_ALERTS_PATH = path.join(SESSION_GUIDANCE_DIR, 'orchestrator-alerts.json');
+const SESSION_GUIDANCE_POLL_MS = 3 * 60 * 1000;  // 3 minutes
+const ALERT_PRUNING_MS = 10 * 60 * 1000;  // 10 minutes
+const ALERT_MAX_AGE_MS = 10 * 60 * 1000;  // alerts older than 10 minutes are pruned
+
 // ─── Video utilities (frame extraction) ────────────────────────────────────────
 const VIDEO_TEMP_DIR   = path.join(POLARIS_DIR, 'video-temp');
 const VIDEO_FRAME_COUNT = 6;
@@ -524,6 +531,23 @@ function syncServerToMcpJson(id, serverConfig) {
   mcp.mcpServers = mcp.mcpServers || {};
   mcp.mcpServers[id] = serverConfig;
   writeJSON(MCP_JSON_PATH, mcp);
+}
+
+function buildCatalogMcpServerConfig(entry, credentials = {}, storedCredentials = {}) {
+  if (entry.transport === 'remote') {
+    return { url: entry.url, headers: { [entry.headerKey]: credentials[entry.credentials[0].key] } };
+  }
+
+  const env = {};
+  for (const [envKey, template] of Object.entries(entry.env || {})) {
+    const credKey = template.replace('{{', '').replace('}}', '');
+    const val = credentials[credKey] || (storedCredentials[credKey] ? decryptSecret(storedCredentials[credKey]) : '');
+    if (val) env[envKey] = val; // skip empty optional credentials
+  }
+
+  const args = Array.isArray(entry.args) ? [...entry.args] : [];
+  if (entry.localPath) args.unshift(path.join(__dirname, entry.localPath));
+  return { command: entry.command, args, env };
 }
 
 function removeServerFromMcpJson(id) {
@@ -1190,6 +1214,86 @@ function writeJSON(filePath, data) {
   } catch {
     fs.writeFileSync(filePath, serialized, 'utf8');
     try { fs.unlinkSync(tmpPath); } catch {}
+  }
+}
+
+// ─── Session guidance coordination ───────────────────────────────────────────────
+// Sessions poll every 3 minutes for orchestrator guidance and write their state.
+// Orchestrator writes alerts when it detects conflicts (branch collisions, etc.).
+// Alerts are auto-pruned after 10 minutes.
+
+function ensureSessionGuidanceDir() {
+  if (!fs.existsSync(SESSION_GUIDANCE_DIR)) {
+    fs.mkdirSync(SESSION_GUIDANCE_DIR, { recursive: true });
+  }
+}
+
+function getSessionStateFilePath(sessionId) {
+  return path.join(SESSION_GUIDANCE_DIR, `session-${sessionId}.json`);
+}
+
+function writeSessionState(sessionId, session) {
+  if (!session || session.status === 'closed') return;
+
+  const stateFile = getSessionStateFilePath(sessionId);
+  const state = {
+    sessionId,
+    type: session.isChat ? 'chat' : (session.isCodex ? 'codex' : 'agent'),
+    taskNumber: session.taskNumber || null,
+    currentBranch: session.currentBranch || null,
+    lastUpdate: new Date().toISOString(),
+    status: session.status || 'unknown',
+    nextAction: session.nextAction || null,
+    filesChanged: session.filesChanged || [],
+  };
+
+  try {
+    writeJSON(stateFile, state);
+  } catch (e) {
+    console.error(`[session-guidance] failed to write state for ${sessionId}:`, e.message);
+  }
+}
+
+function readOrchestratorAlerts() {
+  try {
+    if (fs.existsSync(ORCHESTRATOR_ALERTS_PATH)) {
+      return readJSON(ORCHESTRATOR_ALERTS_PATH, { alerts: [] });
+    }
+  } catch (e) {
+    console.error(`[session-guidance] failed to read alerts:`, e.message);
+  }
+  return { alerts: [] };
+}
+
+function pruneStaleAlerts() {
+  try {
+    const alertsData = readOrchestratorAlerts();
+    const now = Date.now();
+    const before = alertsData.alerts.length;
+
+    // Keep alerts younger than 10 minutes
+    alertsData.alerts = alertsData.alerts.filter(alert => {
+      const alertTime = new Date(alert.timestamp).getTime();
+      return (now - alertTime) < ALERT_MAX_AGE_MS;
+    });
+
+    if (alertsData.alerts.length < before) {
+      writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData);
+      console.log(`[session-guidance] pruned ${before - alertsData.alerts.length} stale alerts`);
+    }
+  } catch (e) {
+    console.error(`[session-guidance] alert pruning failed:`, e.message);
+  }
+}
+
+function deleteSessionStateFile(sessionId) {
+  const stateFile = getSessionStateFilePath(sessionId);
+  try {
+    if (fs.existsSync(stateFile)) {
+      fs.unlinkSync(stateFile);
+    }
+  } catch (e) {
+    console.error(`[session-guidance] failed to delete state file for ${sessionId}:`, e.message);
   }
 }
 
@@ -2796,6 +2900,7 @@ const CATEGORY_ORDER = [
 // one line here. The discovery picks it up on the next mtime change.
 const SKILL_CATEGORY_MAP = {
   // Project workflow — task lifecycle, backlog, promotion
+  'orchestrate':            CATEGORIES.WORKFLOW,
   'ship-task':              CATEGORIES.WORKFLOW,
   'plan-task':              CATEGORIES.WORKFLOW,
   'start-build':            CATEGORIES.WORKFLOW,
@@ -6429,6 +6534,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
   releaseSessionMemory(sessionId);
   if (s?.routineTag?.startsWith('ModGenActivate-')) {
+    deleteSessionStateFile(sessionId);
     sessions.delete(sessionId);
     saveSessions();
     broadcast({ type: 'session-closed', sessionId });
@@ -9217,6 +9323,7 @@ async function runAgentEvalCell({ model, fixture, runIndex }) {
 
   // Cleanup: drop session from Map (releaseSessionMemory dropped state already
   // at end of runDirectAgent), then nuke the tmp seed dir.
+  deleteSessionStateFile(sessionId);
   sessions.delete(sessionId);
   try { fs.rmSync(seedDir, { recursive: true, force: true }); } catch {}
 
@@ -9988,6 +10095,7 @@ async function handleMessage(ws, raw) {
         if (linkedForkId) forkMap.delete(msg.sessionId);
       }
       onSessionClosed(msg.sessionId);
+      deleteSessionStateFile(msg.sessionId);
       sessions.delete(msg.sessionId);
       saveSessions();
     }
@@ -11555,18 +11663,7 @@ async function handleMessage(ws, raw) {
     writeJSON(CONFIG_PATH, cfg);
     const cj = readClaudeJson();
     cj.mcpServers = cj.mcpServers || {};
-    if (entry.transport === 'remote') {
-      cj.mcpServers[id] = { url: entry.url, headers: { [entry.headerKey]: credentials[entry.credentials[0].key] } };
-    } else {
-      const env = {};
-      for (const [envKey, template] of Object.entries(entry.env || {})) {
-        const credKey = template.replace('{{', '').replace('}}', '');
-        const decryptedCreds = cfg.mcp_credentials[id] || {};
-        const val = credentials[credKey] || (decryptedCreds[credKey] ? decryptSecret(decryptedCreds[credKey]) : '');
-        if (val) env[envKey] = val; // skip empty optional credentials
-      }
-      cj.mcpServers[id] = { command: entry.command, args: entry.args, env };
-    }
+    cj.mcpServers[id] = buildCatalogMcpServerConfig(entry, credentials, cfg.mcp_credentials[id] || {});
     writeClaudeJson(cj);
     syncServerToMcpJson(id, cj.mcpServers[id]);
     sendTo(ws, { type: 'mcp-server-enabled', id, ok: true });
@@ -12231,6 +12328,7 @@ async function handleMessage(ws, raw) {
     if (existingIdx >= 0) index[existingIdx] = entry; else index.unshift(entry);
     writeJSON(ARCHIVES_INDEX_PATH, index);
     forkMap.delete(sessionId);
+    deleteSessionStateFile(sessionId);
     sessions.delete(sessionId);
     saveSessions();
     broadcast({ type: 'archive-complete', sessionId, entry });
@@ -12973,6 +13071,7 @@ function startHealthMonitorSession() {
   // Close any pre-existing Health Monitor Session (handles Polaris restarts)
   for (const [id, s] of sessions) {
     if (s.name === HEALTH_MONITOR_NAME) {
+      deleteSessionStateFile(id);
       sessions.delete(id);
       broadcast({ type: 'session-closed', sessionId: id });
       console.log(`[health-monitor] closed stale session ${id}`);
@@ -13155,6 +13254,24 @@ setInterval(() => {
 // Daily sweep — purge stale session worktrees that survived past the TTL.
 const worktreePurgeTimer = setInterval(purgeStaleWorktrees, 24 * 60 * 60 * 1000);
 if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
+
+// ── Session guidance polling (every 3 minutes) ────────────────────────────────
+// Each session writes its state and reads orchestrator alerts.
+setInterval(() => {
+  for (const [sessionId, session] of sessions) {
+    if (session.status === 'closed') continue;
+    writeSessionState(sessionId, session);
+  }
+}, SESSION_GUIDANCE_POLL_MS);
+
+// ── Alert pruning (every 10 minutes) ────────────────────────────────────────
+// Remove orchestrator alerts older than 10 minutes to prevent accumulation.
+setInterval(() => {
+  pruneStaleAlerts();
+}, ALERT_PRUNING_MS);
+
+// Ensure session guidance directory exists on startup
+ensureSessionGuidanceDir();
 
 wss.on('connection', (ws, req) => {
   let queryClientId = null;
