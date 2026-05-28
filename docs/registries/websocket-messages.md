@@ -105,17 +105,17 @@ Notable exports:
 
 Client request to fetch the current Obsidian memory index stats and recent retrieval history.
 
-**Payload:** `{ type: 'get-memory-status' }`
+**Payload:** `{ type: 'get-memory-status', sessionId: string }`
 
 **Producers (client sends)**
-- *(task #28 adding)* `resources/mockup.html` — Memory nav button click handler in status area
+- `resources/mockup.html:13028` — `refreshMemoryPanel()` sends with `focusedSessionId`
 
 **Consumers (server handles)**
-- *(task #28 adding)* `server.js` — reads `session.memoryIndex` stats and last 20 records from `memory-traces/traces.jsonl`; emits `memory-status` response
+- `server.js:10417` — reads `session.memoryIndex` stats and last 20 records from `memory-traces/traces.jsonl`; emits `memory-status` response
 
-**Zod schema:** pending (task #28)
+**Zod schema:** pending (task #38 consolidation)
 
-**Status:** ⚠ both producer and consumer pending (task #28) — pre-registered
+**Status:** ✓ (added task #28)
 
 ---
 
@@ -142,14 +142,14 @@ Server response with Obsidian chunk index stats and last 20 retrieval events fro
 ```
 
 **Producers (server sends)**
-- *(task #28 adding)* `server.js` — `get-memory-status` handler; reads `session.memoryIndex` and `memory-traces/traces.jsonl`
+- `server.js:10436` — `get-memory-status` handler; reads `session.memoryIndex` and `memory-traces/traces.jsonl`
 
 **Consumers (client handles)**
-- *(task #28 adding)* `resources/mockup.html` — Memory panel renders stats table and history list
+- `resources/mockup.html:5290` — `case 'memory-status'`: calls `renderMemoryPanel(msg)`
 
-**Zod schema:** pending (task #28)
+**Zod schema:** pending (task #38 consolidation)
 
-**Status:** ⚠ both producer and consumer pending (task #28) — pre-registered
+**Status:** ✓ (added task #28)
 
 ---
 
@@ -167,8 +167,8 @@ Server response with Obsidian chunk index stats and last 20 retrieval events fro
 | `advance-task-result` | server → client | ✓ (added task #33) |
 | `send-lang-signal` | client → server | ✓ (added task #33) |
 | `lang-signal-result` | server → client | ✓ (added task #33) |
-| `get-memory-status` | client → server | ⚠ pending (task #28) |
-| `memory-status` | server → client | ⚠ pending (task #28) |
+| `get-memory-status` | client → server | ✓ (added task #28) |
+| `memory-status` | server → client | ✓ (added task #28) |
 | *(all other ~96 types)* | both | ✓ |
 
 ---
@@ -357,5 +357,27 @@ Server response after proxying to executor `/signal`.
 - `get-memory-status` producer + consumer pending task #28 Phase 3 ⚠ — intentional, pre-registered
 - `memory-status` producer + consumer pending task #28 Phase 3 ⚠ — intentional, pre-registered
 - 4 pre-existing orphan server handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged
+
+**Status:** Audit complete
+
+---
+
+**Last audit:** 2026-05-28T20:30:00Z (by /cross-boundary-audit for task #28 — post-implementation)
+
+**Task:** #28 — Upgrade project memory into ranked retrieval
+
+**Boundaries checked:** WebSocket message types between client (resources/mockup.html) and server (server.js)
+
+**Evidence recorded:**
+- 2 new WS message types confirmed implemented: `get-memory-status` (client→server), `memory-status` (server→client)
+- `get-memory-status` producer: `resources/mockup.html:13028` ✓ consumer: `server.js:10417` ✓
+- `memory-status` producer: `server.js:10436` ✓ consumer: `resources/mockup.html:5290` ✓
+- Payload shape verified: `sessionId` field on client request; `stats` + `history` on server response — matches pre-registered schema
+- Zod schemas still pending (task #38 consolidation scope, not task #28)
+- 0 shape mismatches, 0 orphan producers, 0 orphan consumers
+- Registry entries flipped from ⚠ pending → ✓; line references recorded
+- Registries match current code diff: yes
+
+**Gaps identified:** 4 pre-existing orphan server handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged.
 
 **Status:** Audit complete
