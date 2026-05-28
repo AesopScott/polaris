@@ -19,7 +19,7 @@
       "category": "feature",
       "priority": 90,
       "impact": "major",
-      "status": "planned",
+      "status": "build-started",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
@@ -136,7 +136,8 @@
           "expectedPassingEvidence": "3-5 excerpts with source citations from Architecture.md or Build_Plan.md relevant to memory tool. Scott signs off.",
           "waiverGuidance": "Manual sign-off required."
         }
-      ]
+      ],
+      "branch": "task/28-upgrade-project-memory-into-ranked-retr"
     },
     {
       "number": 30,
