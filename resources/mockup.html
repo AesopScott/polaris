@@ -7778,7 +7778,7 @@
   // ── Stats & mini-cards ────────────────────────────────────────────────────────
   function updateStats() {
     const vals = Object.values(sessionStore);
-    const running  = vals.filter(s => s.status === 'running').length;
+    const running  = vals.filter(s => s.status === 'running' && !s.isOrchestrator && s.name !== 'Health Monitor Session').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
     const done     = vals.filter(s => s.status === 'done').length;
     const orchestrator = vals.filter(s => s.status === 'orchestrator').length;
@@ -7926,7 +7926,8 @@
       if (s && s.minimized) { card.style.display = 'none'; return; }
       if (focusedProject && s && getSessionFocusKey(s) !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
-      card.style.display = (s.status === sessionFilter) ? '' : 'none';
+      const isExcludedFromRunning = s.isOrchestrator || s.name === 'Health Monitor Session';
+      card.style.display = (s.status === sessionFilter && !(sessionFilter === 'running' && isExcludedFromRunning)) ? '' : 'none';
     });
   }
 
