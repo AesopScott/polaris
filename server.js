@@ -3918,6 +3918,15 @@ function toolSetStatus({ status } = {}, sessionId) {
   return `Status set to "${status}".`;
 }
 
+const PIPELINE_STEP_INDEX = {
+  'backlog': 0, 'planned': 1, 'ready': 1,
+  'build-started': 2, 'in-progress': 2,
+  'build-finished': 4, 'in-review': 4,
+  'review-blocked': 5, 'pr-reviewed': 5,
+  'cba-complete': 6,
+  'staged': 7, 'production': 7, 'complete': 7, 'done': 7,
+};
+
 function toolSetTaskState({ taskNumber, taskState, lastSkill, isPipelineSkill } = {}, sessionId) {
   if (ORCHESTRATION_QUIET_MODE) return 'Task orchestration quiet mode is enabled; task state was not changed.';
   const session = sessions.get(sessionId);
@@ -3927,6 +3936,9 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill, isPipelineSkill } 
   if (lastSkill       !== undefined) session.lastSkill       = lastSkill;
   if (isPipelineSkill !== undefined) session.isPipelineSkill = isPipelineSkill;
   broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
+  if (taskState !== undefined && session.taskNumber) {
+    broadcast({ type: 'task-pipeline-state', taskNumber: session.taskNumber, status: session.taskState, stepIndex: PIPELINE_STEP_INDEX[session.taskState] || 0, lastSkill: session.lastSkill || null, lastResult: null });
+  }
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
