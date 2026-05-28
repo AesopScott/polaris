@@ -78,6 +78,22 @@ Structured validation-failure response sent by server when a known client messag
 
 **Status:** ⚠ producer pending (task #38 Phase C) — consumer already exists at mockup.html:5886
 
+---
+
+### `task-pipeline-state`
+
+Live pipeline position update for a backlog task — step index, current status, and last gate result. Broadcast by server whenever a task's `backlog.json` status changes.
+
+**Payload:** `{ type: 'task-pipeline-state', taskNumber: number, status: string, stepIndex: number, lastSkill: string | null, lastResult: string | null }`
+
+**Producers (server sends)**
+- *(task #31 pending)* `server.js` — broadcast from backlog write path when task status changes
+
+**Consumers (client handles)**
+- *(task #31 pending)* `resources/mockup.html` — Task Lane panel: updates step indicator and last-gate display
+
+**Status:** ⚠ producer pending (task #31) — consumer pending (task #31)
+
 **Note:** Unknown message types (not in `WS_SCHEMA_REGISTRY`) pass through silently; only *known* types with *wrong* fields trigger this response.
 
 ---
@@ -281,3 +297,26 @@ Server response after proxying to executor `/signal`.
 **Gaps identified:** Two-way `AnyClientMessage` divergence (Zod discriminated union vs TypeScript interface union) — pre-existing pattern, task #38 consolidation opportunity. No new broken pairs introduced.
 
 **Status:** Audit complete — registries valid for task #37 scope.
+
+---
+
+## Audit Trail — Proof of Registry Verification
+
+**Last audit:** 2026-05-28T00:00:00Z (by /cross-boundary-audit for task #31)
+
+**Task audited:** #31 — Make trust, proof, cost, and recovery visible in the product
+
+**Boundaries checked:** WebSocket message types in server.js (broadcast/sendTo) ↔ resources/mockup.html (case handlers)
+
+**Evidence recorded:**
+- ~161 message types detected total; all not listed individually are ✓ (paired, no shape gap)
+- 4 pre-existing gap entries retained from task #7 audit (get-config, get-history, get-pre-build-check-status, ping)
+- 1 new pending entry introduced by task #31: `task-pipeline-state` — producer and consumer both pending
+- 1 existing entry retained: `error (INVALID_MSG)` — producer pending task #38
+- Registries match current code diff: yes (task-pipeline-state not yet in code — registered ahead of implementation)
+
+**Gaps identified:**
+- `task-pipeline-state` — pending (task #31): WS broadcast not yet emitted from server.js; Task Lane panel not yet in mockup.html
+- Pre-existing: get-config, get-history, get-pre-build-check-status, ping — orphan server handlers, pre-task-#7
+
+**Status:** Audit complete
