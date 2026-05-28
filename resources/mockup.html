@@ -7799,10 +7799,10 @@
   // ── Stats & mini-cards ────────────────────────────────────────────────────────
   function updateStats() {
     const vals = Object.values(sessionStore);
-    const running  = vals.filter(s => s.status === 'running' && !s.isOrchestrator && s.name !== 'Health Monitor Session').length;
+    const running  = vals.filter(s => s.status === 'running' && !s.isOrchestrator && s.lastSkill !== 'orchestrate' && s.name !== 'Health Monitor Session').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
     const done     = vals.filter(s => s.status === 'done').length;
-    const orchestrator = vals.filter(s => s.status === 'orchestrator').length;
+    const orchestrator = vals.filter(s => s.isOrchestrator || s.lastSkill === 'orchestrate').length;
     const testing  = vals.filter(s => s.status === 'test').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
@@ -7945,8 +7945,12 @@
       if (s && s.minimized) { card.style.display = 'none'; return; }
       if (focusedProject && s && getSessionFocusKey(s) !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
-      const isExcludedFromRunning = s.isOrchestrator || s.name === 'Health Monitor Session';
-      card.style.display = (s.status === sessionFilter && !(sessionFilter === 'running' && isExcludedFromRunning)) ? '' : 'none';
+      const isOrchestratorSession = s.isOrchestrator || s.lastSkill === 'orchestrate';
+      const isExcludedFromRunning = isOrchestratorSession || s.name === 'Health Monitor Session';
+      const matchesFilter = sessionFilter === 'orchestrator'
+        ? isOrchestratorSession
+        : (s.status === sessionFilter && !(sessionFilter === 'running' && isExcludedFromRunning));
+      card.style.display = matchesFilter ? '' : 'none';
     });
   }
 
