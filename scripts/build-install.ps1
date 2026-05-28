@@ -57,6 +57,7 @@ if (-not $installer) {
 }
 
 $privateName = $installer.FullName -replace 'Polaris Setup', 'Polaris Private Setup'
+if (Test-Path $privateName) { Remove-Item $privateName -Force }
 Rename-Item $installer.FullName $privateName -Force
 Write-Host "    renamed → $(Split-Path $privateName -Leaf)" -ForegroundColor DarkGray
 
