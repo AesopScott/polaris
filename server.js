@@ -1386,6 +1386,22 @@ function deleteSessionStateFile(sessionId) {
   }
 }
 
+function writeOrchestratorAlert(targetSessionId, severity, message) {
+  ensureSessionGuidanceDir();
+  const alertsData = readOrchestratorAlerts();
+  alertsData.alerts.push({
+    sessionId: targetSessionId,
+    severity,
+    message,
+    timestamp: new Date().toISOString(),
+  });
+  try {
+    writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData);
+  } catch (e) {
+    console.error(`[session-guidance] failed to write orchestrator alert:`, e.message);
+  }
+}
+
 // ─── OpenRouter catalog (model pricing) ──────────────────────────────────────
 // Fetches https://openrouter.ai/api/v1/models, caches on disk + in memory,
 // builds a {modelId: {in, out}} dict the UI uses for cost calculations. This
@@ -13359,10 +13375,16 @@ if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
 // ── Session guidance polling (every 3 minutes) ────────────────────────────────
 // Each session writes its state and reads orchestrator alerts.
+// Alerts targeted at a session are broadcast as system lines on that session's card.
 setInterval(() => {
+  const alertsData = readOrchestratorAlerts();
   for (const [sessionId, session] of sessions) {
     if (session.status === 'closed') continue;
     writeSessionState(sessionId, session);
+    const mine = alertsData.alerts.filter(a => a.sessionId === sessionId);
+    for (const alert of mine) {
+      broadcast({ type: 'line', sessionId, text: `[orchestrator] ${alert.severity}: ${alert.message}`, role: 'system' });
+    }
   }
 }, SESSION_GUIDANCE_POLL_MS);
 
