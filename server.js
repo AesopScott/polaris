@@ -8599,8 +8599,8 @@ const httpServer = http.createServer((req, res) => {
           }] : []),
           {
             name: 'QueryMemory',
-            description: 'Query the project knowledge base loaded from Obsidian. Omit filename to get all project context.',
-            inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
+            description: 'Query the project knowledge base loaded from Obsidian. Pass query for ranked top-5 excerpts, filename for a specific file, or omit both for full context.',
+            inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' }, query: { type: 'string', description: 'Natural-language query for BM25 + semantic ranked retrieval of top-5 Obsidian excerpts.' }, polaris_session_id: { type: 'string', description: 'Session ID from the POLARIS CONTEXT block.' } }, required: ['polaris_session_id'] },
           },
         ] });
       } else if (method === 'tools/call') {
@@ -10411,6 +10411,29 @@ async function handleMessage(ws, raw) {
     }).catch(e => {
       sendTo(ws, { type: 'domain-scout-status', status: 'error', error: e.message });
     });
+    return;
+  }
+
+  if (type === 'get-memory-status') {
+    const targetSessionId = msg.sessionId || null;
+    const targetSession   = targetSessionId ? sessions.get(targetSessionId) : null;
+    const memIdx = targetSession?.memoryIndex;
+    const stats  = memIdx ? {
+      chunkCount:  memIdx.chunks.length,
+      fileCount:   [...new Set(memIdx.chunks.map(c => c.file))].length,
+      lastIndexed: memIdx.indexedAt || null,
+    } : null;
+
+    let history = [];
+    try {
+      const tracesPath = path.join(POLARIS_DIR, 'memory-traces', 'traces.jsonl');
+      if (fs.existsSync(tracesPath)) {
+        const lines = fs.readFileSync(tracesPath, 'utf8').trim().split('\n').filter(Boolean);
+        history = lines.slice(-20).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+      }
+    } catch {}
+
+    sendTo(ws, { type: 'memory-status', stats, history });
     return;
   }
 
