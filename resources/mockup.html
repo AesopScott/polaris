@@ -6554,8 +6554,11 @@
     // Status overrides chip color for the stripe (e.g. test → red, waiting → amber)
     const INIT_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', broken: '#f97316' };
     if (INIT_STRIPE[s.status]) el.style.setProperty('--card-stripe-color', INIT_STRIPE[s.status]);
+    const _hch = (chipColor || '#888').replace('#', '');
+    const _hchLuma = 0.299 * parseInt(_hch.substring(0,2),16) + 0.587 * parseInt(_hch.substring(2,4),16) + 0.114 * parseInt(_hch.substring(4,6),16);
+    const headerChipTextColor = _hchLuma < 128 ? '#fff' : '#000';
     const headerChip = chipLabel
-      ? `<span class="card-project-chip" style="background:${chipColor};color:#000;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;">${escHtml(chipLabel)}</span>`
+      ? `<span class="card-project-chip" style="background:${chipColor};color:${headerChipTextColor};font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:0.04em;flex-shrink:0;">${escHtml(chipLabel)}</span>`
       : '';
     const focusKey = getSessionFocusKey(s);
     const focusButtonClass = focusedProject === focusKey ? 'focus-active' : '';
@@ -7948,7 +7951,8 @@
         const projectColor = s.projectName && window.getProjectColorByName ? window.getProjectColorByName(s.projectName) : null;
         const color = projectColor || (s.isChat ? '#a78bfa' : '#60a5fa');
         chip.style.background = color;
-        chip.style.color = '#000';
+        const _mc = color.replace('#', '');
+        chip.style.color = (0.299 * parseInt(_mc.substring(0,2),16) + 0.587 * parseInt(_mc.substring(2,4),16) + 0.114 * parseInt(_mc.substring(4,6),16)) < 128 ? '#fff' : '#000';
         chip.title = `Click to restore: ${s.name}`;
         chip.textContent = (s.name || 'Session').split(' ').slice(0, 3).join(' ');
         chip.onclick = () => restoreCard(s.id);
@@ -10518,10 +10522,8 @@ This is your current workflow status across all branches. Review the tasks and P
       projectName: projectName,
       tier: tier,
     };
-    if (!ORCHESTRATION_QUIET_MODE) {
-      msg.taskNumber = taskNumber;
-      msg.taskTitle = taskTitle;
-    }
+    msg.taskNumber = taskNumber;
+    msg.taskTitle = taskTitle;
     switch (sessionType) {
       case 'max':
         msg.type = 'launch-chat';
