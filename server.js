@@ -797,13 +797,16 @@ const HEALTH_SNAPSHOT_TTL_MS = 30000;
 // "Alone" is determined by projectSessionCounts, never by worktree isolation.
 
 function onSessionOpened(sessionId, projectName) {
+  console.log('[orchestrator] onSessionOpened', sessionId, 'project:', projectName);
   if (!projectName) return;
   const session = sessions.get(sessionId);
   if (!session || session.isOrchestrator) return;
   if (!projectSessionCounts.has(projectName)) projectSessionCounts.set(projectName, new Set());
   const set = projectSessionCounts.get(projectName);
   set.add(sessionId);
+  console.log('[orchestrator] count for', projectName, '=', set.size);
   if (set.size === 2 && !orchestratorSessions.has(projectName)) {
+    console.log('[orchestrator] spawning for', projectName);
     spawnOrchestratorSession(projectName).catch(err =>
       console.error('[orchestrator] spawn failed for', projectName, err));
   }
