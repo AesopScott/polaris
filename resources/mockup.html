@@ -58,7 +58,7 @@
   .ticker-item .ticker-gold  { color: #fbbf24; font-weight: 600; }
   @keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
   .header { padding: 10px 16px; display: grid; grid-template-columns: 1fr 0.65fr 1.55fr; align-items: center; position: relative; min-height: 64px; }
-  .header-identity { display: flex; align-items: center; justify-content: center; }
+  .header-identity { display: flex; align-items: center; justify-content: center; position: relative; }
   .header-center { display: flex; align-items: center; justify-content: center; }
   .header-buttons { display: flex; justify-content: flex-end; }
   .app-title { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 800; }
@@ -1458,17 +1458,15 @@
     <div class="header-identity">
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
         <div style="display:flex;align-items:center;gap:14px;">
-          <div id="meetup-reservations-chip" class="meetup-reservations-chip" title="Meetup reservations across Advanced AI Concepts events">
-            <div class="meetup-reservations-label">Meet up reservations</div>
-            <div id="meetup-reservations-count" class="meetup-reservations-count">--</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:14px;">
-            <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
-            <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
-          </div>
+          <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
+          <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
         </div>
         <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
         <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
+      </div>
+      <div id="meetup-reservations-chip" class="meetup-reservations-chip" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);" title="Meetup reservations across Advanced AI Concepts events">
+        <div class="meetup-reservations-label">Meet up reservations</div>
+        <div id="meetup-reservations-count" class="meetup-reservations-count">--</div>
       </div>
     </div>
 
