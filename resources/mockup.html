@@ -7285,7 +7285,7 @@
       case 'transfer': {
         if (!s) break;
         showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will be asked to continue the work using the same model and project.`, () => {
-          wsSend({ type: 'transfer-session', sessionId });
+          wsSend({ type: 'transfer-session', sessionId, targetProject: s.projectName });
           pushDebugLog(`[card] Transfer requested: ${s.name || sessionId}`);
         }, 'Yes, Transfer');
         break;
