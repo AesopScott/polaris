@@ -814,6 +814,95 @@ let healthSnapshotCache = null;
 let healthSnapshotCacheAt = 0;
 let healthSnapshotInFlight = false;
 const HEALTH_SNAPSHOT_TTL_MS = 30000;
+let meetupReservationsCache = null;
+let meetupReservationsCacheAt = 0;
+let meetupReservationsInFlight = null;
+const MEETUP_RESERVATIONS_TTL_MS = 5 * 60 * 1000;
+
+function readEnvFileValue(filePath, key) {
+  try {
+    if (!fs.existsSync(filePath)) return '';
+    const text = fs.readFileSync(filePath, 'utf8');
+    const re = new RegExp(`^\\s*${key}\\s*=\\s*(.*)\\s*$`, 'm');
+    const match = text.match(re);
+    if (!match) return '';
+    let value = String(match[1] || '').trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    return value;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 8000) {
+  if (typeof fetch !== 'function') {
+    throw new Error('fetch is unavailable in this Node runtime');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const text = await response.text();
+    let payload = {};
+    try { payload = text ? JSON.parse(text) : {}; } catch { payload = { raw: text }; }
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function extractMeetupReservationCount(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  for (const key of ['count', 'total', 'totalReservations', 'reservations', 'rsvps', 'reservationCount', 'rsvpCount']) {
+    if (typeof payload[key] === 'number' && Number.isFinite(payload[key])) return payload[key];
+  }
+  const nested = payload.result || payload.data || payload.payload || payload.summary;
+  if (nested && nested !== payload) return extractMeetupReservationCount(nested);
+  return null;
+}
+
+async function getMeetupReservationSummary() {
+  const now = Date.now();
+  if (meetupReservationsCache && now - meetupReservationsCacheAt < MEETUP_RESERVATIONS_TTL_MS) {
+    return { ...meetupReservationsCache, cached: true };
+  }
+  if (meetupReservationsInFlight) return meetupReservationsInFlight;
+
+  meetupReservationsInFlight = (async () => {
+    const cfg = readConfig();
+    const sourceUrl = process.env.POLARIS_MEETUP_RESERVATIONS_URL
+      || cfg.meetupReservationsUrl
+      || 'https://mojoaistudio.com/api/meetup-admin?action=reservation-count';
+    const headers = { 'Accept': 'application/json' };
+    const adminKey = process.env.POLARIS_MEETUP_ADMIN_KEY
+      || cfg.meetupAdminKey
+      || readEnvFileValue(path.join('C:', 'Users', 'scott', 'Code', 'Mojo', '.env'), 'MEETUP_ADMIN_KEY');
+    if (adminKey && /meetup-admin/.test(sourceUrl)) headers['X-Admin-Key'] = adminKey;
+
+    const payload = await fetchJsonWithTimeout(sourceUrl, { headers }, 9000);
+    const count = extractMeetupReservationCount(payload);
+    if (typeof count !== 'number') throw new Error('Reservation source did not return a numeric count');
+
+    const summary = {
+      ok: true,
+      count,
+      source: payload.source || payload.urlname || 'meetup',
+      updatedAt: new Date().toISOString(),
+    };
+    meetupReservationsCache = summary;
+    meetupReservationsCacheAt = Date.now();
+    return summary;
+  })().finally(() => {
+    meetupReservationsInFlight = null;
+  });
+
+  return meetupReservationsInFlight;
+}
 
 // ─── Orchestrator Session Lifecycle ──────────────────────────────────────────
 // Rule: 1 session on a project → writes backlog directly.
@@ -8067,6 +8156,19 @@ const httpServer = http.createServer((req, res) => {
   // POST /health-monitor/prompt — inject a question from the UI, another session, or external tooling.
   // Requires X-Polaris-Token header matching UI_TOKEN (Fix 7: auth).
   // Invoke-WebRequest -Method POST http://127.0.0.1:40000/health-monitor/prompt -Headers @{'X-Polaris-Token'='<token>'} -Body '{"text":"Is CPU normal?"}'
+  if (req.method === 'GET' && req.url === '/api/meetup-reservations') {
+    getMeetupReservationSummary()
+      .then(summary => {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(summary));
+      })
+      .catch(error => {
+        res.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ ok: false, count: null, error: error.message || String(error) }));
+      });
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/health-monitor/prompt') {
     if (req.headers['x-polaris-token'] !== UI_TOKEN) {
       res.writeHead(401); res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); return;
