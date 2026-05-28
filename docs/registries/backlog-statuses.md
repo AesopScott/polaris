@@ -272,6 +272,6 @@ These values appear in `VALID_BACKLOG_STATUSES` for compatibility but are not us
 - Registries match current code diff: yes
 
 **Gaps identified:**
-- `cba-complete` — no explicit entry in `BACKLOG_STATUS_TO_LAST_SKILL` map (only inferred); recommend adding `'cba-complete': 'codex-review'` to sessionStore.ts
+- `cba-complete` — added `'cba-complete': 'codex-review'` to `BACKLOG_STATUS_TO_LAST_SKILL` in `src/runtime/sessionStore.ts` (fixed in task #31)
 
 **Status:** Audit complete

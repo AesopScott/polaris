@@ -105,7 +105,7 @@ Session suspended pending user action (e.g., token approval gate).
 - `sessionStore.ts:56` — `SessionRecord.status` union type includes `'paused'`
 - `server.js:1478` — referenced in resume guard but never explicitly set to `'paused'`
 
-**Status:** ⚠ orphan consumer — in type union but no active setter. Likely reserved for the token approval gate flow (`session.paused = true` sets a flag, not `session.status`). Acceptable if token approval uses a separate flag; should be removed from the type union or wired if the paused visual state is needed.
+**Status:** ⚠ intentional design gap — token approval gate sets `session.paused = true` (a boolean flag), not `session.status = 'paused'`. The union type entry is aspirational. Acceptable; no functional failure. Remove from union or wire the status if a distinct UI card state for paused sessions is ever needed.
 
 ---
 
@@ -120,7 +120,7 @@ Session fully removed from active state.
 - `server.js:1325` — `if (!session || session.status === 'closed') return;` guard
 - `server.js:5921` — `s.status !== 'closed'` filter
 
-**Status:** ⚠ orphan consumer — checked but never produced. Guards reference a state that is never written. `closed` sessions appear to be removed from the session map entirely rather than transitioned to a `closed` status. Safe to remove the checks or write the status on `close-session`.
+**Status:** ⚠ intentional design gap — sessions are deleted from the session map on close rather than transitioned to `'closed'`. The guards at server.js:1325 and 5921 are therefore unreachable (the `!session` check fires first). Safe to remove the redundant `=== 'closed'` checks in a cleanup task; no functional risk today.
 
 ---
 
