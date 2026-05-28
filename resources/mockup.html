@@ -443,6 +443,28 @@
         0 24px 80px rgba(0,0,0,0.3);
     }
   }
+  /* Orchestrator card pulses gold — persistent cross-session conflict monitor */
+  .card.status-orchestrator-card {
+    animation: cardOrchestratorPulse 2.5s ease-in-out infinite;
+  }
+  @keyframes cardOrchestratorPulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 1px rgba(234,179,8,0.4),
+        0 0 18px rgba(234,179,8,0.2),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(234,179,8,0.8),
+        0 0 36px rgba(234,179,8,0.45),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+  }
   .card-resize-handle { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: 10; }
   .card-resize-handle:hover, .card-resize-handle.dragging { background: rgba(59,130,246,0.35); }
   .card.dragging { opacity: 0.35; }
@@ -4896,6 +4918,7 @@
           isChat: msg.isChat || false,
           isGpt: msg.isGpt || false,
           isCodex: msg.isCodex || false,
+          isOrchestrator: msg.isOrchestrator || false,
           isForked: msg.isForked || false,
           primarySessionId: msg.primarySessionId || null,
           routineTag: msg.routineTag || null,
@@ -6489,7 +6512,8 @@
       + (s.status === 'waiting' ? ' status-waiting-card' : '')
       + (s.status === 'test'    ? ' status-test-card'    : '')
       + (s.status === 'hold'    ? ' status-hold-card'    : '')
-      + (s.status === 'broken'  ? ' status-broken-card'  : '');
+      + (s.status === 'broken'  ? ' status-broken-card'  : '')
+      + (s.isOrchestrator      ? ' status-orchestrator-card' : '');
     el.dataset.sid = s.id;
     if (s.height) el.style.height = s.height;
 
