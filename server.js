@@ -4560,7 +4560,7 @@ function buildEditDiff(filePath, oldStr, newStr) {
   return [header, trimRemoved, trimAdded].join('\n');
 }
 
-function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
+function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800, timeoutMs = 10000) {
   return new Promise(resolve => {
     const payload = JSON.stringify({ model, messages, temperature: 0.2, max_tokens: maxTokens });
     const req = https.request({
@@ -4577,7 +4577,7 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800) {
       },
       // Fresh agent per request — see callOpenRouterStream for rationale.
       agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
-      timeout: 10000, // 10s hard timeout on socket
+      timeout: timeoutMs,
     }, res => {
       let body = '';
       res.on('data', c => body += c);
@@ -12903,7 +12903,8 @@ Return ONLY a valid JSON array with exactly 30 items.`;
     'anthropic/claude-haiku-4-5',
     apiKey,
     [{ role: 'user', content: termPrompt }],
-    2400
+    2400,
+    60000
   );
 
   if (result.error) return { error: `AI extraction failed: ${result.error}` };
