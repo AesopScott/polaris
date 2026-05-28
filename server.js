@@ -41,8 +41,9 @@ const dns = require('dns').promises;
 const WebSocket = require('ws');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js');
-const memory   = require('./lib/memory');
-const memInj   = require('./lib/memoryInjection');
+const memory             = require('./lib/memory');
+const memInj             = require('./lib/memoryInjection');
+const obsidianRetrieval  = require('./lib/obsidianRetrieval');
 const {
   DEFAULT_BLOCKED_CLASSES,
   COMMAND_CLASS_REGISTRY,
@@ -2338,7 +2339,7 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'WebSearch', description: 'Search the web and return results. Uses You.com free tier first (no cost), then Brave Search if configured, then DuckDuckGo as fallback. Prefer this tool for all web searches.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' }, num_results: { type: 'integer', description: 'Max results to return (default 5)' } }, required: ['query'] } } },
   { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask the user a clarifying question and wait for their response before continuing.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask' }, options: { type: 'array', items: { type: 'string' }, description: 'Optional predefined answer choices' } }, required: ['question'] } } },
   { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
-  { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Call with no arguments at session start to load all project context. Pass filename to retrieve a specific file.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Omit to get all project memory.' } }, required: [] } } },
+  { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Pass a query to get the top-5 most relevant ranked excerpts with source citations and a retrieval trace. Pass filename to retrieve a specific file. Call with no arguments at session start for full context.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Takes precedence over query.' }, query: { type: 'string', description: 'Natural-language query to retrieve the top-5 most relevant Obsidian excerpts by BM25 + semantic ranking. Returns cited excerpts with file name and section heading.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "hold" to manually pause the session. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'hold', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
   { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions — follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
@@ -2796,6 +2797,74 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
+// ── obsidianRetrieval helpers ────────────────────────────────────────────────
+
+function _memHash(mem) {
+  let h = 5381;
+  for (const [k, v] of Object.entries(mem)) {
+    for (let i = 0; i < k.length; i++) h = ((h << 5) + h + k.charCodeAt(i)) >>> 0;
+    h = (h ^ v.length) >>> 0;
+    const step = Math.max(1, Math.floor(v.length / 16));
+    for (let i = 0; i < v.length; i += step) h = ((h << 5) + h + v.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16);
+}
+
+async function _initMemoryIndex(session, mem, apiKey, projectName) {
+  const hash      = _memHash(mem);
+  const cacheDir  = path.join(POLARIS_DIR, 'memory-index');
+  const safe      = (projectName || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cachePath = path.join(cacheDir, `${safe}.json`);
+
+  const chunks = obsidianRetrieval.chunkFiles(mem);
+  const index  = obsidianRetrieval.buildBM25Index(chunks);
+
+  let embeddings = null;
+
+  try {
+    if (fs.existsSync(cachePath)) {
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      if (cached.hash === hash && Array.isArray(cached.embeddings)) {
+        embeddings = cached.embeddings;
+        console.log('[obsidianRetrieval] cache hit for', projectName);
+      }
+    }
+  } catch {}
+
+  if (embeddings === null && apiKey) {
+    embeddings = await obsidianRetrieval.embedChunks(chunks, apiKey);
+    if (embeddings) {
+      try {
+        fs.mkdirSync(cacheDir, { recursive: true });
+        fs.writeFileSync(cachePath, JSON.stringify({ hash, indexedAt: new Date().toISOString(), embeddings }), 'utf8');
+      } catch (e) {
+        console.warn('[obsidianRetrieval] cache write failed:', e.message);
+      }
+    }
+  }
+
+  session.memoryIndex = { chunks, index, embeddings, hash, indexedAt: new Date().toISOString() };
+}
+
+function _appendMemoryTrace(projectName, query, results) {
+  try {
+    const tracesDir = path.join(POLARIS_DIR, 'memory-traces');
+    fs.mkdirSync(tracesDir, { recursive: true });
+    const record = {
+      ts:         new Date().toISOString(),
+      project:    projectName,
+      query:      query || '',
+      topSources: results.slice(0, 3).map(r => `${r.file}${r.heading ? ` § ${r.heading}` : ''}`),
+      scores:     results.slice(0, 3).map(r => Math.round(r._score * 1000) / 1000),
+    };
+    fs.appendFileSync(path.join(tracesDir, 'traces.jsonl'), JSON.stringify(record) + '\n', 'utf8');
+  } catch (e) {
+    console.warn('[obsidianRetrieval] trace append failed:', e.message);
+  }
+}
+
+// ── toolQueryMemory ──────────────────────────────────────────────────────────
+
 async function toolQueryMemory({ filename, query } = {}, sessionId) {
   const session = sessions.get(sessionId);
   if (session && (!session.projectMemory || Object.keys(session.projectMemory).length === 0)) {
@@ -2803,11 +2872,41 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
   }
   const mem = session?.projectMemory;
 
-  // Specific file request → go straight to Obsidian
+  // Specific file request → go straight to Obsidian (escape hatch, unchanged)
   if (filename) {
     if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
     const key = Object.keys(mem).find(k => k.toLowerCase().includes(filename.toLowerCase()));
     return key ? `=== ${key} ===\n${mem[key]}` : `File not found in project memory: ${filename}`;
+  }
+
+  // Ranked retrieval via obsidianRetrieval when query is provided
+  if (query && query.trim()) {
+    if (mem && Object.keys(mem).length > 0) {
+      if (!session.memoryIndex) {
+        const config  = readConfig();
+        const matched = (config.projects || []).find(
+          p => p.workDir && p.workDir.toLowerCase() === (session?.workDir || '').toLowerCase()
+        );
+        const projectName = matched?.name || session?.projectName || 'default';
+        const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
+        await _initMemoryIndex(session, mem, apiKey, projectName);
+      }
+
+      const config  = readConfig();
+      const matched = (config.projects || []).find(
+        p => p.workDir && p.workDir.toLowerCase() === (session?.workDir || '').toLowerCase()
+      );
+      const projectName = matched?.name || session?.projectName || 'default';
+
+      const { index, embeddings } = session.memoryIndex;
+      const results = obsidianRetrieval.rankChunks(index, query, embeddings);
+
+      if (results.length > 0) {
+        _appendMemoryTrace(projectName, query, results);
+        return obsidianRetrieval.buildTrace(results);
+      }
+    }
+    return `[MEMORY TRACE] — 0 results for query "${query}" — no matching Obsidian content found.`;
   }
 
   // General query → Firestore (ranked) with Obsidian fallback
@@ -2821,7 +2920,6 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
       const results = await memory.searchMemories(projectName, query || '', 5);
 
       if (results.length > 0) {
-        // Reinforce each accessed memory (fire-and-forget)
         for (const r of results) {
           if (r.id) memory.reinforceMemory(r.id).catch(() => {});
         }
