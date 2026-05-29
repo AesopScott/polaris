@@ -489,7 +489,7 @@ The orchestrator communicates required actions to other sessions via a shared co
 }
 ```
 
-> **Locks exception required:** `session-directives.json` must be added as an exception in `locks.json` so all sessions can write to it (acknowledge, complete, fail). Without this exception, sessions will be blocked from updating directive status. TODO: add this exception before enabling the directive system.
+> **Locks exception configured:** `session-directives.json` is registered as an exception in `locks.json` so all sessions can write to it (acknowledge, complete, fail). This allows sessions to update directive status without being blocked by file locks.
 
 ### Orchestrator behavior (each tick)
 
@@ -508,10 +508,25 @@ The orchestrator communicates required actions to other sessions via a shared co
 
 ---
 
+## Alert Broadcasting & Deduplication
+
+When orchestrator alerts are written to `orchestrator-alerts.json`, the server broadcasts them to the target session's UI. To prevent duplicate broadcasts across polling ticks:
+- Server maintains a `_seenAlerts` Map tracking alert timestamps per session
+- Each alert broadcasts once; subsequent ticks skip already-seen alerts
+- Seen-sets are pruned when sessions close
+- This ensures users see each alert exactly once, even though the monitor loop runs repeatedly
+
 ## Maintenance Note
 
 **`docs/skills/` should be kept in sync with `~/.claude/commands/`.**  
 The files in `docs/skills/` are documentation-style references; the executable skill definitions live in `~/.claude/commands/`. When either changes, the other should be updated. Sync has not been done yet — treat `~/.claude/commands/` as authoritative for runtime behavior.
+
+**Server-side infrastructure:** Orchestrate.md defines the logical behavior. Server.js provides:
+- Alert broadcasting and deduplication
+- Session state management from git data
+- Worktree collision detection
+- Session cleanup on exit
+- File locks exceptions for directive updates
 
 ---
 
