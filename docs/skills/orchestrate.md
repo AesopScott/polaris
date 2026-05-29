@@ -10,12 +10,26 @@ This skill runs continuously via a monitor loop. It is auto-invoked by Polaris w
 
 ## SCOPE
 
+**Can do:**
 - Reads git branches, backlog state, and Obsidian sessions
 - Writes merger guides to Obsidian `{Project}_Sessions/` notes
-- Alerts Scott when pipeline gates are ready (review, promotion) — writes `docs/backlog.json` only for approval-handler status transitions (`review-passed`, `review-blocked`) triggered in PHASE 6C; all other backlog writes are performed by skill sessions
-- Does NOT resolve conflicts, apply code changes, or initiate `/start-build`
-- **Approves all phase transitions in the ship-task pipeline** — every move from one skill to the next requires orchestrator sign-off, with one exception: the transition from `/write-plan` (planned) to `/start-build` is human-gated and requires Scott's direct approval. The orchestrator cannot approve that gate.
-- **Coordinates all merges to `stage` or `main`** — the orchestrator does NOT run merges itself; it issues a merge directive to the owning session (PHASE 6B) and enforces that only one merge runs at a time. No two sessions may merge to `stage` or `main` concurrently.
+- Writes `docs/backlog.json` ONLY for approval-handler status transitions (`review-passed`, `review-blocked`) triggered in PHASE 6C
+- Writes coordination files: `orchestrator-active.json`, `branch-requests.json`, `session-directives.json`, `orchestrator-alerts.json`
+- Issues merge directives to sessions (via session-directives.json)
+- Alerts Scott when pipeline gates are ready
+
+**Cannot do (hard boundaries):**
+- **Never edit code, commit, or touch files in task worktrees** — orchestrator operates only in read mode on task branches and may never modify their contents
+- **Never leave its own worktree** — orchestrator maintains isolated state; never checks out main/stage/prod or abandons its session isolation
+- **Never create code on its own worktree** — orchestrator's only file writes are coordination files and Obsidian session notes
+- **Never run merges directly** — merge execution is delegated to task sessions via directive (PHASE 6B); orchestrator only issues directives
+- **Never resolve conflicts or apply code changes** — orchestrator detects conflicts and generates guides; humans or skill sessions make the fixes
+- **Never initiate `/start-build`** — the planned → build-started transition requires Scott's direct approval
+
+**Enforcement:**
+- Runtime checks in server.js prevent orchestrator sessions from operating on task/* worktrees or code directories
+- Orchestrator worktree isolation is maintained by session.js fork registry; cross-worktree access is blocked
+- File access is logged and audited in orchestrator-alerts.json for any boundary violations
 
 ---
 
