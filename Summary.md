@@ -344,42 +344,111 @@ The orchestration system relies on server.js infrastructure improvements that we
 
 ---
 
-## Fixes Implemented (2026-05-29, Post-Codex Review)
+## Gap Identification and Resolution (2026-05-29)
 
-All four critical/high issues from Codex review have been resolved:
+### Codex Review Findings
+
+**Status:** REQUEST CHANGES — Four critical/high issues identified, all resolved
+
+**Critical Issues Addressed:**
 
 **1. ✅ Lifecycle Conflict Fixed**
-- **Issue:** Spec placed `cba-complete` before `build-finished`, contradicting CLAUDE.md
-- **Fix:** Updated CLAUDE.md to correct lifecycle: `build-started` → `cba-complete` (mid-build) → `build-finished` → `pr-reviewed` → `codex-reviewed` → `review-passed` → `staged` → `production`
-- **Files updated:** 
-  - Global CLAUDE.md: corrected status lifecycle and skill descriptions
-  - Polaris CLAUDE.md: added `pr-reviewed`, `codex-reviewed`, `review-passed` to status enums
-- **Status:** RESOLVED — canonical lifecycle now consistent across all documentation
+- **Finding:** Spec placed `cba-complete` before `build-finished`, but CLAUDE.md documented `cba-complete` after `build-finished`
+- **Impact:** Automation sequencing wrong; skills targeting different status orders would conflict
+- **Fix:** Updated CLAUDE.md to correct lifecycle: `build-started` → `cba-complete` (step 3, mid-build) → `build-finished` → `pr-reviewed` → `codex-reviewed` → `review-passed` → `staged` → `production`
+- **Verified:** Canonical lifecycle now consistent across all documentation
 
 **2. ✅ Authority Boundary Clarified**
-- **Issue:** How orchestrator writes status to backlog.json was undefined
-- **Fix:** Confirmed PHASE 6C in orchestrate.md already specifies: "Set task status to `review-passed` via node -e utf8" (same pattern as /review-pr Step 7)
-- **Files verified:** docs/skills/orchestrate.md lines 466, 470 document the pattern
-- **Status:** RESOLVED — implementation already correct
+- **Finding:** How orchestrator writes status to backlog.json was undefined
+- **Fix:** Confirmed PHASE 6C in orchestrate.md already specifies: "Set task status via node -e with utf8 encoding" (same pattern as /review-pr Step 7)
+- **Verified:** Implementation already correct, matches spec
 
 **3. ✅ Merge Confirmation Mechanism Defined**
-- **Issue:** "Named confirmation before proceeding" wasn't explained for merge directives
-- **Fix:** Updated CLAUDE.md Branch Isolation section to clarify: "Orchestrator merge directive IS the named confirmation that branch operations are approved"
-- **Files updated:** Global CLAUDE.md — added "Orchestrator as named confirmation" subsection
-- **Status:** RESOLVED — orchestrator directive = authorization for merge operations
+- **Finding:** "Named confirmation before proceeding" wasn't explained for merge directives
+- **Fix:** Updated CLAUDE.md Branch Isolation section: "Orchestrator merge directive IS the named confirmation that branch operations are approved"
+- **Verified:** Orchestrator directive = authorization for branch operations
 
 **4. ✅ Orchestrator Scope Guardrails Added**
-- **Issue:** Prohibition against editing code/worktrees not restated in /orchestrate skill
+- **Finding:** Prohibition against editing code/worktrees not restated in /orchestrate skill
 - **Fix:** Expanded SCOPE section in orchestrate.md with explicit boundaries:
   - **Can do:** Read branches, write coordination files, issue directives, alert Scott
   - **Cannot do:** Edit code/worktrees, leave own isolation, create code, run merges, apply changes
-  - **Enforcement:** Runtime checks in server.js block orchestrator access to task/* worktrees; violations logged
-- **Files updated:** docs/skills/orchestrate.md SCOPE section (lines 11-28)
-- **Status:** RESOLVED — explicit boundaries + runtime enforcement documented
+  - **Enforcement:** Runtime checks in server.js block orchestrator access to task/* worktrees
+- **Verified:** Explicit boundaries documented with runtime enforcement
 
 **Implementation commits:**
 - `7fffabb` — docs: add orchestrator scope guardrails
-- Updates to CLAUDE.md (global config, not in git repo)
+- `8f25415` — docs: document four critical fixes from Codex review
+
+---
+
+### Additional Gaps Identified (11 Total)
+
+All 11 gaps from prior orchestrator and ship-task coordination have been resolved:
+
+| # | Description | Owner | Status |
+|---|---|---|---|
+| 1 | Merge request protocol | SHIP-TASK | ✅ Resolved — no request needed; `/promote-to-prod` waits for orchestrator directive |
+| 2 | Merge completion polling | SHIP-TASK | ✅ Resolved — polling implemented in `/promote-to-prod` |
+| 3 | Directive issuance logic | ORCHESTRATOR | ✅ Resolved — BACKLOG:STATUS_CHANGE table + PHASE 6C approval handler |
+| 4 | Status sync protocol | BOTH | ✅ Resolved — heartbeat re-issue after 2 unacknowledged ticks (~60s) |
+| 5 | Status naming consistency | BOTH | ✅ Resolved — `cba-complete` vs `pr-reviewed` clarified throughout |
+| 6 | Error handling in directive polling | SHIP-TASK | ✅ Resolved — try-catch + retry + timeout in all 9 pipeline skills |
+| 7 | Merge authority protocol | ORCHESTRATOR | ✅ Resolved — orchestrator scans for `review-passed`, issues directive; sessions execute |
+| 8 | Post-merge status ownership | SHIP-TASK | ✅ Resolved — `/promote-to-prod` validates merge then sets `production` |
+| 9 | `cba-complete` routes to wrong step | SHIP-TASK | ✅ Resolved — resumption table: `cba-complete → finish-build` |
+| 10 | `pr-reviewed` missing from resumption | SHIP-TASK | ✅ Resolved — row added: `pr-reviewed → codex-review` |
+| 11 | Step 6 wrong SetTaskState call | SHIP-TASK | ✅ Resolved — pre-review state call removed; approval handler owns transition |
+
+**Key architectural decisions confirmed:**
+- **Directive-only merge model:** Orchestrator does NOT run `gh pr merge`. It writes a `critical` directive to `session-directives.json` telling the owning session to merge. Session executes merge, validates, sets status to `production`.
+- **Human gate:** Only `planned → /start-build` requires human approval. All other phase transitions are orchestrator-approved.
+- **`cba-complete` is mid-build only:** Set by `/cross-boundary-audit` between start-build and finish-build. Not related to code review.
+
+---
+
+### Ship-Task Session Deliverables (7/7 Complete)
+
+1. ✅ Updated PIPELINE_STEP_INDEX in server.js with new status mappings
+2. ✅ Updated `/review-pr` skill to set `pr-reviewed` after review completes
+3. ✅ Updated `/codex-review` skill to set `codex-reviewed` after review completes
+4. ✅ Updated `/ship-task` resumption table with all new statuses
+5. ✅ Clarified `/promote-to-prod` entry point (`review-passed` status)
+6. ✅ Synced all skills to ~/.claude/commands/
+7. ✅ Fixed all gap-related issues identified by orchestrator cross-check
+
+**Git commits:**
+- `308fd47` — feat: add codex-reviewed and review-passed statuses
+- `9ea999b` — docs: fix PHASE 6C approval handler to use deterministic task file path
+- `37251ca` — fix: sync review-pr and codex-review command skills with docs versions
+
+---
+
+### Orchestrator Session Deliverables (Complete)
+
+**New skill:** `/orchestrate` — Full multi-session coordination system with:
+- PHASE 0: Authority declaration
+- PHASE 1-2: Session init and monitoring loop
+- PHASE 3-4: Conflict analysis and output artifacts
+- PHASE 5: Pipeline alerts
+- PHASE 6: Branch gate with auto-approve/deny logic
+- **PHASE 6B:** Directive-only merge coordination (no self-merge)
+- **PHASE 6C:** Approval handler reads both reviews, sets `review-passed` or `review-blocked`
+- PHASE 7: Session directives protocol
+
+**Supporting implementation:**
+- `poll-directives.md` — Shared skill for all sessions to poll and acknowledge directives
+- `session-directives.json` — Asynchronous task communication file
+- `locks.json` exception — Allow all sessions write access to session-directives.json
+- CLAUDE.md Rule 14 — Directive polling obligation for all pipeline sessions
+- Memory file — `project_session_directives.md` teaches sessions the directive protocol
+
+**Git commits:**
+- `70aeca6` — docs: add orchestrate skill with conflict detection and merge coordination
+- `2ad15ac` — docs: refine orchestration integration
+- `6df9c05` — docs: implement Gap 3, 4, 5 (directive issuance, status sync, naming clarity)
+- `83afdb7` — docs: add comprehensive summary of multi-session orchestration integration
+- `63f3acb` — docs: update orchestrate.md with server-side infrastructure notes
 
 ---
 
