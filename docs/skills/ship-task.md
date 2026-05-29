@@ -157,6 +157,19 @@ backlog
 5. **Two-model review** — Claude AND Codex perspectives surface disagreements neither alone would catch
 6. **Atomic phases** — each phase is self-contained; if it fails, the task remains at that status until fixed
 7. **PR targeting is automatic** — `/finish-build` chooses stage or main based on project configuration. This is the fork point that determines whether Phase 6 runs at all. For non-CareGuide projects the effective pipeline is six phases, not seven, and `staged` is an unreachable status.
+8. **Orchestrator gates all phase transitions** — the orchestrator must approve every move from one skill to the next. The single exception is the transition out of `/write-plan`: moving from `planned` to `/start-build` requires Scott's direct approval. The orchestrator cannot auto-approve this gate.
+
+## Phase Gates
+
+| Transition | Gate |
+|---|---|
+| `planned` → `/start-build` | **Human (Scott)** — must approve the plan directly |
+| `build-started` → `/cross-boundary-audit` | Orchestrator |
+| `cba-complete` → `/finish-build` | Orchestrator |
+| `build-finished` → `/review-pr` | Orchestrator |
+| (review evidence) → `/codex-review` | Orchestrator |
+| `pr-reviewed` → `/promote-to-prod` | Orchestrator |
+| `staged` → `/promote-to-prod` | Orchestrator (CareGuide only) |
 
 ## Triggering the Workflow
 

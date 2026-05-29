@@ -14,6 +14,7 @@ This skill runs continuously via a monitor loop. It is auto-invoked by Polaris w
 - Writes merger guides to Obsidian `{Project}_Sessions/` notes
 - Alerts Scott when pipeline gates are ready (review, promotion) — does NOT write `docs/backlog.json`
 - Does NOT resolve conflicts, apply code changes, merge branches, or initiate `/start-build`
+- **Approves all phase transitions in the ship-task pipeline** — every move from one skill to the next requires orchestrator sign-off, with one exception: the transition from `/write-plan` (planned) to `/start-build` is human-gated and requires Scott's direct approval. The orchestrator cannot approve that gate.
 
 ---
 
