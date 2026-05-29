@@ -985,6 +985,7 @@ function teardownOrchestratorSession(orchId, projectName) {
   if (!orchSession) return;
   try { if (orchSession.proc) orchSession.proc.kill(); } catch (_) {}
   try { if (orchSession.watcher) orchSession.watcher.close(); } catch (_) {}
+  deleteSessionStateFile(orchId);
   sessions.delete(orchId);
   orchestratorSessions.delete(projectName);
   broadcast({ type: 'session-closed', sessionId: orchId });
@@ -1301,6 +1302,9 @@ function writeJSON(filePath, data) {
   try {
     fs.renameSync(tmpPath, filePath);
   } catch {
+    // Rename failed (e.g. cross-device). Fall back to direct write — not atomic,
+    // but acceptable for session guidance files which are ephemeral and re-created
+    // every 3 minutes. Config writes never hit this path (same-volume guarantee).
     fs.writeFileSync(filePath, serialized, 'utf8');
     try { fs.unlinkSync(tmpPath); } catch {}
   }
@@ -1346,7 +1350,9 @@ function writeSessionState(sessionId, session) {
 function readOrchestratorAlerts() {
   try {
     if (fs.existsSync(ORCHESTRATOR_ALERTS_PATH)) {
-      return readJSON(ORCHESTRATOR_ALERTS_PATH, { alerts: [] });
+      const data = readJSON(ORCHESTRATOR_ALERTS_PATH, { alerts: [] });
+      if (!Array.isArray(data.alerts)) return { alerts: [] };
+      return data;
     }
   } catch (e) {
     console.error(`[session-guidance] failed to read alerts:`, e.message);
@@ -1384,6 +1390,29 @@ function deleteSessionStateFile(sessionId) {
   } catch (e) {
     console.error(`[session-guidance] failed to delete state file for ${sessionId}:`, e.message);
   }
+}
+
+// Single read → push × N → write. All alert writes go through this to avoid
+// concurrent callers each doing their own read-modify-write on the same file.
+function writeOrchestratorAlertsBatch(newAlerts) {
+  ensureSessionGuidanceDir();
+  const alertsData = readOrchestratorAlerts();
+  for (const alert of newAlerts) alertsData.alerts.push(alert);
+  try {
+    writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData);
+  } catch (e) {
+    console.error(`[session-guidance] failed to write orchestrator alerts:`, e.message);
+  }
+}
+
+function writeOrchestratorAlert(targetSessionId, severity, message) {
+  writeOrchestratorAlertsBatch([{
+    id: crypto.randomUUID(),
+    sessionId: targetSessionId,
+    severity,
+    message,
+    timestamp: new Date().toISOString(),
+  }]);
 }
 
 // ─── OpenRouter catalog (model pricing) ──────────────────────────────────────
@@ -5776,8 +5805,17 @@ function verifyWorktreeOwnership(sessionId) {
   if (!s?.worktreePath) return null;
   const wtPath = s.worktreePath;
   for (const [id, sess] of sessions) {
-    if (id !== sessionId && sess.worktreePath === wtPath)
-      return `Worktree conflict: session ${id} also claims this path`;
+    if (id !== sessionId && sess.worktreePath === wtPath) {
+      const msg = `Worktree conflict: session ${id} also claims this path`;
+      const ts = new Date().toISOString();
+      // Deterministic IDs so repeated calls for the same conflict don't bypass _seenAlerts dedup
+      const conflictId = crypto.createHash('sha1').update(`${sessionId}-${id}-${wtPath}`).digest('hex').slice(0, 16);
+      writeOrchestratorAlertsBatch([
+        { id: conflictId, sessionId, severity: 'warning', message: msg, timestamp: ts },
+        { id: conflictId + '-peer', sessionId: id, severity: 'warning', message: msg, timestamp: ts },
+      ]);
+      return msg;
+    }
   }
   try {
     const raw = execSync('git worktree list --porcelain', { cwd: wtPath, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
@@ -5785,7 +5823,11 @@ function verifyWorktreeOwnership(sessionId) {
     const found = raw.split('\n')
       .filter(l => l.startsWith('worktree '))
       .some(l => path.normalize(l.slice('worktree '.length).trim()).toLowerCase() === wtNorm);
-    if (!found) return 'Session worktree is no longer registered — isolation may be compromised';
+    if (!found) {
+      const msg = 'Session worktree is no longer registered — isolation may be compromised';
+      writeOrchestratorAlert(sessionId, 'error', msg);
+      return msg;
+    }
   } catch (e) {
     return `Worktree verification failed: ${e.message}`;
   }
@@ -6781,6 +6823,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
         broadcast({ type: 'session-status', sessionId, status: 'done' });
         extractSessionToKnowledge(sessionId); // fire-and-forget: distill to numbered Obsidian files
         if (s.routineTag?.startsWith('ModGenActivate-')) {
+          deleteSessionStateFile(sessionId);
           sessions.delete(sessionId);
           saveSessions();
           broadcast({ type: 'session-closed', sessionId });
@@ -8826,12 +8869,14 @@ const httpServer = http.createServer((req, res) => {
             const response = responses.join('\n');
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true, response }));
+            deleteSessionStateFile(id);
             sessions.delete(id);
           })
           .catch(err => {
             broadcast = originalBroadcast;
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: false, error: err.message }));
+            deleteSessionStateFile(id);
             sessions.delete(id);
           });
       } catch (e) {
@@ -13359,10 +13404,31 @@ if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
 // ── Session guidance polling (every 3 minutes) ────────────────────────────────
 // Each session writes its state and reads orchestrator alerts.
+// Alerts targeted at a session are broadcast once as system lines; seen timestamps
+// prevent repeat broadcasts across polling ticks until the alert is pruned.
+const _seenAlerts = new Map(); // sessionId → Set<alert id (uuid, or timestamp for legacy alerts without id)>
 setInterval(() => {
+  const alertsData = readOrchestratorAlerts();
   for (const [sessionId, session] of sessions) {
     if (session.status === 'closed') continue;
     writeSessionState(sessionId, session);
+    const mine = alertsData.alerts.filter(a => a.sessionId === sessionId);
+    if (!_seenAlerts.has(sessionId)) _seenAlerts.set(sessionId, new Set());
+    const seen = _seenAlerts.get(sessionId);
+    for (const alert of mine) {
+      // Use uuid as the stable dedup key; fall back to timestamp for alerts written
+      // before the id field was introduced (avoids repeat broadcasts on server upgrade).
+      // Note: an alert written after deleteSessionStateFile but before this tick is
+      // benign — closing sessions have informational-only alerts.
+      const dedupeKey = alert.id ?? alert.timestamp;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      broadcast({ type: 'line', sessionId, text: `[orchestrator] ${alert.severity}: ${alert.message}`, role: 'system' });
+    }
+  }
+  // Drop seen-sets for sessions that no longer exist
+  for (const id of _seenAlerts.keys()) {
+    if (!sessions.has(id)) _seenAlerts.delete(id);
   }
 }, SESSION_GUIDANCE_POLL_MS);
 
