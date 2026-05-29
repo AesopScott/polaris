@@ -435,11 +435,16 @@ On each tick, scan backlog for tasks newly at `codex-reviewed`. For each:
 
 ### Step 1: Read both review findings
 
-Review findings are written to Obsidian by `/review-pr` and `/codex-review`. Read both from:
-```
-G:\My Drive\Aesop Academy\Obsidian\{Project}_Sessions\
-```
-Find the most recent session notes for the task number that contain review findings. Look for CRITICAL/HIGH/BLOCK markers.
+Both `/review-pr` and `/codex-review` append their output to a **deterministic task file** — no date-search needed.
+
+1. Read task `{N}` from `docs/backlog.json` — get the `branch` field
+2. Derive `{slug}`: strip the `task/{N}-` prefix (e.g., `task/42-add-auth` → `add-auth`)
+3. Resolve `{ProjectObsidian}` from CLAUDE.md (e.g., project `Polaris` → `Polaris_Build`)
+4. Construct path: `G:\My Drive\Aesop Academy\Obsidian\{ProjectObsidian}_Build\Tasks\Task-{N}-{slug}.md`
+5. Read the file and locate the `### Claude Review` and `### Codex Review` sections
+6. In each section, scan for `CRITICAL`, `HIGH`, or `BLOCK` verdict lines
+
+**If the task file does not exist, or either review section is absent:** do NOT set `review-passed`. Set `review-blocked` with note: "Review findings incomplete — re-run `/review-pr task {N}` and `/codex-review task {N}`."
 
 ### Step 2: Compare and decide
 

@@ -811,3 +811,36 @@ All 7 items delegated to ship-task session have been completed:
 
 **Status:** ✅ COMPLETE — All 11 gaps resolved. Architecture production-ready.
 
+---
+
+### Orchestrator Session — PHASE 6C Path Fix (2026-05-29, Post-Compaction)
+
+**Finding (cross-check during PHASE 6C review):**
+
+PHASE 6C Step 1 in both orchestrate.md files said: "Find the most recent session notes for the task number that contain review findings" — pointing at `{Project}_Sessions/`. This was vague and would fail at runtime because dated session notes have no reliable connection to a specific task.
+
+**Root cause:** Both `/review-pr` (Step 7) and `/codex-review` (Step 9) actually write their output to a **deterministic task file** in `_Build/Tasks/`, not to a dated session note:
+```
+{ProjectObsidian}_Build/Tasks/Task-{N}-{slug}.md
+```
+Where `{slug}` is derived from the task's `branch` field in `backlog.json` (strip `task/{N}-` prefix).
+
+**Fix applied:**
+Updated PHASE 6C Step 1 in both `docs/skills/orchestrate.md` and `~/.claude/commands/orchestrate.md` to use this deterministic path:
+1. Get task `{N}` and `branch` from `backlog.json`
+2. Derive `{slug}` from branch
+3. Resolve `{ProjectObsidian}` from CLAUDE.md
+4. Construct `{ProjectObsidian}_Build/Tasks/Task-{N}-{slug}.md`
+5. Locate `### Claude Review` and `### Codex Review` sections in the file
+6. Scan for CRITICAL/HIGH/BLOCK verdict lines
+
+Added missing-file guard: if the task file doesn't exist or either review section is absent → set `review-blocked` with explanation rather than failing silently.
+
+**No changes needed to `/review-pr` or `/codex-review`** — they already write to the correct deterministic path.
+
+**Pre-existing gaps found during cross-check (ship-task session claims to have addressed these in commit `308fd47`):**
+- `~/.claude/commands/review-pr.md` was missing Step 7 (`pr-reviewed` status set) — the docs version had it but the commands version did not. Ship-task session says it synced this.
+- `~/.claude/commands/codex-review.md` had `cba-complete` as the state-guard entry (should be `codex-reviewed`) and "CareGuide" hardcoded in prompt template. Ship-task session says it fixed this.
+
+**Commit:** See git log for `docs(orchestrate): fix PHASE 6C approval handler to use deterministic task file path`
+
