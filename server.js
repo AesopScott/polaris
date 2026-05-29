@@ -4448,6 +4448,7 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
     originalLines, newLines, originalBytes: origBytes, newBytes,
     review, userDecision: decision, sessionPrompt,
   });
+  broadcast({ type: 'cross-check-history', entries: loadAllCrossChecks(200) });
 
   if (decision === 'restore') {
     try { fs.writeFileSync(filePath, originalContent, 'utf8'); } catch {}
@@ -4516,6 +4517,7 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
     originalContent: origBytes < 200 * 1024 ? originalContent : null,
     newContent: newBytes < 200 * 1024 ? newContent : null,
   });
+  broadcast({ type: 'cross-check-history', entries: loadAllCrossChecks(200) });
 
   return decision === 'approve';
 }
