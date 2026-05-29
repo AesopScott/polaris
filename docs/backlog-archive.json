@@ -2231,6 +2231,137 @@
       "proofUnits": [],
       "project_source": "Polaris",
       "promoted_via_pr": null
+    },
+    {
+      "number": 28,
+      "title": "Upgrade project memory into ranked retrieval",
+      "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
+      "category": "feature",
+      "priority": 90,
+      "impact": "major",
+      "status": "production",
+      "created_at": "2026-05-22",
+      "completed_at": null,
+      "dependencies": [],
+      "plan": "Replace the all-or-nothing Obsidian dump in QueryMemory with a ranked-retrieval layer.\n\n## Phases\n\n1. Core retrieval module (TDD): Build and test lib/obsidianRetrieval.js (heading-aware chunker, BM25, OpenRouter embeddings fail-soft, cosine ranker, trace formatter).\n2. QueryMemory upgrade: Add query param to tool schema, lazy-init session.memoryIndex, disk embedding cache (mtime+size guard), return top-5 cited excerpts + retrieval trace, append to traces.jsonl.\n3. Memory status panel: get-memory-status WS handler + Memory nav button and panel in mockup.html.\n4. Verify + formalize: e2e smoke, version bump, changelog.\n\n## First Proof Unit\n\nWrite failing vitest suite for lib/obsidianRetrieval.js. Run: npx vitest run test/memory/obsidianRetrieval. Expected failure: Cannot find module.",
+      "objective": {
+        "statement": "Replace the all-or-nothing Obsidian dump in QueryMemory with a ranked-retrieval layer: chunk Obsidian files by heading, rank chunks by BM25 + OpenRouter embeddings (fail-soft) + freshness, return top-5 cited excerpts by default with a retrieval trace, and give Scott visibility into retrieval history via a Memory status panel.",
+        "successCriteria": [
+          "QueryMemory({ query }) returns top-5 ranked cited excerpts with source file and section heading, plus a retrieval trace header",
+          "Disk embedding cache prevents redundant OpenRouter API calls on repeat sessions when Obsidian files are unchanged (mtime+size guard)",
+          "BM25-only fallback works correctly when OpenRouter embedding call fails or times out — no error thrown, no empty response",
+          "Memory nav button opens a panel showing live chunk index stats and last 20 retrieval events from traces.jsonl",
+          "All lib/obsidianRetrieval.js unit tests pass (npx vitest run test/memory/obsidianRetrieval)"
+        ],
+        "nonGoals": [
+          "Changes to lib/memory.js or the Firestore memory path",
+          "Auto-refresh of memory index when Obsidian files change mid-session",
+          "Vector database or external embedding store",
+          "Modifying the filename escape hatch behavior in toolQueryMemory"
+        ],
+        "proofMap": [
+          {
+            "criterion": 1,
+            "proofUnit": 3
+          },
+          {
+            "criterion": 2,
+            "proofUnit": 4
+          },
+          {
+            "criterion": 3,
+            "proofUnit": 6
+          },
+          {
+            "criterion": 4,
+            "proofUnit": 5
+          },
+          {
+            "criterion": 5,
+            "proofUnit": 2
+          }
+        ],
+        "stopConditions": [
+          "session.projectMemory is empty for the active project (no Obsidian files loaded)"
+        ]
+      },
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "vitest suite exists and fails (entry gate)",
+          "expectedBehavior": "Test file exists; suite fails because lib/obsidianRetrieval.js is absent.",
+          "proofType": "failing-test",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris && npx vitest run test/memory/obsidianRetrieval",
+          "expectedInitialFailure": "Error: Cannot find module ../../lib/obsidianRetrieval",
+          "expectedPassingEvidence": "N/A — this unit proves RED only; green is Proof Unit 2.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 2,
+          "title": "All obsidianRetrieval.js unit tests pass",
+          "expectedBehavior": "All five exported functions pass their vitest suite.",
+          "proofType": "failing-test",
+          "exactCommand": "cd C:\\Users\\scott\\Code\\Polaris && npx vitest run test/memory/obsidianRetrieval",
+          "expectedInitialFailure": "Import error or assertion failures.",
+          "expectedPassingEvidence": "All tests pass; exit code 0.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 3,
+          "title": "QueryMemory returns ranked excerpts + retrieval trace",
+          "expectedBehavior": "QueryMemory({ query }) returns top-5 cited chunks with file + heading + excerpt, plus a trace header.",
+          "proofType": "smoke-command",
+          "exactCommand": "In a Polaris agent session, call QueryMemory({ query: \"QueryMemory architecture\" }) and inspect tool result for [MEMORY TRACE] header and cited excerpts.",
+          "expectedInitialFailure": "Tool returns all Obsidian files concatenated or \"No project memory loaded.\"",
+          "expectedPassingEvidence": "Tool result begins with [MEMORY TRACE] header followed by 1-5 entries formatted as [N] from {file} § {heading}\\n{excerpt}.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 4,
+          "title": "Disk embedding cache prevents redundant API calls on repeat sessions",
+          "expectedBehavior": "Second session on unchanged files loads embeddings from disk; no OpenRouter embedding call made.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) npm start; open agent session; call QueryMemory; confirm memory-index/<project>.json created. (2) Restart session; call QueryMemory again; confirm server log shows [obsidianRetrieval] cache hit.",
+          "expectedInitialFailure": "Cache file not created, or embedding API called on every session start.",
+          "expectedPassingEvidence": "memory-index/<project>.json exists after first call; server log shows cache-hit on second session.",
+          "waiverGuidance": "Manual sign-off — server console log must show cache-hit path."
+        },
+        {
+          "number": 5,
+          "title": "Memory panel shows chunk index stats and retrieval history",
+          "expectedBehavior": "Clicking Memory nav button opens panel with index stats and at least one retrieval event from traces.jsonl.",
+          "proofType": "ui-check",
+          "exactCommand": "(1) Complete Proof Unit 3. (2) Click Memory button in status area. (3) Confirm panel shows non-zero chunk count, last indexed time, and at least one JSONL history entry.",
+          "expectedInitialFailure": "Button missing, panel empty, or no stats displayed.",
+          "expectedPassingEvidence": "Panel visible with populated stats and at least one JSONL entry rendered. Scott signs off.",
+          "waiverGuidance": "Manual sign-off required."
+        },
+        {
+          "number": 6,
+          "title": "BM25-only fallback when embeddings are unavailable",
+          "expectedBehavior": "rankChunks with null embeddings returns BM25-ranked results with no error thrown.",
+          "proofType": "smoke-command",
+          "exactCommand": "node -e \"const r=require('./lib/obsidianRetrieval'); const chunks=r.chunkFiles({'t.md':'# H\\n\\nQueryMemory architecture content.'}); const idx=r.buildBM25Index(chunks); const res=r.rankChunks(idx,'QueryMemory architecture',null); console.log(res.length>0,res[0]._score>0);\" from C:\\Users\\scott\\Code\\Polaris",
+          "expectedInitialFailure": "Error thrown or empty results array.",
+          "expectedPassingEvidence": "Prints true true; no exception.",
+          "waiverGuidance": "N/A"
+        },
+        {
+          "number": 7,
+          "title": "End-to-end agent session smoke",
+          "expectedBehavior": "Full Polaris agent session calls QueryMemory and receives useful ranked excerpts relevant to the query.",
+          "proofType": "manual-script",
+          "exactCommand": "(1) npm start; (2) launch agent session on Polaris project; (3) prompt \"Call QueryMemory with query: what is the architecture for the memory tool\"; (4) inspect session card for ranked excerpts with file/heading citations; (5) Scott confirms result is relevant.",
+          "expectedInitialFailure": "All-file dump or empty response.",
+          "expectedPassingEvidence": "3-5 excerpts with source citations from Architecture.md or Build_Plan.md relevant to memory tool. Scott signs off.",
+          "waiverGuidance": "Manual sign-off required."
+        }
+      ],
+      "branch": "task/28-upgrade-project-memory-into-ranked-retr",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/60",
+      "project_source": "Polaris",
+      "promoted_via_pr": "60",
+      "promoted_at": "2026-05-29T04:54:58.904Z"
     }
   ]
 }
