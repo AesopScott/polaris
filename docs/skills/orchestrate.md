@@ -12,23 +12,24 @@ This skill runs continuously via a monitor loop. It is auto-invoked by Polaris w
 
 - Reads git branches, backlog state, and Obsidian sessions
 - Writes merger guides to Obsidian `{Project}_Sessions/` notes
-- Alerts Scott when pipeline gates are ready (review, promotion) — does NOT write `docs/backlog.json`
-- Does NOT resolve conflicts, apply code changes, merge branches, or initiate `/start-build`
+- Alerts Scott when pipeline gates are ready (review, promotion) — writes `docs/backlog.json` only for approval-handler status transitions (`review-passed`, `review-blocked`) triggered in PHASE 6C; all other backlog writes are performed by skill sessions
+- Does NOT resolve conflicts, apply code changes, or initiate `/start-build`
 - **Approves all phase transitions in the ship-task pipeline** — every move from one skill to the next requires orchestrator sign-off, with one exception: the transition from `/write-plan` (planned) to `/start-build` is human-gated and requires Scott's direct approval. The orchestrator cannot approve that gate.
-- **Owns all merges to `stage` or `main`** — the orchestrator performs every merge to a shared branch itself, coordinates one session at a time, and pushes to origin immediately after each merge before allowing the next session to proceed. No two sessions may merge to `stage` or `main` concurrently.
+- **Coordinates all merges to `stage` or `main`** — the orchestrator does NOT run merges itself; it issues a merge directive to the owning session (PHASE 6B) and enforces that only one merge runs at a time. No two sessions may merge to `stage` or `main` concurrently.
 
 ---
 
-## PIPELINE ALERTS (monitor-only — orchestrator does not write backlog.json)
+## PIPELINE ALERTS (monitor-only — orchestrator does not write backlog.json except in PHASE 6C)
 
-The orchestrator watches task status and alerts Scott when action is needed. It does not execute pipeline transitions.
+The orchestrator watches task status and alerts Scott when action is needed. It does not execute pipeline transitions, except that PHASE 6C writes `review-passed` or `review-blocked` status to `docs/backlog.json` as the approval handler.
 
 | Observed Status | Alert |
 |---|---|
 | `planned` | "Task #{N} is planned — waiting for Scott to run `/start-build`" |
 | `build-finished` | "Task #{N} build finished (PR #{pr}) — run `/review-pr {N}` then `/codex-review {N}`" |
-| `review-blocked` | "Task #{N} is review-blocked — fix the code on the branch, then re-run `/review-pr {N}`" |
-| `pr-reviewed` | "Task #{N} is reviewed — ready for `/promote-to-prod`" |
+| `pr-reviewed` | "Task #{N} Claude review captured — run `/codex-review {N}` to proceed" |
+| `review-blocked` | "Task #{N} is review-blocked — fix the code on the branch, then re-run `/review-pr {N}` and `/codex-review {N}`" |
+| `review-passed` | "Task #{N} both reviews passed — orchestrator will issue merge directive" |
 
 Statuses the orchestrator ignores: `backlog`, `build-started`, `cba-complete`, `production`, `cancelled`, `on-hold`, `failed`, `stalled`, `blocked`.
 
@@ -286,7 +287,7 @@ Post inline when a task reaches `review-blocked`:
 
 ## PHASE 5 — PIPELINE ALERTS (monitor-only)
 
-The orchestrator does not write `docs/backlog.json`, merge branches, or execute skill transitions. On every tick, scan task status and fire the alerts defined in the PIPELINE ALERTS table at the top of this file.
+The orchestrator does not merge branches or execute skill transitions. It does not write `docs/backlog.json` except for the `review-passed`/`review-blocked` transitions in PHASE 6C. On every tick, scan task status and fire the alerts defined in the PIPELINE ALERTS table at the top of this file.
 
 When a task reaches `build-finished`, alert Scott:
 ```
@@ -296,7 +297,12 @@ When a task reaches `build-finished`, alert Scott:
 
 When a task is `pr-reviewed`, alert Scott:
 ```
-✅ Task #{N} ({title}) — reviews passed. Ready for /promote-to-prod.
+📋 Task #{N} ({title}) — Claude review complete. Run /codex-review {N} to proceed.
+```
+
+When a task is `review-passed`, alert Scott:
+```
+✅ Task #{N} ({title}) — both reviews passed. Orchestrator will issue merge directive on next tick.
 ```
 
 When a task is `review-blocked`, fire Output D (PHASE 4).
