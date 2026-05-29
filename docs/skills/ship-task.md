@@ -183,7 +183,7 @@ Based on the task's current `status`:
 
 Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "planning", lastSkill: "plan-task" })` before invoking the skill.
 
-Invoke `/plan-task {N}` via the Skill tool. It will load Obsidian context, write the plan, save to `docs/backlog.json` on main, flip status to `ready`.
+Invoke `/plan-task {N}` via the Skill tool. It will load Obsidian context, write the plan, save to `docs/backlog.json` on main, flip status to `planned`.
 
 After it completes:
 - Show the plan summary to the user
@@ -257,7 +257,7 @@ If it succeeds, capture the PR URL.
 - `fix`: stop the workflow — user will adjust code and re-invoke `/finish-build`
 - `abort`: stop
 
-## Step 5 — Review PR (`build-finished` → reviewer assessment)
+## Step 5 — Review PR (`build-finished` → `pr-reviewed`)
 
 Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review", lastSkill: "review-pr" })` before invoking the skill.
 
@@ -268,28 +268,34 @@ After it completes:
 - Identify any CRITICAL or HIGH issues that must be resolved before production
 
 **Gate:** "Claude review complete. {findings summary}. Address issues or proceed to Codex review? [yes proceed / fix / abort]"
-- `yes`: continue to Step 6 (Codex review)
+- `yes`: Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "pr-reviewed", lastSkill: "review-pr" })`; continue to Step 6 (Codex review)
 - `fix`: stop the workflow — user will fix issues on the task branch and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
-## Step 6 — Codex Review (`build-finished` → independent assessment)
+## Step 6 — Codex Review (`pr-reviewed` → `review-passed` or `review-blocked`)
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "codex-review", lastSkill: "codex-review" })` before invoking the skill.
 
 Invoke `/codex-review {N}`. It will run an independent Codex review and compare findings against the Claude review from Step 5.
 
-**Status during review remains `build-finished`.** After the reviews complete (Step 5 and Step 6), a separate approval handler will set status to `pr-reviewed` (both reviews approved) or `review-blocked` (reviews found blocking issues). This approval handler is orchestrator-managed and will be documented in `orchestrate.md`.
+**Status during Codex review is `pr-reviewed`.** After both reviews complete, the gate below determines the outcome:
+- No CRITICAL or HIGH blockers across both reviews → set status to `review-passed` and proceed to Step 7.
+- Blocking issues found → set status to `review-blocked` and stop.
+
+In orchestrated multi-session runs, the approval handler may set `codex-reviewed` as an intermediate status; the resumption table holds at `codex-reviewed` until the handler flips to `review-passed` or `review-blocked`.
 
 After it completes:
 - Surface the Codex review findings and any disagreements with the Claude review
 - Identify any additional issues or confirm the reviews align
 
-**Gate:** "Codex review complete and compared. {findings summary}. Both reviews are now complete. If both pass without blocking issues, the approval handler will set status to `pr-reviewed` and `/promote-to-prod` can proceed. Continue to Step 7? [yes / fix / abort]"
-- `yes`: continue to Step 7 (promote to production)
-- `fix`: stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
+**Gate:** "Codex review complete and compared. {findings summary}. Both reviews are now complete. Approve and proceed to production? [yes (no blockers) / fix / abort]"
+- `yes`: Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review-passed", lastSkill: "codex-review" })`; continue to Step 7 (promote to production)
+- `fix`: Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review-blocked", lastSkill: "codex-review" })`; stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
 ## Step 7 — Promote to production (`review-passed` or `staged` → `production`)
 
-> **Reached after reviews are complete and approved in Steps 5-6.** Task status is `review-passed` (set by orchestrator approval handler after both reviews complete). This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
+> **Reached after reviews are complete and approved in Steps 5-6.** Task status is `review-passed` (set at the end of Step 6 after both reviews pass, or by the orchestrator approval handler in multi-session runs). This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
 
 Invoke `/promote-to-prod`. The orchestrator will send a merge directive to the owning session. The session executes the merge, validates success, and then proceeds with deploy verification. `/promote-to-prod` will choose the correct path:
 - CareGuide with real staged work: stage → main, then production deploy from main.

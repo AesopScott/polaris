@@ -98,7 +98,7 @@ The rest of this file applies only when the argument is a backlog **task number*
 - **Cannot promote to `main`.** Reviews are advisory output. Never offers to merge, never asks about promotion.
 - **No rollups.** Single-PR review. Multi-task rollup review is `/promote-stage`'s and `/promote-to-prod`'s audit step.
 
-> **Recommended flow (single terminal):** after `/finish-build` completes, run `/clear` to wipe the build session's memory, then `/review-pr {N}`, then `/codex-review {N}`. Both take the same task number. The two reviews share the post-`/clear` session, so this skill's comparison step finds the prior Claude review in context automatically. `/clear` is the reset that gives the reviewer a fresh head — no need to open a new terminal.
+> **Recommended flow (single terminal):** after `/finish-build` completes, run `/clear` to wipe the build session's memory, then `/review-pr task {N}`, then `/codex-review task {N}`. Both take the same task number. The two reviews share the post-`/clear` session, so this skill's comparison step finds the prior Claude review in context automatically. `/clear` is the reset that gives the reviewer a fresh head — no need to open a new terminal.
 
 ## Objective-Centric Criteria Contract
 
@@ -141,7 +141,10 @@ Same lifecycle check as `/review-pr`:
 | Current status | Allowed action |
 |---|---|
 | `build-finished` | ✅ Proceed — standard review status (awaiting Codex review). |
-| `cba-complete` | ⚠️ Soft warn: "Task #{N} is already cba-complete (Codex review done). This is a follow-up review. Proceed? [yes/no]" |
+| `review-blocked` | ✅ Proceed — re-running Codex review after fixes to resolve a blocked review. |
+| `codex-reviewed` | ⚠️ Soft warn: "Task #{N} is already codex-reviewed. This will produce a follow-up Codex review. Proceed? [yes/no]" |
+| `review-passed` | ⚠️ Soft warn: "Task #{N} has already passed review. This is an after-the-fact re-review. Proceed? [yes/no]" |
+| `cba-complete` | ⚠️ Soft warn: "Task #{N} is already cba-complete (cross-boundary audit done — further along the pipeline than this step). This is an after-the-fact review. Proceed? [yes/no]" |
 | `staged` / `production` / `complete` | ⚠️ Soft warn: "Task #{N} is already {status}. Review is after-the-fact only. Proceed? [yes/no]" |
 | `planned` / `backlog` / `build-started` | ❌ **Refuse.** "Task #{N} doesn't have a finished build to review (status: {status}). Run `/finish-build` first." Stop. |
 
@@ -157,7 +160,7 @@ Compare `git branch --show-current` to the task's `branch` field. If they match,
 
 > ⚠️ This session appears to be the one that wrote the code for Task #{task-N} (PR #{pr-N}). Reviewing your own work is a known anti-pattern.
 >
-> Recommended: start a new session and run `/codex-review {task-N}` there.
+> Recommended: start a new session and run `/codex-review task {task-N}` there.
 
 Ask whether to **abort** (default) or override. Only continue on explicit override.
 
@@ -195,7 +198,7 @@ Codex will include these findings in its review. See `/review-pr` Step 4a for th
 
 Invoke the Codex review path (`mcp__codex__codex_review` preferred, `/codex:rescue` as fallback) with a prompt that instructs Codex to:
 
-> Review pull request #{pr-N} for the CareGuide project (Task #{task-N}). The PR title is "{title}", base is `stage`, head is `task/{task-N}-{slug}`.
+> Review pull request #{pr-N} for the {project-name} project (Task #{task-N}). The PR title is "{title}", base is `stage`, head is `task/{task-N}-{slug}`.
 >
 > Context:
 > - Task spec (from `docs/backlog.json` task #{task-N}): {description + plan + objective}
@@ -306,7 +309,7 @@ For every section where the two reviewers reached different conclusions, summari
 
 **If not found**, tell the user:
 
-> No prior `/review-pr {task-N}` output in this session. To get a Claude vs Codex comparison, run `/review-pr {task-N}` first in this same session, then `/codex-review {task-N}` again. The current run produced only the Codex review above.
+> No prior `/review-pr task {task-N}` output in this session. To get a Claude vs Codex comparison, run `/review-pr task {task-N}` first in this same session, then `/codex-review task {task-N}` again. The current run produced only the Codex review above.
 
 ## Step 9 — Log Codex Review + Comparison to Obsidian
 
@@ -336,7 +339,7 @@ Append the Codex review (and comparison, if generated) to the task's Obsidian tr
 
 5. Tell the user: "Codex review + comparison logged to `{ProjectObsidian}_Build/Tasks/Task-{task-N}-{slug}.md`."
 
-## Step 9 — Set task status to `codex-reviewed` (task mode only)
+## Step 10 — Set task status to `codex-reviewed` (task mode only)
 
 In task mode, after the Codex review is complete and logged, set the task's status to `codex-reviewed` in `docs/backlog.json` on main:
 
@@ -357,9 +360,9 @@ This status indicates that the Codex review has been captured and findings are d
 
 **Important:** This skill does NOT set `review-blocked` or `review-passed`. Only the orchestrator approval handler sets those statuses.
 
-## Step 10 — Approval handler will read both reviews
+## Step 11 — Approval handler will read both reviews
 
-> **Note on status:** You set `codex-reviewed` in Step 9. The orchestrator approval handler (PHASE 6C) now reads both `/review-pr` findings AND `/codex-review` findings and decides:
+> **Note on status:** You set `codex-reviewed` in Step 10. The orchestrator approval handler (PHASE 6C) now reads both `/review-pr` findings AND `/codex-review` findings and decides:
 >
 > | Both Approve | Codex Blocks | Claude Blocks but Codex Approves |
 > |---|---|---|
@@ -370,7 +373,7 @@ This status indicates that the Codex review has been captured and findings are d
 > 
 > **If `review-blocked` is set:** The user will fix the code and re-run this `/codex-review` skill (or `/review-pr` if only Claude blocked). The skill runs again from Step 1, captures new findings, and repeats until `review-passed` is reached.
 
-## Step 11 — Final question
+## Step 12 — Final question
 
 Ask: "Post the Codex review (and comparison, if generated) as a GitHub PR comment, continue working from the recommendations, or take a different action?"
 
