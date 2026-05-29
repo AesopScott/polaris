@@ -838,9 +838,12 @@ Added missing-file guard: if the task file doesn't exist or either review sectio
 
 **No changes needed to `/review-pr` or `/codex-review`** — they already write to the correct deterministic path.
 
-**Pre-existing gaps found during cross-check (ship-task session claims to have addressed these in commit `308fd47`):**
-- `~/.claude/commands/review-pr.md` was missing Step 7 (`pr-reviewed` status set) — the docs version had it but the commands version did not. Ship-task session says it synced this.
-- `~/.claude/commands/codex-review.md` had `cba-complete` as the state-guard entry (should be `codex-reviewed`) and "CareGuide" hardcoded in prompt template. Ship-task session says it fixed this.
+**Pre-existing gaps found during cross-check and fixed by orchestrator session:**
+- `~/.claude/commands/review-pr.md` — missing Step 7b (`pr-reviewed` status set). **Fixed:** inserted Step 7b with `node -e` status update, explanation that only the orchestrator approval handler sets `review-blocked`/`review-passed`.
+- `~/.claude/commands/codex-review.md` — three fixes applied:
+  1. State guard: replaced `cba-complete` row with `pr-reviewed` (correct preceding status) and `codex-reviewed` (already-reviewed soft warn)
+  2. Hardcoded `CareGuide project` in Codex prompt template → `{project-name}` (generic); hardcoded `stage` base branch → `main` (generic)
+  3. Step 10: replaced "orchestrator handles backlog / sets `pr-reviewed`" with the correct `codex-reviewed` status-set via `node -e`, matching the docs version
 
 **Commit:** See git log for `docs(orchestrate): fix PHASE 6C approval handler to use deterministic task file path`
 
