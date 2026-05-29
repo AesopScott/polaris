@@ -3920,7 +3920,9 @@ function toolSetStatus({ status } = {}, sessionId) {
 
 const PIPELINE_STEP_INDEX = {
   'backlog': 0, 'planned': 1, 'ready': 1,
-  'build-started': 2, 'in-progress': 2,
+  'planning': 1,
+  'start-build': 2, 'build-started': 2, 'in-progress': 2,
+  'coding': 3, 'audit': 3,
   'build-finished': 4, 'in-review': 4,
   'review-blocked': 5, 'pr-reviewed': 5,
   'cba-complete': 6,
@@ -3934,7 +3936,7 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill, isPipelineSkill } 
   if (taskNumber      !== undefined) session.taskNumber      = taskNumber;
   if (taskState       !== undefined) session.taskState       = taskState;
   if (lastSkill       !== undefined) session.lastSkill       = lastSkill;
-  if (isPipelineSkill !== undefined) session.isPipelineSkill = isPipelineSkill;
+  if (isPipelineSkill === true && !session.isPipelineSkill) session.isPipelineSkill = true;
   broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   if (taskState !== undefined && session.taskNumber) {
     broadcast({ type: 'task-pipeline-state', taskNumber: session.taskNumber, status: session.taskState, stepIndex: PIPELINE_STEP_INDEX[session.taskState] || 0, lastSkill: session.lastSkill || null, lastResult: null });
