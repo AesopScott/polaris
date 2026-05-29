@@ -15,13 +15,17 @@ backlog
   ↓
 [/start-build] → build-started
   ↓
+  (coding — status stays build-started)
+  ↓
+[/cross-boundary-audit] → cba-complete
+  ↓
 [/finish-build] → build-finished
   ↓
 [/review-pr] → (no status change)
   ↓
 [/codex-review] → pr-reviewed
   ↓
-[/promote-stage] → staged
+[/promote-stage] → staged  (CareGuide only — see Phase 6 note)
   ↓
 [/promote-to-prod] → production
 ```
@@ -55,18 +59,32 @@ backlog
 
 **Output:** Developer is now in a focused build session on an isolated branch
 
+### Phase 2.5: Cross-Boundary Audit (`/cross-boundary-audit`)
+
+**What it does:**
+- Verifies all new identifiers produced by the build are registered with correct line refs
+- Checks proof units — confirms failing test → implementation → passing test evidence exists
+- Fixes any registry gaps before the branch is pushed
+
+**Status transition:** `build-started` → `cba-complete`
+
+**Output:** All boundary contracts and registries are clean; task is ready to finish-build
+
+> **Note:** `cba-complete` means the cross-boundary audit is done, not that code review is done. The status stays `cba-complete` until `/finish-build` runs and opens the PR.
+
+---
+
 ### Phase 3: Build Completion (`/finish-build`)
 
 **What it does:**
-- Verifies proof trail: failing test → implement → passing test (RED→GREEN per proof unit)
-- Runs cross-boundary audit to confirm all new identifiers are in registries with correct line refs
+- Takes over from `cba-complete` state
 - Commits all changes with conventional commit message
 - Pushes the branch with `-u` flag
 - Opens a pull request targeting the `stage` branch (CareGuide deployments) or `main` (other projects)
 - Records the PR URL in `docs/backlog.json`
 - Clears the build session context
 
-**Status transition:** `build-started` → `build-finished`
+**Status transition:** `cba-complete` → `build-finished`
 
 **Output:** PR is open and ready for review; task branch remains checked out
 
