@@ -520,6 +520,47 @@ Can patch just these affected rows; may be 3-4 total changes to resumption table
 
 ---
 
+---
+
+## Work Completed (2026-05-29 Implementation Session)
+
+### ✅ Gap #9: cba-complete resumption table routing — FIXED
+- Updated docs/skills/ship-task.md resumption table
+- Changed `cba-complete → Step 4 (finish-build)` (was incorrectly pointing to Step 6)
+- Synced to ~/.claude/commands/ship-task.md
+
+### ✅ Gap #10: pr-reviewed missing from resumption table — ADDED
+- Added new resumption table row: `pr-reviewed → Step 7 (promote-to-prod)`
+- Clarified routing for post-approval tasks
+
+### ✅ Gap #11: Step 6 SetTaskState call — FIXED
+- Removed pre-review `SetTaskState("cba-complete")` call from Step 6
+- Updated Step 6 description to clarify status remains `build-finished` during reviews
+- Status is now set to `pr-reviewed` or `review-blocked` by orchestrator approval handler (future work)
+
+### ✅ Gap #2: Merge completion directive polling in `/promote-to-prod` — IMPLEMENTED
+- Added Step 6: "Poll for Merge Completion Directive" with full protocol
+- Added Step 7-After: "Validate Merge and Poll for Merge Completion Directive"
+- Includes merge validation, origin push, and post-merge directive polling
+- Updated Step 9 to clarify status requirements (`pr-reviewed` or `staged`)
+
+### ✅ Gap #6 (Partial): Error handling for directive polling — STARTED
+- `/promote-to-prod`: Added comprehensive try-catch and retry logic
+- All three directive polling sections in promote-to-prod now include:
+  - Try-catch blocks with error handling
+  - Exponential backoff retry (up to 3 attempts)
+  - 5-second timeout per read
+  - Graceful fallback to single-session mode on failure
+  - Do not halt on missing directives
+- **Next:** Add same error handling to other pipeline skills one at a time
+
+### ✅ Gap #1 (Revised): Documentation of `/promote-to-prod` workflow
+- Merge Model section updated to clarify orchestrator sends directives (not requests)
+- Documented that `/promote-to-prod` waits for merge directive before merging
+- Added protocol for status checking (`pr-reviewed` as entry status)
+
+---
+
 ### Implementation Order (Prioritized)
 
 1. **HIGH (blockers for merge flow):**
