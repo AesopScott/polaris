@@ -7115,6 +7115,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
     hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
     // Inject top project memories at turn 1 so the model starts context-aware.
     // Use trace variant so we can log what was injected for the Injections panel.
+    // Log retention: capped at INJECTION_LOG_MAX_LINES entries (~500KB max) — see prune block below.
     if (session.projectName) {
       const { block: memBlock, memories: injMems, queryType, effectiveQuery } =
         await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
@@ -12662,9 +12663,12 @@ async function handleMessage(ws, raw) {
     let entries = [];
     try {
       if (fs.existsSync(INJECTION_LOG_PATH)) {
-        const lines = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
-        const limit = Math.min(parseInt(msg.limit, 10) || 50, 200);
-        entries = lines.slice(-limit).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        const stat = fs.statSync(INJECTION_LOG_PATH);
+        if (stat.size < 5_000_000) {  // 5MB hard cap — write-side prune keeps this under ~100KB normally
+          const lines = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
+          const limit = Math.min(parseInt(msg.limit, 10) || 50, 200);
+          entries = lines.slice(-limit).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        }
       }
     } catch {}
     sendTo(ws, { type: 'injection-history', entries });
