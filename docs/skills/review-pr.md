@@ -9,19 +9,63 @@ This skill reviews code and outputs a structured review. It runs in one of two m
 
 **You do not post to GitHub. You output the review as text only.**
 
-## Directive Polling (multi-session only)
+## Directive Polling (multi-session only) with Error Handling
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
-2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
-3. If found:
-   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
-   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
-   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
-4. If not found or single-session context: proceed normally with "Review modes" below
+**Polling with try-catch and retry:**
 
-> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Review modes".
+Use `node -e` with error handling (never the Read tool):
+
+```bash
+timeout=5
+retries=0
+max_retries=3
+
+while [ $retries -lt $max_retries ]; do
+  timeout $timeout node -e "
+    try {
+      const fs = require('fs');
+      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
+      if (!fs.existsSync(dirPath)) {
+        console.log('no-directive');
+        process.exit(0);
+      }
+      const content = fs.readFileSync(dirPath, 'utf8');
+      const data = JSON.parse(content);
+      const sessionId = process.env.SESSION_ID || 'unknown';
+      const pending = data.directives && data.directives.find(d => 
+        d.target.sessionId === sessionId && d.status === 'pending'
+      );
+      if (pending) {
+        console.log(JSON.stringify(pending));
+      } else {
+        console.log('no-directive');
+      }
+    } catch (e) {
+      console.error('read-failed: ' + e.message);
+      process.exit(1);
+    }
+  " && break
+  retries=$((retries + 1))
+  [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
+done
+
+if [ $retries -eq $max_retries ]; then
+  echo "⚠️ Directive polling unavailable. Proceeding in single-session mode."
+fi
+```
+
+**Behavior:**
+
+1. If directive found:
+   - Set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>`
+   - Execute the `instruction` field as a user message
+   - Set `status: "completed"` with `completedAt` and `result`
+
+2. If no directive or polling fails:
+   - Continue to "Review modes" in single-session fallback mode
+   - **Do not halt** on missing directives
 
 ---
 
