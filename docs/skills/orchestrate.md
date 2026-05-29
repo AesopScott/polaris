@@ -346,36 +346,21 @@ User approval is always valid and overrides the gate — sessions may proceed im
 
 ---
 
-## PHASE 6B — MERGE SERIALIZATION
+## PHASE 6B — MERGE COORDINATION (directive-only)
 
-The orchestrator is the sole executor of all merges to `stage` or `main`. No session merges directly. One merge at a time — push to origin before allowing the next.
+The orchestrator does NOT run merges itself. It detects `review-passed` tasks and issues a merge directive to the owning session. The session performs the actual merge. One merge authorized at a time.
 
-### Step 1: Build the merge queue
+### Step 1: Build merge queue
 
-On each tick, scan `docs/backlog.json` for tasks with `status === "pr-reviewed"` (or `"cba-complete"` for CareGuide stage merges). Collect their PR numbers and branch names into an ordered queue, oldest `pr_url` first.
+On each tick, scan `docs/backlog.json` for tasks with `status === "review-passed"` (or `"cba-complete"` for CareGuide stage merges). Collect their PR numbers and branch names in an ordered queue, oldest `pr_url` first.
 
-### Step 2: Check for active merge
+### Step 2: Check for active merge directive
 
-Read `session-directives.json` for any directive with `instruction` containing `"merge-in-progress"` and `status === "acknowledged"`. If one exists, the current merge is still in flight — skip to Step 5 and wait.
+Read `session-directives.json` for any entry with `priority === "critical"` and `status === "pending"` or `"acknowledged"` that contains a merge instruction. If one exists, a merge is already in flight — skip to Step 4 and wait.
 
-### Step 3: Execute the next merge
+### Step 3: Issue merge directive to owning session
 
-For the first item in the queue:
-
-```bash
-gh pr merge <PR_NUMBER> --merge --auto
-```
-
-Then pull and push to origin immediately:
-
-```bash
-git pull origin main
-git push origin main
-```
-
-### Step 4: Write completion directive to the session
-
-Write a `pending` directive to `session-directives.json` notifying the owning session that its PR has merged and it can clean up:
+Write a `critical` directive to `session-directives.json` for the session owning the first queued task:
 
 ```bash
 node -e "
@@ -387,8 +372,8 @@ arr.push({
   issuedAt: new Date().toISOString(),
   issuedBy: 'orchestrator',
   target: { branch: '<BRANCH>' },
-  instruction: 'Your PR #<N> has been merged to main. Push to origin is complete. You may now clean up your worktree and close the build session.',
-  priority: 'high',
+  instruction: 'PR #<N> approved for merge to main. Run: gh pr merge <N> --merge, then git pull origin main && git push origin main. Then proceed to /promote-to-prod to set task #<TASK_N> to production.',
+  priority: 'critical',
   status: 'pending',
   acknowledgedAt: null,
   completedAt: null,
@@ -398,20 +383,58 @@ fs.writeFileSync(p, JSON.stringify(arr, null, 2), 'utf8');
 "
 ```
 
-### Step 5: Log and proceed to next
-
 Log in the status table:
 ```
-✅ Merged PR #<N> (<branch>) → main. Pushed to origin. Queue: <N remaining>
+🔀 Merge directive issued — PR #<N> (<branch>). Waiting for session to execute.
 ```
 
-Remove the merged task from the queue. If more items remain, wait until next tick then repeat from Step 2.
+### Step 4: Monitor for completion
+
+On each subsequent tick, check whether the task's status reached `production` in `docs/backlog.json`. If `production` → log success and move to next item in queue.
+
+If NOT reached within 10 minutes → write to `orchestrator-alerts.json` and escalate to Scott.
 
 ### Hard rules
 
-- Never merge two PRs in the same tick
-- Always push to origin before writing the completion directive
-- If `gh pr merge` fails, write to `orchestrator-alerts.json` and escalate to Scott — do not retry automatically
+- Never issue two merge directives simultaneously
+- Only issue a directive when status is exactly `review-passed` — NOT `pr-reviewed` or `codex-reviewed`
+- Do NOT run `gh pr merge` yourself — directive only
+
+---
+
+## PHASE 6C — APPROVAL HANDLER
+
+Fires when a task reaches `codex-reviewed` status. Reads both review findings and decides the final gate outcome.
+
+### Trigger
+
+On each tick, scan backlog for tasks newly at `codex-reviewed`. For each:
+
+### Step 1: Read both review findings
+
+Review findings are written to Obsidian by `/review-pr` and `/codex-review`. Read both from:
+```
+G:\My Drive\Aesop Academy\Obsidian\{Project}_Sessions\
+```
+Find the most recent session notes for the task number that contain review findings. Look for CRITICAL/HIGH/BLOCK markers.
+
+### Step 2: Compare and decide
+
+**APPROVE** — both reviews found no CRITICAL or HIGH issues:
+→ Set task status to `review-passed` via node -e utf8
+→ Write high-priority directive to session: "Both reviews passed. Orchestrator will issue merge directive on next tick."
+
+**BLOCK** — one or both reviews found CRITICAL or HIGH issues:
+→ Set task status to `review-blocked` via node -e utf8
+→ Write directive to session listing all CRITICAL/HIGH findings that must be fixed
+→ Write to `orchestrator-alerts.json`
+
+### Step 3: Log outcome
+
+```
+✅ Approval handler: Task #<N> → review-passed  (both reviews clean)
+🚫 Approval handler: Task #<N> → review-blocked  (blockers: <list>)
+```
 
 ---
 

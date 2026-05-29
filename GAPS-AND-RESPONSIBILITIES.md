@@ -643,3 +643,67 @@ Can patch just these affected rows; may be 3-4 total changes to resumption table
    - Gap #4: Status sync protocol (orchestrator responsibility)
    - Gap #5: Orchestrate.md sequence clarification (orchestrator responsibility)
 
+---
+
+## Architectural Decision — New Review Statuses (2026-05-29, Scott confirmed)
+
+### Decision
+
+The review phase introduces two new statuses and changes the meaning of `review-blocked`. The pipeline now has a clear per-review checkpoint and a final outcome gate.
+
+**New statuses to add to `BACKLOG_STATUS_OPTIONS` and `PIPELINE_STEP_INDEX` in server.js:**
+
+| Status | Set by | Meaning |
+|---|---|---|
+| `pr-reviewed` | `/review-pr` | Claude review has run and findings are captured (regardless of outcome) |
+| `codex-reviewed` | `/codex-review` | Codex review has run and findings are captured (regardless of outcome) |
+| `review-passed` | Orchestrator approval handler | Both reviews complete and both approved — ready for merge |
+| `review-blocked` | Orchestrator approval handler | Both reviews complete and at least one found blockers — must fix before merging |
+
+**Rules:**
+- Status moves to `pr-reviewed` after `/review-pr` runs, even if findings are blocking
+- Status moves to `codex-reviewed` after `/codex-review` runs, even if findings are blocking
+- The approval handler fires when `codex-reviewed` is reached — it reads both sets of findings and decides `review-passed` or `review-blocked`
+- `review-blocked` is NOT set until BOTH reviews have run
+- The orchestrator issues the merge directive only when status reaches `review-passed`
+
+**Updated pipeline sequence:**
+```
+build-finished
+  ↓ [/review-pr runs]
+pr-reviewed  (Claude findings captured)
+  ↓ [/codex-review runs]
+codex-reviewed  (Codex findings captured)
+  ↓ [Orchestrator approval handler]
+review-passed  OR  review-blocked
+  ↓ (if review-passed)
+[Orchestrator issues merge directive → session merges]
+  ↓
+production
+```
+
+---
+
+### Orchestrator Merge Model — Revised (directive-only)
+
+The orchestrator does **not** run `gh pr merge` itself. It is directive-only.
+
+**Revised orchestrator behavior (replaces PHASE 6B self-merge model):**
+1. Detect task reaches `review-passed` in backlog
+2. Write merge directive to `session-directives.json` for the owning session:
+   - `instruction`: "PR #N approved for merge. Run: `gh pr merge N --merge`, then `git pull origin main && git push origin main`. Then proceed to `/promote-to-prod`."
+   - `priority`: `critical`
+3. Monitor backlog for task to reach `production`
+4. If not reached within 10 minutes → escalate to Scott
+
+**Responsibility assignments:**
+
+| Item | Owner | Status |
+|---|---|---|
+| Add `codex-reviewed` and `review-passed` to server.js status enums | **SHIP-TASK SESSION** | ⏳ Open |
+| Update all pipeline skills for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ⏳ Open |
+| Update resumption table for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ⏳ Open |
+| Design and implement orchestrator approval handler (Gap #3) | **ORCHESTRATOR SESSION** | ⏳ Open |
+| Revise orchestrate.md PHASE 6B to directive-only merge model | **ORCHESTRATOR SESSION** | ⏳ Open |
+| Update `docs/skills/orchestrate.md` to match | **ORCHESTRATOR SESSION** | ⏳ Open |
+
