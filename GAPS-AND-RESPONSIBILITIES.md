@@ -584,10 +584,10 @@ Can patch just these affected rows; may be 3-4 total changes to resumption table
 - ✅ Gap #6: Error handling for all 9 pipeline skills completed
 - ✅ Gap #1 (revised): `/promote-to-prod` merge workflow documented
 
-**Medium-Priority Gaps (awaiting orchestrator):**
-- ⏳ Gap #3: Directive issuance logic (orchestrator responsibility) — needed before full multi-session testing
-- ⏳ Gap #4: Status synchronization protocol (both sessions) — awaiting orchestrator design
-- ⏳ Gap #5: Status naming consistency (both sessions) — awaiting orchestrator docs update
+**Medium-Priority Gaps (now closed by orchestrator session):**
+- ✅ Gap #3: Directive issuance logic — BACKLOG:STATUS_CHANGE table now specifies directive for every status transition; heartbeat re-issue after 2 unacknowledged ticks
+- ✅ Gap #4: Status sync protocol — heartbeat built into directive issuance; max 60s to acknowledgement before re-issue, escalate after tick 3
+- ✅ Gap #5: Status naming consistency — PHASE 6 branch gate updated; `cba-complete` documented as mid-build only, not a promotion gate; new statuses `codex-reviewed` and `review-passed` added throughout
 
 **Gap #8 (Post-merge status ownership):**
 - ✅ Implemented in `/promote-to-prod` Step 9 — validates merge succeeded, pushes to origin, sets `production` status

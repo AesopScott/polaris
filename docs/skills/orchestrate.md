@@ -172,7 +172,24 @@ At the start of each tick, collect ALL events that fired since the last tick int
 
 ### Event: BACKLOG:STATUS_CHANGE
 
-At every tick, scan `docs/backlog.json` for tasks that transitioned to an alert-worthy state (see PIPELINE ALERTS above). Fire the appropriate alert inline in the orchestrator session. Do NOT write to `docs/backlog.json`.
+At every tick, scan `docs/backlog.json` for tasks that transitioned to an alert-worthy state. For each transition, fire the alert AND issue the appropriate directive:
+
+| New Status | Alert | Directive to session |
+|---|---|---|
+| `planned` | "Task #{N} planned — waiting for Scott to run `/start-build`" | None (human gate) |
+| `cba-complete` | "Task #{N} audit passed — ready for `/finish-build`" | `high` — "Audit passed. Run `/finish-build` now." |
+| `build-finished` | "Task #{N} PR open — run `/review-pr` then `/codex-review`" | `high` — "PR #N is open. Run `/review-pr {N}` now." |
+| `pr-reviewed` | "Task #{N} Claude review captured — run `/codex-review {N}`" | `high` — "Claude review complete. Run `/codex-review {N}` now." |
+| `codex-reviewed` | "Task #{N} both reviews captured — running approval handler" | Trigger PHASE 6C immediately |
+| `review-passed` | "Task #{N} reviews passed — issuing merge directive" | Trigger PHASE 6B immediately |
+| `review-blocked` | "Task #{N} review-blocked — both reviews ran, blockers found" | `high` — list CRITICAL/HIGH findings; "Fix and re-run `/review-pr` + `/codex-review`." |
+
+**Directive issuance rules:**
+- Read `session-directives.json` before issuing — if a pending/acknowledged directive already exists for this task/branch, do NOT issue a duplicate
+- Track last-issued directive per task in the status table to prevent re-issuing on every tick
+- The `planned` transition is the ONLY status change that does NOT trigger a directive (human gate)
+
+**Heartbeat:** If a directive stays `pending` for more than 2 ticks (≈60s) without acknowledgement, re-issue once with `priority: "critical"`. After a third tick still unacknowledged, escalate to Scott via `orchestrator-alerts.json`.
 
 ### Event: REGISTRY:CHANGED
 
@@ -319,7 +336,7 @@ Sessions append a request object to `%APPDATA%\.claude\polaris\session-guidance\
 
    **Auto-deny:**
    - Force-push (`--force`) to any branch
-   - Checkout of `main`, `stage`, or `prod` without an active promotion task in `build-finished` or `cba-complete` state
+   - Checkout of `main`, `stage`, or `prod` without an active promotion task in `build-finished`, `review-passed`, or `pr-reviewed` state (`cba-complete` is a mid-build status, not a promotion gate)
    - Any op where two sessions would land on the same branch simultaneously
    - Worktree removal when uncommitted changes are present
 
