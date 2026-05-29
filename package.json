@@ -17,7 +17,8 @@
     "postdist:public": "node scripts/prune-dist.js",
     "test:contracts": "vitest run test/contracts",
     "test:policy": "vitest run test/policy",
-    "test:memory": "vitest run test/memory"
+    "test:memory": "vitest run test/memory",
+    "test:retrieval": "vitest run test/memory/obsidianRetrieval"
   },
   "build": {
     "appId": "com.scott.polaris",
