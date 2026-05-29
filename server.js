@@ -939,8 +939,8 @@ function onSessionClosed(sessionId) {
   if (!set) return;
   set.delete(sessionId);
 
-  // Tear down when concurrency drops to 1 — the remaining solo session writes directly.
-  if (set.size <= 1) {
+  // Tear down when the last build session closes — orchestrator has no work until 2+ sessions return.
+  if (set.size === 0) {
     const orchId = orchestratorSessions.get(projectName);
     if (orchId) teardownOrchestratorSession(orchId, projectName);
   }
@@ -1060,7 +1060,8 @@ function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
     chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
-    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
+    model: s.model || null,
+    isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
     claudeSessionId: s.claudeSessionId || null,
@@ -1166,7 +1167,9 @@ function loadPersistedSessions() {
           console.error('[orchestrator] post-load spawn failed for', projectName, err));
       }
     }
-  } catch {}
+  } catch (err) {
+    console.error('[orchestrator] loadPersistedSessions error:', err);
+  }
 }
 
 loadPersistedSessions();

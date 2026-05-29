@@ -335,8 +335,8 @@ The pre-existing `session-created` broadcast gained a new optional field in task
 - `server.js` — `spawnOrchestratorSession()` broadcasts with `isOrchestrator: true` when orchestrator spawns
 
 **Consumers (Client receives)**
-- `resources/mockup.html:4921` — `session-created` handler stores `isOrchestrator: msg.isOrchestrator || false` in sessionStore
-- `resources/mockup.html:6516` — `buildCard()` reads `s.isOrchestrator` to apply `status-orchestrator-card` CSS class
+- `resources/mockup.html:4945` — `session-created` handler stores `isOrchestrator: msg.isOrchestrator || false` in sessionStore
+- `resources/mockup.html:6541` — `buildCard()` reads `s.isOrchestrator` to apply `status-orchestrator-card` CSS class
 
 **Status:** ✓ Balanced — new field has producer and consumer
 
@@ -435,7 +435,7 @@ The pre-existing `session-created` broadcast gained a new optional field in task
 - 13 entries total (12 previous + `session-created.isOrchestrator` added)
 - New field `isOrchestrator: boolean` added to `session-created` payload schema
 - Producer: `server.js` `spawnOrchestratorSession()` broadcasts with `isOrchestrator: true`
-- Consumers: `mockup.html:4921` (sessionStore), `mockup.html:6516` (buildCard CSS class)
+- Consumers: `mockup.html:4945` (sessionStore), `mockup.html:6541` (buildCard CSS class)
 - 0 hard-fail findings
 - 0 shape mismatches
 - 0 orphan producers or consumers
