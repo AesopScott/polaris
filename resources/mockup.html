@@ -290,6 +290,10 @@
   #pending-stack { display: flex; flex-direction: column; gap: 3px; padding: 6px 4px 4px; max-height: 110px; overflow-y: auto; }
   #pending-stack.hidden { display: none; }
   .pending-item { display: flex; align-items: flex-start; gap: 4px; font-size: 11px; color: #fbbf24; padding: 3px 7px; background: rgba(251,191,36,0.10); border-left: 2px solid #f59e0b; border-radius: 3px; line-height: 1.4; }
+  .sys-instr-btn { flex-shrink:0; padding:6px 9px; border-radius:6px; border:1px solid #444; font-size:13px; cursor:pointer; opacity:0.45; background:transparent; color:var(--text,#e2e8f0); transition:opacity 0.15s,background 0.15s; height:36px; }
+  .sys-instr-btn:hover { opacity:0.85; }
+  .sys-instr-btn.active { background:rgba(180,83,9,0.85); color:#fff; border-color:#b45309; opacity:1; }
+  #float-prompt-wrap.is-system .prompt-area { border-left:3px solid #f59e0b !important; }
   .pending-item-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
   .pending-item textarea { flex: 1; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,0.18); border: 1px solid #f59e0b; border-radius: 3px; padding: 2px 4px; resize: vertical; min-height: 38px; outline: none; font-family: inherit; line-height: 1.4; width: 100%; }
   .pending-item-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
@@ -1422,6 +1426,23 @@
   .health-row span:last-child { color:#e5e7eb; text-align:right; }
   .health-actions { display:flex; gap:8px; padding:10px 12px; border-top:1px solid rgba(96,165,250,0.18); }
   .health-actions .fbtn { flex:1; padding:6px 8px; font-size:11px; }
+  /* Task Lane pipeline step indicators */
+  .task-pipeline { display:flex; gap:2px; margin-top:5px; align-items:center; flex-wrap:nowrap; }
+  .task-pipeline-step { padding:1px 5px; border-radius:3px; font-size:9px; font-weight:600; white-space:nowrap; letter-spacing:0.02em; border:1px solid transparent; }
+  .task-pipeline-step.tps-done { background:rgba(34,197,94,0.15); color:#4ade80; border-color:rgba(34,197,94,0.25); }
+  .task-pipeline-step.tps-current { background:rgba(96,165,250,0.25); color:#93c5fd; border-color:rgba(96,165,250,0.45); }
+  .task-pipeline-step.tps-pending { background:rgba(255,255,255,0.04); color:#475569; border-color:rgba(255,255,255,0.06); }
+  .task-pipeline-step.tps-blocked { background:rgba(239,68,68,0.15); color:#f87171; border-color:rgba(239,68,68,0.3); }
+  /* Review FINDINGS checklist in backlog rows */
+  .task-findings { margin-top:6px; padding:5px 8px; border-radius:4px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+  .task-findings-header { font-size:9px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#64748b; margin-bottom:3px; }
+  .task-findings-group { margin-bottom:2px; }
+  .task-findings-label { font-size:9px; font-weight:700; margin-right:4px; }
+  .task-findings-label.sev-critical { color:#f87171; }
+  .task-findings-label.sev-high { color:#fb923c; }
+  .task-findings-label.sev-medium { color:#fbbf24; }
+  .task-findings-label.sev-low { color:#94a3b8; }
+  .task-findings-item { font-size:10px; color:#cbd5e1; line-height:1.4; }
 </style>
 </head>
 <body>
@@ -1456,19 +1477,23 @@
     <canvas id="firework-canvas"></canvas>
 
     <div class="header-identity">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-        <div style="display:flex;align-items:center;gap:14px;">
+      <div style="display:flex;align-items:center;width:100%;">
+        <div style="flex:1;display:flex;justify-content:center;align-items:center;">
           <div id="meetup-reservations-chip" class="meetup-reservations-chip" title="Meetup reservations across Advanced AI Concepts events">
             <div class="meetup-reservations-label">Meet up reservations</div>
             <div id="meetup-reservations-count" class="meetup-reservations-count">--</div>
           </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
           <div style="display:flex;align-items:center;gap:14px;">
             <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
             <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
           </div>
+          <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
+          <button id="btn-memory" class="hbtn btn-config" onclick="toggleMemoryPanel()" data-tooltip="Memory — Obsidian retrieval index stats and last 20 QueryMemory retrieval events" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Memory</span></button>
+          <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
         </div>
-        <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
-        <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
+        <div style="flex:1;"></div>
       </div>
     </div>
 
@@ -2407,6 +2432,24 @@
       </div>
       <div id="injection-panel-body" style="overflow-y:auto;max-height:580px;"></div>
     </div>
+  </div>
+
+  <!-- Memory Panel (task #28) -->
+  <div class="projects-panel hidden palette" id="memory-panel" style="width:680px;max-height:700px;">
+    <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
+    <div class="preview-toolbar">
+      <span class="preview-drag-handle">⠿⠿</span>
+      <span style="flex:1;font-size:13px;font-weight:800;">Memory Index</span>
+      <button class="preview-close-btn" onclick="closeMemoryPanel()">✕</button>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+      <span style="font-size:11px;opacity:0.5;">Obsidian retrieval index stats and last 20 QueryMemory events.</span>
+      <button onclick="refreshMemoryPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    </div>
+    <div id="memory-panel-stats" style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;display:flex;gap:24px;flex-wrap:wrap;min-height:44px;align-items:center;">
+      <span style="opacity:0.4;">No index loaded — call QueryMemory with a query to build one.</span>
+    </div>
+    <div id="memory-panel-history" style="padding:0;overflow-y:auto;flex:1;max-height:520px;"></div>
   </div>
 
   <!-- Status Update Modal -->
@@ -5064,6 +5107,26 @@
         break;
       }
 
+      case 'task-pipeline-state': {
+        // Live pipeline step update — patch the pipeline bar in the backlog panel if visible
+        const bar = document.getElementById(`pipeline-bar-${msg.taskNumber}`);
+        if (bar && typeof CLIENT_PIPELINE_STEP_INDEX !== 'undefined') {
+          const current = msg.stepIndex ?? (CLIENT_PIPELINE_STEP_INDEX[msg.status] || 0);
+          const isBlocked = msg.status === 'review-blocked';
+          bar.dataset.step = current;
+          bar.querySelectorAll('.task-pipeline-step').forEach((el, idx) => {
+            const stepIdx = PIPELINE_STEPS[idx]?.stepIndex ?? (idx + 1);
+            el.className = 'task-pipeline-step ' + (
+              stepIdx < current ? 'tps-done' :
+              stepIdx === current ? (isBlocked ? 'tps-blocked' : 'tps-current') :
+              'tps-pending'
+            );
+          });
+        }
+        pushDebugLog(`[pipeline] #${msg.taskNumber} → ${msg.status} (step ${msg.stepIndex ?? '?'})`);
+        break;
+      }
+
       case 'orchConflict': {
         if (typeof renderOrchConflict === 'function') renderOrchConflict(msg);
         const panel = document.getElementById('orchestrator-panel');
@@ -5300,6 +5363,10 @@
         }
         break;
       }
+
+      case 'memory-status':
+        if (typeof renderMemoryPanel === 'function') renderMemoryPanel(msg.stats, msg.history);
+        break;
 
       case 'backlog-error':
         if (typeof showBacklogError === 'function') showBacklogError(msg.error || 'Unknown error');
@@ -6436,6 +6503,7 @@
       .filter(id => sessionStore[id] && !sessionStore[id].silent)
       .map(id => sessionStore[id])
       .forEach(s => {
+        if (s.pinned) return;
         if (clearHeights && s.height) {
           s.height = null;
           wsSend({ type: 'session-height', sessionId: s.id, height: null });
@@ -7237,6 +7305,7 @@
         cardEl.style.height = ''; if (sessionStore[sessionId]) sessionStore[sessionId].height = null; wsSend({ type: 'session-height', sessionId, height: null }); break;
       case 'minimize': {
         if (!s) break;
+        if (s.pinned) { pushDebugLog('[card] Minimize blocked — card is pinned'); break; }
         saveSessionState(sessionId);
         s.minimized = true; s.column = null;
         cardEl.style.display = 'none';
@@ -7613,23 +7682,21 @@
     const before = e.originalContent != null ? escHtml(e.originalContent) : '<em style="opacity:0.4;">(content too large to store inline)</em>';
     const after  = e.newContent      != null ? escHtml(e.newContent)      : '<em style="opacity:0.4;">(content too large to store inline)</em>';
     const promptText = e.sessionPrompt ? escHtml(e.sessionPrompt) : '<em style="opacity:0.4;">(none recorded)</em>';
+    const diffId = `ccd-diff-${idx}`;
     document.getElementById('ccd-body').innerHTML = `
-      <div style="margin-bottom:12px;">
-        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Original session prompt</div>
-        <div style="background:#0a0e1a;padding:8px 10px;border-radius:4px;color:#cbd5e1;white-space:pre-wrap;">${promptText}</div>
-      </div>
-      <div style="margin-bottom:12px;">
-        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Cross-Check verdict</div>
-        <div style="background:#0a0e1a;padding:10px;border-radius:4px;border-left:3px solid ${verdictColor};">
-          <div style="font-size:12px;font-weight:700;color:${verdictColor};margin-bottom:4px;">${e.review?.verdict || '—'} — ${escHtml(e.review?.summary || '')}</div>
-          ${issuesHtml ? `<ul style="margin:6px 0 0 18px;padding:0;color:#94a3b8;">${issuesHtml}</ul>` : ''}
-          <div style="font-size:10px;color:#64748b;font-family:'Consolas',monospace;margin-top:6px;">${escHtml(e.review?.model || '')} · ${((e.review?.ms || 0) / 1000).toFixed(1)}s · user ${e.userDecision || 'pending'}</div>
+      <div style="border-left:3px solid ${verdictColor};background:#0a0e1a;padding:12px 14px;border-radius:4px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${issuesHtml ? '8px' : '0'};">
+          <span style="font-size:13px;font-weight:800;color:${verdictColor};">${e.review?.verdict || '—'}</span>
+          <span style="font-size:12px;color:#cbd5e1;">${escHtml(e.review?.summary || '')}</span>
         </div>
+        ${issuesHtml ? `<ul style="margin:0 0 8px 16px;padding:0;color:#94a3b8;font-size:11px;">${issuesHtml}</ul>` : ''}
+        <div style="font-size:10px;color:#475569;font-family:'Consolas',monospace;">${escHtml(e.filePath || '')} · ${e.originalLines}→${e.newLines} lines · ${escHtml(e.review?.model || '')} · ${((e.review?.ms || 0) / 1000).toFixed(1)}s · decision: ${e.userDecision || 'pending'}</div>
       </div>
-      <div style="margin-bottom:6px;">
-        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">File: ${escHtml(e.filePath || '')} (${e.originalLines}→${e.newLines} lines, ${e.originalBytes}→${e.newBytes} B)</div>
+      <div style="margin-bottom:10px;">
+        <button onclick="(function(){var d=document.getElementById('${diffId}');var open=d.style.display!=='none';d.style.display=open?'none':'grid';this.textContent=open?'▶ Show diff':'▼ Hide diff';}).call(this)" style="padding:3px 10px;border-radius:4px;border:1px solid #334155;background:transparent;color:#64748b;font-size:11px;cursor:pointer;">▶ Show diff</button>
+        <span style="font-size:10px;color:#475569;margin-left:8px;">${e.originalLines} → ${e.newLines} lines, ${e.originalBytes} → ${e.newBytes} B</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div id="${diffId}" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <div>
           <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;">BEFORE</div>
           <pre style="background:#0a0e1a;padding:8px;border-radius:4px;color:#94a3b8;font-size:10px;line-height:1.4;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;">${before}</pre>
@@ -7638,7 +7705,11 @@
           <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;">AFTER</div>
           <pre style="background:#0a0e1a;padding:8px;border-radius:4px;color:#cbd5e1;font-size:10px;line-height:1.4;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;">${after}</pre>
         </div>
-      </div>`;
+      </div>
+      <details style="margin-bottom:6px;">
+        <summary style="font-size:10px;color:#475569;cursor:pointer;user-select:none;">Session prompt</summary>
+        <div style="background:#0a0e1a;padding:8px 10px;border-radius:4px;color:#64748b;white-space:pre-wrap;font-size:10px;margin-top:4px;">${promptText}</div>
+      </details>`;
     document.getElementById('cross-check-detail-overlay').classList.remove('hidden');
   }
   window.openCrossCheckDetail = openCrossCheckDetail;
@@ -7814,10 +7885,10 @@
   // ── Stats & mini-cards ────────────────────────────────────────────────────────
   function updateStats() {
     const vals = Object.values(sessionStore);
-    const running  = vals.filter(s => s.status === 'running' && !s.isOrchestrator && s.name !== 'Health Monitor Session').length;
+    const running  = vals.filter(s => s.status === 'running' && !s.isOrchestrator && s.lastSkill !== 'orchestrate' && s.name !== 'Health Monitor Session').length;
     const waiting  = vals.filter(s => s.status === 'waiting').length;
     const done     = vals.filter(s => s.status === 'done').length;
-    const orchestrator = vals.filter(s => s.status === 'orchestrator').length;
+    const orchestrator = vals.filter(s => s.isOrchestrator || s.lastSkill === 'orchestrate').length;
     const testing  = vals.filter(s => s.status === 'test').length;
     document.querySelectorAll('[data-stat-running]').forEach(el => el.textContent = running);
     document.querySelectorAll('[data-stat-waiting]').forEach(el => el.textContent = waiting);
@@ -7960,8 +8031,12 @@
       if (s && s.minimized) { card.style.display = 'none'; return; }
       if (focusedProject && s && getSessionFocusKey(s) !== focusedProject) { card.style.display = 'none'; return; }
       if (!s || !sessionFilter) { card.style.display = ''; return; }
-      const isExcludedFromRunning = s.isOrchestrator || s.name === 'Health Monitor Session';
-      card.style.display = (s.status === sessionFilter && !(sessionFilter === 'running' && isExcludedFromRunning)) ? '' : 'none';
+      const isOrchestratorSession = s.isOrchestrator || s.lastSkill === 'orchestrate';
+      const isExcludedFromRunning = isOrchestratorSession || s.name === 'Health Monitor Session';
+      const matchesFilter = sessionFilter === 'orchestrator'
+        ? isOrchestratorSession
+        : (s.status === sessionFilter && !(sessionFilter === 'running' && isExcludedFromRunning));
+      card.style.display = matchesFilter ? '' : 'none';
     });
   }
 
@@ -8529,6 +8604,24 @@
     return document.querySelector('.palette:not(.hidden) .mode-btn.active')?.dataset?.mode || 'chat';
   }
 
+  function toggleSysInstr() {
+    const wrap = document.getElementById('float-prompt-wrap');
+    const btn  = document.getElementById('float-sys-btn');
+    const ta   = document.getElementById('float-prompt-area');
+    const on   = wrap.classList.toggle('is-system');
+    btn.classList.toggle('active', on);
+    ta.placeholder = on ? 'Enter system instruction...' : 'Continue this session...';
+  }
+
+  function resetSysInstr() {
+    const wrap = document.getElementById('float-prompt-wrap');
+    const btn  = document.getElementById('float-sys-btn');
+    const ta   = document.getElementById('float-prompt-area');
+    wrap.classList.remove('is-system');
+    btn.classList.remove('active');
+    ta.placeholder = 'Continue this session...';
+  }
+
   function doLaunch() {
     const f = getLaunchFields();
     const hasAttachments = pendingImages.length || pendingDocs.length || pendingAudio.length || pendingFiles.length;
@@ -8553,10 +8646,12 @@
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
+      const isSystemInstruction = document.getElementById('float-prompt-wrap')?.classList.contains('is-system');
+      resetSysInstr();
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload, isSystemInstruction });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
-      pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
+      pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model} sysInstr=${isSystemInstruction}`);
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
@@ -10314,6 +10409,7 @@ This is your current workflow status across all branches. Review the tasks and P
         if (e.target.closest('.backlog-impact-cell')) return;
         if (e.target.closest('.backlog-edit-btn')) return;
         if (e.target.closest('.lang-controls')) return;
+        if (e.target.closest('.task-findings')) return;
         const scope = row.dataset.scope;
         const num = parseInt(row.dataset.taskNumber, 10);
         launchTaskSession(scope, num);
@@ -10382,6 +10478,67 @@ This is your current workflow status across all branches. Review the tasks and P
     if (searchInput && searchInput.value) filterBacklogTasks(searchInput.value);
   }
 
+  const PIPELINE_STEPS = [
+    { label: 'plan',   stepIndex: 1 },
+    { label: 'start',  stepIndex: 2 },
+    { label: 'build',  stepIndex: 3 },
+    { label: 'finish', stepIndex: 4 },
+    { label: 'review', stepIndex: 5 },
+    { label: 'codex',  stepIndex: 6 },
+    { label: 'ship',   stepIndex: 7 },
+  ];
+
+  const CLIENT_PIPELINE_STEP_INDEX = {
+    'backlog': 0, 'planned': 1, 'ready': 1,
+    'build-started': 2, 'in-progress': 2,
+    'build-finished': 4, 'in-review': 4,
+    'review-blocked': 5, 'pr-reviewed': 5,
+    'cba-complete': 6,
+    'staged': 7, 'production': 7, 'complete': 7, 'done': 7,
+  };
+
+  function renderTaskPipelineBar(taskNumber, status) {
+    const current = CLIENT_PIPELINE_STEP_INDEX[status] ?? 0;
+    const isBlocked = status === 'review-blocked';
+    const steps = PIPELINE_STEPS.map(s => {
+      let cls = 'tps-pending';
+      if (s.stepIndex < current) cls = 'tps-done';
+      else if (s.stepIndex === current) cls = isBlocked ? 'tps-blocked' : 'tps-current';
+      return `<span class="task-pipeline-step ${cls}">${escHtml(s.label)}</span>`;
+    }).join('');
+    return `<div class="task-pipeline" id="pipeline-bar-${taskNumber}" data-step="${current}">${steps}</div>`;
+  }
+
+  function renderTaskFindings(taskNumber) {
+    if (!taskNumber) return '';
+    const sessions = Object.values(sessionStore).filter(s =>
+      s.taskNumber === taskNumber && (s.lastSkill === 'review-pr' || s.lastSkill === 'codex-review') && s.lines && s.lines.length
+    );
+    if (!sessions.length) return '';
+    const allText = sessions.flatMap(s => s.lines).map(l => (l.text || l || '')).join('\n');
+    const findingsMatch = allText.match(/## FINDINGS\n([\s\S]*?)(?=\n## |\n---|\n\*\*Summary|\n\*\*Proof Trail|$)/);
+    if (!findingsMatch) return '';
+    const block = findingsMatch[1];
+    const groups = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [] };
+    let level = null;
+    for (const line of block.split('\n')) {
+      if (/\*\*CRITICAL\*\*/.test(line)) { level = 'CRITICAL'; continue; }
+      if (/\*\*HIGH\*\*/.test(line))     { level = 'HIGH'; continue; }
+      if (/\*\*MEDIUM\*\*/.test(line))   { level = 'MEDIUM'; continue; }
+      if (/\*\*LOW\*\*/.test(line))      { level = 'LOW'; continue; }
+      if (level && /^- \[ \]/.test(line)) groups[level].push(line.replace(/^- \[ \]\s*/, '').replace(/←.*$/, '').trim());
+    }
+    const any = Object.values(groups).some(g => g.length > 0);
+    if (!any) return '';
+    const sevMap = { CRITICAL: 'sev-critical', HIGH: 'sev-high', MEDIUM: 'sev-medium', LOW: 'sev-low' };
+    const rows = Object.entries(groups).filter(([, items]) => items.length > 0).map(([sev, items]) =>
+      `<div class="task-findings-group">${items.map(i =>
+        `<div class="task-findings-item"><span class="task-findings-label ${sevMap[sev]}">${sev}</span>${escHtml(i)}</div>`
+      ).join('')}</div>`
+    ).join('');
+    return `<div class="task-findings" onclick="event.stopPropagation()"><div class="task-findings-header">Review Findings</div>${rows}</div>`;
+  }
+
   function renderBacklogSection(scopeKey, title, tasks) {
     const colors = {
       // Skill-written statuses (plan-task → start-build → finish-build → ship-task)
@@ -10448,9 +10605,13 @@ This is your current workflow status across all branches. Review the tasks and P
                 + '<span style="font-size:9px;opacity:0.45;font-family:monospace;">@' + escHtml(t.current_node) + '</span>'
               + '</div>'
             : '';
+          const pipelineBar = (t.status && t.status !== 'backlog' && t.status !== 'cancelled')
+            ? renderTaskPipelineBar(t.number || 0, t.status)
+            : '';
+          const findingsHtml = renderTaskFindings(t.number || 0);
           return '<tr class="backlog-task-row" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" style="cursor:pointer;' + rowBg + '" title="Click to launch a new session to work on this task">'
             + '<td style="padding:8px 12px;font-family:monospace;font-size:11px;opacity:0.6;width:40px;">#' + (t.number || '?') + '</td>'
-            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + langControls + '</td>'
+            + '<td style="padding:8px 12px;line-height:1.4;">' + escHtml(t.title || '(untitled)') + langControls + pipelineBar + findingsHtml + '</td>'
             + '<td style="padding:8px 12px;text-align:right;width:160px;">'
               + '<span class="backlog-status-badge" data-scope="' + escHtmlAttr(scopeKey) + '" data-task-number="' + (t.number || 0) + '" data-status="' + escHtmlAttr(t.status || 'backlog') + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:0.04em;cursor:pointer;' + statusStyle + '" title="Click to change status">' + escHtml(t.status || 'backlog') + '</span>'
             + '</td>'
@@ -13090,6 +13251,68 @@ This is your current workflow status across all branches. Review the tasks and P
   window.closeStatusModal  = closeStatusModal;
   window.saveStatusNote    = saveStatusNote;
 
+  // ── Memory Panel (task #28) ───────────────────────────────────────────────────
+  function openMemoryPanel() {
+    document.getElementById('memory-panel').classList.remove('hidden');
+    document.getElementById('overlay-bg').classList.remove('hidden');
+    refreshMemoryPanel();
+  }
+  function closeMemoryPanel() {
+    document.getElementById('memory-panel').classList.add('hidden');
+    document.getElementById('overlay-bg').classList.add('hidden');
+  }
+  function toggleMemoryPanel() {
+    const panel = document.getElementById('memory-panel');
+    if (panel.classList.contains('hidden')) openMemoryPanel();
+    else closeMemoryPanel();
+  }
+  function refreshMemoryPanel() {
+    const focusedSessionId = resumeTarget ? resumeTarget.sessionId : null;
+    wsSend({ type: 'get-memory-status', sessionId: focusedSessionId });
+  }
+  function renderMemoryPanel(stats, history) {
+    const statsEl = document.getElementById('memory-panel-stats');
+    const histEl  = document.getElementById('memory-panel-history');
+    if (!statsEl || !histEl) return;
+
+    if (stats) {
+      const ts = stats.lastIndexed ? new Date(stats.lastIndexed).toLocaleString() : '—';
+      statsEl.innerHTML = [
+        `<span style="color:#60a5fa;font-weight:700;">${stats.chunkCount}</span><span style="opacity:0.5;"> chunks</span>`,
+        `<span style="color:#34d399;font-weight:700;">${stats.fileCount}</span><span style="opacity:0.5;"> files</span>`,
+        `<span style="opacity:0.5;">indexed </span><span style="color:#e2e8f0;">${escHtml(ts)}</span>`,
+      ].join('<span style="opacity:0.2;margin:0 4px;">·</span>');
+    } else {
+      statsEl.innerHTML = '<span style="opacity:0.4;">No index loaded for the focused session — call QueryMemory with a query first.</span>';
+    }
+
+    if (!history || history.length === 0) {
+      histEl.innerHTML = '<div style="padding:16px;opacity:0.4;font-size:12px;">No retrieval history yet.</div>';
+      return;
+    }
+
+    histEl.innerHTML = history.slice().reverse().map(r => {
+      const ts  = r.ts ? new Date(r.ts).toLocaleTimeString() : '—';
+      const src = (r.topSources || []).map((s, i) => {
+        const sc = r.scores && r.scores[i] != null ? ` <span style="opacity:0.4;">${r.scores[i]}</span>` : '';
+        return `<div style="padding:2px 0;opacity:0.75;">${escHtml(s)}${sc}</div>`;
+      }).join('');
+      return `<div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+          <span style="color:#60a5fa;font-weight:700;font-family:Consolas,monospace;">${escHtml(r.query || '')}</span>
+          <span style="opacity:0.35;font-size:10px;">${escHtml(ts)}</span>
+        </div>
+        ${src}
+      </div>`;
+    }).join('');
+  }
+
+  window.openMemoryPanel   = openMemoryPanel;
+  window.closeMemoryPanel  = closeMemoryPanel;
+  window.toggleMemoryPanel = toggleMemoryPanel;
+  window.refreshMemoryPanel = refreshMemoryPanel;
+  window.renderMemoryPanel  = renderMemoryPanel;
+
   // ── Restart & Reset Layout ────────────────────────────────────────────────────
   function doRestart() {
     if (!confirm('Restart the Polaris server? All running sessions will be terminated.')) return;
@@ -14896,6 +15119,7 @@ This is your current workflow status across all branches. Review the tasks and P
     closeManifest();
     closeStatusPanel();
     closeBacklogPanel();
+    if (typeof closeMemoryPanel === 'function') closeMemoryPanel();
   }
   window.closeActivePanel = closeActivePanel;
 
@@ -15922,6 +16146,7 @@ This is your current workflow status across all branches. Review the tasks and P
       <span class="token-count text-muted">~0 / 200k tokens</span>
       <button class="upload-btn" title="Attach a file" onclick="triggerUpload(this)">⬆ Upload</button>
     </div>
+    <button class="sys-instr-btn" id="float-sys-btn" title="Send as system instruction" onclick="toggleSysInstr()">⚙</button>
     <button class="launch-btn launch-action-btn" id="float-launch-btn" style="width:110px;flex-shrink:0;" onclick="doLaunch()">
       <span class="icon">↩</span><span class="lbl">Resume</span>
     </button>

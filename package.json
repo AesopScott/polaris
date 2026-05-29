@@ -1,6 +1,6 @@
 {
   "name": "polaris",
-  "version": "1.0.624",
+  "version": "1.0.631",
   "description": "Polaris — Claude Code Command Center",
   "main": "main.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "postdist:public": "node scripts/prune-dist.js",
     "test:contracts": "vitest run test/contracts",
     "test:policy": "vitest run test/policy",
-    "test:memory": "vitest run test/memory"
+    "test:memory": "vitest run test/memory",
+    "test:retrieval": "vitest run test/memory/obsidianRetrieval"
   },
   "build": {
     "appId": "com.scott.polaris",

@@ -87,14 +87,12 @@ Live pipeline position update for a backlog task — step index, current status,
 **Payload:** `{ type: 'task-pipeline-state', taskNumber: number, status: string, stepIndex: number, lastSkill: string | null, lastResult: string | null }`
 
 **Producers (server sends)**
-- *(task #31 pending)* `server.js` — broadcast from backlog write path when task status changes
+- `server.js:3942` — broadcast from `toolSetTaskState` whenever `taskState` changes
 
 **Consumers (client handles)**
-- *(task #31 pending)* `resources/mockup.html` — Task Lane panel: updates step indicator and last-gate display
+- `resources/mockup.html` — `case 'task-pipeline-state'`: patches `#pipeline-bar-{taskNumber}` step classes live
 
-**Status:** ⚠ producer pending (task #31) — consumer pending (task #31)
-
-**Note:** Unknown message types (not in `WS_SCHEMA_REGISTRY`) pass through silently; only *known* types with *wrong* fields trigger this response.
+**Status:** ✓ Balanced (task #31)
 
 ---
 
@@ -117,6 +115,58 @@ Notable exports:
 
 ---
 
+## `get-memory-status`
+
+Client request to fetch the current Obsidian memory index stats and recent retrieval history.
+
+**Payload:** `{ type: 'get-memory-status', sessionId: string }`
+
+**Producers (client sends)**
+- `resources/mockup.html:13028` — `refreshMemoryPanel()` sends with `focusedSessionId`
+
+**Consumers (server handles)**
+- `server.js:10417` — reads `session.memoryIndex` stats and last 20 records from `memory-traces/traces.jsonl`; emits `memory-status` response
+
+**Zod schema:** pending (task #38 consolidation)
+
+**Status:** ✓ (added task #28)
+
+---
+
+## `memory-status`
+
+Server response with Obsidian chunk index stats and last 20 retrieval events from the JSONL log.
+
+**Payload:**
+```javascript
+{
+  type: 'memory-status',
+  stats: {
+    chunkCount: number,      // Total chunks in index
+    fileCount: number,       // Source Obsidian files indexed
+    lastIndexed: string      // ISO 8601 timestamp of last indexing
+  },
+  history: Array<{
+    ts: string,              // ISO 8601 timestamp
+    query: string,           // Query text passed to QueryMemory
+    topSources: string[],    // Top-3 source citations (file § heading)
+    scores: number[]         // Composite scores for top-3
+  }>                         // Last 20 entries from traces.jsonl
+}
+```
+
+**Producers (server sends)**
+- `server.js:10436` — `get-memory-status` handler; reads `session.memoryIndex` and `memory-traces/traces.jsonl`
+
+**Consumers (client handles)**
+- `resources/mockup.html:5290` — `case 'memory-status'`: calls `renderMemoryPanel(msg)`
+
+**Zod schema:** pending (task #38 consolidation)
+
+**Status:** ✓ (added task #28)
+
+---
+
 ## Summary
 
 | Type | Direction | Status |
@@ -131,6 +181,8 @@ Notable exports:
 | `advance-task-result` | server → client | ✓ (added task #33) |
 | `send-lang-signal` | client → server | ✓ (added task #33) |
 | `lang-signal-result` | server → client | ✓ (added task #33) |
+| `get-memory-status` | client → server | ✓ (added task #28) |
+| `memory-status` | server → client | ✓ (added task #28) |
 | *(all other ~96 types)* | both | ✓ |
 
 ---
@@ -311,12 +363,55 @@ Server response after proxying to executor `/signal`.
 **Evidence recorded:**
 - ~161 message types detected total; all not listed individually are ✓ (paired, no shape gap)
 - 4 pre-existing gap entries retained from task #7 audit (get-config, get-history, get-pre-build-check-status, ping)
-- 1 new pending entry introduced by task #31: `task-pipeline-state` — producer and consumer both pending
+- 1 entry resolved by task #31: `task-pipeline-state` — now ✓ (server.js `toolSetTaskState` + mockup.html `case 'task-pipeline-state'`)
 - 1 existing entry retained: `error (INVALID_MSG)` — producer pending task #38
-- Registries match current code diff: yes (task-pipeline-state not yet in code — registered ahead of implementation)
+- Registries match current code diff: yes
 
 **Gaps identified:**
-- `task-pipeline-state` — pending (task #31): WS broadcast not yet emitted from server.js; Task Lane panel not yet in mockup.html
 - Pre-existing: get-config, get-history, get-pre-build-check-status, ping — orphan server handlers, pre-task-#7
+
+---
+
+**Last audit:** 2026-05-28T00:00:00Z (by /cross-boundary-audit for task #28)
+
+**Task:** #28 — Upgrade project memory into ranked retrieval
+
+**Boundaries checked:** WebSocket message types between client (resources/mockup.html) and server (server.js)
+
+**Evidence recorded:**
+- 2 new WS message types pre-registered: `get-memory-status` (client→server), `memory-status` (server→client)
+- Both are intentional pending pairs — no code written yet (pre-implementation audit)
+- Payload schemas defined in registry (source: task #28 plan)
+- Zod schemas for both types pending (task #28 Phase 3)
+- 0 shape mismatches
+- 0 new breakages to existing pairs
+- Registries match current code diff: yes (pre-implementation state)
+
+**Gaps identified:**
+- `get-memory-status` producer + consumer pending task #28 Phase 3 ⚠ — intentional, pre-registered
+- `memory-status` producer + consumer pending task #28 Phase 3 ⚠ — intentional, pre-registered
+- 4 pre-existing orphan server handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged
+
+**Status:** Audit complete
+
+---
+
+**Last audit:** 2026-05-28T20:30:00Z (by /cross-boundary-audit for task #28 — post-implementation)
+
+**Task:** #28 — Upgrade project memory into ranked retrieval
+
+**Boundaries checked:** WebSocket message types between client (resources/mockup.html) and server (server.js)
+
+**Evidence recorded:**
+- 2 new WS message types confirmed implemented: `get-memory-status` (client→server), `memory-status` (server→client)
+- `get-memory-status` producer: `resources/mockup.html:13028` ✓ consumer: `server.js:10417` ✓
+- `memory-status` producer: `server.js:10436` ✓ consumer: `resources/mockup.html:5290` ✓
+- Payload shape verified: `sessionId` field on client request; `stats` + `history` on server response — matches pre-registered schema
+- Zod schemas still pending (task #38 consolidation scope, not task #28)
+- 0 shape mismatches, 0 orphan producers, 0 orphan consumers
+- Registry entries flipped from ⚠ pending → ✓; line references recorded
+- Registries match current code diff: yes
+
+**Gaps identified:** 4 pre-existing orphan server handlers (get-config, get-history, get-pre-build-check-status, ping) — unchanged.
 
 **Status:** Audit complete
