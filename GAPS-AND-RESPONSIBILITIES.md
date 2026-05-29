@@ -393,3 +393,150 @@ Sessions should NOT submit entries to `branch-requests.json` for merges — that
 | #10: pr-reviewed missing from resumption | **SHIP-TASK** | ⏳ Open |
 | #11: Step 6 wrong SetTaskState call | **SHIP-TASK** | ⏳ Open |
 
+---
+
+## Ship-Task Session Clarifications (2026-05-29)
+
+### Critical Architectural Clarification: Review Status Workflow
+
+**Status handling during reviews is bifurcated:**
+
+The `/review-pr` and `/codex-review` skills run while status is `build-finished`. The status should **stay `build-finished` while both reviews are running** — not transition to any intermediate state. After both reviews complete, a **separate handler process** (not ship-task, not the review skills) compares the two reviews and decides:
+
+- **APPROVE** → set status to `pr-reviewed` → continue to merge
+- **BLOCK/REJECT** → set status to `review-blocked` → stop
+
+**Impact on Gap #11:** Step 6 should NOT call `SetTaskState("cba-complete")` before running `/codex-review`. Status remains `build-finished` during the review. The decision to approve or block happens after the review completes, in a separate handler, not in ship-task.
+
+**Note:** This separate approval handler has NOT been designed yet. Orchestrator session should define this process in orchestrate.md.
+
+---
+
+### Gap #1 Revised: No `/promote-to-prod` Status Change
+
+**Clarification on who sets `pr-reviewed`:**
+
+`/promote-to-prod` does **NOT** set status to `pr-reviewed`. That status is set by the approval handler after both reviews pass. `/promote-to-prod` only sets status to `production` after successfully promoting to main.
+
+**Updated behavior for `/promote-to-prod`:**
+1. Verify task status is `pr-reviewed` (do not set it)
+2. Poll `session-directives.json` for orchestrator's merge completion directive
+3. After directive received: validate merge succeeded
+4. Push to origin
+5. Set status to `production`
+
+**Scope change:** Gap #1 is now narrowly scoped to `/promote-to-prod` documentation update only. No merge request submission logic needed.
+
+---
+
+### Gap #2: Merge Completion Directive Polling — Timing and Timeout
+
+**When to poll:**
+- AFTER setting status to `pr-reviewed` (via the approval handler, not `/promote-to-prod`)
+- `/promote-to-prod` receives task status already `pr-reviewed` and polls for merge completion directive
+
+**Timeout behavior:**
+- Poll for max 5 minutes waiting for the completion directive
+- If directive does NOT arrive after 5 minutes: log error and notify user "Orchestrator coordination lost — merge directive not received. User should investigate orchestrator status and manually merge if needed."
+- Do NOT proceed to set `production` status if directive is missing
+
+**Critical clarification:** The orchestrator does NOT perform the merge itself. The orchestrator tells the active session (via directive) to merge, then the session does the merge. The orchestrator monitors for merge success.
+
+---
+
+### Gap #3: Orchestrator Design Requirement (Not Ship-Task Responsibility)
+
+The orchestrator session must design and document the approval handler process that compares `/review-pr` and `/codex-review` outcomes and sets status to `pr-reviewed` or `review-blocked`. This is NOT a ship-task gap; it's an orchestrator design gap.
+
+---
+
+### Gap #4: Status Synchronization Protocol — Defer to Orchestrator
+
+Ship-task session should **wait for orchestrator to design the status sync protocol**. Once orchestrator defines max delay, acknowledgement strategy, and fallback behavior, ship-task will implement accordingly.
+
+**Note for orchestrator session:** When designing status sync, include heartbeat mechanism: if a status change is not acknowledged within 2 ticks (60s default), re-issue the affected directive.
+
+---
+
+### Gap #5: CBA-Complete and Codex-Review Have Nothing to Do With Each Other
+
+**Clarification on phase semantics:**
+
+- `cba-complete` is set by `/cross-boundary-audit` after auditing registries and proof units
+- `/codex-review` is a CODE REVIEW that runs AFTER finish-build opens the PR
+- Status is `build-finished` during both `/review-pr` and `/codex-review`
+- These are completely separate phases
+
+**Updated workflow sequence:**
+1. `/start-build` → status `build-started`
+2. `/cross-boundary-audit` → status `cba-complete` (registry/proof audit done)
+3. `/finish-build` → status `build-finished` (PR opened)
+4. `/review-pr` + `/codex-review` → status stays `build-finished` (reviews in progress)
+5. Approval handler → status to `pr-reviewed` (reviews passed) or `review-blocked` (reviews failed)
+6. `/promote-to-prod` → status `production`
+
+The orchestrator session should update `orchestrate.md` to clarify this sequence.
+
+---
+
+### Gap #6: Error Handling — One Skill at a Time
+
+Implement error handling for directive polling in each pipeline skill ONE AT A TIME until complete. Do not batch all nine skills at once.
+
+**Error handling pattern for each skill:**
+1. Try-catch around `session-directives.json` read
+2. Retry up to 3 times with exponential backoff
+3. If all retries fail: log warning "Orchestrator coordination unavailable" and proceed in single-session mode
+4. Timeout after 5 seconds on any single directive poll
+
+---
+
+### Gap #8: Post-Merge Status Ownership and Validation
+
+After `/promote-to-prod` receives the merge completion directive:
+1. **Validate merge succeeded** — check that the branch tip is now on main/prod (do not just trust the directive)
+2. **Push to origin** — ensure the merge is visible on origin
+3. **Set status to `production`** — only after validation passes
+4. If validation fails: log error and do NOT set `production` status; notify user
+
+---
+
+### Gap #9, #10, #11: Resumption Table and Step 6 Fixes
+
+**Gap #9 fix:** Change resumption table row from:
+- `cba-complete → Step 6 (codex review)` 
+to:
+- `cba-complete → Step 4 (finish-build)`
+
+**Gap #10 fix:** Add new resumption table row:
+- `pr-reviewed → Step 7 (promote-to-prod)` — "Reviews approved; ready to promote to production"
+
+**Gap #11 fix:** Step 6 should:
+- **NOT** call `SetTaskState("cba-complete")` before invoking `/codex-review`
+- Status remains `build-finished` during review
+- Do NOT set status in Step 6; let the approval handler decide (pr-reviewed or review-blocked)
+
+Can patch just these affected rows; may be 3-4 total changes to resumption table.
+
+---
+
+### Implementation Order (Prioritized)
+
+1. **HIGH (blockers for merge flow):**
+   - Gap #11: Fix Step 6 SetTaskState behavior (remove pre-review state call)
+   - Gap #9: Fix resumption table cba-complete routing
+   - Gap #10: Add pr-reviewed row to resumption table
+   - Gap #2: Add merge completion directive polling to `/promote-to-prod`
+
+2. **MEDIUM (supporting):**
+   - Gap #1 (revised): Document `/promote-to-prod` workflow (no status change)
+   - Gap #8: Add merge validation + origin push
+
+3. **MEDIUM (gradual rollout):**
+   - Gap #6: Add error handling to promote skills first, then iterate through other pipeline skills one at a time
+
+4. **AWAITING ORCHESTRATOR:**
+   - Gap #3: Approval handler design (orchestrator responsibility)
+   - Gap #4: Status sync protocol (orchestrator responsibility)
+   - Gap #5: Orchestrate.md sequence clarification (orchestrator responsibility)
+
