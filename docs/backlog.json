@@ -19,9 +19,9 @@
       "category": "feature",
       "priority": 90,
       "impact": "major",
-      "status": "build-finished",
+      "status": "production",
       "created_at": "2026-05-22",
-      "completed_at": null,
+      "completed_at": "2026-05-29",
       "dependencies": [],
       "plan": "Replace the all-or-nothing Obsidian dump in QueryMemory with a ranked-retrieval layer.\n\n## Phases\n\n1. Core retrieval module (TDD): Build and test lib/obsidianRetrieval.js (heading-aware chunker, BM25, OpenRouter embeddings fail-soft, cosine ranker, trace formatter).\n2. QueryMemory upgrade: Add query param to tool schema, lazy-init session.memoryIndex, disk embedding cache (mtime+size guard), return top-5 cited excerpts + retrieval trace, append to traces.jsonl.\n3. Memory status panel: get-memory-status WS handler + Memory nav button and panel in mockup.html.\n4. Verify + formalize: e2e smoke, version bump, changelog.\n\n## First Proof Unit\n\nWrite failing vitest suite for lib/obsidianRetrieval.js. Run: npx vitest run test/memory/obsidianRetrieval. Expected failure: Cannot find module.",
       "objective": {
@@ -449,7 +449,7 @@
       "description": "Build /orchestrate — a universal Claude Code skill that monitors open PRs across all active sessions for a project, detects file-set intersections, classifies conflict types (additive / same-line / correctness divergence), and writes merger guides to Obsidian. Invoked automatically when a second session opens on the same project. General-first with per-project config block.",
       "category": "tooling",
       "priority": 40,
-      "status": "pr-reviewed",
+      "status": "production",
       "branch": "task/62-orchestrator-skill-multi-session-confli",
       "pr_url": "https://github.com/AesopScott/polaris/pull/59",
       "impact": "standard",
@@ -611,7 +611,8 @@
           "expectedPassingEvidence": "Orchestrator card pulses visibly; other cards static; animation confirmed in computed styles.",
           "waiverGuidance": "N/A"
         }
-      ]
+      ],
+      "completed_at": "2026-05-29"
     }
   ]
 }
