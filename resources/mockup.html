@@ -6529,18 +6529,35 @@
   function renderGrid() {
     const grid = getActiveGrid();
     if (!grid) return;
-    grid.innerHTML = '';
+
     const ordered = sessionOrder.filter(id => sessionStore[id] && !sessionStore[id].silent).map(id => sessionStore[id]);
     const wideCards   = ordered.filter(s => (s.columnSpan || 1) > 1);
     const normalCards = ordered.filter(s => (s.columnSpan || 1) <= 1);
+
+    // Remove cards for sessions that are no longer in sessionOrder
+    const validIds = new Set(ordered.map(s => s.id));
+    grid.querySelectorAll('[data-sid]').forEach(card => {
+      if (!validIds.has(card.dataset.sid)) {
+        card.remove();
+      }
+    });
+
+    // Remove old row wrappers and rebuild them (preserve cards within them)
+    const oldWideRow = grid.querySelector('.session-wide-row');
+    if (oldWideRow) oldWideRow.remove();
+    const oldColsRow = grid.querySelector('.session-cols-row');
+    if (oldColsRow) oldColsRow.remove();
 
     if (wideCards.length > 0) {
       const wideRow = document.createElement('div');
       wideRow.className = 'session-wide-row';
       wideCards.forEach(s => {
-        const card = buildCard(s);
+        let card = grid.querySelector(`[data-sid="${s.id}"]`);
+        if (!card) card = buildCard(s);
+        else card.remove(); // Remove from current position to re-append in correct order
         const projectMismatch = focusedProject && getSessionFocusKey(s) !== focusedProject;
         if (s.minimized || hiddenCards.has(s.id) || projectMismatch) card.style.display = 'none';
+        else card.style.display = '';
         wideRow.appendChild(card);
       });
       grid.appendChild(wideRow);
@@ -6565,8 +6582,11 @@
         wsSend({ type: 'session-column', sessionId: s.id, column: idx });
       }
       if (visible) colCounts[idx]++;
-      const card = buildCard(s);
+      let card = grid.querySelector(`[data-sid="${s.id}"]`);
+      if (!card) card = buildCard(s);
+      else card.remove(); // Remove from current position to re-append in correct order
       if (!visible) card.style.display = 'none';
+      else card.style.display = '';
       cols[idx].appendChild(card);
       colHeights[idx] += visible ? (parseInt(s.height) || 260) + 12 : 1;
     });
