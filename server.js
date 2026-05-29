@@ -99,6 +99,7 @@ const WS_MISSED_PONG_LIMIT = 4;  // tolerate short UI/main-thread stalls before 
 const DEFAULT_WORKTREE_TTL_DAYS = 2; // purge detached/merged-branch session worktrees older than this many days
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
+const INJECTION_LOG_PATH         = path.join(POLARIS_DIR, 'memory-injection-log.jsonl');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
@@ -7112,10 +7113,31 @@ async function spawnMaxChat(sessionId, prompt, config) {
       .join('\n\n');
     hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
     // Inject top project memories at turn 1 so the model starts context-aware.
-    // Fire-and-forget: errors inside buildMemoryInjectionBlock are swallowed.
+    // Use trace variant so we can log what was injected for the Injections panel.
     if (session.projectName) {
-      const memBlock = await memInj.buildMemoryInjectionBlock(memory, session.projectName, prompt);
-      if (memBlock) hiddenSystemPrompt += '\n\n' + memBlock;
+      const { block: memBlock, memories: injMems, queryType, effectiveQuery } =
+        await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
+      if (memBlock) {
+        hiddenSystemPrompt += '\n\n' + memBlock;
+        try {
+          const record = {
+            ts: Date.now(),
+            sessionId,
+            sessionName: session.name || null,
+            project: session.projectName,
+            query: (prompt || '').slice(0, 200),
+            queryType,
+            effectiveQuery: (effectiveQuery || '').slice(0, 200),
+            memories: injMems.map(m => ({
+              content: (m.content || '').slice(0, 300),
+              type: m.type || 'fact',
+              strength: typeof m.strength === 'number' ? Math.round(m.strength * 100) / 100 : null,
+              accessCount: m.accessCount || 0,
+            })),
+          };
+          fs.appendFileSync(INJECTION_LOG_PATH, JSON.stringify(record) + '\n', 'utf8');
+        } catch {}
+      }
     }
     fullPrompt = history || prompt;
   }
@@ -12626,6 +12648,18 @@ async function handleMessage(ws, raw) {
 
   if (type === 'get-cross-check-history') {
     sendTo(ws, { type: 'cross-check-history', entries: loadAllCrossChecks(msg.limit || 200) });
+    return;
+  }
+
+  if (type === 'get-injection-history') {
+    let entries = [];
+    try {
+      if (fs.existsSync(INJECTION_LOG_PATH)) {
+        const lines = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
+        entries = lines.slice(-(msg.limit || 50)).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+      }
+    } catch {}
+    sendTo(ws, { type: 'injection-history', entries });
     return;
   }
 

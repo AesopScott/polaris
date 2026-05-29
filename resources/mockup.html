@@ -2408,18 +2408,30 @@
   </div>
 
   <!-- Project Status Panel -->
-  <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:640px;">
+  <div class="projects-panel hidden palette" id="project-status-panel" style="width:900px;max-height:700px;">
     <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
     <div class="preview-toolbar">
       <span class="preview-drag-handle">⠿⠿</span>
-      <span style="flex:1;font-size:13px;font-weight:800;">Project Status</span>
-      <button class="preview-close-btn" onclick="closeStatusPanel()">✕</button>
+      <button id="status-tab-status" onclick="switchStatusTab('status')" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:5px;color:#e2e8f0;font-size:11px;font-weight:700;padding:3px 12px;cursor:pointer;font-family:inherit;">Status</button>
+      <button id="status-tab-injections" onclick="switchStatusTab('injections')" style="background:transparent;border:1px solid transparent;border-radius:5px;color:#9ca3af;font-size:11px;font-weight:600;padding:3px 12px;cursor:pointer;font-family:inherit;">Injections</button>
+      <button class="preview-close-btn" style="margin-left:auto;" onclick="closeStatusPanel()">✕</button>
     </div>
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
-      <span style="font-size:11px;opacity:0.5;">Where each project stands — updated every time you push a session to Obsidian.</span>
-      <button onclick="wsSend({type:'get-project-statuses'})" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    <!-- Status tab -->
+    <div id="status-tab-content-status">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+        <span style="font-size:11px;opacity:0.5;">Where each project stands — updated every time you push a session to Obsidian.</span>
+        <button onclick="wsSend({type:'get-project-statuses'})" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+      </div>
+      <div class="projects-panel-body" id="status-panel-body" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;overflow-y:auto;max-height:580px;"></div>
     </div>
-    <div class="projects-panel-body" id="status-panel-body" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;overflow-y:auto;"></div>
+    <!-- Injections tab -->
+    <div id="status-tab-content-injections" style="display:none;">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
+        <span style="font-size:11px;opacity:0.5;">Firestore memories injected into each chat session at turn 1, ranked by strength + recency.</span>
+        <button onclick="refreshInjectionPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+      </div>
+      <div id="injection-panel-body" style="overflow-y:auto;max-height:580px;"></div>
+    </div>
   </div>
 
   <!-- Memory Panel (task #28) -->
@@ -5722,6 +5734,9 @@
         break;
       case 'cross-check-history':
         renderCrossCheckHistory(msg.entries || []);
+        break;
+      case 'injection-history':
+        if (typeof renderInjectionPanel === 'function') renderInjectionPanel(msg.entries || []);
         break;
       case 'archive-search-results':
         renderArchiveList(msg.results || [], true);
@@ -13074,6 +13089,77 @@ This is your current workflow status across all branches. Review the tasks and P
     pendingStatusProject = s.projectName || null;
   }
   window.obsidianUp = obsidianUp;
+  // ── Memory Injections Panel (tab inside Status panel) ─────────────────────────
+  const TYPE_COLORS = { instruction: '#f59e0b', preference: '#60a5fa', fact: '#34d399', feedback: '#a78bfa' };
+
+  function switchStatusTab(tab) {
+    ['status', 'injections'].forEach(t => {
+      const content = document.getElementById('status-tab-content-' + t);
+      const btn     = document.getElementById('status-tab-' + t);
+      if (!content || !btn) return;
+      const active = t === tab;
+      content.style.display = active ? '' : 'none';
+      btn.style.background  = active ? 'rgba(255,255,255,0.12)' : 'transparent';
+      btn.style.border      = active ? '1px solid rgba(255,255,255,0.25)' : '1px solid transparent';
+      btn.style.color       = active ? '#e2e8f0' : '#9ca3af';
+      btn.style.fontWeight  = active ? '700' : '600';
+    });
+    if (tab === 'injections') refreshInjectionPanel();
+  }
+
+  function openInjectionPanel() {
+    openStatusPanel();
+    switchStatusTab('injections');
+  }
+  function closeInjectionPanel() {
+    closeStatusPanel();
+  }
+  function toggleInjectionPanel() {
+    openInjectionPanel();
+  }
+  function refreshInjectionPanel() {
+    wsSend({ type: 'get-injection-history', limit: 50 });
+  }
+  function renderInjectionPanel(entries) {
+    const body = document.getElementById('injection-panel-body');
+    if (!body) return;
+    if (!entries || entries.length === 0) {
+      body.innerHTML = '<div style="padding:24px;text-align:center;opacity:0.4;font-size:12px;">No injections logged yet — start a chat session on a project to see entries here.</div>';
+      return;
+    }
+    body.innerHTML = entries.slice().reverse().map(e => {
+      const dt = e.ts ? new Date(e.ts).toLocaleString() : '—';
+      const qtBadge = e.queryType === 'high-signal'
+        ? '<span style="background:#1d4ed8;color:#93c5fd;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">BM25</span>'
+        : '<span style="background:#374151;color:#9ca3af;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">strength+recency</span>';
+      const mems = (e.memories || []).map(m => {
+        const col = TYPE_COLORS[m.type] || '#9ca3af';
+        const str = m.strength != null ? m.strength.toFixed(2) : '—';
+        return `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;align-items:baseline;">
+          <span style="color:${col};font-weight:700;min-width:72px;flex-shrink:0;">${escHtml(m.type || 'fact')}</span>
+          <span style="color:#60a5fa;font-family:Consolas,monospace;min-width:32px;flex-shrink:0;">${escHtml(str)}</span>
+          <span style="opacity:0.8;line-height:1.4;">${escHtml((m.content || '').slice(0, 160))}${(m.content || '').length > 160 ? '…' : ''}</span>
+        </div>`;
+      }).join('');
+      const query = e.query ? `<div style="margin:6px 0 2px;font-size:11px;opacity:0.6;font-style:italic;">"${escHtml(e.query.slice(0, 120))}${e.query.length > 120 ? '…' : ''}"</div>` : '';
+      return `<div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+          <span style="color:#e2e8f0;font-weight:700;font-size:12px;">${escHtml(e.project || '—')}</span>
+          ${qtBadge}
+          <span style="opacity:0.35;font-size:10px;margin-left:auto;">${escHtml(dt)}</span>
+        </div>
+        ${e.sessionName ? `<div style="font-size:10px;opacity:0.4;margin-bottom:4px;">${escHtml(e.sessionName)}</div>` : ''}
+        ${query}
+        <div style="margin-top:6px;">${mems || '<div style="opacity:0.35;font-size:11px;">No memories injected</div>'}</div>
+      </div>`;
+    }).join('');
+  }
+  window.openInjectionPanel   = openInjectionPanel;
+  window.closeInjectionPanel  = closeInjectionPanel;
+  window.toggleInjectionPanel = toggleInjectionPanel;
+  window.refreshInjectionPanel = refreshInjectionPanel;
+  window.renderInjectionPanel  = renderInjectionPanel;
+
   // ── Project Status Panel ──────────────────────────────────────────────────────
   let projectStatusCache = {};
   let pendingStatusProject = null;
