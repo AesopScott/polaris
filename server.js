@@ -8403,7 +8403,6 @@ const httpServer = http.createServer((req, res) => {
     const snapshot = { status: 'ok', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: null, idleSessions: [], explanation: null };
 
     // Collect idle session data
-    const now = Date.now();
     const idleThresholdMs = STALL_WARN_MS;
     const kickThresholdMs = STALL_KICK_MS;
     for (const [sessionId, session] of sessions) {
