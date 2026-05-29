@@ -6419,6 +6419,7 @@
       .filter(id => sessionStore[id] && !sessionStore[id].silent)
       .map(id => sessionStore[id])
       .forEach(s => {
+        if (s.pinned) return;
         if (clearHeights && s.height) {
           s.height = null;
           wsSend({ type: 'session-height', sessionId: s.id, height: null });
@@ -7220,6 +7221,7 @@
         cardEl.style.height = ''; if (sessionStore[sessionId]) sessionStore[sessionId].height = null; wsSend({ type: 'session-height', sessionId, height: null }); break;
       case 'minimize': {
         if (!s) break;
+        if (s.pinned) { pushDebugLog('[card] Minimize blocked — card is pinned'); break; }
         saveSessionState(sessionId);
         s.minimized = true; s.column = null;
         cardEl.style.display = 'none';
