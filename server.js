@@ -1350,7 +1350,9 @@ function writeSessionState(sessionId, session) {
 function readOrchestratorAlerts() {
   try {
     if (fs.existsSync(ORCHESTRATOR_ALERTS_PATH)) {
-      return readJSON(ORCHESTRATOR_ALERTS_PATH, { alerts: [] });
+      const data = readJSON(ORCHESTRATOR_ALERTS_PATH, { alerts: [] });
+      if (!Array.isArray(data.alerts)) return { alerts: [] };
+      return data;
     }
   } catch (e) {
     console.error(`[session-guidance] failed to read alerts:`, e.message);
@@ -1390,20 +1392,27 @@ function deleteSessionStateFile(sessionId) {
   }
 }
 
-function writeOrchestratorAlert(targetSessionId, severity, message) {
+// Single read → push × N → write. All alert writes go through this to avoid
+// concurrent callers each doing their own read-modify-write on the same file.
+function writeOrchestratorAlertsBatch(newAlerts) {
   ensureSessionGuidanceDir();
   const alertsData = readOrchestratorAlerts();
-  alertsData.alerts.push({
+  for (const alert of newAlerts) alertsData.alerts.push(alert);
+  try {
+    writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData);
+  } catch (e) {
+    console.error(`[session-guidance] failed to write orchestrator alerts:`, e.message);
+  }
+}
+
+function writeOrchestratorAlert(targetSessionId, severity, message) {
+  writeOrchestratorAlertsBatch([{
+    id: crypto.randomUUID(),
     sessionId: targetSessionId,
     severity,
     message,
     timestamp: new Date().toISOString(),
-  });
-  try {
-    writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData);
-  } catch (e) {
-    console.error(`[session-guidance] failed to write orchestrator alert:`, e.message);
-  }
+  }]);
 }
 
 // ─── OpenRouter catalog (model pricing) ──────────────────────────────────────
@@ -5798,15 +5807,11 @@ function verifyWorktreeOwnership(sessionId) {
   for (const [id, sess] of sessions) {
     if (id !== sessionId && sess.worktreePath === wtPath) {
       const msg = `Worktree conflict: session ${id} also claims this path`;
-      ensureSessionGuidanceDir();
-      const alertsData = readOrchestratorAlerts();
-      const ts1 = new Date().toISOString();
-      alertsData.alerts.push({ sessionId, severity: 'warning', message: msg, timestamp: ts1 });
-      const ts2 = new Date().toISOString();
-      alertsData.alerts.push({ sessionId: id, severity: 'warning', message: msg, timestamp: ts2 });
-      try { writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData); } catch (e) {
-        console.error(`[session-guidance] failed to write worktree conflict alerts:`, e.message);
-      }
+      const ts = new Date().toISOString();
+      writeOrchestratorAlertsBatch([
+        { id: crypto.randomUUID(), sessionId, severity: 'warning', message: msg, timestamp: ts },
+        { id: crypto.randomUUID(), sessionId: id, severity: 'warning', message: msg, timestamp: ts },
+      ]);
       return msg;
     }
   }
@@ -13399,7 +13404,7 @@ if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 // Each session writes its state and reads orchestrator alerts.
 // Alerts targeted at a session are broadcast once as system lines; seen timestamps
 // prevent repeat broadcasts across polling ticks until the alert is pruned.
-const _seenAlerts = new Map(); // sessionId → Set<alert timestamp>
+const _seenAlerts = new Map(); // sessionId → Set<alert id (uuid, or timestamp for legacy alerts without id)>
 setInterval(() => {
   const alertsData = readOrchestratorAlerts();
   for (const [sessionId, session] of sessions) {
@@ -13409,8 +13414,13 @@ setInterval(() => {
     if (!_seenAlerts.has(sessionId)) _seenAlerts.set(sessionId, new Set());
     const seen = _seenAlerts.get(sessionId);
     for (const alert of mine) {
-      if (seen.has(alert.timestamp)) continue;
-      seen.add(alert.timestamp);
+      // Use uuid as the stable dedup key; fall back to timestamp for alerts written
+      // before the id field was introduced (avoids repeat broadcasts on server upgrade).
+      // Note: an alert written after deleteSessionStateFile but before this tick is
+      // benign — closing sessions have informational-only alerts.
+      const dedupeKey = alert.id ?? alert.timestamp;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       broadcast({ type: 'line', sessionId, text: `[orchestrator] ${alert.severity}: ${alert.message}`, role: 'system' });
     }
   }
