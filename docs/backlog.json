@@ -158,8 +158,8 @@
       "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
       "category": "feature",
       "priority": 90,
-      "impact": "major",
-      "status": "planned",
+      "impact": "standard",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
@@ -225,7 +225,53 @@
           "expectedPassingEvidence": "Panel step indicator advances at each transition; no approval prompts appear during backlog writes.",
           "waiverGuidance": "N/A"
         }
-      ]
+      ],
+      "branch": "task/31-make-trust-proof-cost-and-recovery",
+      "objective": {
+        "statement": "Make the ship-task pipeline observable and actionable within the Polaris UI — surface pipeline step position, audit findings as a coding checklist, and review findings as a prioritized severity list, so Scott can manage the pipeline without reading walls of terminal output.",
+        "successCriteria": [
+          "Pipeline-skill writes to backlog.json bypass the approval gate without interrupting normal session writes",
+          "cross-boundary-audit output includes a structured ## FINDINGS checklist block",
+          "review-pr and codex-review output includes a CRITICAL/HIGH/MEDIUM/LOW findings block before prose",
+          "Task Lane panel renders 8-step pipeline with live step position from backlog.json status",
+          "Cross-check panel shows compact verdict + rationale with diff behind a toggle",
+          "End-to-end: Task Lane step indicator advances at each skill boundary during a /ship-task run"
+        ],
+        "nonGoals": [
+          "Changes to backlog.json schema or status lifecycle logic",
+          "Task-level cost aggregation across sessions",
+          "Real-time cross-session pipeline sync",
+          "Changes to the underlying pipeline step sequence or logic"
+        ],
+        "proofMap": [
+          {
+            "criterion": "Pipeline-skill writes to backlog.json bypass the approval gate",
+            "proofUnit": 1
+          },
+          {
+            "criterion": "cross-boundary-audit output includes structured ## FINDINGS checklist",
+            "proofUnit": 2
+          },
+          {
+            "criterion": "review-pr and codex-review emit CRITICAL/HIGH/MEDIUM/LOW findings block",
+            "proofUnit": 3
+          },
+          {
+            "criterion": "Task Lane panel renders 8-step pipeline with live step position",
+            "proofUnit": 4
+          },
+          {
+            "criterion": "Cross-check panel shows compact verdict + rationale with diff toggle",
+            "proofUnit": 5
+          },
+          {
+            "criterion": "Task Lane step indicator advances at each skill boundary",
+            "proofUnit": 6
+          }
+        ],
+        "stopConditions": []
+      },
+      "pr_url": "https://github.com/AesopScott/polaris/pull/61"
     },
     {
       "number": 39,

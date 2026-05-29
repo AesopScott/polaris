@@ -4027,6 +4027,17 @@ function toolSetStatus({ status } = {}, sessionId) {
   return `Status set to "${status}".`;
 }
 
+const PIPELINE_STEP_INDEX = {
+  'backlog': 0, 'planned': 1, 'ready': 1,
+  'planning': 1,
+  'start-build': 2, 'build-started': 2, 'in-progress': 2,
+  'coding': 3, 'audit': 3,
+  'build-finished': 4, 'in-review': 4,
+  'review-blocked': 5, 'pr-reviewed': 5,
+  'cba-complete': 6,
+  'staged': 7, 'production': 7, 'complete': 7, 'done': 7,
+};
+
 function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) {
   if (ORCHESTRATION_QUIET_MODE) return 'Task orchestration quiet mode is enabled; task state was not changed.';
   const session = sessions.get(sessionId);
@@ -4035,6 +4046,9 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) 
   if (taskState  !== undefined) session.taskState  = taskState;
   if (lastSkill  !== undefined) session.lastSkill  = lastSkill;
   broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
+  if (taskState !== undefined && session.taskNumber) {
+    broadcast({ type: 'task-pipeline-state', taskNumber: session.taskNumber, status: session.taskState, stepIndex: PIPELINE_STEP_INDEX[session.taskState] || 0, lastSkill: session.lastSkill || null, lastResult: null });
+  }
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
@@ -4418,6 +4432,11 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
   // unattended with no human to approve.
   const session = sessions.get(sessionId);
   if (session?.evalRunner || session?.isChat === false) return true;
+
+  // Pipeline skills write to backlog.json as trusted orchestration steps — bypass
+  // approval for that specific file so /finish-build and /cross-boundary-audit
+  // don't stall waiting for a human cross-check that can't fire unattended.
+  if (filePath && path.basename(filePath) === 'backlog.json') return true;
 
   // Normalize CRLF → LF so the 200-byte bypass and line counts aren't skewed
   // by Windows autocrlf adding \r on checkout when the new content uses LF.
