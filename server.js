@@ -2800,17 +2800,17 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
 // ── obsidianRetrieval helpers ────────────────────────────────────────────────
 
 function _memHash(mem) {
-  let h = 5381;
-  for (const [k, v] of Object.entries(mem)) {
-    for (let i = 0; i < k.length; i++) h = ((h << 5) + h + k.charCodeAt(i)) >>> 0;
-    h = (h ^ v.length) >>> 0;
-    const step = Math.max(1, Math.floor(v.length / 16));
-    for (let i = 0; i < v.length; i += step) h = ((h << 5) + h + v.charCodeAt(i)) >>> 0;
+  const h = crypto.createHash('sha256');
+  for (const k of Object.keys(mem).sort()) {
+    h.update(k);
+    h.update('\0');
+    h.update(mem[k]);
+    h.update('\0');
   }
-  return h.toString(16);
+  return h.digest('hex');
 }
 
-async function _initMemoryIndex(session, mem, apiKey, projectName) {
+async function _initMemoryIndex(session, mem, apiKey, projectName, fileMtimes = {}) {
   const hash      = _memHash(mem);
   const cacheDir  = path.join(POLARIS_DIR, 'memory-index');
   const safe      = (projectName || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -2843,7 +2843,7 @@ async function _initMemoryIndex(session, mem, apiKey, projectName) {
     }
   }
 
-  session.memoryIndex = { chunks, index, embeddings, hash, indexedAt: new Date().toISOString() };
+  session.memoryIndex = { chunks, index, embeddings, hash, fileMtimes, indexedAt: new Date().toISOString() };
 }
 
 function _appendMemoryTrace(projectName, query, results) {
@@ -2889,7 +2889,16 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
         );
         const projectName = matched?.name || session?.projectName || 'default';
         const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
-        await _initMemoryIndex(session, mem, apiKey, projectName);
+        const fileMtimes = {};
+        if (matched?.obsidianDir) {
+          try {
+            const obsDir = resolveObsDir(matched.obsidianDir, config.obsidianVaultPath);
+            for (const fname of Object.keys(mem)) {
+              try { fileMtimes[fname] = fs.statSync(path.join(obsDir, fname)).mtimeMs; } catch {}
+            }
+          } catch {}
+        }
+        await _initMemoryIndex(session, mem, apiKey, projectName, fileMtimes);
       }
 
       const config  = readConfig();
@@ -2898,8 +2907,8 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
       );
       const projectName = matched?.name || session?.projectName || 'default';
 
-      const { index, embeddings } = session.memoryIndex;
-      const results = obsidianRetrieval.rankChunks(index, query, embeddings);
+      const { index, embeddings, fileMtimes } = session.memoryIndex;
+      const results = obsidianRetrieval.rankChunks(index, query, embeddings, fileMtimes);
 
       if (results.length > 0) {
         _appendMemoryTrace(projectName, query, results);
@@ -8653,7 +8662,7 @@ const httpServer = http.createServer((req, res) => {
           { name: 'SetProject', description: `Set the active project for this session. Known projects: ${projectNames || '(none configured)'}.`, inputSchema: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name, or omit for no project (scratch).' } }, required: [] } },
           { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'done', 'broken'] } }, required: ['status'] } },
           ...(!ORCHESTRATION_QUIET_MODE ? [{ name: 'SetTaskState', description: 'Update the ship-task progress shown under the session status badge. Call at the start of each ship-task step with the task number, current state (e.g. planning, start-build, coding, audit, build-finished, in-review), and the last skill invoked.', inputSchema: { type: 'object', properties: { taskNumber: { type: 'number', description: 'Backlog task number (e.g. 1).' }, taskState: { type: 'string', description: 'Current lifecycle state, e.g. planning, start-build, coding, audit, build-finished, in-review.' }, lastSkill: { type: 'string', description: 'Last skill invoked, e.g. plan-task, start-build, finish-build.' } }, required: [] } }] : []),
-          { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Omit filename to get all project context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' } }, required: [] } },
+          { name: 'QueryMemory', description: 'Query the active project knowledge base loaded from Obsidian. Pass query for ranked top-5 excerpts, filename for a specific file, or omit both for full context.', inputSchema: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file.' }, query: { type: 'string', description: 'Natural-language query for BM25 + semantic ranked retrieval of top-5 Obsidian excerpts.' } }, required: [] } },
           { name: 'BrowseChrome', description: 'Read the fully-rendered text content of the active Chrome tab via Chrome DevTools Protocol. Unlike WebFetch, returns text after JavaScript has run. Requires Chrome launched with --remote-debugging-port=9222 (use the Launch Chrome button in Polaris). Optionally navigate to a URL first or extract a specific CSS element.', inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'Optional URL to navigate to before reading.' }, selector: { type: 'string', description: 'Optional CSS selector to extract a specific element.' } }, required: [] } },
         ]}}));
       }
@@ -8663,7 +8672,7 @@ const httpServer = http.createServer((req, res) => {
         if (name === 'SetProject') result = toolSetProject(args || {}, sessionId);
         else if (name === 'SetStatus') result = toolSetStatus(args || {}, sessionId);
         else if (name === 'SetTaskState') result = toolSetTaskState(args || {}, sessionId);
-        else if (name === 'QueryMemory') result = toolQueryMemory(args || {}, sessionId);
+        else if (name === 'QueryMemory') result = await toolQueryMemory(args || {}, sessionId);
         else if (name === 'BrowseChrome') result = await toolBrowseChrome(args || {});
         else return res.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown tool: ${name}` } }));
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(result) }] } }));
