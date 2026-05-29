@@ -72,7 +72,7 @@ Write `%APPDATA%\.claude\polaris\session-guidance\orchestrator-active.json` usin
   "sessionId": "<this-session-id>",
   "startedAt": "<ISO timestamp>",
   "active": true,
-  "authority": ["conflict-resolution", "branch-gate"]
+  "authority": ["conflict-detection", "branch-gate"]
 }
 ```
 
@@ -83,7 +83,7 @@ Print to session:
 ```
 🔐 Orchestrator authority active
    Project: [project name]
-   Authority: conflict resolution (all types) · branch gate (all sessions)
+   Authority: conflict detection (monitor + recommend) · branch gate (all sessions)
    All branch/worktree ops must be requested via session-guidance/branch-requests.json
    User approval remains valid at any time.
 ```
@@ -213,7 +213,7 @@ git diff main...<branch-b> -- <file>
 → Resolution: read both diffs and synthesize a combined resolution that preserves the intent of both changes. Document the synthesized recommendation in the merger guide. Do NOT apply code changes automatically — present the recommendation to Scott and wait for manual application. Escalate to Scott immediately if intent is genuinely indeterminate.
 
 **Correctness-divergence** — both branches modified the same file but took fundamentally different technical approaches to the same problem (e.g., one uses async/await, the other uses callbacks for the same operation).
-→ Resolution: consult CLAUDE.md and the project Architecture doc to pick the correct approach. Apply the winning approach, document the rationale in the merger guide, and fire an orchestrator alert to the losing session's branch owner via Output B so they can rebase onto the chosen approach.
+→ Resolution: consult CLAUDE.md and the project Architecture doc to identify the preferred approach. Document the recommendation in the merger guide. Do NOT apply code changes automatically — present the recommendation to Scott and wait for manual application.
 
 ---
 
