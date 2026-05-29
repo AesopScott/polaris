@@ -272,3 +272,23 @@ Maximum seconds a LangGraph task may remain paused at a human gate before the ex
 - SERVER_PORT Python consumers missing — now added
 
 **Status:** ✓ Audit current — all task #33 env-var changes registered
+
+---
+
+**Last audit:** 2026-05-28T00:00:00Z (by /cross-boundary-audit for task #31)
+
+**Task audited:** #31 — Make trust, proof, cost, and recovery visible in the product
+
+**Boundaries checked:** `process.env.*` variables in server.js, main.js
+
+**Evidence recorded:**
+- 11 entries verified; no new env vars introduced by task #31
+- Line ref drift detected vs last audit (server.js grew since task #40): APPDATA :44→:58, LOCALAPPDATA :97→:121, MOCKUP_DEST :46→:60, POLARIS_DIR :45→:59, POLARIS_SKILLS_DIR :221→:245, RESOURCES_PATH :230→:254, SERVER_PORT :47→:61, POLARIS_ORCHESTRATION_QUIET_MODE :769→:812, USERPROFILE :824→:11269 (primary reference shifted)
+- 0 new env vars introduced on this task
+- Registries match current code diff: yes (no env var changes in task #31)
+
+**Gaps identified:**
+- `POLARIS_PORT` — orphan consumer in test harness (carried forward from task #40 audit)
+- Line refs in summary table are stale by ~10-50 lines (server.js grew); individual entries retain last-known refs — next task touching server.js should refresh
+
+**Status:** Audit complete

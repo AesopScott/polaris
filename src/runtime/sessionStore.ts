@@ -124,6 +124,7 @@ const BACKLOG_STATUS_TO_LAST_SKILL: Record<string, string> = {
   'in-progress':    'start-build',
   'build-finished': 'finish-build',
   'in-review':      'finish-build',
+  'cba-complete':   'codex-review',
   'review-blocked': 'codex-review',
   'pr-reviewed':    'review-pr',
   'staged':         'promote-stage',
