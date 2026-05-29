@@ -100,6 +100,7 @@ const DEFAULT_WORKTREE_TTL_DAYS = 2; // purge detached/merged-branch session wor
 const DOMAIN_SCOUT_RESULTS_PATH  = path.join(POLARIS_DIR, 'domain-scout-results.json');
 const ORCHESTRATOR_STATE_PATH    = path.join(POLARIS_DIR, 'orchestrator-state.json');
 const INJECTION_LOG_PATH         = path.join(POLARIS_DIR, 'memory-injection-log.jsonl');
+const INJECTION_LOG_MAX_LINES    = 500;  // prune when file exceeds ~500KB
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
@@ -7136,6 +7137,12 @@ async function spawnMaxChat(sessionId, prompt, config) {
             })),
           };
           fs.appendFileSync(INJECTION_LOG_PATH, JSON.stringify(record) + '\n', 'utf8');
+          const stat = fs.statSync(INJECTION_LOG_PATH);
+          if (stat.size > 500_000) {
+            const all = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
+            if (all.length > INJECTION_LOG_MAX_LINES)
+              fs.writeFileSync(INJECTION_LOG_PATH, all.slice(-INJECTION_LOG_MAX_LINES).join('\n') + '\n', 'utf8');
+          }
         } catch {}
       }
     }
@@ -12656,7 +12663,8 @@ async function handleMessage(ws, raw) {
     try {
       if (fs.existsSync(INJECTION_LOG_PATH)) {
         const lines = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
-        entries = lines.slice(-(msg.limit || 50)).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        const limit = Math.min(parseInt(msg.limit, 10) || 50, 200);
+        entries = lines.slice(-limit).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
       }
     } catch {}
     sendTo(ws, { type: 'injection-history', entries });

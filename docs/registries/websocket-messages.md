@@ -96,6 +96,38 @@ Live pipeline position update for a backlog task — step index, current status,
 
 ---
 
+### `get-injection-history`
+
+Client requests the last N memory injection log entries from the server.
+
+**Payload:** `{ type: 'get-injection-history', limit?: number }` — `limit` clamped server-side to max 200; defaults to 50.
+
+**Producers (client sends)**
+- `resources/mockup.html:~13020` — `refreshInjectionPanel()` → `wsSend({ type: 'get-injection-history', limit: 50 })`
+
+**Consumers (server handles)**
+- `server.js:~12654` — reads last `limit` lines from `INJECTION_LOG_PATH` (`memory-injection-log.jsonl`), responds with `injection-history`
+
+**Status:** ✓ Balanced (feat/memory-injection-panel)
+
+---
+
+### `injection-history`
+
+Server response to `get-injection-history` — array of logged injection events.
+
+**Payload:** `{ type: 'injection-history', entries: Array<{ ts: number, sessionId: string, sessionName: string|null, project: string, query: string, queryType: 'high-signal'|'low-signal', effectiveQuery: string, memories: Array<{ content: string, type: string, strength: number|null, accessCount: number }> }> }`
+
+**Producers (server sends)**
+- `server.js:~12662` — `sendTo(ws, { type: 'injection-history', entries })`
+
+**Consumers (client handles)**
+- `resources/mockup.html:5739` — `case 'injection-history': renderInjectionPanel(msg.entries || [])`
+
+**Status:** ✓ Balanced (feat/memory-injection-panel)
+
+---
+
 ## Zod Schema Coverage (tasks #37, #38, #40)
 
 All ~75 WebSocket message types that transit the Polaris WS boundary have corresponding Zod schemas in `src/contracts/ws-messages.ts`. Task #37 defined the schemas; task #40 added a Vitest test consumer; task #38 is wiring receive-side validation in `handleMessage()` via `WS_SCHEMA_REGISTRY`.
