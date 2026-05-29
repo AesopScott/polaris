@@ -166,8 +166,9 @@ Based on the task's current `status`:
 | `backlog` | **Step 1 (plan)** | **MUST invoke `/plan-task {N}` FIRST.** Never skip to cross-boundary-audit for backlog tasks. |
 | `planned` | Step 2 (start build) | Invoke `/start-build {N}`. Plan is complete; create the task branch, then audit. |
 | `build-started` | Ask user | "Code already started on the task branch. Has the cross-boundary audit run on the task branch yet? [no, run audit now / yes, still coding / yes, ready to finish build]" |
-| `build-finished` | Step 5 (review PR) | Code is committed; reviews are next. Proceed to `/review-pr`. |
-| `cba-complete` | Step 6 (codex review) | Claude review complete; proceed to Codex review. |
+| `cba-complete` | Step 4 (finish-build) | Boundary audit passed; proceed to finish build. |
+| `build-finished` | Step 5 (review PR) | PR opened and pushed; code reviews next. Invoke `/review-pr`. |
+| `pr-reviewed` | Step 7 (promote to prod) | Both reviews passed; ready to promote to production. Invoke `/promote-to-prod`. |
 | `staged` | Step 7 (promote to prod) | CareGuide task promoted to stage and ready for production. Invoke `/promote-to-prod`; it marks production after deploy succeeds. |
 | `production` | Stop | Tell user "Task #{N} is already in production." Do not proceed. |
 
@@ -268,22 +269,22 @@ After it completes:
 - `fix`: stop the workflow — user will fix issues on the task branch and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
-## Step 6 — Codex Review (`review` → independent assessment)
-
-Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "cba-complete", lastSkill: "codex-review" })` before invoking the skill.
+## Step 6 — Codex Review (`build-finished` → independent assessment)
 
 Invoke `/codex-review {N}`. It will run an independent Codex review and compare findings against the Claude review from Step 5.
+
+**Status during review remains `build-finished`.** After the reviews complete (Step 5 and Step 6), a separate approval handler will set status to `pr-reviewed` (both reviews approved) or `review-blocked` (reviews found blocking issues). This approval handler is orchestrator-managed and will be documented in `orchestrate.md`.
 
 After it completes:
 - Surface the Codex review findings and any disagreements with the Claude review
 - Identify any additional issues or confirm the reviews align
 
-**Gate:** "Codex review complete and compared. {findings summary}. Ready to promote to production? [yes / fix / abort]"
+**Gate:** "Codex review complete and compared. {findings summary}. Both reviews are now complete. If both pass without blocking issues, the approval handler will set status to `pr-reviewed` and `/promote-to-prod` can proceed. Continue to Step 7? [yes / fix / abort]"
 - `yes`: continue to Step 7 (promote to production)
 - `fix`: stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
-## Step 7 — Promote to production (`cba-complete` or `staged` → `production`)
+## Step 7 — Promote to production (`pr-reviewed` or `staged` → `production`)
 
 > **Reached after reviews are complete in Steps 5-6.** This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
 
