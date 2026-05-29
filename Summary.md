@@ -56,7 +56,7 @@ Both sessions have successfully completed all work required to integrate multi-s
    - Documented session execution model
 
 6. **✅ Synced all skills to ~/.claude/commands/**
-   - orchestrate.md (361 lines)
+   - orchestrate.md (377 lines — includes alert broadcasting and infrastructure notes)
    - ship-task.md (229 lines)
    - review-pr.md (360 lines)
    - codex-review.md (264 lines)
@@ -208,11 +208,49 @@ production (after merge and promotion)
 - review-pr.md (updated)
 - codex-review.md (updated)
 
-### Git History
+### Git History (Chronological)
 
-- `2ad15ac` — docs: refine orchestration integration — clarify status transitions and approval handler flow
-- `70aeca6` — docs: add orchestrate skill with conflict detection and merge coordination
+**Ship-task & orchestrator implementation:**
 - `308fd47` — feat: add codex-reviewed and review-passed statuses; update review skills to set status after completion
+- `70aeca6` — docs: add orchestrate skill with conflict detection and merge coordination
+- `2ad15ac` — docs: refine orchestration integration — clarify status transitions and approval handler flow
+
+**Documentation & verification:**
+- `83afdb7` — docs: add comprehensive summary of multi-session orchestration integration
+- `63f3acb` — docs: update orchestrate.md with server-side infrastructure notes and locks.json status
+
+---
+
+## Server-Side Infrastructure & Cross-Check Fixes
+
+**Supporting implementation (Commit c0f62af, May 28):**
+
+The orchestration system relies on server.js infrastructure improvements that were identified and fixed through cross-check review:
+
+1. **✅ Worktree collision alert wiring**
+   - writeOrchestratorAlert() now fires for both sessions when collision detected
+   - Prevents silent worktree conflicts
+
+2. **✅ Session state accuracy**
+   - currentBranch and filesChanged populated from git data via getWorktreeBranchInfo()
+   - Ensures orchestrate.md file-set watching uses real git state, not session-reported fields
+
+3. **✅ Session cleanup paths**
+   - deleteSessionStateFile() added to: orchestrator teardown, DeepSeek ModGenActivate, dispatch-agent handlers
+   - Prevents orphaned state files from confusing session monitoring
+
+4. **✅ Alert deduplication**
+   - _seenAlerts Map tracks alert timestamps per session
+   - Each alert broadcasts once; deduplication prevents spam across polling ticks
+   - Seen-sets pruned when sessions exit
+   - Critical for UX when alerts are broadcast to user
+
+5. **✅ Locks.json exception configured**
+   - session-directives.json registered as exception in locks.json
+   - Allows all sessions to write and update directive status
+   - Verified: `C:\Users\scott\AppData\Roaming\.claude\polaris\locks.json`
+
+**Impact:** All fixes are complementary to orchestrate.md and ship-task implementation. No conflicts or blockers identified. Infrastructure is production-ready.
 
 ---
 
