@@ -8400,7 +8400,27 @@ const httpServer = http.createServer((req, res) => {
       return;
     }
     healthSnapshotInFlight = true;
-    const snapshot = { status: 'ok', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: null };
+    const snapshot = { status: 'ok', sessions: sessions.size, mcpHelpers: null, connections: null, topProcess: null, idleSessions: [], explanation: null };
+
+    // Collect idle session data
+    const now = Date.now();
+    const idleThresholdMs = STALL_WARN_MS;
+    const kickThresholdMs = STALL_KICK_MS;
+    for (const [sessionId, session] of sessions) {
+      if (session.status !== 'running') continue;
+      const idleMs = now - (session.lastActivityAt || session.startAt);
+      if (idleMs >= idleThresholdMs) {
+        const idleSec = Math.floor(idleMs / 1000);
+        snapshot.idleSessions.push({
+          sessionId: sessionId.slice(0, 8),
+          idleSec,
+          keepAliveInjected: session.keepAliveInjected || false,
+          willKickAt: Math.max(0, kickThresholdMs - idleMs),
+          name: session.name || 'Unnamed'
+        });
+      }
+    }
+
     try {
       const ps = [
         "$m=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match '@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' };",
@@ -8415,9 +8435,27 @@ const httpServer = http.createServer((req, res) => {
           snapshot.mcpHelpers = Number(parsed.mcpHelpers || 0);
           snapshot.connections = Number(parsed.connections || 0);
           snapshot.topProcess = parsed.topProcess || null;
-          if (snapshot.mcpHelpers >= 10) snapshot.status = 'critical';
-          else if (snapshot.connections >= 20) snapshot.status = 'critical';
-          else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) snapshot.status = 'degraded';
+
+          // Determine status and explanation
+          if (snapshot.mcpHelpers >= 10) {
+            snapshot.status = 'critical';
+            snapshot.explanation = `${snapshot.mcpHelpers} MCP helper processes active — consuming system resources and causing stalls`;
+          } else if (snapshot.connections >= 20) {
+            snapshot.status = 'critical';
+            snapshot.explanation = `${snapshot.connections} connections on port 40000 — possible connection leak or excessive session load`;
+          } else if (snapshot.idleSessions.length > 0) {
+            snapshot.status = 'degraded';
+            const kickCount = snapshot.idleSessions.filter(s => s.willKickAt <= 0).length;
+            const injectedCount = snapshot.idleSessions.filter(s => s.keepAliveInjected).length;
+            snapshot.explanation = `${snapshot.idleSessions.length} idle session(s): ${injectedCount} keep-alive injected, ${kickCount} pending termination`;
+          } else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) {
+            snapshot.status = 'degraded';
+            if (snapshot.mcpHelpers > 0) {
+              snapshot.explanation = `${snapshot.mcpHelpers} MCP helper process(es) detected — cleanup may be incomplete`;
+            } else {
+              snapshot.explanation = `${snapshot.connections} connections on port 40000 — elevated but not critical`;
+            }
+          }
         } catch (e) {
           snapshot.status = 'degraded';
           snapshot.error = e.message;

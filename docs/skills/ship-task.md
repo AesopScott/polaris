@@ -1,258 +1,323 @@
-# `/ship-task` Skill
+---
+name: ship-task
+description: End-to-end task workflow with human gates. Resumes from the task's current status. Walks /plan-task → /start-build → /cross-boundary-audit → write code → /finish-build → /review-pr → /codex-review → /promote-to-prod, using /promote-stage only for CareGuide's real stage environment.
+---
 
-## Overview
+# /ship-task [task-number]
 
-`/ship-task` is an **orchestrator skill** that guides a backlog task through the complete pipeline from planning through production deployment. It doesn't execute changes itself; instead, it invokes a sequence of specialized skills that handle each phase, manage status transitions, and validate the task at each gate.
+Walks the full task lifecycle with a human gate at every step. Detects the task's current `status` in `docs/backlog.json` and **resumes** from the right place — you don't have to re-run the earlier steps.
 
-## Workflow Pipeline
+## Directive Polling (multi-session only)
 
-The skill orchestrates seven sequential phases:
+In multi-session contexts, `/ship-task` invokes the sub-skills (`/plan-task`, `/start-build`, `/cross-boundary-audit`, `/finish-build`, `/review-pr`, `/codex-review`, `/promote-stage`, `/promote-to-prod`), which each poll for orchestrator directives independently. This skill itself does not poll — it delegates directive handling to the sub-skills.
 
-```
-backlog
-  ↓
-[/plan-task] → planned
-  ↓
-[/start-build] → build-started
-  ↓
-  (coding — status stays build-started)
-  ↓
-[/cross-boundary-audit] → cba-complete
-  ↓
-[/finish-build] → build-finished
-  ↓
-[/review-pr] → (no status change)
-  ↓
-[/codex-review] → pr-reviewed
-  ↓
-[/promote-stage] → staged  (CareGuide only — see Phase 6 note)
-  ↓
-[/promote-to-prod] → production
-```
+When orchestrator directives are active:
+- Each sub-skill reads `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+- Acknowledges its pending directive (if any) and executes it
+- Reports completion/failure back to the directive file
+- Proceeds with phase work or halts if directive indicates an issue
 
-## Phase Details
-
-### Phase 1: Planning (`/plan-task`)
-
-**What it does:**
-- Loads project context from Obsidian (Build folder + recent Sessions)
-- Runs interactive design discussion to explore architecture and approach
-- Creates structured outline with implementation phases
-- Breaks task into proof units (TDD expectations)
-- Validates the feature is reachable end-to-end by its target persona
-- Audits boundary changes against Feature Contracts and registries
-
-**Status transition:** `backlog` → `planned`
-
-**Gates next phase:** Requires user confirmation before moving to build
-
-### Phase 2: Build Startup (`/start-build`)
-
-**What it does:**
-- Loads task plan and proof units from the planning phase
-- Creates an isolated git branch and worktree for the task
-- Syncs the main branch to get latest changes
-- Auto-selects the task (or accepts task number as parameter)
-- Loads full code context for the implementation
-
-**Status transition:** `backlog` or `planned` → `build-started`
-
-**Output:** Developer is now in a focused build session on an isolated branch
-
-### Phase 2.5: Cross-Boundary Audit (`/cross-boundary-audit`)
-
-**What it does:**
-- Verifies all new identifiers produced by the build are registered with correct line refs
-- Checks proof units — confirms failing test → implementation → passing test evidence exists
-- Fixes any registry gaps before the branch is pushed
-
-**Status transition:** `build-started` → `cba-complete`
-
-**Output:** All boundary contracts and registries are clean; task is ready to finish-build
-
-> **Note:** `cba-complete` means the cross-boundary audit is done, not that code review is done. The status stays `cba-complete` until `/finish-build` runs and opens the PR.
+See the individual sub-skill documentation for their directive polling implementation.
 
 ---
 
-### Phase 3: Build Completion (`/finish-build`)
+## OBSIDIAN ACCESS PROTOCOL
 
-**What it does:**
-- Takes over from `cba-complete` state
-- Commits all changes with conventional commit message
-- Pushes the branch with `-u` flag
-- Opens a pull request targeting the `stage` branch (CareGuide deployments) or `main` (other projects)
-- Records the PR URL in `docs/backlog.json`
-- Clears the build session context
+When you need to read or write Obsidian content (list vault, list folder, get file, append to file), try these in order. Stop at the first one that works.
 
-**Status transition:** `cba-complete` → `build-finished`
+- **Vault root:** `G:\My Drive\Aesop Academy\Obsidian\`
+- **REST API:** `http://127.0.0.1:27123`, auth via header `Authorization: Bearer ${OBSIDIAN_API_KEY}` (env var set globally)
+- **MCP server:** `mcp__mcp-obsidian__*` tools
 
-**Output:** PR is open and ready for review; task branch remains checked out
+### Fallback order
 
-### Phase 4: Code Review (`/review-pr`)
+**1. Filesystem (most reliable — no running services required)**
+- List vault root: `Glob "G:\My Drive\Aesop Academy\Obsidian\*"`
+- List folder: `Glob "G:\My Drive\Aesop Academy\Obsidian\{folder}\*"`
+- Get file: `Read "G:\My Drive\Aesop Academy\Obsidian\{folder}\{file}.md"`
+- Write file: `Write "G:\My Drive\Aesop Academy\Obsidian\{folder}\{file}.md"` or `Edit`
 
-**What it does:**
-- Conducts structured code review against:
-  - Task spec and objective
-  - Feature Contracts and registries
-  - Full diff (all commits, not just latest)
-- Validates proof trail completeness
-- Records review evidence and findings as text
-- Does NOT automatically post comments to GitHub
-- Does NOT change task status
+**2. Local REST API (fallback when filesystem is unavailable)**
+The Obsidian Local REST API plugin runs on `127.0.0.1:27123`. URL-encode folder/file names with spaces.
+- List vault root: `curl -s -H "Authorization: Bearer $env:OBSIDIAN_API_KEY" http://127.0.0.1:27123/vault/`
+- List folder: `curl -s -H "Authorization: Bearer $env:OBSIDIAN_API_KEY" "http://127.0.0.1:27123/vault/{folder}/"`
+- Get file: `curl -s -H "Authorization: Bearer $env:OBSIDIAN_API_KEY" "http://127.0.0.1:27123/vault/{folder}/{file}.md"`
+- Write file: `curl -s -X PUT -H "Authorization: Bearer $env:OBSIDIAN_API_KEY" -H "Content-Type: text/markdown" --data-binary @local-file "http://127.0.0.1:27123/vault/{folder}/{file}.md"`
+- Append to file: `curl -s -X POST -H "Authorization: Bearer $env:OBSIDIAN_API_KEY" -H "Content-Type: text/markdown" --data-binary "...content..." "http://127.0.0.1:27123/vault/{folder}/{file}.md"`
 
-**Status transition:** (no status change — review is evidence only)
+**3. MCP server (final fallback)**
+- List vault: `mcp__mcp-obsidian__obsidian_list_files_in_vault`
+- List folder: `mcp__mcp-obsidian__obsidian_list_files_in_dir`
+- Get file: `mcp__mcp-obsidian__obsidian_get_file_contents`
+- Append: `mcp__mcp-obsidian__obsidian_append_content`
 
-**Output:** Review findings logged; may identify blockers before Codex review
+If all three fail, abort with: "Cannot access Obsidian vault — checked filesystem (`G:\My Drive\Aesop Academy\Obsidian\`), REST API (`http://127.0.0.1:27123`), and MCP server. None responded. Investigate before proceeding."
 
-### Phase 5: Independent Review (`/codex-review`)
+---
 
-**What it does:**
-- Independent review via Codex (GPT-5.4 family) — different model than the one that wrote the code
-- Reviews against spec, registries, proof trail, and diff
-- Compares findings against any prior `/review-pr` to surface disagreements
-- Logs all findings to Obsidian
-- **Sets status to `cba-complete` when review PASSES** (code review audit complete)
-- May set status to `review-blocked` if hard issues are found that must be fixed before merge
+## OBSIDIAN FOLDER CONVENTION
 
-**Status transition:** `build-finished` → `pr-reviewed` (or `review-blocked` if blockers found)
+Each project gets two sibling folders at the vault root. This is hard-coded — every project follows it.
 
-> **Note:** The correct status on `/codex-review` APPROVE is `pr-reviewed`. `cba-complete` is a persistent misnomer that has been incorrect for a long time — do not use it here.
+- **`{Name}_Build/`** — design and planning docs. Canonical file names:
+  - `Soul.md`
+  - `Architecture.md`
+  - `Feature Contracts.md`
+  - `Build Plan.md`
+- **`{Name}_Sessions/`** — one narrative file per session:
+  - `YYYY-MM-DD — {Session Title}.md` (e.g., `2026-05-17 — Task 12 Review Session.md`)
 
-**Output:** Task is approved for staging, or flagged with blockers
+`{Name}` mirrors the project's repo name. **Folder lookups are case-insensitive** — vault history has both `CareGuide_Build/` and `careguide_Sessions/`. When creating new folders for a new project, use the project's canonical capitalisation.
 
-### Phase 6: Promote to Stage (`/promote-stage`)
+---
 
-> **CareGuide only.** This phase is skipped for all other projects. Invariant #7 means the branch target was already decided at `/finish-build` time — non-CareGuide PRs target `main` directly, so there is no stage branch to promote to. For Polaris and other projects, after `cba-complete` the task moves directly to Phase 7. The `staged` status should never appear on a Polaris task; if it does, `/finish-build` mis-targeted the PR.
+## Scope and limits
 
-**What it does:**
-- Scans backlog for tasks in `cba-complete` state
-- Merges approved PRs into the `stage` branch
-- Runs a rollup audit to verify no boundary conflicts in staged code
-- Updates task metadata for staging environment
+- **One primary task per session.** Orchestrates exactly Task #{N} through its lifecycle. Sub-skill invocations (`/plan-task`, `/start-build`, `/finish-build`, `/cross-boundary-audit`) all run against Task #{N} only.
+  - **Exception: emergency fixes.** A second task may be shipped as an emergency fix inside an existing session by invoking `/ship-task {M}` for the fix's task number. Each `/ship-task` call still scopes to its own task — they don't interleave.
+- **The production promotion step (`/promote-to-prod`) is the ONLY rollup step**, and it processes the eligible reviewed tasks for the current promotion path. Outside promotion, this skill never enumerates or works on other tasks.
+- **Stage is CareGuide-only.** `/promote-stage` is used only for Parental CareGuide/CareGuide, the only project with a real, testable stage environment. All other projects skip stage and use `/promote-to-prod` after reviews.
+- **No separate mark-production step.** `/promote-to-prod` owns the production status change and archive update after prod deploy succeeds.
 
-**Status transition:** `cba-complete` → `staged`
+You **invoke each sub-skill in turn**. Between each sub-skill you stop, summarize what happened, and ask the user to confirm before proceeding.
 
-**Output:** Code is deployed to staging environment for final validation
+If any sub-skill hard-fails or surfaces an error, surface it to the user and stop the workflow — do NOT proceed to the next step automatically.
 
-### Phase 7: Promote to Production (`/promote-to-prod`)
+## Objective-Centric Criteria Contract
 
-**What it does:**
-- Scans backlog for tasks in `staged` state
-- Promotes code from stage → main → production branch
-- Watches the deploy in real-time
-- Validates smoke tests pass in production
-- If deploy fails: logs failure details and may trigger rollback or fix workflow
-- If deploy succeeds: marks task as complete
+`/ship-task` is the orchestrator for the task objective. At every resume point, it must load the task's `objective` field and use it as the durable goal contract.
 
-**Status transition:** `staged` → `production` (or `failed-smoke-test` if deploy validation fails)
+Required behavior:
+- If the task is `backlog`, `/ship-task` must invoke `/plan-task {N}` so the objective is created before build starts.
+- If the task is beyond planning and `objective` is missing, stop and tell the user to re-run `/plan-task {N}` or manually backfill `objective`.
+- Summaries between steps must mention objective statement, current success criterion, non-goals, and any triggered stop condition.
+- A step may proceed only when its output advances or verifies at least one `objective.successCriteria[]` item.
+- If a sub-skill reports work outside the objective or inside `objective.nonGoals[]`, stop for user decision.
 
-**Output:** Task is live in production, or failure details are captured for remediation
+## Worktree isolation check (required before any other step)
 
-## Key Invariants
-
-1. **Status changes only at phase boundaries** — individual skills set status, `/ship-task` does not
-2. **No silent branch operations** — each phase that touches git prompts for confirmation
-3. **Proof trail is mandatory** — must have failing test → implementation → passing test evidence
-4. **Registry audit is mandatory** — boundary changes must be audited before moving past build
-5. **Two-model review** — Claude AND Codex perspectives surface disagreements neither alone would catch
-6. **Atomic phases** — each phase is self-contained; if it fails, the task remains at that status until fixed
-7. **PR targeting is automatic** — `/finish-build` chooses stage or main based on project configuration. This is the fork point that determines whether Phase 6 runs at all. For non-CareGuide projects the effective pipeline is six phases, not seven, and `staged` is an unreachable status.
-8. **Orchestrator gates all phase transitions** — the orchestrator must approve every move from one skill to the next. The single exception is the transition out of `/write-plan`: moving from `planned` to `/start-build` requires Scott's direct approval. The orchestrator cannot auto-approve this gate.
-
-## Phase Gates
-
-| Transition | Gate |
-|---|---|
-| `planned` → `/start-build` | **Human (Scott)** — must approve the plan directly |
-| `build-started` → `/cross-boundary-audit` | Orchestrator |
-| `cba-complete` → `/finish-build` | Orchestrator |
-| `build-finished` → `/review-pr` | Orchestrator |
-| (review evidence) → `/codex-review` | Orchestrator |
-| `pr-reviewed` → `/promote-to-prod` | Orchestrator |
-| `staged` → `/promote-to-prod` | Orchestrator (CareGuide only) |
-
-> **Merge serialization:** The orchestrator handles all merges to `stage` or `main` directly, one session at a time. After each merge the orchestrator pushes to origin immediately before allowing the next session to merge. No two sessions may merge to a shared branch concurrently.
-
-## Triggering the Workflow
+Before any code, git, or file operations, verify the session is running from a stable, isolated working directory. `/ship-task` is the full-lifecycle orchestrator — it spawns sub-skills that write code to task branches, open PRs, and merge to main. All of this fails or corrupts state if the orchestrator is running from an ephemeral temp directory with no stable worktree.
 
 ```bash
-/ship-task [task-number]
+git branch --show-current   # prints branch name, or empty if detached HEAD
+git worktree list           # lists all worktrees: path, HEAD commit, branch
 ```
 
-**Parameters:**
-- `task-number` (optional): Specific task to ship. If omitted, `/ship-task` auto-selects the next ready task from `docs/backlog.json`
+Also note the current working directory (`$PWD` in PowerShell, `pwd` in bash).
 
-**Requirements:**
-- Task must be in `backlog` status to start from planning
-- Task can jump in at later phases if already partially complete (e.g., if you have a `build-finished` task, run `/ship-task 42` to skip to review)
+**Interpret the result and act:**
 
-## Blocking Conditions
+| Situation | Action |
+|---|---|
+| Branch matches `task/{N}-*` | ✅ **Proceed** — resuming a build already in progress on an isolated task branch. |
+| Branch is `main`, CWD is the project source tree (`C:\Users\scott\Code\{ProjectName}`) | ✅ **Proceed** — starting a new task from the source tree. Sub-skills will create the task branch and worktree. |
+| Branch is `main` or detached HEAD, CWD is a Polaris temp session dir (path contains `AppData\Local\Temp\polaris-wt`), AND `git worktree list` shows a `[main]` entry in the source tree | ✅ **Proceed** — standard Polaris chat session. Note the primary `[main]` worktree path; sub-skills will use it for main-branch operations and create isolated task worktrees for code work. |
+| Branch is `main` or detached HEAD, CWD is a Polaris temp session dir, AND no `[main]` primary worktree exists in the source tree | ⚠️ **Create an isolated worktree** before continuing (see below). |
 
-The workflow will pause and require user action if:
+**Creating an isolated worktree when required:**
 
-- **Plan phase:** Boundaries conflict with existing Feature Contracts
-- **Build phase:** Proof units cannot be satisfied (no testable evidence)
-- **Review phase:** Blocker issues identified (status set to `review-blocked`)
-- **Deploy phase:** Smoke tests fail in production (status set to `failed-smoke-test`)
+1. Confirm the project source path exists: `ls "C:\Users\scott\Code\{ProjectName}"`.
+2. Create a timestamped worktree on a new branch based on `origin/main`:
+   ```bash
+   STAMP=$(date +%Y%m%d-%H%M%S)
+   BRANCH="wt/session-${STAMP}"
+   DEST="C:/Users/scott/Code/{ProjectName}/worktrees/${STAMP}"
+   git -C "C:/Users/scott/Code/{ProjectName}" worktree add "$DEST" -b "$BRANCH" origin/main
+   ```
+3. Announce: "Session was in a Polaris temp directory without a primary worktree. Created isolated worktree at `{path}` on `{branch}`. All orchestration and sub-skill invocations will use that location."
+4. Use `$DEST` as the effective working directory for all git and file operations throughout this skill.
 
-## Output & Logging
-
-- **Obsidian:** Session notes logged to `{Project}_Sessions/` with full transcript
-- **backlog.json:** Task status and PR URL updated at each phase
-- **Git:** Branch created, commits made, PR opened
-- **GitHub:** PR visible with full diff and coverage
-
-## Integration with Other Skills
-
-- **Independently callable skills:** Each phase (`/plan-task`, `/start-build`, etc.) can be called directly without running the full pipeline
-- **Reusability:** A task can be paused at any status and resumed later by running `/ship-task <task-number>`
-- **Rollback:** If production deploy fails, `/promote-to-prod` captures failure details; remediation may require a new task or hotfix branch
-
-## When to Use
-
-Use `/ship-task` when:
-- You have a backlog task ready to move through the pipeline
-- You want a guided, gated workflow with validation at each step
-- Multiple reviewers need to evaluate the same code (Claude + Codex)
-- You need detailed proof trail and registry audit evidence
-
-Don't use `/ship-task` when:
-- You're doing a quick one-off fix (use individual skills directly)
-- The task doesn't require formal proof units (minor patches)
-- You're working in isolation without needing two-model review
+If creation fails (path collision, disk space, network error), stop immediately — do not proceed from a temp directory.
 
 ---
 
-## Session Directive Polling
+## Step 0 — Read backlog and pick the task
 
-Every session running a ship-task phase must poll `session-directives.json` on each tick and act on any pending directives addressed to it.
+Follow the backlog-on-main protocol (worktree-pinned or `git checkout main && git pull`, verify with `git branch --show-current`).
 
-**File path:** `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+Read `docs/backlog.json`.
 
-> **Locks exception required:** `session-directives.json` must be added as an exception in `locks.json` so all sessions (not just the orchestrator) can write status updates (`acknowledged`, `completed`, `failed`) back to the file. TODO: add this exception before enabling the directive system.
+If `$ARGUMENTS` is empty: auto-select the highest-priority task whose status is not `done` (oldest `number` as tiebreaker).
 
-### Session polling protocol (each tick)
+If `$ARGUMENTS` is a number: load that task. If not found, stop and tell the user.
 
-1. Read `session-directives.json` (read-modify-write via `node -e` utf8)
-2. Find all entries where `target.sessionId` matches this session OR `target.branch` matches the current branch, AND `status === "pending"`
-3. Process in priority order: `critical` → `high` → `normal`
-4. For each directive:
-   - Set `status: "acknowledged"` and write `acknowledgedAt` immediately before acting
-   - Execute the `instruction` as if it were a user prompt
-   - On success: set `status: "completed"`, write `completedAt` and a brief `result`
-   - On failure: set `status: "failed"`, write `result` with the reason
-5. After processing all pending directives, continue with the normal phase work
+Show the user:
+- Task number, title, current `status`
+- If `branch` or `pr_url` are set, show them
+- The plan summary if a plan exists
+- The objective statement, success criteria, non-goals, and current step if `objective` exists; if it does not exist and status is not `backlog`, warn that objective criteria are missing and must be backfilled before continuing.
 
-### What directives can contain
+**Gate:** "Run the ship-task workflow for Task #{N} — '{title}', currently `{status}`? [yes/no]"
 
-- **Phase transitions:** "Move to `/cross-boundary-audit` now — orchestrator has approved"
-- **Conflict resolutions:** "Rebase on main — conflict in server.js resolved, see merger guide [path]"
-- **Required fixes:** "Fix found during review: [description]. Commit and re-run `/finish-build`"
-- **Gate approvals:** "Orchestrator approves: proceed to `/codex-review`"
+If `no` or `abort`, stop. Otherwise continue to the resumption logic below.
+
+## Resumption — pick the starting step
+
+**CRITICAL:** Read the task's current `status` from `docs/backlog.json`. DO NOT skip any planning step. Follow this decision tree strictly.
+
+**MAJOR TASK GATE:** Before resuming, check the task's `impact` field. If `impact: "major"` AND status is not `backlog`:
+- Stop and print: "Task #{N} is a major task with status `{status}`. Major tasks are decomposed during planning and do not proceed to build. If the plan created subtasks, ship those instead. If you need to revise the plan, edit `docs/backlog.json` directly or re-run `/plan-task {N}` to update it."
+- Do NOT proceed with Steps 2-7.
+
+Based on the task's current `status`:
+
+| Status | Start at | Action |
+|---|---|---|
+| `backlog` | **Step 1 (plan)** | **MUST invoke `/plan-task {N}` FIRST.** Never skip to cross-boundary-audit for backlog tasks. |
+| `planned` | Step 2 (start build) | Invoke `/start-build {N}`. Plan is complete; create the task branch, then audit. |
+| `build-started` | Ask user | "Code already started on the task branch. Has the cross-boundary audit run on the task branch yet? [no, run audit now / yes, still coding / yes, ready to finish build]" |
+| `build-finished` | Step 5 (review PR) | Code is committed; reviews are next. Proceed to `/review-pr`. |
+| `cba-complete` | Step 6 (codex review) | Claude review complete; proceed to Codex review. |
+| `staged` | Step 7 (promote to prod) | CareGuide task promoted to stage and ready for production. Invoke `/promote-to-prod`; it marks production after deploy succeeds. |
+| `production` | Stop | Tell user "Task #{N} is already in production." Do not proceed. |
+
+**If status is `backlog`: You MUST invoke `/plan-task {N}` before anything else. Not optional.**
+
+## Step 1 — Plan (`backlog` → `ready`)
+
+**THIS STEP IS MANDATORY FOR ALL NEW TASKS.** If task status is `backlog`, this is where you start. Do not skip.
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "planning", lastSkill: "plan-task" })` before invoking the skill.
+
+Invoke `/plan-task {N}` via the Skill tool. It will load Obsidian context, write the plan, save to `docs/backlog.json` on main, flip status to `ready`.
+
+After it completes:
+- Show the plan summary to the user
+- Show the objective statement, success criteria, non-goals, stop conditions, and proof map created by `/plan-task`
+- **Check task impact:** Read the task's `impact` field from `docs/backlog.json`. If `impact: "major"`:
+  - **Stop here.** Print the following and do NOT proceed to Step 2:
+  
+  > ✅ **Planning complete for major task #{N}.**
+  >
+  > Major tasks are decomposed into subtasks during planning. The plan above has split this work into multiple smaller backlog items. Each subtask should now be:
+  >
+  > 1. Added to `docs/backlog.json` with `status: "backlog"`
+  > 2. Shipped individually using `/ship-task` or `/plan-task → /start-build → /finish-build → /review-pr → /promote-to-prod`
+  >
+  > No further steps apply to the parent major task — it has served its purpose.
+  
+  - **Stop.** Do not proceed to Step 2.
+
+- **For standard or minor tasks**, show the gate: "Plan saved. Proceed to audit the design? [yes/no/edit]"
+  - `yes`: continue to Step 2 (cross-boundary audit)
+  - `edit`: stop the workflow; user wants to revise the plan manually
+  - `no` / `abort`: stop
+
+## Step 2 — Start build (`planned` → `build-started`)
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "start-build", lastSkill: "start-build" })` before invoking the skill.
+
+Invoke `/start-build {N}`. It will load Obsidian context, sync main, create the task branch, mark `build-started`, load registries.
+
+After it completes, you (the user) are on the task branch with full context.
+
+**Gate:** "Branch `task/{N}-{slug}` created and marked build-started. Proceed to cross-boundary audit? [yes / abort]"
+- `yes`: continue to Step 3
+- `abort`: stop
+
+## Step 3 — Cross-boundary audit (`build-started` → validates design on branch)
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "audit", lastSkill: "cross-boundary-audit" })` before invoking the skill.
+
+Invoke `/cross-boundary-audit`. It will validate the plan against Feature Contracts and regenerate `docs/registries/*.md` from the current branch state.
+
+After it completes:
+- Review the registries and plan alignment
+- Summarize objective alignment: whether the design contracts match Feature Contracts, and whether any stop condition was triggered
+- Confirm that the plan is production-ready before coding begins
+
+**Proof units are now active.** The task's `proofUnits[]` were loaded by `/start-build` and the first unit was named. As you implement, collect exit evidence per proof unit (passing test result, passing smoke command, or written waiver). `/finish-build` will verify each unit has exit evidence or a waiver before opening the PR — missing evidence is a hard stop.
+
+**Objective criteria are now active.** The task's `objective.successCriteria[]` and `objective.nonGoals[]` were loaded by `/start-build`. Implement only the mapped success criteria; do not expand into non-goals or adjacent cleanup unless the user explicitly approves a new task.
+
+**Gate:** "Audit complete. Contracts validated against Feature Contracts. Branch `task/{N}-{slug}` is active, objective criteria and proof units loaded, context ready. Implement against the mapped objective criteria and proof units. When the implementation is committable and all exit evidence is collected, reply `done` or `audit`. Reply `abort` to stop the workflow."
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "coding", lastSkill: "start-build" })` after the gate confirmation.
+
+**Wait for explicit `done` or `audit` signal from the user.** Do NOT proceed otherwise. Code writing is open-ended — only the user knows when it's truly ready.
+
+## Step 4 — Finish build (`build-started` → `build-finished`)
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "build-finished", lastSkill: "finish-build" })` before invoking the skill.
+
+Invoke `/finish-build`. It will verify registries match code, run incremental cross-boundary audit, commit task code, open the PR to CareGuide stage or to main for every other project, record PR URL, and mark `build-finished` on main.
+
+If `/finish-build` hard-fails (orphan, collision, drift, stale registries), surface the error and stop the workflow. The user will fix and re-invoke.
+
+If `/finish-build` hard-fails on objective criteria (missing success evidence, unmapped criterion, non-goal drift, or triggered stop condition), surface the exact criterion/gap and stop. Do not proceed to review steps until the objective gap is resolved.
+
+If it succeeds, capture the PR URL.
+
+**Gate:** "Build finished. PR opened: {url}. Proceed to review? [yes / fix / abort]"
+- `yes`: continue to Step 5 (review PR)
+- `fix`: stop the workflow — user will adjust code and re-invoke `/finish-build`
+- `abort`: stop
+
+## Step 5 — Review PR (`build-finished` → reviewer assessment)
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review", lastSkill: "review-pr" })` before invoking the skill.
+
+Invoke `/review-pr {N}`. It will analyze the PR against the task spec from `docs/backlog.json` and boundary contracts.
+
+After it completes:
+- Surface the review findings to the user
+- Identify any CRITICAL or HIGH issues that must be resolved before production
+
+**Gate:** "Claude review complete. {findings summary}. Address issues or proceed to Codex review? [yes proceed / fix / abort]"
+- `yes`: continue to Step 6 (Codex review)
+- `fix`: stop the workflow — user will fix issues on the task branch and re-invoke `/finish-build` or `/ship-task {N}` to resume
+- `abort`: stop
+
+## Step 6 — Codex Review (`review` → independent assessment)
+
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "cba-complete", lastSkill: "codex-review" })` before invoking the skill.
+
+Invoke `/codex-review {N}`. It will run an independent Codex review and compare findings against the Claude review from Step 5.
+
+After it completes:
+- Surface the Codex review findings and any disagreements with the Claude review
+- Identify any additional issues or confirm the reviews align
+
+**Gate:** "Codex review complete and compared. {findings summary}. Ready to promote to production? [yes / fix / abort]"
+- `yes`: continue to Step 7 (promote to production)
+- `fix`: stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
+- `abort`: stop
+
+## Step 7 — Promote to production (`cba-complete` or `staged` → `production`)
+
+> **Reached after reviews are complete in Steps 5-6.** This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
+
+Invoke `/promote-to-prod`. It will choose the correct path:
+- CareGuide with real staged work: stage → main, then production deploy from main.
+- All other projects: reviewed PRs → main, then production deploy from main.
+
+After prod deploy verification succeeds, `/promote-to-prod` marks included tasks `production` and archives them. There is no separate `/mark-production` step. Do not call `SetTaskState` separately unless `/promote-to-prod` reports that Polaris state did not update; production status belongs to `/promote-to-prod`.
+
+**Gate:** "Production promotion complete. Task #{N} is marked production if it was included in the rollup. Workflow complete."
+
+## Final report
+
+Summarize the full lifecycle:
+- Task #{N}: {title}
+- Plan: {when saved}
+- Branch: {task/N-slug}
+- Build PR: {url, merged to CareGuide stage or main}
+- Promotion PR(s): {url(s), MERGED to main}
+- Status: {production}
+
+Tell the user the task is now in production and the workflow is complete.
+
+
+## Completion banner (mandatory — always the last thing you output)
+
+`/ship-task` orchestrates sub-skills and stops at a human gate between every step. Each sub-skill prints its own banner; on top of that, end every turn with this orchestrator banner so the user knows which sub-skill just ran, how it ended, and where the workflow stands — without scrolling up:
 
 ---
+### 🏁 /ship-task — step {n}/7: /<sub-skill> just ran
+- **Result:** <✅ success | ⚠️ needs fix | ❌ blocked/failed>
+- **What happened:** <one line — the concrete outcome of that sub-skill>
+- **Task status:** <current docs/backlog.json status>
+- **Next:** <next step/sub-skill, or the gate question you're waiting on>
+---
 
-## Maintenance Note
-
-**`docs/skills/` should be kept in sync with `~/.claude/commands/`.**  
-The files in `docs/skills/` are documentation-style references; the executable skill definitions live in `~/.claude/commands/`. When either changes, the other should be updated. Sync has not been done yet — treat `~/.claude/commands/` as authoritative for runtime behavior.
+Nothing comes after this banner.

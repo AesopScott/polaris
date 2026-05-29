@@ -1479,9 +1479,9 @@
     <div class="header-identity">
       <div style="display:flex;align-items:center;width:100%;">
         <div style="flex:1;display:flex;justify-content:center;align-items:center;">
-          <div id="meetup-reservations-chip" class="meetup-reservations-chip" title="Meetup reservations across Advanced AI Concepts events">
-            <div class="meetup-reservations-label">Meet up reservations</div>
-            <div id="meetup-reservations-count" class="meetup-reservations-count">--</div>
+          <div id="meetup-reservations-chip" class="meetup-reservations-chip" style="width:120px;height:50px;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;" title="Meetup reservations across Advanced AI Concepts events">
+            <div class="meetup-reservations-label">Meetup</div>
+            <div id="meetup-reservations-count" class="meetup-reservations-count" style="font-size:16px;margin-top:1px;">--</div>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
@@ -1490,8 +1490,8 @@
             <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
           </div>
           <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
-          <button id="btn-memory" class="hbtn btn-config" onclick="toggleMemoryPanel()" data-tooltip="Memory — Obsidian retrieval index stats and last 20 QueryMemory retrieval events" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Memory</span></button>
-          <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:auto;padding:8px 18px;flex-shrink:0;margin-top:6px;"><span class="lbl">Status</span></button>
+          <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:120px;height:50px;padding:0;display:flex;align-items:center;justify-content:center;"><span class="lbl">Status</span></button>
+          <button id="btn-memory" class="hbtn btn-config" onclick="toggleMemoryPanel()" data-tooltip="Memory — Obsidian retrieval index stats and last 20 QueryMemory retrieval events" style="width:120px;height:50px;padding:0;display:flex;align-items:center;justify-content:center;"><span class="lbl">Memory</span></button>
         </div>
         <div style="flex:1;"></div>
       </div>
@@ -1653,13 +1653,17 @@
     </div>
     <div class="health-panel-body">
       <div class="health-row"><span>Status</span><span id="health-detail-status">Checking</span></div>
+      <div class="health-row"><span>Reason</span><span id="health-detail-explanation" style="font-size:10px;color:#cbd5e1;">No data yet</span></div>
       <div class="health-row"><span>Server heartbeat</span><span id="health-detail-latency">--</span></div>
       <div class="health-row"><span>MCP helpers</span><span id="health-detail-mcp">--</span></div>
       <div class="health-row"><span>Port 40000 connections</span><span id="health-detail-connections">--</span></div>
       <div class="health-row"><span>Sessions</span><span id="health-detail-sessions">--</span></div>
       <div class="health-row"><span>Top process</span><span id="health-detail-process">--</span></div>
       <div class="health-row"><span>Last checked</span><span id="health-detail-time">--</span></div>
-      <div class="health-row"><span>Issue</span><span id="health-detail-issue">No data yet</span></div>
+      <div id="idle-sessions-section" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.12);display:none;">
+        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px;">Idle Sessions</div>
+        <div id="idle-sessions-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+      </div>
     </div>
     <div class="health-actions">
       <button class="fbtn" onclick="runHealthCheck(true)">Run Health</button>
@@ -4454,6 +4458,8 @@
     sessions: null,
     topProcess: null,
     issue: 'Checking health...',
+    explanation: null,
+    idleSessions: [],
     lastChecked: null,
     lastDeepCheck: 0,
   };
@@ -4492,6 +4498,7 @@
       text.textContent = label;
     }
     setHealthText('health-detail-status', healthState.status.toUpperCase());
+    setHealthText('health-detail-explanation', healthState.explanation || 'No explanation available');
     setHealthText('health-detail-latency', healthState.latencyMs == null ? 'timeout' : `${healthState.latencyMs} ms`);
     setHealthText('health-detail-mcp', healthState.mcpHelpers == null ? 'not checked' : String(healthState.mcpHelpers));
     setHealthText('health-detail-connections', healthState.connections == null ? 'not checked' : String(healthState.connections));
@@ -4499,6 +4506,27 @@
     setHealthText('health-detail-process', healthState.topProcess || '--');
     setHealthText('health-detail-time', healthState.lastChecked ? new Date(healthState.lastChecked).toLocaleTimeString() : '--');
     setHealthText('health-detail-issue', healthState.issue);
+
+    // Render idle sessions
+    const idleSection = document.getElementById('idle-sessions-section');
+    const idleList = document.getElementById('idle-sessions-list');
+    if (healthState.idleSessions && healthState.idleSessions.length > 0 && idleSection && idleList) {
+      idleSection.style.display = 'block';
+      idleList.innerHTML = healthState.idleSessions.map(session => {
+        const status = session.willKickAt <= 0 ? '🔴 pending termination' :
+                       session.keepAliveInjected ? '⚙ keep-alive injected' : '⏱ idle';
+        const msRemaining = session.willKickAt;
+        const secRemaining = Math.ceil(msRemaining / 1000);
+        const timeInfo = session.willKickAt > 0 ? ` (${secRemaining}s)` : '';
+        return `<div style="font-size:10px;padding:4px;border-radius:3px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15);">
+          <div><span style="color:#cbd5e1;">${session.name || 'Session'}</span> <span style="color:#94a3b8;">@${session.sessionId}</span></div>
+          <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${session.idleSec}s idle · ${status}${timeInfo}</div>
+        </div>`;
+      }).join('');
+    } else if (idleSection) {
+      idleSection.style.display = 'none';
+    }
+
     if (pill) pill.title = healthState.issue;
   }
 
@@ -4563,10 +4591,12 @@
         try {
           const snapshot = await fetchWithTimeout('/api/health-snapshot', 4000);
           if (snapshot.ok && snapshot.data) {
-          if (typeof snapshot.data.mcpHelpers === 'number') healthState.mcpHelpers = snapshot.data.mcpHelpers;
-          if (typeof snapshot.data.connections === 'number') healthState.connections = snapshot.data.connections;
-          if (typeof snapshot.data.sessions === 'number') healthState.sessions = snapshot.data.sessions;
+            if (typeof snapshot.data.mcpHelpers === 'number') healthState.mcpHelpers = snapshot.data.mcpHelpers;
+            if (typeof snapshot.data.connections === 'number') healthState.connections = snapshot.data.connections;
+            if (typeof snapshot.data.sessions === 'number') healthState.sessions = snapshot.data.sessions;
             if (snapshot.data.topProcess) healthState.topProcess = snapshot.data.topProcess;
+            if (snapshot.data.explanation) healthState.explanation = snapshot.data.explanation;
+            if (Array.isArray(snapshot.data.idleSessions)) healthState.idleSessions = snapshot.data.idleSessions;
           }
         } catch {
           healthState.topProcess = 'snapshot unavailable';
