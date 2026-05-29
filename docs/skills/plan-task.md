@@ -7,19 +7,34 @@ description: Produce a concrete implementation plan for a backlog task before an
 
 Produce an implementation plan for a backlog task. Loads project mission and recent-session context from Obsidian first, confirms the feature can actually be reached and smoke-tested by its target persona (filing prerequisite tasks if not), then plans against the backlog. Saves the plan back to `docs/backlog.json` on main so the next `/start-build` picks it up.
 
-## Directive Polling (multi-session only)
+## Directive Polling (multi-session only) with Error Handling
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
-2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
-3. If found:
-   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
-   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
-   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
-4. If not found or single-session context: proceed normally with "Scope and limits" below
+**Poll with try-catch and retry (use `node -e` with utf8, never Read tool):**
 
-> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Scope and limits".
+```bash
+timeout=5; retries=0; max_retries=3
+while [ $retries -lt $max_retries ]; do
+  timeout $timeout node -e "
+    try {
+      const fs = require('fs');
+      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
+      if (!fs.existsSync(dirPath)) { console.log('no-directive'); process.exit(0); }
+      const data = JSON.parse(fs.readFileSync(dirPath, 'utf8'));
+      const pending = data.directives && data.directives.find(d => 
+        d.target.sessionId === (process.env.SESSION_ID || 'unknown') && d.status === 'pending'
+      );
+      console.log(pending ? JSON.stringify(pending) : 'no-directive');
+    } catch (e) { console.error('read-failed: ' + e.message); process.exit(1); }
+  " && break
+  retries=$((retries + 1)); [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
+done
+[ $retries -eq $max_retries ] && echo "⚠️ Directive polling unavailable; continuing in single-session mode."
+```
+
+**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
+**On timeout/failure:** Continue to "Scope and limits" in single-session fallback mode. Do not halt.
 
 ---
 

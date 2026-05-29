@@ -7,19 +7,14 @@ description: Complete the current build session after cross-boundary audit passe
 
 You are completing a build session. The cross-boundary audit must have passed (status `cba-complete`) before this skill runs. Commit task code to the task branch, push, then open a PR targeting either CareGuide's real `stage` environment or `main` for all other projects. Nothing merges or leaves the task branch until you explicitly run a promote command.
 
-## Directive Polling (multi-session only)
+## Directive Polling (multi-session only) with Error Handling
 
-If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
+If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives:
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
-2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
-3. If found:
-   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
-   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
-   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
-4. If not found or single-session context: proceed normally with Step 0
+Poll with try-catch and retry (use `node -e`, never Read tool). Retry up to 3 times with exponential backoff. Timeout 5s per attempt.
 
-> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to Step 0.
+**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
+**On timeout/failure:** Log warning and proceed to Step 0 in single-session fallback mode. Do not halt.
 
 ---
 

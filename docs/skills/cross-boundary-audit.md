@@ -7,6 +7,17 @@ description: Audit and fix boundary contracts during the build. Verifies all new
 
 You are auditing the boundary contracts and proof units for the current task before the PR is pushed. This skill runs after developer coding but before `/finish-build`.
 
+## Directive Polling (multi-session only) with Error Handling
+
+If running in a multi-session context, check for orchestrator directives:
+
+Poll with try-catch and retry (use `node -e`, never Read tool). Retry up to 3 times with exponential backoff. Timeout 5s per attempt.
+
+**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
+**On timeout/failure:** Log warning and proceed to "Scope and Limits" in single-session fallback mode. Do not halt.
+
+---
+
 ## Scope and Limits
 
 - **One task only.** Audits exactly the task that is currently `build-started`.
