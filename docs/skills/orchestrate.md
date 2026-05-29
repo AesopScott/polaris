@@ -108,6 +108,8 @@ Get all branches that currently have active Polaris sessions on this project:
 git branch --list "task/*" --format="%(refname:short)"
 ```
 
+> **Note:** The orchestrator is responsible for monitoring ALL active sessions on this project, not just those running `/ship-task` skill sessions. This includes review sessions, minor-task sessions, and any other session type that may have a branch checked out. The sole exception is the health monitor session, which runs independently and should not be tracked by the orchestrator.
+
 For each branch, build its file set:
 
 ```bash
@@ -343,6 +345,53 @@ Before any branch op, a session must:
 User approval is always valid and overrides the gate — sessions may proceed immediately on Scott's direct "yes."
 
 ---
+
+---
+
+## PHASE 7 — SESSION DIRECTIVES
+
+The orchestrator communicates required actions to other sessions via a shared coordination file. Sessions poll this file on their own tick and act autonomously — no human intervention required.
+
+### Coordination file
+
+**Path:** `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+
+**Format** (array, read-modify-write with `node -e` utf8 — never overwrite):
+
+```json
+{
+  "directiveId": "<uuid>",
+  "issuedAt": "<ISO>",
+  "issuedBy": "orchestrator",
+  "target": {
+    "sessionId": "<id>",
+    "branch": "task/51-..."
+  },
+  "instruction": "<full prompt text the session should process>",
+  "priority": "critical | high | normal",
+  "status": "pending | acknowledged | completed | failed",
+  "acknowledgedAt": "<ISO>",
+  "completedAt": "<ISO>",
+  "result": "<outcome note>"
+}
+```
+
+> **Locks exception required:** `session-directives.json` must be added as an exception in `locks.json` so all sessions can write to it (acknowledge, complete, fail). Without this exception, sessions will be blocked from updating directive status. TODO: add this exception before enabling the directive system.
+
+### Orchestrator behavior (each tick)
+
+1. Check for any pending or stalled (pending > 2 ticks) directives in the file
+2. For newly needed directives — phase transitions, conflict resolutions, required fixes — write a new entry addressed to the target session by `sessionId` or `branch`
+3. For directives that went `failed` or have been `pending` for more than 3 ticks → escalate to Scott inline and write an entry to `orchestrator-alerts.json`
+4. For `completed` directives → log outcome in the status table
+
+### Directive priorities
+
+| Priority | When to use |
+|---|---|
+| `critical` | Session is blocked; merge or conflict resolution required immediately |
+| `high` | Phase transition ready; session should move to next skill |
+| `normal` | Informational or advisory; session should acknowledge and proceed when convenient |
 
 ---
 

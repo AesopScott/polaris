@@ -223,6 +223,35 @@ Don't use `/ship-task` when:
 
 ---
 
+## Session Directive Polling
+
+Every session running a ship-task phase must poll `session-directives.json` on each tick and act on any pending directives addressed to it.
+
+**File path:** `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+
+> **Locks exception required:** `session-directives.json` must be added as an exception in `locks.json` so all sessions (not just the orchestrator) can write status updates (`acknowledged`, `completed`, `failed`) back to the file. TODO: add this exception before enabling the directive system.
+
+### Session polling protocol (each tick)
+
+1. Read `session-directives.json` (read-modify-write via `node -e` utf8)
+2. Find all entries where `target.sessionId` matches this session OR `target.branch` matches the current branch, AND `status === "pending"`
+3. Process in priority order: `critical` → `high` → `normal`
+4. For each directive:
+   - Set `status: "acknowledged"` and write `acknowledgedAt` immediately before acting
+   - Execute the `instruction` as if it were a user prompt
+   - On success: set `status: "completed"`, write `completedAt` and a brief `result`
+   - On failure: set `status: "failed"`, write `result` with the reason
+5. After processing all pending directives, continue with the normal phase work
+
+### What directives can contain
+
+- **Phase transitions:** "Move to `/cross-boundary-audit` now — orchestrator has approved"
+- **Conflict resolutions:** "Rebase on main — conflict in server.js resolved, see merger guide [path]"
+- **Required fixes:** "Fix found during review: [description]. Commit and re-run `/finish-build`"
+- **Gate approvals:** "Orchestrator approves: proceed to `/codex-review`"
+
+---
+
 ## Maintenance Note
 
 **`docs/skills/` should be kept in sync with `~/.claude/commands/`.**  
