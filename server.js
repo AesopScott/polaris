@@ -1328,17 +1328,16 @@ function getSessionStateFilePath(sessionId) {
 function writeSessionState(sessionId, session) {
   if (!session || session.status === 'closed') return;
 
-  const wtInfo = session.worktreePath ? getWorktreeBranchInfo(session.worktreePath) : null;
   const stateFile = getSessionStateFilePath(sessionId);
   const state = {
     sessionId,
     type: session.isChat ? 'chat' : (session.isCodex ? 'codex' : 'agent'),
     taskNumber: session.taskNumber || null,
-    currentBranch: wtInfo?.branch || session.currentBranch || null,
+    currentBranch: session.currentBranch || null,
     lastUpdate: new Date().toISOString(),
     status: session.status || 'unknown',
     nextAction: session.nextAction || null,
-    filesChanged: wtInfo?.filesChanged || session.filesChanged || [],
+    filesChanged: session.filesChanged || [],
   };
 
   try {
@@ -5799,8 +5798,15 @@ function verifyWorktreeOwnership(sessionId) {
   for (const [id, sess] of sessions) {
     if (id !== sessionId && sess.worktreePath === wtPath) {
       const msg = `Worktree conflict: session ${id} also claims this path`;
-      writeOrchestratorAlert(sessionId, 'warning', msg);
-      writeOrchestratorAlert(id, 'warning', msg);
+      ensureSessionGuidanceDir();
+      const alertsData = readOrchestratorAlerts();
+      const ts1 = new Date().toISOString();
+      alertsData.alerts.push({ sessionId, severity: 'warning', message: msg, timestamp: ts1 });
+      const ts2 = new Date().toISOString();
+      alertsData.alerts.push({ sessionId: id, severity: 'warning', message: msg, timestamp: ts2 });
+      try { writeJSON(ORCHESTRATOR_ALERTS_PATH, alertsData); } catch (e) {
+        console.error(`[session-guidance] failed to write worktree conflict alerts:`, e.message);
+      }
       return msg;
     }
   }
