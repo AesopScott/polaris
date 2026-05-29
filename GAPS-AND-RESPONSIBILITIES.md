@@ -708,9 +708,9 @@ The orchestrator does **not** run `gh pr merge` itself. It is directive-only.
 
 | Item | Owner | Status |
 |---|---|---|
-| Add `codex-reviewed` and `review-passed` to server.js status enums | **SHIP-TASK SESSION** | ⏳ Open |
-| Update all pipeline skills for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ⏳ Open |
-| Update resumption table for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ⏳ Open |
+| Add `codex-reviewed` and `review-passed` to server.js status enums | **SHIP-TASK SESSION** | ✅ Done — `308fd47` |
+| Update all pipeline skills for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ✅ Done — `308fd47` (commands sync incomplete; orchestrator fixed residual gaps in `37251ca`) |
+| Update resumption table for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ✅ Done — `308fd47` |
 | Design and implement orchestrator approval handler (Gap #3) | **ORCHESTRATOR SESSION** | ✅ Done — PHASE 6C in both orchestrate.md files |
 | Revise orchestrate.md PHASE 6B to directive-only merge model | **ORCHESTRATOR SESSION** | ✅ Done — PHASE 6B rewritten; orchestrator issues directive, session executes merge |
 | Update `docs/skills/orchestrate.md` to match | **ORCHESTRATOR SESSION** | ✅ Done — synced with `~/.claude/commands/orchestrate.md` |
@@ -871,10 +871,10 @@ Added missing-file guard: if the task file doesn't exist or either review sectio
 | Finding | Fix | Commit |
 |---|---|---|
 | PHASE 6C searched `_Sessions/` by date — unreliable at runtime | Updated to deterministic task file path in `_Build/Tasks/` | `9ea999b` |
-| `~/.claude/commands/review-pr.md` missing `pr-reviewed` status step | Step 7b added with `node -e` pattern | `37251ca` (commands file, untracked) |
-| `~/.claude/commands/codex-review.md` state guard used `cba-complete` | Fixed to `pr-reviewed` / `codex-reviewed` rows | `37251ca` (commands file, untracked) |
-| `~/.claude/commands/codex-review.md` hardcoded CareGuide + `stage` base | Replaced with `{project-name}` and `main` | `37251ca` (commands file, untracked) |
-| `~/.claude/commands/codex-review.md` Step 10 delegated status to orchestrator | Fixed to set `codex-reviewed` directly via `node -e` | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/review-pr.md` missing `pr-reviewed` status step (ship-task sync incomplete) | Step 7b added with `node -e` pattern | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/codex-review.md` state guard used `cba-complete` (ship-task sync incomplete) | Fixed to `pr-reviewed` / `codex-reviewed` rows | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/codex-review.md` hardcoded CareGuide + `stage` base (ship-task sync incomplete) | Replaced with `{project-name}` and `main` | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/codex-review.md` Step 10 delegated status to orchestrator (ship-task sync incomplete) | Fixed to set `codex-reviewed` directly via `node -e` | `37251ca` (commands file, untracked) |
 
 **Architecture is production-ready. No open gaps remain.**
 
