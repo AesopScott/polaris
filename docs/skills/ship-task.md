@@ -171,6 +171,8 @@ backlog
 | `pr-reviewed` → `/promote-to-prod` | Orchestrator |
 | `staged` → `/promote-to-prod` | Orchestrator (CareGuide only) |
 
+> **Merge serialization:** The orchestrator handles all merges to `stage` or `main` directly, one session at a time. After each merge the orchestrator pushes to origin immediately before allowing the next session to merge. No two sessions may merge to a shared branch concurrently.
+
 ## Triggering the Workflow
 
 ```bash
