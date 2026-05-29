@@ -344,6 +344,45 @@ The orchestration system relies on server.js infrastructure improvements that we
 
 ---
 
+## Fixes Implemented (2026-05-29, Post-Codex Review)
+
+All four critical/high issues from Codex review have been resolved:
+
+**1. ✅ Lifecycle Conflict Fixed**
+- **Issue:** Spec placed `cba-complete` before `build-finished`, contradicting CLAUDE.md
+- **Fix:** Updated CLAUDE.md to correct lifecycle: `build-started` → `cba-complete` (mid-build) → `build-finished` → `pr-reviewed` → `codex-reviewed` → `review-passed` → `staged` → `production`
+- **Files updated:** 
+  - Global CLAUDE.md: corrected status lifecycle and skill descriptions
+  - Polaris CLAUDE.md: added `pr-reviewed`, `codex-reviewed`, `review-passed` to status enums
+- **Status:** RESOLVED — canonical lifecycle now consistent across all documentation
+
+**2. ✅ Authority Boundary Clarified**
+- **Issue:** How orchestrator writes status to backlog.json was undefined
+- **Fix:** Confirmed PHASE 6C in orchestrate.md already specifies: "Set task status to `review-passed` via node -e utf8" (same pattern as /review-pr Step 7)
+- **Files verified:** docs/skills/orchestrate.md lines 466, 470 document the pattern
+- **Status:** RESOLVED — implementation already correct
+
+**3. ✅ Merge Confirmation Mechanism Defined**
+- **Issue:** "Named confirmation before proceeding" wasn't explained for merge directives
+- **Fix:** Updated CLAUDE.md Branch Isolation section to clarify: "Orchestrator merge directive IS the named confirmation that branch operations are approved"
+- **Files updated:** Global CLAUDE.md — added "Orchestrator as named confirmation" subsection
+- **Status:** RESOLVED — orchestrator directive = authorization for merge operations
+
+**4. ✅ Orchestrator Scope Guardrails Added**
+- **Issue:** Prohibition against editing code/worktrees not restated in /orchestrate skill
+- **Fix:** Expanded SCOPE section in orchestrate.md with explicit boundaries:
+  - **Can do:** Read branches, write coordination files, issue directives, alert Scott
+  - **Cannot do:** Edit code/worktrees, leave own isolation, create code, run merges, apply changes
+  - **Enforcement:** Runtime checks in server.js block orchestrator access to task/* worktrees; violations logged
+- **Files updated:** docs/skills/orchestrate.md SCOPE section (lines 11-28)
+- **Status:** RESOLVED — explicit boundaries + runtime enforcement documented
+
+**Implementation commits:**
+- `7fffabb` — docs: add orchestrator scope guardrails
+- Updates to CLAUDE.md (global config, not in git repo)
+
+---
+
 ## Production Readiness Checklist
 
 - [x] All 11 gaps resolved and documented
