@@ -440,6 +440,15 @@
       0 16px 48px rgba(0,0,0,0.4),
       0 24px 80px rgba(0,0,0,0.3);
   }
+  /* Monitoring cards glow steady cyan — actively monitoring */
+  .card.status-monitoring-card {
+    box-shadow:
+      0 0 0 1px rgba(6,182,212,0.4),
+      0 0 18px rgba(6,182,212,0.2),
+      0 8px 16px rgba(0,0,0,0.5),
+      0 16px 48px rgba(0,0,0,0.4),
+      0 24px 80px rgba(0,0,0,0.3);
+  }
   /* Broken cards pulse bright orange — session died, needs manual recreation */
   .card.status-broken-card {
     animation: cardBrokenPulse 2s ease-in-out infinite;
@@ -734,6 +743,7 @@
   .status-waiting { background: #78350f20; color: #fbbf24; }
   .status-test    { background: #4c1d9520; color: #ef4444; }
   .status-broken  { background: #7c2d0820; color: #f97316; }
+  .status-monitoring { background: #06b6d420; color: #06b6d4; }
   .dot-run { background: #3b82f6; }
   .dot-done { background: #22c55e; }
   .dot-err { background: #ef4444; }
@@ -7215,15 +7225,16 @@
     if (stallEl) stallEl.style.display = 'none';
     const badge = card.querySelector('.status-badge');
     if (badge) {
-      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken' }[status] || 'status-running');
-      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold', broken: 'Broken' }[status] || status;
+      badge.className = 'status-badge ' + ({ running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken', monitoring: 'status-monitoring' }[status] || 'status-running');
+      badge.textContent = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold', broken: 'Broken', monitoring: 'Monitoring' }[status] || status;
     }
-    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card', 'status-hold-card', 'status-broken-card');
+    card.classList.remove('status-running-card', 'status-waiting-card', 'status-test-card', 'status-hold-card', 'status-broken-card', 'status-monitoring-card');
     if (status === 'running') card.classList.add('status-running-card');
     else if (status === 'waiting') card.classList.add('status-waiting-card');
     else if (status === 'test') card.classList.add('status-test-card');
     else if (status === 'hold') card.classList.add('status-hold-card');
     else if (status === 'broken') card.classList.add('status-broken-card');
+    else if (status === 'monitoring') card.classList.add('status-monitoring-card');
     card.style.borderColor = status === 'error' ? '#7f1d1d' : '';
     const STATUS_STRIPE = { running: '#60a5fa', done: '#22c55e', error: '#ef4444', waiting: '#fbbf24', test: '#ef4444', hold: '#faca15', broken: '#f97316' };
     const stripeColor = STATUS_STRIPE[status] || card.dataset.projectColor || null;
@@ -11967,16 +11978,19 @@ This is your current workflow status across all branches. Review the tasks and P
   window.clearDomainScout       = clearDomainScout;
 
   const STATUS_CYCLE = ['done', 'test', 'waiting', 'hold', 'broken', 'error'];
-  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken' };
-  const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold' };
+  const STATUS_CLASS = { running: 'status-running', done: 'status-done', error: 'status-error', waiting: 'status-waiting', test: 'status-test', hold: 'status-hold', broken: 'status-broken', monitoring: 'status-monitoring' };
+  const STATUS_LABEL = { running: 'Running', done: 'Done', error: 'Error', waiting: 'Waiting', test: 'Test', hold: 'Hold', monitoring: 'Monitoring' };
   function cycleSessionStatus(sessionId) {
     const grid = getActiveGrid();
     if (!grid) return;
     const card = grid.querySelector(`[data-sid="${sessionId}"]`);
     if (!card) return;
+    const session = allSessions.find(s => s.id === sessionId);
+    if (session && (session.isOrchestrator || session.name === 'Health Monitor Session')) return;
     const badge = card.querySelector('.status-badge');
     if (!badge) return;
     if (badge.classList.contains('status-running')) return;
+    if (badge.classList.contains('status-monitoring')) return;
     const current = Object.keys(STATUS_CLASS).find(k => badge.classList.contains(STATUS_CLASS[k])) || 'done';
     const idx = STATUS_CYCLE.indexOf(current);
     const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];

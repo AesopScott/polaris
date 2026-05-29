@@ -963,7 +963,7 @@ async function spawnOrchestratorSession(projectName) {
     projectName,
     isChat: true,
     isOrchestrator: true,
-    status: 'running',
+    status: 'monitoring',
     startAt: Date.now(),
     lastActivityAt: Date.now(),
     stallCount: 0,
@@ -977,6 +977,7 @@ async function spawnOrchestratorSession(projectName) {
   orchestratorSessions.set(projectName, orchId);
   broadcast({ type: 'session-created', sessionId: orchId, name: 'Project Orchestrator',
     workDir: project.workDir, projectName, isOrchestrator: true });
+  broadcast({ type: 'session-status', sessionId: orchId, status: 'monitoring' });
   broadcast({ type: 'line', sessionId: orchId, role: 'user', text: '/orchestrate' });
   saveSessions();
   await spawnMaxChat(orchId, '/orchestrate', config);
@@ -1135,6 +1136,7 @@ function loadPersistedSessions() {
     for (const s of arr) {
       if (!s.id) continue;
       if (s.isOrchestrator) continue; // orchestrators are ephemeral — never reload after restart
+      if (s.name === HEALTH_MONITOR_NAME) continue; // health monitor is ephemeral — never reload after restart
       const loaded = {
         ...s,
         status: s.status === 'running' ? 'done' : s.status,
@@ -11279,7 +11281,7 @@ async function handleMessage(ws, raw) {
         workDir: CHAT_DIR, projectName: 'Polaris',
         model: null, tier: 'floor',
         isChat: false,
-        status: 'done',
+        status: 'monitoring',
         startAt: Date.now(), lastActivityAt: Date.now(),
         stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null,
         proc: null, watcher: null, timeout: null,
@@ -11292,6 +11294,7 @@ async function handleMessage(ws, raw) {
       sessions.set(newId, newHmSession);
       healthMonitorSessionId = newId;
       broadcast({ type: 'session-created', sessionId: newId, name: HEALTH_MONITOR_NAME, workDir: CHAT_DIR, projectName: 'Polaris', model: null });
+      broadcast({ type: 'session-status', sessionId: newId, status: 'monitoring' });
       saveSessions();
       injectHealthSnapshot();
       console.log(`[health-monitor] transferred to new session ${newId}`);
@@ -13491,7 +13494,7 @@ function startHealthMonitorSession() {
     workDir: CHAT_DIR, projectName: 'Polaris',
     model: null, tier: 'floor',
     isChat: false,
-    status: 'done',
+    status: 'monitoring',
     startAt: Date.now(), lastActivityAt: Date.now(),
     stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null,
     proc: null, watcher: null, timeout: null,
@@ -13505,6 +13508,7 @@ function startHealthMonitorSession() {
   healthMonitorSessionId = id;
 
   broadcast({ type: 'session-created', sessionId: id, name: HEALTH_MONITOR_NAME, workDir: CHAT_DIR, projectName: 'Polaris', model: null });
+  broadcast({ type: 'session-status', sessionId: id, status: 'monitoring' });
   saveSessions();
 
   // First snapshot immediately
