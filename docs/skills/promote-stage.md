@@ -7,25 +7,75 @@ description: CareGuide-only. Promote `stage` to `main` for pre-production testin
 
 You are promoting CareGuide's real `stage` environment. This is the final gate before production deploy. Verify all tasks on stage have passed review, then promote to `main` for final validation.
 
-## Directive Polling (multi-session only)
+## Directive Polling (multi-session only) with Error Handling
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
-2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
-3. If found:
-   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
-   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
-   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
-4. If not found or single-session context: proceed normally with "Merge Model" below
+**Polling with try-catch and retry:**
 
-> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Merge Model".
+Use `node -e` with try-catch to read the directive file safely (never use the Read tool):
+
+```bash
+timeout=5
+retries=0
+max_retries=3
+
+while [ $retries -lt $max_retries ]; do
+  timeout $timeout node -e "
+    try {
+      const fs = require('fs');
+      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
+      if (!fs.existsSync(dirPath)) {
+        console.log('no-directive');
+        process.exit(0);
+      }
+      const content = fs.readFileSync(dirPath, 'utf8');
+      const data = JSON.parse(content);
+      const sessionId = process.env.SESSION_ID || 'unknown';
+      const pending = data.directives && data.directives.find(d => 
+        d.target.sessionId === sessionId && d.status === 'pending'
+      );
+      if (pending) {
+        console.log(JSON.stringify(pending));
+      } else {
+        console.log('no-directive');
+      }
+    } catch (e) {
+      console.error('read-failed: ' + e.message);
+      process.exit(1);
+    }
+  " && break
+  retries=$((retries + 1))
+  [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
+done
+
+if [ $retries -eq $max_retries ]; then
+  echo "⚠️ Directive polling unavailable (max retries). Proceeding in single-session mode."
+fi
+```
+
+**Behavior:**
+
+1. If directive found:
+   - Set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>` in the file
+   - Execute the `instruction` field as a user message
+   - Set `status: "completed"`, write `completedAt` and `result`
+   - Proceed with the directive's instructions
+
+2. If no directive found:
+   - **Single-session:** Continue to "Merge Model" normally
+   - **Multi-session:** Continue to "Merge Model" (fallback to normal operation)
+
+3. If polling fails (max retries exceeded):
+   - Log "Orchestrator coordination unavailable"
+   - Continue to "Merge Model" in single-session fallback mode
+   - **Do not halt** on missing directives
 
 ## Merge Model
 
-**In multi-session context:** Request the orchestrator to merge via `branch-requests.json`. Do NOT merge directly.
+**In multi-session context:** This skill opens a stage → main PR and stops. The orchestrator may coordinate the merge through directives. Do NOT merge directly in multi-session mode — let the orchestrator coordinate via directives or wait for human approval on GitHub.
 
-**In single-session context:** Merge stage → main directly and push.
+**In single-session context:** Open a stage → main PR, get human approval, then merge directly and push.
 
 ---
 
