@@ -5808,9 +5808,11 @@ function verifyWorktreeOwnership(sessionId) {
     if (id !== sessionId && sess.worktreePath === wtPath) {
       const msg = `Worktree conflict: session ${id} also claims this path`;
       const ts = new Date().toISOString();
+      // Deterministic IDs so repeated calls for the same conflict don't bypass _seenAlerts dedup
+      const conflictId = crypto.createHash('sha1').update(`${sessionId}-${id}-${wtPath}`).digest('hex').slice(0, 16);
       writeOrchestratorAlertsBatch([
-        { id: crypto.randomUUID(), sessionId, severity: 'warning', message: msg, timestamp: ts },
-        { id: crypto.randomUUID(), sessionId: id, severity: 'warning', message: msg, timestamp: ts },
+        { id: conflictId, sessionId, severity: 'warning', message: msg, timestamp: ts },
+        { id: conflictId + '-peer', sessionId: id, severity: 'warning', message: msg, timestamp: ts },
       ]);
       return msg;
     }
