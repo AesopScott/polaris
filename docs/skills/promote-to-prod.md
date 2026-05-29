@@ -23,9 +23,36 @@ If this session is running in a multi-session context (2+ active sessions on thi
 
 ## Merge Model
 
-**In multi-session context:** Request the orchestrator to merge via `branch-requests.json`. Do NOT merge directly.
+**In multi-session context:** The orchestrator scans for `pr-reviewed` tasks and will issue a directive to this session telling it which PR to merge and when. Wait for the merge completion directive in Step 6 before proceeding with the merge in Step 7. Do NOT merge directly — await the directive first.
 
-**In single-session context:** Merge to `main` directly and push.
+**In single-session context:** Proceed directly to Step 7 and merge to `main` without waiting for a directive.
+
+---
+
+## Step 6 — Poll for Merge Completion Directive (multi-session only)
+
+This step applies ONLY when running in a multi-session context (orchestrator is active). In single-session mode, skip to Step 1.
+
+**Why this step:** In multi-session workflows, the orchestrator coordinates all merges to prevent conflicts. The orchestrator scans `docs/backlog.json` for `pr-reviewed` tasks, queues them for merging, and sends a directive to the active session with instructions: "Merge PR #{N} to main".
+
+**Poll for the directive:**
+
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json` (use `node -e` with utf8 encoding)
+2. Look for an entry where:
+   - `target.sessionId` matches this session's ID, AND
+   - `status === "pending"`, AND
+   - `instruction` contains the PR number to merge
+3. If found:
+   - Immediately set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>`
+   - Write the change back to the file
+   - Extract the PR number from the `instruction` field
+   - Note the `priority` (critical, high, normal)
+   - Proceed to Step 7 with the orchestrator's PR
+4. If not found:
+   - **Single-session fallback:** Use `/promote-to-prod` to auto-select eligible task PRs (Step 7 logic applies)
+   - **Multi-session wait:** If this session is marked as multi-session but no directive arrives within 5 minutes, notify user: "Waiting for orchestrator merge directive — coordination may be unavailable. You can manually merge the eligible reviewed PR or halt for investigation."
+
+After completing the merge (Step 7), a completion directive from the orchestrator will be issued (see Step 8 below).
 
 ---
 
@@ -434,7 +461,7 @@ The `--auto` flag enqueues the merge to run once required status checks pass. Pa
 If `gh pr merge --auto` fails with "auto-merge is not allowed for this repository":
 - Fall back to polling. `gh pr checks {pr-number} --watch` blocks until checks finish.
 - If `gh pr checks` exits 0 (all passing): `gh pr merge {pr-number} --merge`.
-- If `gh pr checks` exits non-zero (something failed): stop. Report which check failed. Do NOT proceed to Step 8 or 9.
+- If `gh pr checks` exits non-zero (something failed): stop. Report which check failed. Do NOT proceed to Step 7-After or Step 8 or 9.
 
 After issuing the merge command, poll:
 
@@ -445,6 +472,42 @@ gh pr view {pr-number} --json state,mergedAt,mergeCommit
 Until `state == "MERGED"`. Cap at 10 minutes; if still not merged, stop and report (likely a check still pending or failing).
 
 Capture each `mergeCommit.oid`; the newest merge SHA for the rollup is `{merge-sha}` and is needed for Step 8.
+
+## Step 7-After — Validate Merge and Poll for Merge Completion Directive
+
+**Validate the merge succeeded:**
+
+1. Verify the PR state is `MERGED`: `gh pr view {pr-number} --json state` should return `"MERGED"`
+2. Fetch main from origin: `git fetch origin main`
+3. Verify the merge commit is now on main: `git log origin/main --oneline | head -1` should show the merge commit from Step 7
+4. If validation fails, stop. Report: "Merge validation failed — PR #{pr-number} is not on origin/main. Investigate and retry."
+
+**Push to origin (if not already pushed):**
+
+In multi-session mode, after the merge is validated, ensure the branch is available on origin:
+
+```bash
+git push origin main
+```
+
+**Poll for merge completion directive (multi-session only):**
+
+In multi-session workflows, after the merge completes, the orchestrator may send a merge completion directive confirming the merge was successful from its perspective. Poll for up to 30 seconds:
+
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json` (use `node -e` with utf8)
+2. Look for an entry where:
+   - `target.sessionId` matches this session, AND
+   - `status === "pending"`, AND
+   - `instruction` contains confirmation like "merge complete" or "merge succeeded"
+3. If found:
+   - Set `status: "acknowledged"` and write back
+   - Note the directive confirmation
+   - Proceed to Step 8
+4. If not found within 30 seconds:
+   - **Single-session:** Proceed normally to Step 8 (no directive expected)
+   - **Multi-session:** Log warning "Merge completion directive not received — proceeding with deploy check anyway" and continue to Step 8
+
+If directive polling fails (file not readable), log the error and continue — do not block on missing directives.
 
 ## Step 8 — Watch the prod deploy
 
@@ -481,7 +544,9 @@ If `gh run watch` itself hangs past 15 min, stop and tell the user to check the 
 
 ## Step 9 — Mark rolled-up tasks production and close the backlog loop
 
-Prod is healthy. Now flip backlog statuses and archive shipped tasks inside this `/promote-to-prod` run. This is not a separate human step.
+Prod deploy is healthy and complete. Now flip backlog statuses to `production` and archive shipped tasks inside this `/promote-to-prod` run. This is not a separate human step.
+
+**Pre-flight:** Verify that promoted tasks have status `pr-reviewed` (or `staged` for CareGuide) in `docs/backlog.json`. Tasks in any other status should not be promoted to `production`.
 
 **Path A (stage → main):** Create a backlog closeout branch from main (the merge has already updated origin/main):
 
@@ -517,8 +582,8 @@ for (const n of toPromote) {
   if (idx === -1) { console.warn('Task #' + n + ' not found, skipping'); continue; }
   const t = b.tasks[idx];
   if (t.status === 'production') { console.log('Task #' + n + ' already production, skipping'); continue; }
-  if (t.status !== 'cba-complete' && t.status !== 'staged') {
-    console.warn('Task #' + n + ' was ' + t.status + ', expected cba-complete or staged — promoting anyway');
+  if (t.status !== 'pr-reviewed' && t.status !== 'staged') {
+    console.warn('Task #' + n + ' was ' + t.status + ', expected pr-reviewed or staged — promoting anyway');
   }
   t.status = 'production';
   archive.tasks.push(Object.assign({}, t, {
