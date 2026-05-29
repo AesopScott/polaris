@@ -19,7 +19,7 @@ backlog
   ↓
 [/review-pr] → (no status change)
   ↓
-[/codex-review] → cba-complete
+[/codex-review] → pr-reviewed
   ↓
 [/promote-stage] → staged
   ↓
@@ -96,9 +96,9 @@ backlog
 - **Sets status to `cba-complete` when review PASSES** (code review audit complete)
 - May set status to `review-blocked` if hard issues are found that must be fixed before merge
 
-**Status transition:** `build-finished` → `cba-complete` (or `review-blocked` if blockers found)
+**Status transition:** `build-finished` → `pr-reviewed` (or `review-blocked` if blockers found)
 
-> **Status discrepancy:** Memory records from prior sessions indicate the correct post-APPROVE status for `/codex-review` is `pr-reviewed`, not `cba-complete`. Verify against the active `~/.claude/commands/codex-review.md` and the `BACKLOG_STATUS_OPTIONS` enum in `server.js` before relying on either value.
+> **Note:** The correct status on `/codex-review` APPROVE is `pr-reviewed`. `cba-complete` is a persistent misnomer that has been incorrect for a long time — do not use it here.
 
 **Output:** Task is approved for staging, or flagged with blockers
 
@@ -187,3 +187,10 @@ Don't use `/ship-task` when:
 - You're doing a quick one-off fix (use individual skills directly)
 - The task doesn't require formal proof units (minor patches)
 - You're working in isolation without needing two-model review
+
+---
+
+## Maintenance Note
+
+**`docs/skills/` should be kept in sync with `~/.claude/commands/`.**  
+The files in `docs/skills/` are documentation-style references; the executable skill definitions live in `~/.claude/commands/`. When either changes, the other should be updated. Sync has not been done yet — treat `~/.claude/commands/` as authoritative for runtime behavior.

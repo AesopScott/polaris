@@ -342,6 +342,15 @@ User approval is always valid and overrides the gate — sessions may proceed im
 
 ---
 
+---
+
+## Maintenance Note
+
+**`docs/skills/` should be kept in sync with `~/.claude/commands/`.**  
+The files in `docs/skills/` are documentation-style references; the executable skill definitions live in `~/.claude/commands/`. When either changes, the other should be updated. Sync has not been done yet — treat `~/.claude/commands/` as authoritative for runtime behavior.
+
+---
+
 ## STOPPING
 
 The orchestrator session is managed by Polaris server.js. It will be closed automatically when all sessions on this project close. You do not need to manage your own lifecycle.
