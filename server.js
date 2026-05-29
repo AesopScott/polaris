@@ -3933,10 +3933,12 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill, isPipelineSkill } 
   if (ORCHESTRATION_QUIET_MODE) return 'Task orchestration quiet mode is enabled; task state was not changed.';
   const session = sessions.get(sessionId);
   if (!session) return 'Session not found.';
-  if (taskNumber      !== undefined) session.taskNumber      = taskNumber;
-  if (taskState       !== undefined) session.taskState       = taskState;
-  if (lastSkill       !== undefined) session.lastSkill       = lastSkill;
-  if (isPipelineSkill === true && !session.isPipelineSkill) session.isPipelineSkill = true;
+  const isFirstCall = !session.setTaskStateCalled;
+  session.setTaskStateCalled = true;
+  if (taskNumber !== undefined) session.taskNumber = taskNumber;
+  if (taskState  !== undefined) session.taskState  = taskState;
+  if (lastSkill  !== undefined) session.lastSkill  = lastSkill;
+  if (isPipelineSkill === true && isFirstCall) session.isPipelineSkill = true;
   broadcast({ type: 'session-status', sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null, projectName: session.projectName || null });
   if (taskState !== undefined && session.taskNumber) {
     broadcast({ type: 'task-pipeline-state', taskNumber: session.taskNumber, status: session.taskState, stepIndex: PIPELINE_STEP_INDEX[session.taskState] || 0, lastSkill: session.lastSkill || null, lastResult: null });
