@@ -845,5 +845,36 @@ Added missing-file guard: if the task file doesn't exist or either review sectio
   2. Hardcoded `CareGuide project` in Codex prompt template → `{project-name}` (generic); hardcoded `stage` base branch → `main` (generic)
   3. Step 10: replaced "orchestrator handles backlog / sets `pr-reviewed`" with the correct `codex-reviewed` status-set via `node -e`, matching the docs version
 
-**Commit:** See git log for `docs(orchestrate): fix PHASE 6C approval handler to use deterministic task file path`
+**Commits:**
+- `9ea999b` — `docs(orchestrate): fix PHASE 6C approval handler to use deterministic task file path`
+- `37251ca` — `fix(commands): sync review-pr and codex-review command skills with docs versions`
+
+---
+
+## Final Gap Status — All Gaps Resolved (2026-05-29)
+
+| Gap | Description | Owner | Status |
+|---|---|---|---|
+| #1 | Merge request protocol | SHIP-TASK | ✅ Resolved — no merge request needed; `/promote-to-prod` waits for orchestrator directive |
+| #2 | Merge completion polling | SHIP-TASK | ✅ Resolved — polling implemented in `/promote-to-prod` Step 6 |
+| #3 | Directive issuance logic | ORCHESTRATOR | ✅ Resolved — BACKLOG:STATUS_CHANGE table + PHASE 6C approval handler |
+| #4 | Status sync protocol | BOTH | ✅ Resolved — heartbeat re-issue after 2 unacknowledged ticks |
+| #5 | Status naming consistency | BOTH | ✅ Resolved — PHASE 6 gate updated; `cba-complete` vs `pr-reviewed` clarified throughout |
+| #6 | Error handling in directive polling | SHIP-TASK | ✅ Resolved — try-catch + retry + timeout in all 9 pipeline skills |
+| #7 | Merge authority protocol | ORCHESTRATOR | ✅ Resolved — orchestrator scans for `review-passed`, issues directive; sessions execute |
+| #8 | Post-merge status ownership | SHIP-TASK | ✅ Resolved — `/promote-to-prod` validates merge then sets `production` |
+| #9 | `cba-complete` routes to wrong step | SHIP-TASK | ✅ Resolved — resumption table fixed to route `cba-complete → finish-build` |
+| #10 | `pr-reviewed` missing from resumption | SHIP-TASK | ✅ Resolved — row added pointing to `/codex-review` |
+| #11 | Step 6 wrong SetTaskState call | SHIP-TASK | ✅ Resolved — pre-review state call removed; approval handler owns the transition |
+
+**Additional issues found and fixed (post-gap cross-check):**
+| Finding | Fix | Commit |
+|---|---|---|
+| PHASE 6C searched `_Sessions/` by date — unreliable at runtime | Updated to deterministic task file path in `_Build/Tasks/` | `9ea999b` |
+| `~/.claude/commands/review-pr.md` missing `pr-reviewed` status step | Step 7b added with `node -e` pattern | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/codex-review.md` state guard used `cba-complete` | Fixed to `pr-reviewed` / `codex-reviewed` rows | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/codex-review.md` hardcoded CareGuide + `stage` base | Replaced with `{project-name}` and `main` | `37251ca` (commands file, untracked) |
+| `~/.claude/commands/codex-review.md` Step 10 delegated status to orchestrator | Fixed to set `codex-reviewed` directly via `node -e` | `37251ca` (commands file, untracked) |
+
+**Architecture is production-ready. No open gaps remain.**
 
