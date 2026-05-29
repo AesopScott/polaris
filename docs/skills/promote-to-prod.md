@@ -11,15 +11,58 @@ You are running the production promotion sequence. There is no `origin/prod` bra
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
-2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
-3. If found:
-   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
-   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
-   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
-4. If not found or single-session context: proceed normally with "Merge Model" below
+**Error-safe polling with retry:**
 
-> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Merge Model".
+Use `node -e` (never the Read tool — encoding issues) to poll with try-catch and retry logic:
+
+```bash
+timeout=5  # 5 second timeout per read
+retries=0
+max_retries=3
+
+while [ $retries -lt $max_retries ]; do
+  timeout $timeout node -e "
+    try {
+      const fs = require('fs');
+      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
+      if (!fs.existsSync(dirPath)) {
+        console.log('no-directive');
+        process.exit(0);
+      }
+      const content = fs.readFileSync(dirPath, 'utf8');
+      const data = JSON.parse(content);
+      const sessionId = process.env.SESSION_ID || 'unknown';
+      const pending = data.directives && data.directives.find(d => 
+        d.target.sessionId === sessionId && d.status === 'pending'
+      );
+      if (pending) {
+        console.log(JSON.stringify(pending));
+      } else {
+        console.log('no-directive');
+      }
+    } catch (e) {
+      console.error('read-failed: ' + e.message);
+      process.exit(1);
+    }
+  " && break
+  retries=$((retries + 1))
+  [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
+done
+
+if [ $retries -eq $max_retries ]; then
+  echo "⚠️ Orchestrator coordination unavailable (max retries exceeded). Proceeding in single-session mode."
+  # Continue with normal execution; no directive expected
+fi
+```
+
+If a directive is found (output is valid JSON):
+- Immediately set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>` (write back to file)
+- The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+- After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+
+If no directive found or polling times out:
+- **Single-session mode:** Proceed normally to "Merge Model" below
+- **Multi-session mode with timeout:** Log "Orchestrator coordination unavailable; running in single-session mode" and continue
 
 ## Merge Model
 
@@ -35,24 +78,60 @@ This step applies ONLY when running in a multi-session context (orchestrator is 
 
 **Why this step:** In multi-session workflows, the orchestrator coordinates all merges to prevent conflicts. The orchestrator scans `docs/backlog.json` for `pr-reviewed` tasks, queues them for merging, and sends a directive to the active session with instructions: "Merge PR #{N} to main".
 
-**Poll for the directive:**
+**Poll for the directive with error handling:**
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json` (use `node -e` with utf8 encoding)
-2. Look for an entry where:
-   - `target.sessionId` matches this session's ID, AND
-   - `status === "pending"`, AND
-   - `instruction` contains the PR number to merge
-3. If found:
-   - Immediately set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>`
-   - Write the change back to the file
-   - Extract the PR number from the `instruction` field
-   - Note the `priority` (critical, high, normal)
-   - Proceed to Step 7 with the orchestrator's PR
-4. If not found:
-   - **Single-session fallback:** Use `/promote-to-prod` to auto-select eligible task PRs (Step 7 logic applies)
-   - **Multi-session wait:** If this session is marked as multi-session but no directive arrives within 5 minutes, notify user: "Waiting for orchestrator merge directive — coordination may be unavailable. You can manually merge the eligible reviewed PR or halt for investigation."
+Use `node -e` with try-catch (same pattern as the top-level Directive Polling section). Poll with a 5-minute timeout max:
 
-After completing the merge (Step 7), a completion directive from the orchestrator will be issued (see Step 8 below).
+```bash
+timeout=5
+start_time=$(date +%s)
+timeout_secs=300  # 5 minutes
+
+while true; do
+  current_time=$(date +%s)
+  elapsed=$((current_time - start_time))
+  if [ $elapsed -gt $timeout_secs ]; then
+    echo "⚠️ Merge directive timeout after 5 minutes. Proceeding with fallback."
+    break
+  fi
+  
+  result=$(timeout $timeout node -e "..." 2>&1) || {
+    sleep 2
+    continue
+  }
+  
+  if [ "$result" != "no-directive" ] && [ ! -z "$result" ]; then
+    # Directive found
+    pr_number=$(echo "$result" | grep -oP '#\K\d+' || true)
+    if [ ! -z "$pr_number" ]; then
+      echo "Merge directive received: PR #$pr_number"
+      # Proceed to Step 7 with this PR
+      break
+    fi
+  fi
+  
+  sleep 2
+done
+```
+
+**Behavior:**
+
+1. If directive found within 5 minutes:
+   - Extract PR number from `instruction` field
+   - Set `status: "acknowledged"` in directive file
+   - Proceed to Step 7 with the orchestrator's PR number
+
+2. If no directive within 5 minutes:
+   - **Single-session fallback:** Use `/promote-to-prod`'s auto-select to find eligible task PRs (Step 7 logic applies)
+   - **Multi-session timeout:** Notify user: "Orchestrator coordination unavailable — merge directive not received after 5 minutes. You can manually merge the eligible reviewed PR(s) or investigate orchestrator status."
+
+**Error recovery:**
+
+If directive polling fails with read errors:
+- Retry up to 3 times with exponential backoff
+- If all retries fail: log "Orchestrator coordination lost" and proceed with single-session fallback
+
+After completing the merge (Step 7), a completion directive from the orchestrator may be issued (see Step 7-After below).
 
 ---
 
@@ -490,24 +569,59 @@ In multi-session mode, after the merge is validated, ensure the branch is availa
 git push origin main
 ```
 
-**Poll for merge completion directive (multi-session only):**
+**Poll for merge completion directive (multi-session only) with error handling:**
 
-In multi-session workflows, after the merge completes, the orchestrator may send a merge completion directive confirming the merge was successful from its perspective. Poll for up to 30 seconds:
+In multi-session workflows, after the merge completes, the orchestrator may send a merge completion directive confirming the merge was successful from its perspective. Poll with timeout and retry:
 
-1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json` (use `node -e` with utf8)
-2. Look for an entry where:
-   - `target.sessionId` matches this session, AND
-   - `status === "pending"`, AND
-   - `instruction` contains confirmation like "merge complete" or "merge succeeded"
-3. If found:
-   - Set `status: "acknowledged"` and write back
-   - Note the directive confirmation
+```bash
+timeout=5
+retries=0
+max_retries=2
+poll_deadline=30  # seconds
+
+start=$(date +%s)
+while true; do
+  elapsed=$(($(date +%s) - start))
+  if [ $elapsed -ge $poll_deadline ]; then
+    echo "ℹ️ Merge completion directive not received (30s timeout)"
+    break
+  fi
+  
+  result=$(timeout $timeout node -e "..." 2>&1) || {
+    retries=$((retries + 1))
+    if [ $retries -le $max_retries ]; then
+      sleep 1
+      continue
+    else
+      echo "⚠️ Directive poll failed after retries (continuing anyway)"
+      break
+    fi
+  }
+  
+  if [ "$result" = "found" ]; then
+    echo "Merge completion directive acknowledged"
+    break
+  fi
+  
+  sleep 2
+done
+```
+
+**Behavior:**
+
+1. If directive found within 30 seconds:
+   - Set `status: "acknowledged"` in directive file
+   - Note the confirmation
    - Proceed to Step 8
-4. If not found within 30 seconds:
-   - **Single-session:** Proceed normally to Step 8 (no directive expected)
-   - **Multi-session:** Log warning "Merge completion directive not received — proceeding with deploy check anyway" and continue to Step 8
 
-If directive polling fails (file not readable), log the error and continue — do not block on missing directives.
+2. If no directive within 30 seconds:
+   - **Single-session:** Proceed normally to Step 8 (no directive expected)
+   - **Multi-session:** Log "Merge completion directive not received — proceeding with deploy check" and continue to Step 8
+
+3. If polling fails with errors:
+   - Retry up to 2 times
+   - If all retries fail: log warning "Directive coordination lost; continuing anyway" and proceed to Step 8
+   - **Do not halt** — the merge has already happened and must be validated via deploy
 
 ## Step 8 — Watch the prod deploy
 
