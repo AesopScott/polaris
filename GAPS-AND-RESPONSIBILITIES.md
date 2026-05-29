@@ -300,3 +300,96 @@ Add to `/promote-to-prod`:
 5. ⏳ **Ship-task:** Implement Gap #1, #2, #6, #8 based on orchestrator's clarifications
 6. ⏳ **Integration test:** Multi-session workflow with all gaps resolved
 
+---
+
+## Orchestrator Session Additions (2026-05-29)
+
+The following gaps were identified independently during the orchestrator session and are added here for the ship-task session to address. Responsibility assignments are noted for each.
+
+---
+
+### Gap 9: `cba-complete` in resumption table routes to wrong step (HIGH)
+
+**Finding:**
+The resumption table in `ship-task.md` maps `cba-complete → Step 6 (codex review)` with the label "Claude review complete; proceed to Codex review." This is wrong on two counts:
+- `cba-complete` is set by `/cross-boundary-audit` during the build phase (between start-build and finish-build) — it has nothing to do with Claude review
+- A task resuming from `cba-complete` should go to Step 4 (finish-build), not Step 6
+
+**Correct routing:**
+| Status | Should route to |
+|---|---|
+| `cba-complete` | Step 4 (finish-build) — audit passed, ready to commit and push |
+| `build-finished` | Step 5 (review-pr) — PR is open, ready for Claude review |
+| (no status currently covers post-Claude-review) | Step 6 (codex-review) |
+
+**Responsibility:** 🔧 **SHIP-TASK SESSION**
+Update resumption table: `cba-complete → Step 4 (finish-build)`, not Step 6.
+
+---
+
+### Gap 10: `pr-reviewed` missing from resumption table (HIGH)
+
+**Finding:**
+After `/codex-review` APPROVE, the task status becomes `pr-reviewed`. This status has no row in the resumption table. If a session resumes with a task in `pr-reviewed` state, it has no defined path and will not know where to go.
+
+**Required row:**
+| `pr-reviewed` | Step 7 (promote to prod) | Both reviews passed; orchestrator will merge — proceed to `/promote-to-prod`. |
+
+**Responsibility:** 🔧 **SHIP-TASK SESSION**
+Add `pr-reviewed` row to the resumption table pointing to Step 7.
+
+---
+
+### Gap 11: Step 6 calls `SetTaskState("cba-complete")` before running codex review (HIGH)
+
+**Finding:**
+Step 6 of ship-task.md calls:
+```
+mcp__polaris__SetTaskState({ taskState: "cba-complete", lastSkill: "codex-review" })
+```
+...BEFORE invoking `/codex-review`. This sets `cba-complete` (a mid-build status from the audit phase) as the state for what is actually the Codex review gate. After `/codex-review` APPROVE, the correct status is `pr-reviewed`, not `cba-complete`.
+
+**Correct behavior:**
+- Do NOT set any state before invoking `/codex-review` in Step 6 (or set to `review` to indicate review-in-progress)
+- After `/codex-review` returns APPROVE: `SetTaskState("pr-reviewed")`
+- After `/codex-review` returns BLOCK: `SetTaskState("review-blocked")`
+
+**Responsibility:** 🔧 **SHIP-TASK SESSION**
+Fix Step 6 state transitions: remove pre-skill `cba-complete` call; set `pr-reviewed` on APPROVE.
+
+---
+
+### Gap 7 — RESOLVED: Merge authority protocol
+
+**Resolution from orchestrator session:**
+The ambiguity in Gap #7 is resolved. The correct model is:
+
+> **Orchestrator scans `docs/backlog.json` for `pr-reviewed` tasks and merges them autonomously. Sessions do NOT submit merge requests — they just set status to `pr-reviewed` and the orchestrator takes over.**
+
+This is documented in `orchestrate.md` PHASE 6B: "On each tick, scan `docs/backlog.json` for tasks with `status === 'pr-reviewed'`... collect into an ordered queue... execute the next merge."
+
+Sessions should NOT submit entries to `branch-requests.json` for merges — that path is for branch ops (checkout, push, worktree-add), not PR merges. `/promote-to-prod` should set status to `pr-reviewed` and then poll `session-directives.json` for the orchestrator's merge completion directive (Gap #2 is still open for ship-task session).
+
+**Impact on Gap #1:** Ship-task session does NOT need to add merge request submission to `/promote-to-prod`. The protocol is: set `pr-reviewed`, then poll for the completion directive.
+
+**Responsibility:** ✅ **ORCHESTRATOR SESSION** (resolved)
+`orchestrate.md` PHASE 6B already documents the correct behavior. `GAPS-AND-RESPONSIBILITIES.md` updated here.
+
+---
+
+### Updated Responsibility Summary
+
+| Gap | Owner | Status |
+|---|---|---|
+| #1: Merge request protocol | **SHIP-TASK** | ⚠️ Scope reduced — no merge request needed; just set `pr-reviewed` and poll for directive |
+| #2: Merge completion polling | **SHIP-TASK** | ⏳ Open |
+| #3: Directive issuance logic | **ORCHESTRATOR** | ⏳ Open |
+| #4: Status sync protocol | **BOTH** | ⏳ Open |
+| #5: Status naming consistency | **BOTH** | ⏳ Open |
+| #6: Error handling in directive polling | **SHIP-TASK** | ⏳ Open |
+| #7: Merge authority protocol | **ORCHESTRATOR** | ✅ Resolved |
+| #8: Post-merge status ownership | **SHIP-TASK** | ⏳ Open |
+| #9: cba-complete routes to wrong step | **SHIP-TASK** | ⏳ Open |
+| #10: pr-reviewed missing from resumption | **SHIP-TASK** | ⏳ Open |
+| #11: Step 6 wrong SetTaskState call | **SHIP-TASK** | ⏳ Open |
+
