@@ -544,20 +544,82 @@ Can patch just these affected rows; may be 3-4 total changes to resumption table
 - Includes merge validation, origin push, and post-merge directive polling
 - Updated Step 9 to clarify status requirements (`pr-reviewed` or `staged`)
 
-### ✅ Gap #6 (Partial): Error handling for directive polling — STARTED
-- `/promote-to-prod`: Added comprehensive try-catch and retry logic
-- All three directive polling sections in promote-to-prod now include:
-  - Try-catch blocks with error handling
-  - Exponential backoff retry (up to 3 attempts)
-  - 5-second timeout per read
-  - Graceful fallback to single-session mode on failure
-  - Do not halt on missing directives
-- **Next:** Add same error handling to other pipeline skills one at a time
+### ✅ Gap #6: Error handling for directive polling — COMPLETE
+- **All 9 pipeline skills** now include comprehensive error handling:
+  1. `/plan-task` ✅ — try-catch + retry + timeout + graceful fallback
+  2. `/start-build` ✅ — try-catch + retry + timeout + graceful fallback
+  3. `/cross-boundary-audit` ✅ — try-catch + retry + timeout + graceful fallback
+  4. `/finish-build` ✅ — try-catch + retry + timeout + graceful fallback
+  5. `/review-pr` ✅ — try-catch + retry + timeout + graceful fallback
+  6. `/codex-review` ✅ — try-catch + retry + timeout + graceful fallback
+  7. `/promote-stage` ✅ — try-catch + retry + timeout + graceful fallback
+  8. `/promote-to-prod` ✅ — comprehensive error handling across all directive polling sections
+  9. `/ship-task` ✅ — delegates to sub-skills (no direct polling)
+
+- **Error handling pattern implemented:**
+  - Try-catch blocks with error recovery
+  - Exponential backoff retry (up to 3 attempts for critical reads)
+  - 5-second timeout per read operation
+  - Graceful fallback to single-session mode on persistent failures
+  - **Never halt** on missing directives — always continue with fallback behavior
 
 ### ✅ Gap #1 (Revised): Documentation of `/promote-to-prod` workflow
 - Merge Model section updated to clarify orchestrator sends directives (not requests)
 - Documented that `/promote-to-prod` waits for merge directive before merging
 - Added protocol for status checking (`pr-reviewed` as entry status)
+
+---
+
+---
+
+## Summary of Gap Closure (2026-05-29 Session)
+
+**High-Priority Gaps (all closed):**
+- ✅ Gap #9: cba-complete resumption routing fixed
+- ✅ Gap #10: pr-reviewed resumption row added
+- ✅ Gap #11: Step 6 SetTaskState behavior corrected
+- ✅ Gap #2: Merge completion directive polling implemented
+
+**Medium-Priority Gaps (all closed):**
+- ✅ Gap #6: Error handling for all 9 pipeline skills completed
+- ✅ Gap #1 (revised): `/promote-to-prod` merge workflow documented
+
+**Medium-Priority Gaps (awaiting orchestrator):**
+- ⏳ Gap #3: Directive issuance logic (orchestrator responsibility) — needed before full multi-session testing
+- ⏳ Gap #4: Status synchronization protocol (both sessions) — awaiting orchestrator design
+- ⏳ Gap #5: Status naming consistency (both sessions) — awaiting orchestrator docs update
+
+**Gap #8 (Post-merge status ownership):**
+- ✅ Implemented in `/promote-to-prod` Step 9 — validates merge succeeded, pushes to origin, sets `production` status
+
+---
+
+## Files Changed in This Session
+
+**Ship-Task Pipeline Skills Updated (10 files):**
+1. `docs/skills/ship-task.md` — resumption table + Step 6 fixes
+2. `docs/skills/promote-to-prod.md` — merge directive polling + validation + error handling
+3. `docs/skills/promote-stage.md` — error handling + merge model clarification
+4. `docs/skills/plan-task.md` — error handling
+5. `docs/skills/start-build.md` — error handling
+6. `docs/skills/cross-boundary-audit.md` — directive polling added + error handling
+7. `docs/skills/finish-build.md` — error handling
+8. `docs/skills/review-pr.md` — error handling
+9. `docs/skills/codex-review.md` — error handling
+10. `docs/skills/ship-task.md` — synced from ~/.claude/commands/
+
+**Documentation Updated (2 files):**
+1. `GAPS-AND-RESPONSIBILITIES.md` — clarifications + completion tracking + current session summary
+2. `CLAUDE.md` — added Rule 15 (skill sync requirement)
+
+**Git Commits (8 total):**
+1. Ship-task resumption table and Step 6 fixes
+2. Promote-to-prod merge completion directive polling and validation
+3. Gap completion status update
+4. Promote-to-prod error handling
+5. Promote-stage error handling
+6. Review-pr error handling
+7. All remaining pipeline skills error handling
 
 ---
 
