@@ -4355,9 +4355,10 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
       if (pendingCrossChecks.has(checkId)) {
         pendingCrossChecks.delete(checkId);
         resolve('reject');
+        autoLaunchCrossCheckSession({ sessionId, filePath, operation, review });
       }
     }, 600000); // 10 min timeout — defaults to reject for safety
-    pendingCrossChecks.set(checkId, { resolve, timer });
+    pendingCrossChecks.set(checkId, { resolve, timer, sessionId, filePath, operation, review });
     broadcast({
       type: 'cross-check-pending',
       checkId, sessionId, filePath, operation,
@@ -4366,6 +4367,50 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
       originalLines, newLines, originalBytes, newBytes,
     });
   });
+}
+
+function autoLaunchCrossCheckSession({ sessionId, filePath, operation, review }) {
+  const config = readConfig();
+  const sess = sessions.get(sessionId) || {};
+  const issueLines = Array.isArray(review?.issues) && review.issues.length
+    ? '\n\nIssues:\n' + review.issues.map(i => `- ${i}`).join('\n')
+    : '';
+  const opPart = operation ? ` on ${operation}` : '';
+  const prompt = `Cross-check ${review?.verdict || 'FAIL'}${opPart} of ${filePath}:\n\n${review?.summary || ''}${issueLines}\n\nPlease review and fix the issues identified above.`;
+  const id = `chat_${Date.now()}`;
+  const name = generateSessionName(prompt);
+  let chatModel;
+  if (config.crossCheckModel) {
+    chatModel = config.crossCheckModel;
+  } else {
+    const backend = (config.chatBackend || 'max').toLowerCase();
+    chatModel = backend === 'max'
+      ? 'anthropic/claude-sonnet-4-6 (Max plan)'
+      : (config.chatModel || 'deepseek/deepseek-chat');
+  }
+  const effectiveWorkDir = sess.repoWorkDir || sess.workDir || null;
+  sessions.set(id, {
+    id, name, workDir: effectiveWorkDir, projectName: sess.projectName || null,
+    chipLabel: 'Cross Check', chipColor: '#ef4444',
+    isChat: true, model: chatModel, tier: 'balanced',
+    status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
+    keepAliveInjected: false, lastKeepAliveAt: null,
+    proc: null, watcher: null, timeout: null,
+    lines: [], lastPrompt: prompt, claudeSessionId: null,
+    pendingImages: [], pendingDocs: [], pendingAudio: [], pendingVideos: [],
+  });
+  onSessionOpened(id, sess.projectName || null);
+  if (effectiveWorkDir && fs.existsSync(effectiveWorkDir)) {
+    const wtPath = createSessionWorktree(id, effectiveWorkDir);
+    if (wtPath) {
+      const s = sessions.get(id);
+      if (s) { s.repoWorkDir = effectiveWorkDir; s.worktreePath = wtPath; s.workDir = wtPath; }
+    }
+  }
+  broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: sess.projectName || null, chipLabel: 'Cross Check', chipColor: '#ef4444', model: chatModel, isChat: true });
+  broadcastInitialUserPrompt(id, prompt);
+  saveSessions();
+  spawnChatRouter(id, prompt, config);
 }
 
 // askForInstallerPermission — blocks shell execution until the user explicitly
@@ -10266,7 +10311,11 @@ async function handleMessage(ws, raw) {
     if (pending) {
       pendingCrossChecks.delete(msg.checkId);
       clearTimeout(pending.timer);
-      pending.resolve(msg.decision === 'approve' ? 'approve' : 'reject');
+      const decision = msg.decision === 'approve' ? 'approve' : 'reject';
+      if (decision === 'reject') {
+        autoLaunchCrossCheckSession({ sessionId: pending.sessionId, filePath: pending.filePath, operation: pending.operation, review: pending.review });
+      }
+      pending.resolve(decision);
     }
     return;
   }
