@@ -302,6 +302,199 @@ The orchestration system relies on server.js infrastructure improvements that we
 
 ---
 
+## Critical Configuration & Coordination Files
+
+**Runtime coordination files** (located in `%APPDATA%\.claude\polaris\session-guidance/`):
+
+1. **orchestrator-active.json** — Authority declaration
+   - Checked on orchestrator startup (PHASE 0 guard)
+   - Contains: project, sessionId, startedAt, active flag
+   - Prevents multiple orchestrators on same project
+
+2. **branch-requests.json** — Branch operation requests
+   - Format: request object with op, fromBranch, toBranch, reason
+   - Sessions write requests; orchestrator approves/denies
+   - PHASE 6 auto-approve/deny logic for task/* branches
+   - Escalates merge/rebase operations to Scott
+
+3. **session-directives.json** — Asynchronous task communication
+   - Sessions poll every tick for pending directives
+   - Orchestrator issues directives for phase transitions
+   - Directive priorities: critical (blocks session) → high (next phase) → normal (info)
+   - Lifecycle: pending → acknowledged → completed/failed
+   - **Critical:** Registered as exception in locks.json to allow all sessions write access
+
+4. **orchestrator-alerts.json** — Alert escalation
+   - Triggered when directives stall (>3 ticks unacknowledged)
+   - Surfaced to Scott for manual intervention
+   - Alert deduplication via _seenAlerts Map prevents UI spam
+
+---
+
+## Operational Parameters & Timeouts
+
+**Monitor loop:**
+- Default interval: 30 seconds (configurable via CLAUDE.md)
+- Event debouncing: batch all events within same tick, process once
+
+**Directive lifecycle:**
+- Heartbeat re-issue: after 2 ticks (≈60s) unacknowledged → escalate to critical
+- Final escalation: after 3 ticks (≈90s) pending → write to orchestrator-alerts.json
+- Merge directive timeout: 10 minutes max wait for completion
+
+**Branch gate polling:**
+- Sessions poll branch-requests.json every tick
+- Timeout: 60 seconds for approval/denial response
+- If no response: surface pending status to Scott for manual override
+
+**Merge serialization:**
+- Only one merge authorized at a time to stage or main
+- Merge queue built from review-passed tasks (oldest PR first)
+- Prevents concurrent merge conflicts
+
+---
+
+## Session Lifecycle & Orchestrator Interaction
+
+**Session types:**
+1. **Build sessions** — Create task branches, implement features, run skills
+   - Worktree isolation via EnterWorktree on startup
+   - Poll directives at start of each skill for phase gates
+   - Submit branch-requests for checkout/merge operations
+   - Execute merges when orchestrator issues directive (PHASE 6B)
+
+2. **Review sessions** — Run /review-pr and /codex-review on published PRs
+   - No branch operations; isolated review scope
+   - No directive polling (no phase gating needed)
+
+3. **Orchestrator session** — Continuous monitoring and coordination
+   - Started when 2+ active sessions detected
+   - Runs monitor loop on configurable interval (default 30s)
+   - Manages all cross-session coordination via directives and alerts
+
+**Build session interaction with orchestrator:**
+```
+Session starts → registers in session-guidance files
+   ↓
+Each skill runs → checks for pending directives at start
+   ↓
+Skill completes → updates backlog.json status
+   ↓
+Orchestrator detects status change (next tick)
+   ↓
+Orchestrator issues directive for next phase (if applicable)
+   ↓
+Session polls directive, receives action → proceeds to next skill
+```
+
+---
+
+## Backlog Status State Machine
+
+**Complete status flow for orchestrated multi-session tasks:**
+
+```
+backlog (initial)
+  ↓ [user action]
+planned
+  ↓ [/start-build runs — human gate, orchestrator cannot approve]
+build-started
+  ↓ [implementation code]
+cba-complete [Step 3 in PIPELINE_STEP_INDEX — mid-build position]
+  ↓ [/finish-build success]
+build-finished
+  ↓ [/review-pr Step 7]
+pr-reviewed [Claude review findings captured]
+  ↓ [/codex-review Step 9]
+codex-reviewed [Codex review findings captured]
+  ↓ [Orchestrator PHASE 6C approval handler]
+  │
+  ├→ review-passed [both reviews approve] ─→ PHASE 6B merge directive issued
+  │                                            ↓ [session merges to stage]
+  │                                         staged
+  │                                            ↓ [/promote-to-prod]
+  │                                         production [final state]
+  │
+  └→ review-blocked [blockers found]
+       ↓ [user fixes code on branch]
+     [re-run /review-pr or /codex-review]
+       ↓ [back to pr-reviewed or codex-reviewed status]
+```
+
+**Other statuses (non-orchestrated workflows):**
+- `cancelled`, `on-hold`, `failed`, `stalled`, `blocked` — terminal or manual states
+- Orchestrator ignores these; they don't trigger directives
+
+---
+
+## Error Handling & Failure Modes
+
+**Graceful degradation:**
+1. **gh unavailable** — Orchestrator falls back to git-only mode (skips PR metadata columns)
+2. **Directive system fails** — Sessions timeout waiting and escalate to Scott
+3. **Merge directive timeout** — Task remains in review-passed; escalate to Scott
+4. **Worktree collision detected** — Alert both sessions via orchestrator-alerts.json
+
+**Critical invariants maintained:**
+- No silent status changes (all transitions logged and verified)
+- No orphaned files (deleteSessionStateFile() cleanup on all paths)
+- No duplicate alerts (deduplication via _seenAlerts Map)
+- No concurrent merges (serialization enforced by orchestrator)
+- No unauthorized branch ops (gate enforces approval before execution)
+
+**Recovery procedures (documented in orchestrate.md):**
+- If review-blocked: user fixes code, re-runs single blocking review (Codex takes precedence)
+- If merge fails: orchestrator retries once with critical priority, then escalates
+- If session crashes: orchestrator detects via directive polling timeout, escalates to Scott
+
+---
+
+## Testing & Validation Strategy
+
+**Pre-production verification (completed):**
+- ✅ All 11 gaps resolved and documented
+- ✅ Cross-session integration review (no blocking issues)
+- ✅ Skill synchronization verified
+- ✅ Infrastructure (server.js) cross-check fixes applied
+- ✅ Deterministic file paths confirmed (PHASE 6C)
+
+**Integration testing required (pending):**
+1. Single multi-session workflow with real backlog task:
+   - Two parallel build sessions on different tasks
+   - Verify all phase transitions trigger directives
+   - Verify approval handler decision logic (both approve, one blocks, etc.)
+   - Verify review-blocked retry logic
+   - Verify merge serialization (confirm second session waits for first merge)
+   - Verify status updates propagate to backlog.json
+
+2. Failure scenario testing:
+   - Kill one session mid-build; verify orchestrator detects timeout
+   - Deny a branch-request; verify session handles gracefully
+   - Merge conflicts on stage/main; verify orchestrator escalates
+
+3. Load testing:
+   - 3-4 concurrent sessions on same project
+   - Verify orchestrator monitor loop handles event batching
+   - Verify no race conditions in directive issuance
+
+---
+
+## Known Limitations & Future Considerations
+
+**Not yet implemented:**
+- Partial review approval (approval handler requires all reviews to pass; future: add per-review gates)
+- Automated conflict resolution (orchestrator generates merge guides but requires manual fix)
+- Cross-project dependencies (orchestration limited to single project)
+- Automatic session recovery (session crashes require manual intervention)
+
+**Potential enhancements:**
+- Add review-blocked auto-retry (currently user-initiated)
+- Implement CI/CD integration (gate on test results)
+- Add approval timeout with fallback default (currently waits indefinitely)
+- Persist orchestrator metrics for monitoring dashboard
+
+---
+
 ## Next Steps
 
 1. **Integration testing** — Run real workflow with actual backlog task to verify:
