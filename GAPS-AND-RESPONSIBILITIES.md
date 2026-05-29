@@ -638,10 +638,18 @@ Can patch just these affected rows; may be 3-4 total changes to resumption table
 3. **MEDIUM (gradual rollout):**
    - Gap #6: Add error handling to promote skills first, then iterate through other pipeline skills one at a time
 
-4. **AWAITING ORCHESTRATOR:**
-   - Gap #3: Approval handler design (orchestrator responsibility)
-   - Gap #4: Status sync protocol (orchestrator responsibility)
-   - Gap #5: Orchestrate.md sequence clarification (orchestrator responsibility)
+4. **ORCHESTRATOR (ALL COMPLETE — 2026-05-29):**
+   - ✅ Gap #3: Directive issuance table added to BACKLOG:STATUS_CHANGE event in both orchestrate.md files; heartbeat: re-issue after 2 unacknowledged ticks (~60s), escalate after tick 3
+   - ✅ Gap #4: Heartbeat sync protocol built into directive issuance logic (max 60s acknowledgement window)
+   - ✅ Gap #5: PHASE 6 branch gate stale `cba-complete` reference fixed; `codex-reviewed` and `review-passed` added throughout orchestrate.md
+   - ✅ PHASE 6B: Revised from self-merge to directive-only model (orchestrator never runs `gh pr merge`)
+   - ✅ PHASE 6C: Approval handler designed and documented (fires on `codex-reviewed`, reads both review findings, sets `review-passed` or `review-blocked`)
+   - ✅ PHASE 7: SESSION DIRECTIVES section added to orchestrate.md
+   - ✅ `session-directives.json`: Created at `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+   - ✅ `poll-directives.md`: Created at `~/.claude/commands/poll-directives.md` (shared skill for all sessions)
+   - ✅ `locks.json`: Added `exceptions: ["session-directives.json"]` so all sessions can write
+   - ✅ `CLAUDE.md Rule 14`: Session directives polling rule added to project CLAUDE.md
+   - ✅ Memory file: `project_session_directives.md` added to QueryMemory injection path
 
 ---
 
@@ -703,7 +711,69 @@ The orchestrator does **not** run `gh pr merge` itself. It is directive-only.
 | Add `codex-reviewed` and `review-passed` to server.js status enums | **SHIP-TASK SESSION** | ⏳ Open |
 | Update all pipeline skills for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ⏳ Open |
 | Update resumption table for `codex-reviewed` and `review-passed` | **SHIP-TASK SESSION** | ⏳ Open |
-| Design and implement orchestrator approval handler (Gap #3) | **ORCHESTRATOR SESSION** | ⏳ Open |
-| Revise orchestrate.md PHASE 6B to directive-only merge model | **ORCHESTRATOR SESSION** | ⏳ Open |
-| Update `docs/skills/orchestrate.md` to match | **ORCHESTRATOR SESSION** | ⏳ Open |
+| Design and implement orchestrator approval handler (Gap #3) | **ORCHESTRATOR SESSION** | ✅ Done — PHASE 6C in both orchestrate.md files |
+| Revise orchestrate.md PHASE 6B to directive-only merge model | **ORCHESTRATOR SESSION** | ✅ Done — PHASE 6B rewritten; orchestrator issues directive, session executes merge |
+| Update `docs/skills/orchestrate.md` to match | **ORCHESTRATOR SESSION** | ✅ Done — synced with `~/.claude/commands/orchestrate.md` |
+
+---
+
+## Orchestrator Session — Complete Work Log (2026-05-29)
+
+All items below were designed, implemented, and committed by the orchestrator session in this conversation.
+
+### Architecture Decisions Confirmed by Scott
+
+1. **Directive-only merge model**: Orchestrator does NOT run `gh pr merge`. It writes a `critical` directive to `session-directives.json` telling the owning session to merge. Session executes merge, sets status to `production`.
+
+2. **New review status pipeline** (approved by Scott):
+   - `build-finished` → `/review-pr` → `pr-reviewed` (Claude findings captured regardless of outcome)
+   - `pr-reviewed` → `/codex-review` → `codex-reviewed` (Codex findings captured regardless of outcome)
+   - `codex-reviewed` → Orchestrator PHASE 6C → `review-passed` OR `review-blocked`
+   - `review-blocked` is NOT set until BOTH reviews run
+   - `review-passed` triggers the merge directive
+
+3. **Human gate is only `planned → /start-build`**: All other phase transitions are orchestrator-approved. This is now written into orchestrate.md Invariant 8 and the Phase Gates table in ship-task.md.
+
+4. **`cba-complete` is mid-build only**: Set by `/cross-boundary-audit` between start-build and finish-build. Not related to code review at all. Any prior references to `cba-complete` in review context are errors.
+
+---
+
+### Files Created or Modified by Orchestrator Session
+
+| File | Change |
+|---|---|
+| `~/.claude/commands/orchestrate.md` | PHASE 6B directive-only rewrite; PHASE 6C approval handler added; PHASE 7 session directives added; PIPELINE ALERTS table updated; BACKLOG:STATUS_CHANGE directive table added; SCOPE authority bullets added |
+| `docs/skills/orchestrate.md` | Same — kept in sync with commands/ |
+| `~/.claude/commands/poll-directives.md` | New shared skill — all pipeline sessions call this to poll/acknowledge/execute directives |
+| `%APPDATA%\.claude\polaris\session-guidance\session-directives.json` | Created as `[]` — targeted directive queue for multi-session coordination |
+| `%APPDATA%\.claude\polaris\locks.json` | Added `"exceptions": ["session-directives.json"]` field |
+| `C:\Users\scott\Code\Polaris\CLAUDE.md` | Rule 14 added — session directives polling obligation for all sessions |
+| `~/.claude/projects/.../memory/project_session_directives.md` | New memory file injected via QueryMemory — teaches sessions the directive protocol |
+| `~/.claude/projects/.../memory/MEMORY.md` | Index entry added for `project_session_directives.md` |
+| `~/.claude/projects/.../memory/feedback_codex_review_status.md` | Updated — added that `cba-complete` is ALWAYS wrong after codex-review |
+| `docs/skills/ship-task.md` | Phase 2.5 added; pipeline diagram corrected; Invariant 8 added; Phase Gates table added; Session Directive Polling section added; CareGuide Phase 6 note fixed |
+
+### Git Commits in Orchestrator Session
+
+| Commit | Description |
+|---|---|
+| (prior to compaction) | Initial orchestrate.md annotations, PHASE 6B/6C, PHASE 7 |
+| (prior to compaction) | `poll-directives.md` created; `locks.json` exception; `session-directives.json` created; CLAUDE.md Rule 14; memory file |
+| `6df9c05` | `docs(orchestrate): implement Gap 3, 4, 5` — directive issuance table, heartbeat sync, status naming fixes in both orchestrate.md files |
+
+---
+
+### Open Items Delegated to Ship-Task Session
+
+The following items were identified or confirmed during the orchestrator session but require ship-task session to implement:
+
+1. **Add `codex-reviewed` and `review-passed` to `BACKLOG_STATUS_OPTIONS` in server.js** — these are new enum values that must exist for skills to set them
+2. **Add `codex-reviewed` and `review-passed` to `PIPELINE_STEP_INDEX` in server.js** — ordering matters for resumption logic
+3. **Update `/review-pr` skill**: set status to `pr-reviewed` after review is captured (currently sets nothing, or may set wrong value)
+4. **Update `/codex-review` skill**: set status to `codex-reviewed` after Codex review is captured (NOT `pr-reviewed` or `cba-complete`)
+5. **Add `codex-reviewed` row to resumption table** in ship-task.md: route to Step 6.5 (wait for approval handler to fire)
+6. **Add `review-passed` row to resumption table** in ship-task.md: route to promote-to-prod (orchestrator will issue merge directive)
+7. **Clarify `/promote-to-prod` entry**: task status at entry point is `review-passed` (set by orchestrator approval handler), not `pr-reviewed`
+
+**Note:** These are the only remaining open items across all 11 gaps. When ship-task session completes items 1-7 above, the full orchestration architecture is production-ready.
 
