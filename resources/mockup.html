@@ -1477,23 +1477,20 @@
     <canvas id="firework-canvas"></canvas>
 
     <div class="header-identity">
-      <div style="display:flex;align-items:center;width:100%;">
-        <div style="flex:1;display:flex;justify-content:center;align-items:center;">
+      <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
+          <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
+        </div>
+        <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:6px;">
           <div id="meetup-reservations-chip" class="meetup-reservations-chip" style="width:120px;height:50px;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;" title="Meetup reservations across Advanced AI Concepts events">
             <div class="meetup-reservations-label">Meetup</div>
             <div id="meetup-reservations-count" class="meetup-reservations-count" style="font-size:16px;margin-top:1px;">--</div>
           </div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="display:flex;align-items:center;gap:14px;">
-            <span class="app-icon"><svg width="50" height="50" viewBox="0 0 22 22" fill="none" style="display:block;"><path d="M11 1L12.8 9.2L21 11L12.8 12.8L11 21L9.2 12.8L1 11L9.2 9.2Z" fill="#60a5fa"/></svg></span>
-            <span class="app-title" style="font-size:45px;line-height:1;">Polaris</span>
-          </div>
-          <div class="tagline-strobe" style="font-size:18px;font-weight:400;letter-spacing:0.05em;">Your AI Command Center</div>
           <button id="btn-status" class="hbtn btn-systems" onclick="toggleStatusPanel()" data-tooltip="View and update project status notes — where you left off on each project" style="width:120px;height:50px;padding:0;display:flex;align-items:center;justify-content:center;"><span class="lbl">Status</span></button>
           <button id="btn-memory" class="hbtn btn-config" onclick="toggleMemoryPanel()" data-tooltip="Memory — Obsidian retrieval index stats and last 20 QueryMemory retrieval events" style="width:120px;height:50px;padding:0;display:flex;align-items:center;justify-content:center;"><span class="lbl">Memory</span></button>
         </div>
-        <div style="flex:1;"></div>
       </div>
     </div>
 
