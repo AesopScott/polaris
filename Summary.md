@@ -286,6 +286,64 @@ The orchestration system relies on server.js infrastructure improvements that we
 
 ---
 
+## Codex Review Findings (2026-05-29, Ad-Hoc)
+
+**Status:** REQUEST CHANGES — Four critical/high issues identified
+
+**Verdict:** Architecture is sound in concept but **not production-ready** due to conflicts with existing CLAUDE.md rules and undefined distributed-systems details.
+
+### Critical Issues (Must Resolve)
+
+1. **CRITICAL — Lifecycle Conflict**
+   - **Finding:** Spec places `cba-complete` BEFORE `build-finished`, but CLAUDE.md documents `cba-complete` AFTER `build-finished`
+   - **Impact:** Automation sequencing is wrong; skills targeting different status orders will conflict
+   - **Location:** Architecture section "Status Pipeline" vs. CLAUDE.md backlog status lifecycle
+
+2. **HIGH — Authority Boundary Undefined**
+   - **Finding:** Spec says "Only orchestrator approval handler sets review-passed/review-blocked" but doesn't specify HOW (direct file mutation vs. server.js write authority)
+   - **Impact:** May conflict with server.js backlog write authority enforcement (1 session writes directly, 2+ sessions = orchestrator only)
+   - **Location:** PHASE 6C approval handler implementation unclear
+
+3. **HIGH — Merge Confirmation Mechanism Missing**
+   - **Finding:** Spec says "merge directive tells session to merge; session executes" but doesn't define how "named confirmation before proceeding" (from CLAUDE.md branch isolation rule) is captured
+   - **Impact:** Sessions may execute merges without proper confirmation flow
+   - **Location:** PHASE 6B merge coordination step
+
+4. **HIGH — Orchestrator Scope Not Restated**
+   - **Finding:** CLAUDE.md says "Orchestrator must never edit code, commit, or touch files in a task branch/worktree" but spec doesn't restate this prohibition
+   - **Impact:** No guardrails preventing orchestrator from violating isolation boundary
+   - **Location:** /orchestrate skill PHASE definitions
+
+### High-Priority Issues (Should Resolve)
+
+5. **Directive Delivery Semantics Undefined**
+   - Acknowledgement logic, directive IDs, idempotency, duplicate detection not specified
+
+6. **Split Review Authority Unclear**
+   - How conflicting PR/Codex results are represented and "Codex takes precedence" is mechanically applied undefined
+
+7. **File Concurrency Not Addressed**
+   - No atomic writes, locking, or compare-and-swap behavior for shared coordination files (orchestrator-active.json, branch-requests.json, session-directives.json)
+
+8. **"Production Ready" Claim Unsupported**
+   - Missing: gap-closure table linking each of 11 gaps to resolution, test coverage, validation evidence
+
+### Medium-Priority Issues
+
+9. **Graceful Degradation Underspecified**
+   - Which capabilities lost in git-only mode? How is PR state obtained without `gh`?
+
+### Codex Recommendations
+
+1. Reconcile status pipeline with CLAUDE.md — pick canonical lifecycle
+2. Define directive semantics (IDs, acks, idempotency)
+3. Specify file-access discipline (atomic writes or file-lock rules)
+4. Document authority model (how orchestrator uses server.js write authority)
+5. Define merge-confirmation flow (how branch isolation applies)
+6. Replace "production-ready" with gap-closure validation table
+
+---
+
 ## Production Readiness Checklist
 
 - [x] All 11 gaps resolved and documented
