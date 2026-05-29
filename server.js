@@ -4062,9 +4062,11 @@ const PIPELINE_STEP_INDEX = {
   'planning': 1,
   'start-build': 2, 'build-started': 2, 'in-progress': 2,
   'coding': 3, 'audit': 3,
+  'cba-complete': 3,
   'build-finished': 4, 'in-review': 4,
-  'review-blocked': 5, 'pr-reviewed': 5,
-  'cba-complete': 6,
+  'pr-reviewed': 5,
+  'codex-reviewed': 6,
+  'review-passed': 7, 'review-blocked': 7,
   'staged': 7, 'production': 7, 'complete': 7, 'done': 7,
 };
 

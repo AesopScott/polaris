@@ -336,17 +336,39 @@ Append the Codex review (and comparison, if generated) to the task's Obsidian tr
 
 5. Tell the user: "Codex review + comparison logged to `{ProjectObsidian}_Build/Tasks/Task-{task-N}-{slug}.md`."
 
-## Step 10 — Signal review outcome (orchestrator handles backlog)
+## Step 9 — Set task status to `codex-reviewed` (task mode only)
 
-> **Note:** Do not write to `docs/backlog.json` or check out `main`. Stay on the current branch. The orchestrator reads the Codex verdict from this skill's completion banner and sets the task status accordingly:
+In task mode, after the Codex review is complete and logged, set the task's status to `codex-reviewed` in `docs/backlog.json` on main:
+
+```bash
+node -e "
+const fs = require('fs');
+const b = JSON.parse(fs.readFileSync('docs/backlog.json', 'utf8'));
+const task = b.tasks.find(t => t.number === {task-number});
+if (task) {
+  task.status = 'codex-reviewed';
+  fs.writeFileSync('docs/backlog.json', JSON.stringify(b, null, 2) + '\n', 'utf8');
+  console.log('Status updated: Task #{task-number} → codex-reviewed');
+}
+"
+```
+
+This status indicates that the Codex review has been captured and findings are documented. The orchestrator approval handler (PHASE 6C) will now read both `/review-pr` and `/codex-review` findings to determine the final status (`review-passed` or `review-blocked`).
+
+**Important:** This skill does NOT set `review-blocked` or `review-passed`. Only the orchestrator approval handler sets those statuses.
+
+## Step 10 — Approval handler will read both reviews
+
+> **Note on status:** You set `codex-reviewed` in Step 9. The orchestrator approval handler (PHASE 6C) now reads both `/review-pr` findings AND `/codex-review` findings and decides:
 >
-> | Verdict | Orchestrator sets status to |
-> |---|---|
-> | APPROVE | `pr-reviewed` |
-> | REQUEST CHANGES | `review-blocked` |
-> | NEEDS DISCUSSION | `pr-reviewed` (with note) |
+> | Both Approve | Codex Blocks | Claude Blocks but Codex Approves |
+> |---|---|---|
+> | Status → `review-passed` | Status → `review-blocked` | Status → `review-blocked` |
+> | (Merge proceeds) | (Merge blocked; user fixes) | (Merge blocked; user fixes) |
 >
-> Ensure the **Verdict** is clearly stated in the completion banner so the orchestrator can parse it without ambiguity.
+> The orchestrator handler reads the Verdicts from both reviews' completion banners. Ensure your **Verdict** is clearly stated so it can be parsed without ambiguity.
+> 
+> **If `review-blocked` is set:** The user will fix the code and re-run this `/codex-review` skill (or `/review-pr` if only Claude blocked). The skill runs again from Step 1, captures new findings, and repeats until `review-passed` is reached.
 
 ## Step 11 — Final question
 

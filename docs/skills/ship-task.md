@@ -168,7 +168,10 @@ Based on the task's current `status`:
 | `build-started` | Ask user | "Code already started on the task branch. Has the cross-boundary audit run on the task branch yet? [no, run audit now / yes, still coding / yes, ready to finish build]" |
 | `cba-complete` | Step 4 (finish-build) | Boundary audit passed; proceed to finish build. |
 | `build-finished` | Step 5 (review PR) | PR opened and pushed; code reviews next. Invoke `/review-pr`. |
-| `pr-reviewed` | Step 7 (promote to prod) | Both reviews passed; ready to promote to production. Invoke `/promote-to-prod`. |
+| `pr-reviewed` | Step 6 (codex review) | Claude review complete; proceed to Codex review. |
+| `codex-reviewed` | (wait) | Codex review complete; approval handler determining status. Resume if status becomes `review-passed` (proceed to Step 7) or `review-blocked` (fix code and re-run review). |
+| `review-passed` | Step 7 (promote to prod) | Both reviews approved; ready to promote to production. Invoke `/promote-to-prod`. |
+| `review-blocked` | (fix & retry) | Reviews found blockers. User fixes code and re-runs the blocking review (Claude or Codex). Then resume from that review step. |
 | `staged` | Step 7 (promote to prod) | CareGuide task promoted to stage and ready for production. Invoke `/promote-to-prod`; it marks production after deploy succeeds. |
 | `production` | Stop | Tell user "Task #{N} is already in production." Do not proceed. |
 
@@ -284,11 +287,11 @@ After it completes:
 - `fix`: stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
-## Step 7 — Promote to production (`pr-reviewed` or `staged` → `production`)
+## Step 7 — Promote to production (`review-passed` or `staged` → `production`)
 
-> **Reached after reviews are complete in Steps 5-6.** This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
+> **Reached after reviews are complete and approved in Steps 5-6.** Task status is `review-passed` (set by orchestrator approval handler after both reviews complete). This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
 
-Invoke `/promote-to-prod`. It will choose the correct path:
+Invoke `/promote-to-prod`. The orchestrator will send a merge directive to the owning session. The session executes the merge, validates success, and then proceeds with deploy verification. `/promote-to-prod` will choose the correct path:
 - CareGuide with real staged work: stage → main, then production deploy from main.
 - All other projects: reviewed PRs → main, then production deploy from main.
 

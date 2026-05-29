@@ -487,6 +487,27 @@ After outputting the review, append it to the task's Obsidian tracker so the ful
 
 5. Tell the user: "Review logged to `{ProjectObsidian}_Build/Tasks/Task-{task-N}-{slug}.md`."
 
+## Step 7 — Set task status to `pr-reviewed` (task mode only)
+
+In task mode, after the review is complete and logged, set the task's status to `pr-reviewed` in `docs/backlog.json` on main:
+
+```bash
+node -e "
+const fs = require('fs');
+const b = JSON.parse(fs.readFileSync('docs/backlog.json', 'utf8'));
+const task = b.tasks.find(t => t.number === {task-number});
+if (task) {
+  task.status = 'pr-reviewed';
+  fs.writeFileSync('docs/backlog.json', JSON.stringify(b, null, 2) + '\n', 'utf8');
+  console.log('Status updated: Task #{task-number} → pr-reviewed');
+}
+"
+```
+
+This status indicates that the Claude review has been captured and findings are documented. The approval handler will read both `/review-pr` and `/codex-review` findings to determine the final status (`review-passed` or `review-blocked`).
+
+**Important:** This skill does NOT set `review-blocked` or `review-passed`. Only the orchestrator approval handler (PHASE 6C) sets those statuses.
+
 ## Step 8 — Next action
 
 Ask the user what they'd like to do next: post this review to GitHub, continue working from the recommendations, or take a different action?
