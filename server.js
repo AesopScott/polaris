@@ -939,8 +939,8 @@ function onSessionClosed(sessionId) {
   if (!set) return;
   set.delete(sessionId);
 
-  // Tear down when concurrency drops to 1 — the remaining solo session writes directly.
-  if (set.size <= 1) {
+  // Tear down when the last build session closes — orchestrator has no work until 2+ sessions return.
+  if (set.size === 0) {
     const orchId = orchestratorSessions.get(projectName);
     if (orchId) teardownOrchestratorSession(orchId, projectName);
   }
@@ -1060,7 +1060,8 @@ function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
     chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
-    model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
+    model: s.model || null,
+    isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
     claudeSessionId: s.claudeSessionId || null,
@@ -1166,7 +1167,9 @@ function loadPersistedSessions() {
           console.error('[orchestrator] post-load spawn failed for', projectName, err));
       }
     }
-  } catch {}
+  } catch (err) {
+    console.error('[orchestrator] loadPersistedSessions error:', err);
+  }
 }
 
 loadPersistedSessions();
@@ -9987,21 +9990,23 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'resume') {
-    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos } = msg;
+    const { sessionId, prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos, isSystemInstruction } = msg;
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
-    const turn = { prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, videos };
+    const finalPrompt  = isSystemInstruction ? `[SYSTEM INSTRUCTION]: ${prompt}` : prompt;
+    const finalDisplay = isSystemInstruction ? `⚙ ${displayPrompt || prompt}` : displayPrompt;
+    const turn = { prompt: finalPrompt, displayPrompt: finalDisplay, resumeId, model, projectName, images, docs, audio, videos };
     // If the session is running, show the prompt in the transcript immediately and queue it
     // for immediate execution once the current task finishes — never kill the active task.
     // CLI sessions (chat/codex/gpt) can't receive mid-task injections, so go straight to
     // pendingTurns. Direct Agent sessions also get steeringQueue so the loop can inject
     // the prompt between API iterations without waiting for the current task to fully end.
     if (session.status === 'running') {
-      const displayText = displayPrompt || prompt;
+      const displayText = finalDisplay || finalPrompt;
       broadcast({ type: 'line', sessionId, role: 'user', text: displayText });
       if (session.isChat || session.isCodex || session.isGpt) {
         if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
-        session.pendingTurns.push({ prompt, displayPrompt, resumeId, model, projectName, images, docs, audio, displayed: true });
+        session.pendingTurns.push({ prompt: finalPrompt, displayPrompt: finalDisplay, resumeId, model, projectName, images, docs, audio, displayed: true });
         broadcast({ type: 'queue-status', sessionId, pending: session.pendingTurns.length, turns: session.pendingTurns.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
       } else {
         if (!Array.isArray(session.steeringQueue)) session.steeringQueue = [];
@@ -11009,6 +11014,34 @@ async function handleMessage(ws, raw) {
   if (type === 'transfer-session') {
     const src = sessions.get(msg.sessionId);
     if (!src) return sendTo(ws, { type: 'error', text: 'Source session not found for transfer' });
+
+    // Health Monitor: create a new HM session and retarget the running timers (they read
+    // healthMonitorSessionId dynamically, so updating the variable is all that's needed).
+    if (msg.sessionId === healthMonitorSessionId) {
+      const newId = `s_${Date.now()}`;
+      const newHmSession = {
+        id: newId, name: HEALTH_MONITOR_NAME,
+        workDir: CHAT_DIR, projectName: 'Polaris',
+        model: null, tier: 'floor',
+        isChat: false,
+        status: 'done',
+        startAt: Date.now(), lastActivityAt: Date.now(),
+        stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null,
+        proc: null, watcher: null, timeout: null,
+        lines: [], messages: [],
+        lastPrompt: 'Health Monitor',
+        claudeSessionId: null, routineTag: null,
+        pendingImages: [], pendingDocs: [], pendingAudio: [], pendingVideos: [],
+      };
+      newHmSession.policy = buildDefaultPolicy(newHmSession, readConfig());
+      sessions.set(newId, newHmSession);
+      healthMonitorSessionId = newId;
+      broadcast({ type: 'session-created', sessionId: newId, name: HEALTH_MONITOR_NAME, workDir: CHAT_DIR, projectName: 'Polaris', model: null });
+      saveSessions();
+      injectHealthSnapshot();
+      console.log(`[health-monitor] transferred to new session ${newId}`);
+      return;
+    }
 
     // Read the full diag log — user explicitly requested no truncation.
     const srcDiagPath = path.join(LOGS_DIR, `diag-${src.id}.txt`);

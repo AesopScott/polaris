@@ -290,6 +290,10 @@
   #pending-stack { display: flex; flex-direction: column; gap: 3px; padding: 6px 4px 4px; max-height: 110px; overflow-y: auto; }
   #pending-stack.hidden { display: none; }
   .pending-item { display: flex; align-items: flex-start; gap: 4px; font-size: 11px; color: #fbbf24; padding: 3px 7px; background: rgba(251,191,36,0.10); border-left: 2px solid #f59e0b; border-radius: 3px; line-height: 1.4; }
+  .sys-instr-btn { flex-shrink:0; padding:6px 9px; border-radius:6px; border:1px solid #444; font-size:13px; cursor:pointer; opacity:0.45; background:transparent; color:var(--text,#e2e8f0); transition:opacity 0.15s,background 0.15s; height:36px; }
+  .sys-instr-btn:hover { opacity:0.85; }
+  .sys-instr-btn.active { background:rgba(180,83,9,0.85); color:#fff; border-color:#b45309; opacity:1; }
+  #float-prompt-wrap.is-system .prompt-area { border-left:3px solid #f59e0b !important; }
   .pending-item-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
   .pending-item textarea { flex: 1; font-size: 11px; color: #fbbf24; background: rgba(251,191,36,0.18); border: 1px solid #f59e0b; border-radius: 3px; padding: 2px 4px; resize: vertical; min-height: 38px; outline: none; font-family: inherit; line-height: 1.4; width: 100%; }
   .pending-item-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
@@ -8518,6 +8522,24 @@
     return document.querySelector('.palette:not(.hidden) .mode-btn.active')?.dataset?.mode || 'chat';
   }
 
+  function toggleSysInstr() {
+    const wrap = document.getElementById('float-prompt-wrap');
+    const btn  = document.getElementById('float-sys-btn');
+    const ta   = document.getElementById('float-prompt-area');
+    const on   = wrap.classList.toggle('is-system');
+    btn.classList.toggle('active', on);
+    ta.placeholder = on ? 'Enter system instruction...' : 'Continue this session...';
+  }
+
+  function resetSysInstr() {
+    const wrap = document.getElementById('float-prompt-wrap');
+    const btn  = document.getElementById('float-sys-btn');
+    const ta   = document.getElementById('float-prompt-area');
+    wrap.classList.remove('is-system');
+    btn.classList.remove('active');
+    ta.placeholder = 'Continue this session...';
+  }
+
   function doLaunch() {
     const f = getLaunchFields();
     const hasAttachments = pendingImages.length || pendingDocs.length || pendingAudio.length || pendingFiles.length;
@@ -8542,10 +8564,12 @@
       const stickyId = resumeTarget.sessionId;
       const stickyModel = resumeTarget.model;
       if (imagePayload.length) pendingLineImages[resumeTarget.sessionId] = imagePayload;
-      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload });
+      const isSystemInstruction = document.getElementById('float-prompt-wrap')?.classList.contains('is-system');
+      resetSysInstr();
+      wsSend({ type: 'resume', sessionId: resumeTarget.sessionId, prompt: fullPrompt, displayPrompt: f.prompt, resumeId: resumeTarget.resumeId, model: resumeTarget.model || f.model, projectName: f.projectName, images: imagePayload, docs: docPayload, audio: audioPayload, videos: videoPayload, isSystemInstruction });
       const _rt = document.querySelector(`.card[data-sid="${resumeTarget.sessionId}"] [data-term]`);
       if (_rt) _rt.scrollTop = _rt.scrollHeight;
-      pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model}`);
+      pushDebugLog(`[resume] ${resumeTarget.name} model=${resumeTarget.model || f.model} sysInstr=${isSystemInstruction}`);
       window.clearResumeMode();
       enterResumeMode(stickyId, stickyModel);
     } else if (mode === 'chat') {
@@ -15840,6 +15864,7 @@ This is your current workflow status across all branches. Review the tasks and P
       <span class="token-count text-muted">~0 / 200k tokens</span>
       <button class="upload-btn" title="Attach a file" onclick="triggerUpload(this)">⬆ Upload</button>
     </div>
+    <button class="sys-instr-btn" id="float-sys-btn" title="Send as system instruction" onclick="toggleSysInstr()">⚙</button>
     <button class="launch-btn launch-action-btn" id="float-launch-btn" style="width:110px;flex-shrink:0;" onclick="doLaunch()">
       <span class="icon">↩</span><span class="lbl">Resume</span>
     </button>
