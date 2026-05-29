@@ -389,7 +389,9 @@ The orchestrator does NOT run merges itself. It detects `review-passed` tasks an
 
 ### Step 1: Build merge queue
 
-On each tick, scan `docs/backlog.json` for tasks with `status === "review-passed"` (or `"cba-complete"` for CareGuide stage merges). Collect their PR numbers and branch names in an ordered queue, oldest `pr_url` first.
+On each tick, scan `docs/backlog.json` for tasks with `status === "review-passed"`. Collect their PR numbers and branch names in an ordered queue, oldest `pr_url` first.
+
+**Note:** For CareGuide, `/promote-stage` handles the intermediate merge to the stage branch (setting status to `staged`) before `/promote-to-prod` runs. The orchestrator issues the merge directive on `review-passed` for all projects — CareGuide sessions route to `/promote-stage` first, Polaris sessions route directly to `/promote-to-prod`.
 
 ### Step 2: Check for active merge directive
 

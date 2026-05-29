@@ -62,25 +62,29 @@ The detailed prose history continues below the table — keep both. The table is
 
 **Task model:**
 - `docs/backlog.json` stores global + per-project tasks with fields: number, title, description, category, priority, status, plan, proofUnits, branch, pr_url, impact
-- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `review-blocked`, `staged`, `production`, `failed-smoke-test`, `stalled`, `failed`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `pr-reviewed`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
-  - `review-blocked` — set when `/review-pr` or `/codex-review` finds hard issues that block merge; clears back to `build-finished` after fixes are committed
+- **Valid status values** (enum): `backlog`, `planned`, `build-started`, `build-finished`, `cba-complete`, `pr-reviewed`, `codex-reviewed`, `review-passed`, `review-blocked`, `staged`, `production`, `failed-smoke-test`, `stalled`, `failed`, `blocked`, `on-hold`, `cancelled` — plus legacy UI statuses `ready`, `in-progress`, `complete`, `cba-half-complete`, `smoke-tested`. *Note: `in-review` is NOT a valid status — do not use it.*
+  - `pr-reviewed` — set by `/review-pr` after Claude review is captured (regardless of outcome)
+  - `codex-reviewed` — set by `/codex-review` after Codex review is captured (regardless of outcome)
+  - `review-passed` — set by orchestrator approval handler after both reviews approve; triggers merge directive
+  - `review-blocked` — set by orchestrator approval handler after both reviews run and at least one found blockers; clears back to `build-finished` after fixes are committed
+  - `staged` — **CareGuide only** — set after PR merges to the stage branch; not used in Polaris pipeline
   - `stalled` — set by the LangGraph executor (`backlog_sync.py`) when a task times out waiting at a human gate
   - `failed` — generic terminal failure before production (distinct from `failed-smoke-test` which fires after deployment)
-- **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task` completion) → `build-started` (after `/start-build`) → `build-finished` (after `/finish-build`) → `cba-complete` (after `/codex-review`) → `staged` (after `/promote-stage`) → `production` (after `/promote-to-prod` ships)
+- **Status lifecycle for skill-driven workflows:** `backlog` → `planned` (after `/plan-task`) → `build-started` (after `/start-build`) → `cba-complete` (after `/cross-boundary-audit`, mid-build) → `build-finished` (after `/finish-build`) → `pr-reviewed` (after `/review-pr`) → `codex-reviewed` (after `/codex-review`) → `review-passed` or `review-blocked` (after orchestrator approval handler) → `production` (after `/promote-to-prod`). **CareGuide only:** `review-passed` → `staged` (after `/promote-stage`) → `production`.
 - **failed-smoke-test status (manual):** Set manually when smoke tests fail after production deployment. No skill automatically transitions to this state. When opening a session with a task in `failed-smoke-test` state, the first action must ask the user: "How did this task fail smoke testing?" (capture failure details, remediation steps, whether rollback or fix is needed).
 - **Impact field** (task #19): enum `minor|standard|major` gates planning depth. Minor = skip `/plan-task`. Major = break into subtasks.
 - **Proof units** (task #11): each task plan includes `proofUnits[]` array defining TDD proof expectations (failing → passing test per unit)
 - Registry audit: `/cross-boundary-audit` verifies all task field producers/consumers, updates registry line refs, checks proof units
-- Review workflow: `/review-pr` (Claude) reviews; `/codex-review` (Codex) reviews and sets status to `cba-complete` before promoting to stage
+- Review workflow: `/review-pr` (Claude) reviews and sets status to `pr-reviewed`; `/codex-review` (Codex) reviews and sets status to `codex-reviewed`; orchestrator approval handler (PHASE 6C) then sets `review-passed` (both approve) or `review-blocked` (at least one blocks)
 
 **Key workflows (stored in `~/.claude/commands/`):**
 - `/plan-task` — Interview phase, design outline, proof-unit breakdown, reachability check; plan completion sets status to `planned`
 - `/start-build` — Load task plan + proof units, create branch, sync main; **sets status to `build-started`**
-- `/finish-build` — Verify proof trail + registries, commit, push, open PR to stage, record PR URL; **sets status to `build-finished`**
-- `/review-pr` — Structured review against spec + registries + diff, proof-trail checklist; records review evidence only (no status change)
-- `/codex-review` — Independent Codex review, compare against prior `/review-pr`; **sets status to `cba-complete`** after passing
-- `/promote-stage` — Looks for `cba-complete` tasks, merges approved PRs into stage, rollup audit; **sets status to `staged`**
-- `/promote-to-prod` — Looks for `staged` tasks, promotes to main → prod, watches deploy; **flips to `production`**
+- `/finish-build` — Verify proof trail + registries, commit, push, open PR to `main` (Polaris) or `stage` (CareGuide only), record PR URL; **sets status to `build-finished`**
+- `/review-pr` — Structured review against spec + registries + diff, proof-trail checklist; **sets status to `pr-reviewed`**
+- `/codex-review` — Independent Codex review, compare against prior `/review-pr`; **sets status to `codex-reviewed`**
+- `/promote-stage` — **CareGuide only** — looks for `review-passed` tasks, merges approved PRs into stage branch, rollup audit; **sets status to `staged`**
+- `/promote-to-prod` — Looks for `review-passed` (Polaris) or `staged` (CareGuide) tasks, promotes to main → prod, watches deploy; **flips to `production`**
 - `/ship-task` — Orchestrates the workflow from plan through promotion; does not change status itself (other skills do)
 
 **Proof trail verification:**
