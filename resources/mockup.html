@@ -4615,7 +4615,7 @@
       if (shouldDeep) {
         healthState.lastDeepCheck = Date.now();
         try {
-          const snapshot = await fetchWithTimeout('/api/health-snapshot', 4000);
+          const snapshot = await fetchWithTimeout('/api/health-snapshot', 8000);
           if (snapshot.ok && snapshot.data) {
             if (typeof snapshot.data.mcpHelpers === 'number') healthState.mcpHelpers = snapshot.data.mcpHelpers;
             if (typeof snapshot.data.connections === 'number') healthState.connections = snapshot.data.connections;

@@ -8431,7 +8431,7 @@ const httpServer = http.createServer((req, res) => {
         "$p=Get-Process -Name Polaris -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;",
         "[pscustomobject]@{mcpHelpers=@($m).Count;connections=@($c).Count;topProcess=if($p){$p.ProcessName+':'+$p.Id+' cpu='+[math]::Round($p.CPU,1)+' memMB='+[math]::Round($p.WorkingSet/1MB,0)}else{$null}} | ConvertTo-Json -Compress"
       ].join(' ');
-      execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 3500 }, (err, stdout) => {
+      execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 6000 }, (err, stdout) => {
         try {
           if (err) throw err;
           const parsed = JSON.parse(stdout);
