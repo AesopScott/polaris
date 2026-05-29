@@ -440,14 +440,27 @@
       0 16px 48px rgba(0,0,0,0.4),
       0 24px 80px rgba(0,0,0,0.3);
   }
-  /* Monitoring cards glow steady cyan — actively monitoring */
+  /* Monitoring cards pulse bright cyan — actively monitoring */
   .card.status-monitoring-card {
-    box-shadow:
-      0 0 0 1px rgba(6,182,212,0.4),
-      0 0 18px rgba(6,182,212,0.2),
-      0 8px 16px rgba(0,0,0,0.5),
-      0 16px 48px rgba(0,0,0,0.4),
-      0 24px 80px rgba(0,0,0,0.3);
+    animation: cardMonitoringPulse 2s ease-in-out infinite;
+  }
+  @keyframes cardMonitoringPulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 1px rgba(6,220,255,0.5),
+        0 0 20px rgba(6,220,255,0.25),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(6,220,255,1),
+        0 0 40px rgba(6,220,255,0.6),
+        0 8px 16px rgba(0,0,0,0.5),
+        0 16px 48px rgba(0,0,0,0.4),
+        0 24px 80px rgba(0,0,0,0.3);
+    }
   }
   /* Broken cards pulse bright orange — session died, needs manual recreation */
   .card.status-broken-card {
@@ -743,7 +756,7 @@
   .status-waiting { background: #78350f20; color: #fbbf24; }
   .status-test    { background: #4c1d9520; color: #ef4444; }
   .status-broken  { background: #7c2d0820; color: #f97316; }
-  .status-monitoring { background: #06b6d420; color: #06b6d4; }
+  .status-monitoring { background: #0891b220; color: #06dcff; font-weight: 800; }
   .dot-run { background: #3b82f6; }
   .dot-done { background: #22c55e; }
   .dot-err { background: #ef4444; }
