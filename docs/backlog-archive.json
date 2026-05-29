@@ -2233,6 +2233,7 @@
       "promoted_via_pr": null
     },
     {
+<<<<<<< HEAD
       "number": 31,
       "title": "Make trust, proof, cost, and recovery visible in the product",
       "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
@@ -2310,6 +2311,8 @@
       "promoted_via_pr": null
     },
     {
+=======
+>>>>>>> chore/mark-tasks-production-60
       "number": 28,
       "title": "Upgrade project memory into ranked retrieval",
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
@@ -2318,7 +2321,11 @@
       "impact": "major",
       "status": "production",
       "created_at": "2026-05-22",
+<<<<<<< HEAD
       "completed_at": "2026-05-29",
+=======
+      "completed_at": null,
+>>>>>>> chore/mark-tasks-production-60
       "dependencies": [],
       "plan": "Replace the all-or-nothing Obsidian dump in QueryMemory with a ranked-retrieval layer.\n\n## Phases\n\n1. Core retrieval module (TDD): Build and test lib/obsidianRetrieval.js (heading-aware chunker, BM25, OpenRouter embeddings fail-soft, cosine ranker, trace formatter).\n2. QueryMemory upgrade: Add query param to tool schema, lazy-init session.memoryIndex, disk embedding cache (mtime+size guard), return top-5 cited excerpts + retrieval trace, append to traces.jsonl.\n3. Memory status panel: get-memory-status WS handler + Memory nav button and panel in mockup.html.\n4. Verify + formalize: e2e smoke, version bump, changelog.\n\n## First Proof Unit\n\nWrite failing vitest suite for lib/obsidianRetrieval.js. Run: npx vitest run test/memory/obsidianRetrieval. Expected failure: Cannot find module.",
       "objective": {
@@ -2437,6 +2444,7 @@
       "branch": "task/28-upgrade-project-memory-into-ranked-retr",
       "pr_url": "https://github.com/AesopScott/polaris/pull/60",
       "project_source": "Polaris",
+<<<<<<< HEAD
       "promoted_via_pr": null
     },
     {
@@ -2561,6 +2569,10 @@
       "pr_url": "https://github.com/AesopScott/polaris/pull/61",
       "project_source": "Polaris",
       "promoted_via_pr": null
+=======
+      "promoted_via_pr": "60",
+      "promoted_at": "2026-05-29T04:54:58.904Z"
+>>>>>>> chore/mark-tasks-production-60
     }
   ]
 }
