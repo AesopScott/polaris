@@ -6872,7 +6872,15 @@
       if (allChecked) {
         document.querySelectorAll('[data-sid] .font-size-slider').forEach(fs => fs.value = e.target.value);
       }
+      localStorage.setItem('polarisFontSize', e.target.value);
     });
+
+    const savedFontSize = localStorage.getItem('polarisFontSize');
+    if (savedFontSize) {
+      const slider = el.querySelector('.font-size-slider');
+      if (slider) slider.value = savedFontSize;
+      el.querySelectorAll('.terminal').forEach(t => t.style.fontSize = savedFontSize + 'px');
+    }
 
     el.addEventListener('click', e => {
       // Don't trigger resume mode if the user just finished selecting text
