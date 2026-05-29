@@ -56,10 +56,10 @@ Both sessions have successfully completed all work required to integrate multi-s
    - Documented session execution model
 
 6. **✅ Synced all skills to ~/.claude/commands/**
-   - orchestrate.md (377 lines — includes alert broadcasting and infrastructure notes)
-   - ship-task.md (229 lines)
-   - review-pr.md (360 lines)
-   - codex-review.md (264 lines)
+   - orchestrate.md (544 lines — includes all PHASE 0-7 implementation + infrastructure notes)
+   - ship-task.md (333 lines)
+   - review-pr.md (530 lines)
+   - codex-review.md (393 lines)
 
 7. **✅ Updated GAPS-AND-RESPONSIBILITIES.md**
    - Documented all 7 completed items
@@ -197,10 +197,10 @@ production (after merge and promotion)
 - PIPELINE_STEP_INDEX (lines 4060-4069) — new status mappings
 
 **Skill Files**
-- docs/skills/orchestrate.md (NEW, 361 lines)
-- docs/skills/ship-task.md (updated resumption table, Step 7 description)
-- docs/skills/review-pr.md (added Step 7: status setting)
-- docs/skills/codex-review.md (added Step 9: status setting; updated Step 10-12)
+- docs/skills/orchestrate.md (544 lines — full implementation with PHASE 0-7 and infrastructure notes)
+- docs/skills/ship-task.md (333 lines — updated resumption table, Step 7 description, approval handler flow)
+- docs/skills/review-pr.md (530 lines — added Step 7: status setting + infrastructure integration)
+- docs/skills/codex-review.md (393 lines — added Step 9: status setting, deterministic file path in Step 10-12)
 
 **Synced to ~/.claude/commands/**
 - orchestrate.md (primary orchestrator skill)
