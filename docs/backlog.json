@@ -19,7 +19,7 @@
       "category": "feature",
       "priority": 90,
       "impact": "major",
-      "status": "build-started",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [],
@@ -137,7 +137,8 @@
           "waiverGuidance": "Manual sign-off required."
         }
       ],
-      "branch": "task/28-upgrade-project-memory-into-ranked-retr"
+      "branch": "task/28-upgrade-project-memory-into-ranked-retr",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/60"
     },
     {
       "number": 30,
@@ -448,7 +449,7 @@
       "description": "Build /orchestrate — a universal Claude Code skill that monitors open PRs across all active sessions for a project, detects file-set intersections, classifies conflict types (additive / same-line / correctness divergence), and writes merger guides to Obsidian. Invoked automatically when a second session opens on the same project. General-first with per-project config block.",
       "category": "tooling",
       "priority": 40,
-      "status": "build-finished",
+      "status": "pr-reviewed",
       "branch": "task/62-orchestrator-skill-multi-session-confli",
       "pr_url": "https://github.com/AesopScott/polaris/pull/59",
       "impact": "standard",

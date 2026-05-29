@@ -335,8 +335,8 @@ The pre-existing `session-created` broadcast gained a new optional field in task
 - `server.js` — `spawnOrchestratorSession()` broadcasts with `isOrchestrator: true` when orchestrator spawns
 
 **Consumers (Client receives)**
-- `resources/mockup.html:4921` — `session-created` handler stores `isOrchestrator: msg.isOrchestrator || false` in sessionStore
-- `resources/mockup.html:6516` — `buildCard()` reads `s.isOrchestrator` to apply `status-orchestrator-card` CSS class
+- `resources/mockup.html:4945` — `session-created` handler stores `isOrchestrator: msg.isOrchestrator || false` in sessionStore
+- `resources/mockup.html:6541` — `buildCard()` reads `s.isOrchestrator` to apply `status-orchestrator-card` CSS class
 
 **Status:** ✓ Balanced — new field has producer and consumer
 
@@ -435,7 +435,7 @@ The pre-existing `session-created` broadcast gained a new optional field in task
 - 13 entries total (12 previous + `session-created.isOrchestrator` added)
 - New field `isOrchestrator: boolean` added to `session-created` payload schema
 - Producer: `server.js` `spawnOrchestratorSession()` broadcasts with `isOrchestrator: true`
-- Consumers: `mockup.html:4921` (sessionStore), `mockup.html:6516` (buildCard CSS class)
+- Consumers: `mockup.html:4945` (sessionStore), `mockup.html:6541` (buildCard CSS class)
 - 0 hard-fail findings
 - 0 shape mismatches
 - 0 orphan producers or consumers
@@ -443,3 +443,21 @@ The pre-existing `session-created` broadcast gained a new optional field in task
 **Gaps identified:** None.
 
 **Status:** Audit complete — `isOrchestrator` field documented; all other task #62 changes are internal to server.js (Maps, lifecycle functions) with no cross-boundary exposure.
+
+---
+
+**Last audit:** 2026-05-28T00:00:00Z (by /cross-boundary-audit for task #28)
+
+**Task:** #28 — Upgrade project memory into ranked retrieval
+
+**Boundaries checked:** WebSocket broadcast events between server (server.js) and client (resources/mockup.html)
+
+**Evidence recorded:**
+- 0 new broadcast event types introduced by task #28
+- `memory-status` response is a targeted `ws.send()` reply, not a broadcast — registered in `websocket-messages.md` instead
+- All 13 existing entries unchanged
+- Registries match current code diff: yes
+
+**Gaps identified:** None new.
+
+**Status:** Audit complete
