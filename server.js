@@ -4362,8 +4362,13 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
     const timer = setTimeout(() => {
       if (pendingCrossChecks.has(checkId)) {
         pendingCrossChecks.delete(checkId);
-        resolve('reject');
-        autoLaunchCrossCheckSession({ sessionId, filePath, operation, review });
+        // Only spawn session on FAIL verdict timeout; PASS/ERROR auto-approve
+        if (review?.verdict === 'FAIL') {
+          resolve('reject');
+          autoLaunchCrossCheckSession({ sessionId, filePath, operation, review });
+        } else {
+          resolve('approve');
+        }
       }
     }, 600000); // 10 min timeout — defaults to reject for safety
     pendingCrossChecks.set(checkId, { resolve, timer, sessionId, filePath, operation, review });
@@ -10327,7 +10332,7 @@ async function handleMessage(ws, raw) {
       pendingCrossChecks.delete(msg.checkId);
       clearTimeout(pending.timer);
       const decision = msg.decision === 'approve' ? 'approve' : 'reject';
-      if (decision === 'reject') {
+      if (decision === 'reject' && pending.review?.verdict === 'FAIL') {
         autoLaunchCrossCheckSession({ sessionId: pending.sessionId, filePath: pending.filePath, operation: pending.operation, review: pending.review });
       }
       pending.resolve(decision);
