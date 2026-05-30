@@ -882,15 +882,20 @@ async function getMeetupReservationSummary() {
       || cfg.meetupReservationsUrl
       || 'https://mojoaistudio.com/api/meetup-admin?action=reservation-count';
     const headers = { 'Accept': 'application/json' };
+    // Note: Use absolute path directly; path.resolve('C:', ...) is relative on Windows
+    const mojoEnvPath = 'C:\\Users\\scott\\Code\\Mojo\\.env';
     const adminKey = process.env.POLARIS_MEETUP_ADMIN_KEY
       || cfg.meetupAdminKey
-      || readEnvFileValue(path.join('C:', 'Users', 'scott', 'Code', 'Mojo', '.env'), 'MEETUP_ADMIN_KEY');
-    console.log('[meetup] adminKey sources: env=%s cfg=%s', process.env.POLARIS_MEETUP_ADMIN_KEY ? '✓' : '✗', cfg.meetupAdminKey ? '✓' : '✗');
+      || readEnvFileValue(mojoEnvPath, 'MEETUP_ADMIN_KEY');
+    console.log('[meetup] adminKey from: env=%s cfg=%s mojo-path=%s',
+      process.env.POLARIS_MEETUP_ADMIN_KEY ? '✓' : '✗',
+      cfg.meetupAdminKey ? '✓' : '✗',
+      mojoEnvPath);
     if (adminKey && /meetup-admin/.test(sourceUrl)) {
       headers['X-Admin-Key'] = adminKey;
       console.log('[meetup] X-Admin-Key header set: %d chars', adminKey.length);
     } else {
-      console.log('[meetup] WARNING: adminKey=%s sourceUrl=%s', adminKey ? 'present' : 'missing', sourceUrl);
+      console.log('[meetup] WARNING: adminKey empty=%s sourceUrl=%s', !adminKey, sourceUrl);
     }
 
     const payload = await fetchJsonWithTimeout(sourceUrl, { headers }, 9000);
