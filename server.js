@@ -885,7 +885,13 @@ async function getMeetupReservationSummary() {
     const adminKey = process.env.POLARIS_MEETUP_ADMIN_KEY
       || cfg.meetupAdminKey
       || readEnvFileValue(path.join('C:', 'Users', 'scott', 'Code', 'Mojo', '.env'), 'MEETUP_ADMIN_KEY');
-    if (adminKey && /meetup-admin/.test(sourceUrl)) headers['X-Admin-Key'] = adminKey;
+    console.log('[meetup] adminKey sources: env=%s cfg=%s', process.env.POLARIS_MEETUP_ADMIN_KEY ? '✓' : '✗', cfg.meetupAdminKey ? '✓' : '✗');
+    if (adminKey && /meetup-admin/.test(sourceUrl)) {
+      headers['X-Admin-Key'] = adminKey;
+      console.log('[meetup] X-Admin-Key header set: %d chars', adminKey.length);
+    } else {
+      console.log('[meetup] WARNING: adminKey=%s sourceUrl=%s', adminKey ? 'present' : 'missing', sourceUrl);
+    }
 
     const payload = await fetchJsonWithTimeout(sourceUrl, { headers }, 9000);
     const count = extractMeetupReservationCount(payload);
