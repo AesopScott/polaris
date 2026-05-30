@@ -4404,7 +4404,8 @@
   })();
   const ORCHESTRATION_QUIET_MODE = true;
   const sessionStore = {};   // id → { id, name, workDir, projectName, status, startAt, lines, lastPrompt, resumeId, usage }
-  const QUEUE_POLL_INTERVAL_MS = 30000;
+  const QUEUE_POLL_INTERVAL_MS = 10000;
+  const QUEUE_STALE_RUNNING_MS = 45000;
   const QUEUE_ACTIVE_STATUSES = new Set(['running', 'launching', 'monitoring']);
   const queuePollState = new Map(); // sessionId -> { enabled, lastAt, inFlight }
   let promptHistoryStore = [];
@@ -5085,6 +5086,7 @@
       case 'line': {
         const s = sessionStore[msg.sessionId];
         if (!s) break;
+        s.lastLineAt = Date.now();
         const line = { text: msg.text, role: msg.role };
         if (msg.role === 'user' && pendingLineImages[msg.sessionId]) {
           line.images = pendingLineImages[msg.sessionId];
@@ -7361,8 +7363,14 @@
     const haystack = [s?.name, s?.projectName, s?.chipLabel, s?.workDir, s?.lastPrompt]
       .filter(Boolean)
       .join(' ');
-    const explicit = haystack.match(/live-build-([1-4])\.md/i);
-    const build = explicit?.[1] || haystack.match(/\bbuild\s*([1-4])\b/i)?.[1];
+    if (/\bcodex\s+reviews?\s+b\b/i.test(haystack) || /live-codex-reviews-2\.md/i.test(haystack)) {
+      return 'C:\\Users\\scott\\Code\\Meridian\\docs\\live-codex-reviews-2.md';
+    }
+    if (/\bcodex\s+reviews?\b/i.test(haystack) || /live-codex-reviews\.md/i.test(haystack)) {
+      return 'C:\\Users\\scott\\Code\\Meridian\\docs\\live-codex-reviews.md';
+    }
+    const explicit = haystack.match(/live-build-([1-5])\.md/i);
+    const build = explicit?.[1] || haystack.match(/\b(?:build|q)\s*([1-5])\b/i)?.[1];
     if (!build) return null;
     return `C:\\Users\\scott\\Code\\Meridian\\docs\\live-build-${build}.md`;
   }
@@ -7384,17 +7392,21 @@ Do not wait for Scott unless the queue explicitly requires a human decision. Do 
     if (!s) return;
     const record = getQueuePollRecord(sessionId);
     if (!record.enabled) return;
-    if (QUEUE_ACTIVE_STATUSES.has(String(s.status || '').toLowerCase())) return;
     const now = Date.now();
+    const status = String(s.status || '').toLowerCase();
+    const lastLineAt = Number(s.lastLineAt || 0);
+    const staleRunning = status === 'running' && lastLineAt > 0 && now - lastLineAt >= QUEUE_STALE_RUNNING_MS;
+    if (QUEUE_ACTIVE_STATUSES.has(status) && !staleRunning) return;
     if (!force && now - record.lastAt < QUEUE_POLL_INTERVAL_MS) return;
     if (record.inFlight) return;
     record.lastAt = now;
     record.inFlight = true;
-    setTimeout(() => { record.inFlight = false; }, 5000);
+    setTimeout(() => { record.inFlight = false; }, Math.min(5000, QUEUE_POLL_INTERVAL_MS / 2));
 
     const queueFile = inferQueueFileForSession(s);
     const prompt = buildQueuePollPrompt(s, queueFile);
     const displayPrompt = queueFile ? `Q: Check ${queueFile.split('\\').pop()}` : 'Q: Check live-build queue';
+    s.lastLineAt = now;
     appendLineToCard(sessionId, { text: displayPrompt, role: 'user' });
     if (Array.isArray(s.lines)) s.lines.push({ text: displayPrompt, role: 'user' });
     wsSend({ type: 'resume', sessionId, prompt, displayPrompt, resumeId: s.resumeId, model: null });
