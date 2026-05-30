@@ -25,13 +25,13 @@ portfolio state
 
 Meridian should advance projects, businesses, websites, tools, and experiments until Scott's judgment becomes the bottleneck.
 
-## Public Launch Intent
+## Later Public Launch Intent
 
-Meridian should become a publicly available repo and marketed tool as soon as possible.
+Meridian should eventually become a publicly available repo and marketed tool, but this is not a V0 requirement.
 
-The early build should assume people following Scott in AI will see it, clone it, follow the architecture, and understand the point.
+V0 should prioritize proving the local orchestrator model privately. The build should still avoid decisions that would make a later public release impossible, but it does not need public polish, public onboarding, or public compliance packaging on day one.
 
-This means V0 needs:
+Later public launch will need:
 
 - Clear README
 - Public-friendly positioning
@@ -44,11 +44,11 @@ This means V0 needs:
 - Safety boundaries
 - No secrets or personal paths committed as required defaults
 
-The product should be useful before it is complete. The public message can be:
+The eventual public message can be:
 
 > Meridian is a local orchestrator for agentic software work. You talk to the orchestrator; it drives worker sessions, harnesses, proof, and project motion.
 
-Public launch does not mean every powerful feature is enabled for everyone on day one. It means the repo and story are coherent early.
+Public launch does not mean every powerful feature is enabled for everyone. It means the repo and story are coherent when Meridian is ready to be shared.
 
 ## V0 Outcome
 
@@ -96,7 +96,7 @@ A successful first demo:
 7. Meridian records the decision, action, and result.
 8. The UI/workbench shows the portfolio state clearly.
 9. Scott only types into the orchestrator surface during the demo.
-10. The demo can be explained publicly without private Polaris context.
+10. The demo creates material that can later be explained publicly without private Polaris context.
 
 ## Core Objects
 
@@ -219,9 +219,9 @@ Do not start with:
 
 Those can come later. V0 should prove local orchestration intelligence.
 
-## Public Repo Requirements
+## Later Public Repo Requirements
 
-Before the first public push/announcement:
+Before a future public push/announcement:
 
 - Remove or template private paths.
 - Keep `Meridian_Build`/`Meridian_Sessions` as Scott-local context, not required public runtime dependencies.
@@ -233,6 +233,8 @@ Before the first public push/announcement:
   - Most tools make the human coordinate many agent sessions.
   - Meridian makes the orchestrator the primary conversation surface.
   - Worker sessions are managed by the local brain.
+- Include provider compliance language from `docs/meridian-provider-compliance.md`.
+- Default public adapters should use official APIs or local models, not consumer-account automation.
 
 ## Interface Carry-Forward
 

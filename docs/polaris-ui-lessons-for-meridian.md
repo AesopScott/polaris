@@ -24,7 +24,7 @@ Brand shift:
 - Change Polaris to Meridian.
 - Keep the general "Your AI Command Center" framing unless a stronger Meridian-specific line emerges.
 - Change the logo, but preserve the polished command-center identity.
-- Design with public screenshots and demos in mind. Meridian should become a public, marketed tool quickly, so the interface should be legible to people following Scott's AI work, not only understandable through private context.
+- Design so public screenshots and demos are possible later. Meridian should eventually become a public, marketed tool, but V0 can stay private while proving the orchestrator model.
 
 ## Primary Conversation Surface
 

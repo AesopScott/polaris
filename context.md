@@ -8,7 +8,7 @@ Meridian's purpose:
 
 Public intent:
 
-> Meridian should become a publicly available repo and marketed tool for people following Scott's AI work as soon as the V0 story is coherent.
+> Meridian should eventually become a publicly available repo and marketed tool for people following Scott's AI work. This is a later-road constraint, not a V0 requirement.
 
 Public positioning:
 
