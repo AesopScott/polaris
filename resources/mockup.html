@@ -13281,10 +13281,13 @@ This is your current workflow status across all branches. Review the tasks and P
       const dateMatch = raw.match(/\*\*Last Updated:\*\*\s*(\S+)/);
       const date = dateMatch ? dateMatch[1] : '';
       const noteBody = raw.replace(/^# .+\n\n\*\*Last Updated:\*\*.*\n\n?/, '').trim();
+      const _hch = (color || '#888').replace('#', '');
+      const _hchLuma = 0.299 * parseInt(_hch.substring(0,2),16) + 0.587 * parseInt(_hch.substring(2,4),16) + 0.114 * parseInt(_hch.substring(4,6),16);
+      const projectNameTextColor = _hchLuma < 128 ? '#fff' : 'inherit';
       return `<div class="status-card">
         <div class="status-card-header">
           <span style="width:8px;height:8px;border-radius:50%;background:${escHtml(color)};flex-shrink:0;display:inline-block;"></span>
-          <span class="status-card-name">${escHtml(name)}</span>
+          <span class="status-card-name" style="color:${projectNameTextColor};">${escHtml(name)}</span>
           ${date ? `<span class="status-card-date">${escHtml(date)}</span>` : ''}
           <button class="status-card-edit" onclick="openStatusModal(${escHtmlAttr(JSON.stringify(name))})">Edit</button>
         </div>
