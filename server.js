@@ -2259,7 +2259,7 @@ ${transcript}`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.deepSeekApiKey}` },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: config.deepSeekApiModel || 'deepseek-v4-pro',
         messages: [{ role: 'user', content: prompt }],
         temperature: isDeep ? 0.1 : 0.2,
         max_tokens: isDeep ? 3000 : 1500
@@ -6312,30 +6312,38 @@ async function executeDirectTool(name, input, workDir, sessionId) {
 
 // ── Streaming OpenRouter call ─────────────────────────────────────────────────
 
-function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS, provider = null) {
+function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS, provider = null, apiProvider = 'openrouter') {
   return new Promise(resolve => {
+    const isDeepSeekDirect = apiProvider === 'deepseek';
     const payloadObj = {
       model,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       tools,
       tool_choice: 'auto',
       stream: true,
-      stream_options: { include_usage: true },
     };
-    if (provider) payloadObj.provider = { only: [provider] };
+    if (!isDeepSeekDirect) payloadObj.stream_options = { include_usage: true };
+    if (isDeepSeekDirect && model && model.startsWith('deepseek-v4-')) {
+      payloadObj.thinking = { type: 'enabled' };
+      payloadObj.reasoning_effort = 'high';
+    }
+    if (provider && !isDeepSeekDirect) payloadObj.provider = { only: [provider] };
     const payload = JSON.stringify(payloadObj);
+    const headers = {
+      'Authorization':  `Bearer ${apiKey}`,
+      'Content-Type':   'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      'Connection':     'close',
+    };
+    if (!isDeepSeekDirect) {
+      headers['HTTP-Referer'] = 'https://polaris.aesopacademy.com';
+      headers['X-Title'] = 'Polaris';
+    }
     const opts = {
-      hostname: 'openrouter.ai',
-      path:     '/api/v1/chat/completions',
+      hostname: isDeepSeekDirect ? 'api.deepseek.com' : 'openrouter.ai',
+      path:     isDeepSeekDirect ? '/chat/completions' : '/api/v1/chat/completions',
       method:   'POST',
-      headers:  {
-        'Authorization':  `Bearer ${apiKey}`,
-        'Content-Type':   'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        'HTTP-Referer':   'https://polaris.aesopacademy.com',
-        'X-Title':        'Polaris',
-        'Connection':     'close',
-      },
+      headers,
       // Fresh agent per request — forces a new TCP+TLS handshake every call so
       // no Node-internal socket state can be reused across requests. Defensive
       // workaround for the BAD_RECORD_MAC errors observed 2026-05-05 across
@@ -6481,8 +6489,11 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   if (!session) return;
   const runId = beginSessionRun(session);
   const config = readConfig();
-  if (!config.openRouterApiKey) {
-    broadcast({ type: 'line', sessionId, text: 'No OpenRouter API key configured. Add one in Settings.', role: 'error' });
+  const apiProvider = session.directProvider === 'deepseek' ? 'deepseek' : 'openrouter';
+  const apiKey = apiProvider === 'deepseek' ? config.deepSeekApiKey : config.openRouterApiKey;
+  if (!apiKey) {
+    const providerLabel = apiProvider === 'deepseek' ? 'DeepSeek' : 'OpenRouter';
+    broadcast({ type: 'line', sessionId, text: `No ${providerLabel} API key configured. Add one in Settings.`, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
     session.status = 'error';
     session.endAt = Date.now();
@@ -6612,7 +6623,9 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   // session.model wins when the launcher specifies an explicit model — used by
   // the Agent Eval runner so a single config can be tested across many models
   // without rewriting config.json. Falls back to tier-mapped config when null.
-  const tierModel = effectiveTier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
+  const tierModel = apiProvider === 'deepseek'
+                  ? (config.deepSeekApiModel || 'deepseek-v4-pro')
+                  : effectiveTier === 'power'    ? (config.openRouterOpusModel   || config.openRouterFloorModel || 'google/gemini-2.5-flash')
                   : effectiveTier === 'balanced' ? (config.openRouterSonnetModel || config.openRouterFloorModel || 'google/gemini-2.5-flash')
                   :                                (config.openRouterFloorModel  || 'google/gemini-2.5-flash');
   const model = session.model || tierModel;
@@ -6629,7 +6642,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
 
   const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
   const startMs = Date.now();
-  if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct] model=${model}`, role: 'system' });
+  if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct:${apiProvider}] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
   broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded`, role: 'system' });
 
@@ -6638,8 +6651,8 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   const dlog = (label, text) => { const t = ((Date.now()-startMs)/1000).toFixed(3); try { fs.appendFileSync(diagPath, `[+${t}s] ${label}${text !== undefined ? ': '+String(text).slice(0,500) : ''}\n`, 'utf8'); } catch {} };
   try {
     const diagHeader = continuationContext
-      ? `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api\nWORKDIR: ${workDir}\nTYPE: CONTINUATION (prior session diagnostics in system prompt)\n--- LOOP ---\n`
-      : `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api\nWORKDIR: ${workDir}\n--- USER PROMPT ---\n${userMessage}\n--- LOOP ---\n`;
+      ? `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api:${apiProvider}\nWORKDIR: ${workDir}\nTYPE: CONTINUATION (prior session diagnostics in system prompt)\n--- LOOP ---\n`
+      : `=== DIAG ${new Date().toISOString()} ===\nSESSION: ${sessionId}\nMODEL: ${model}\nMODE: direct-api:${apiProvider}\nWORKDIR: ${workDir}\n--- USER PROMPT ---\n${userMessage}\n--- LOOP ---\n`;
     fs.appendFileSync(diagPath, diagHeader, 'utf8');
   } catch {}
 
@@ -6709,7 +6722,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     const callMessages = session.messages;
     const _promptK = (systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000;
     broadcast({ type: 'line', sessionId, text: _promptK >= 1 ? `(${_promptK.toFixed(1)}k)` : '(under 1k)', role: 'system' });
-    const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
+    const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, apiKey, sessionTools, provider, apiProvider);
     if (!isSessionRunCurrent(sessionId, runId)) return;
 
     if (result.error) {
@@ -6816,7 +6829,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       dlog('CONTINUATION', 'Loop ended without final assistant text — requesting final answer');
       broadcast({ type: 'line', sessionId, text: '⚙ Requesting final answer...', role: 'tool' });
       session.messages.push({ role: 'user', content: 'Please provide your final answer based on everything you have done so far.' });
-      const contResult = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, config.openRouterApiKey, sessionTools, provider);
+      const contResult = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, apiKey, sessionTools, provider, apiProvider);
       if (!isSessionRunCurrent(sessionId, runId)) return;
       if (!contResult.error && contResult.textAccum) {
         session.messages.push({ role: 'assistant', content: contResult.textAccum });
@@ -6951,7 +6964,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
     return;
   }
 
-  const model = config.deepSeekApiModel || 'deepseek-chat';
+  const model = config.deepSeekApiModel || 'deepseek-v4-pro';
   session.model  = model;
   session.status = 'running';
   session.startAt = Date.now();
@@ -7005,7 +7018,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
           appendTokenLog(sessionId, model, usage);
           broadcastUsage(sessionId, usage, null, s.routineTag || null);
 
-          // Cost estimate for deepseek-chat: $0.27/MTok in, $1.10/MTok out (cache-miss rate)
+          // Cost estimate uses the legacy DeepSeek chat rate as a conservative local approximation.
           const cost = (usage.input_tokens * 0.27 + usage.output_tokens * 1.10) / 1_000_000;
           const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
           const doneMsg = `[routine→deepseek] done | ${elapsed}s | in=${usage.input_tokens} out=${usage.output_tokens} | est cost $${cost.toFixed(6)}`;
@@ -10217,7 +10230,8 @@ async function handleMessage(ws, raw) {
     const launchDocs   = Array.isArray(msg.docs)   ? msg.docs.filter(d => d && typeof d.dataUrl === 'string')   : [];
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
     const launchVideos = Array.isArray(msg.videos) ? msg.videos.filter(v => v && typeof v.dataUrl === 'string') : [];
-    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
+    const directProvider = msg.directProvider === 'deepseek' ? 'deepseek' : null;
+    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', directProvider, isDeepSeek: directProvider === 'deepseek', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
     if (newSession.taskNumber && !newSession.taskState) {
       const inf = inferTaskState(newSession);
       if (inf) { newSession.taskState = inf.taskState; newSession.lastSkill = inf.lastSkill; }
@@ -10240,14 +10254,14 @@ async function handleMessage(ws, raw) {
 
     newSession.policy = buildDefaultPolicy(newSession, readConfig());
 
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, isDeepSeek: newSession.isDeepSeek, directProvider: newSession.directProvider, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
     // Tier guard — Balanced/Power must be explicitly configured. No silent fallback to Floor.
     // Skipped when an explicit msg.model is provided (Agent Eval runner path) since the
     // explicit model overrides tier mapping anyway.
-    if (!routineTag && !msg.model && (tier === 'balanced' || tier === 'power')) {
+    if (!routineTag && !directProvider && !msg.model && (tier === 'balanced' || tier === 'power')) {
       const cfg = readConfig();
       const tierKey = tier === 'balanced' ? 'openRouterSonnetModel' : 'openRouterOpusModel';
       const tierName = tier === 'balanced' ? 'Balanced' : 'Power';
@@ -11566,7 +11580,7 @@ async function handleMessage(ws, raw) {
       sendTo(ws, { type: 'deepseek-key-test', ok: false, message: 'No API key provided' });
       return;
     }
-    const payload = JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false });
+    const payload = JSON.stringify({ model: readConfig().deepSeekApiModel || 'deepseek-v4-pro', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false });
     const opts = {
       hostname: 'api.deepseek.com',
       path: '/v1/chat/completions',
@@ -11590,7 +11604,7 @@ async function handleMessage(ws, raw) {
 
   if (type === 'test-routine-api-model') {
     const apiKey = (msg.apiKey && msg.apiKey !== SECRET_MASK) ? msg.apiKey : readConfig().deepSeekApiKey;
-    const model = msg.model || 'deepseek-chat';
+    const model = msg.model || 'deepseek-v4-pro';
     if (!apiKey) {
       sendTo(ws, { type: 'routine-api-model-test', ok: false, message: 'No API key — set DeepSeek key first' });
       return;
@@ -13838,7 +13852,7 @@ wss.on('connection', (ws, req) => {
       type: 'init',
       sessions: Array.from(sessions.values()).map(s => ({
         id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
-        model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false,
+        model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isDeepSeek: s.isDeepSeek || false, directProvider: s.directProvider || null,
         status: s.status, startAt: s.startAt, endAt: s.endAt || null,
         resumeId: s.isCodex ? (s.codexThreadId || null) : (s.claudeSessionId || null),
         lastPrompt: s.lastPrompt || null,
