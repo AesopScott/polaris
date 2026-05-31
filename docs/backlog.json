@@ -364,6 +364,133 @@
         }
       ],
       "completed_at": "2026-05-29"
+    },
+    {
+      "number": 63,
+      "title": "GAIN: Consent retention and destruction-date tracking",
+      "description": "Production tracking item for Richard's GAIN feedback. Original note: \"Date for destruction - retention\". Shipped in GAIN v72 by adding retention period and destruction date fields to Consent Records so teams can document how long consent evidence is retained and when it should be destroyed. The consent table now surfaces the destruction date for operational follow-up.",
+      "category": "feature",
+      "priority": 80,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-31",
+      "completed_at": "2026-05-31",
+      "dependencies": [],
+      "project": "GAIN",
+      "branch": "main",
+      "pr_url": null,
+      "notes": [
+        "Client feedback source: C:\\Users\\scott\\Downloads\\gain feedback from richard.txt",
+        "Original note: Date for destruction - retention",
+        "GAIN deployment: v72, commit 1223f60"
+      ],
+      "proofUnits": []
+    },
+    {
+      "number": 64,
+      "title": "GAIN: SOC 2 coverage and GLBA/fraud guidance",
+      "description": "Production tracking item for Richard's GAIN feedback. Original note: \"SOC2 added - when we add soc2 does it address fraud - why does glba not address fraud\". Shipped in GAIN v72 by adding SOC 2 as a policy framework, adding SOC 2 Security / Processing Integrity / Confidentiality policy templates, and adding a Policies guidance panel explaining that SOC 2 can address fraud-related controls where they intersect with assurance criteria while GLBA focuses on consumer financial privacy and safeguards rather than broad anti-fraud governance.",
+      "category": "feature",
+      "priority": 85,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-31",
+      "completed_at": "2026-05-31",
+      "dependencies": [],
+      "project": "GAIN",
+      "branch": "main",
+      "pr_url": null,
+      "notes": [
+        "Client feedback source: C:\\Users\\scott\\Downloads\\gain feedback from richard.txt",
+        "Original note: SOC2 added - when we add soc2 does it address fraud - why does glba not address fraud",
+        "GAIN deployment: v72, commit 1223f60"
+      ],
+      "proofUnits": []
+    },
+    {
+      "number": 65,
+      "title": "GAIN: Executive overview dashboard",
+      "description": "Production tracking item for Richard's GAIN feedback. Original note: \"exec overview\". Shipped in GAIN v72 by adding an Executive overview card to the Dashboard with management system, active policy coverage, assurance evidence, inventory count, high/prohibited risks, open incidents, and disclosure record summary so leadership can see the governance posture without drilling through operational pages.",
+      "category": "feature",
+      "priority": 78,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-31",
+      "completed_at": "2026-05-31",
+      "dependencies": [],
+      "project": "GAIN",
+      "branch": "main",
+      "pr_url": null,
+      "notes": [
+        "Client feedback source: C:\\Users\\scott\\Downloads\\gain feedback from richard.txt",
+        "Original note: exec overview",
+        "GAIN deployment: v72, commit 1223f60"
+      ],
+      "proofUnits": []
+    },
+    {
+      "number": 66,
+      "title": "GAIN: Policy-generation duration expectation note",
+      "description": "Production tracking item for Richard's GAIN feedback. Original note: \"put an expectation note on the policy page for expected duration of generation\". Shipped in GAIN v72 by adding helper text beside the AI policy body editor stating that complete governance-policy generation may take 20-60 seconds and that users should keep the window open while the draft is created.",
+      "category": "feature",
+      "priority": 70,
+      "impact": "minor",
+      "status": "production",
+      "created_at": "2026-05-31",
+      "completed_at": "2026-05-31",
+      "dependencies": [],
+      "project": "GAIN",
+      "branch": "main",
+      "pr_url": null,
+      "notes": [
+        "Client feedback source: C:\\Users\\scott\\Downloads\\gain feedback from richard.txt",
+        "Original note: put an expectation note on the policy page for expected duration of generation",
+        "GAIN deployment: v72, commit 1223f60"
+      ],
+      "proofUnits": []
+    },
+    {
+      "number": 67,
+      "title": "GAIN: Consent-record search",
+      "description": "Production tracking item for Richard's GAIN feedback. Original note: \"add search capability in consent forms\". Shipped in GAIN v72 by adding a search field to Consent Records that filters by subject, email, regulation, purpose, request/decision type, recipient, AI system, notes, retention period, and destruction date while preserving the existing regulation filter.",
+      "category": "feature",
+      "priority": 76,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-31",
+      "completed_at": "2026-05-31",
+      "dependencies": [],
+      "project": "GAIN",
+      "branch": "main",
+      "pr_url": null,
+      "notes": [
+        "Client feedback source: C:\\Users\\scott\\Downloads\\gain feedback from richard.txt",
+        "Original note: add search capability in consent forms",
+        "GAIN deployment: v72, commit 1223f60"
+      ],
+      "proofUnits": []
+    },
+    {
+      "number": 68,
+      "title": "GAIN: Mojo AI Studio SOC report evidence requirements",
+      "description": "Production tracking item for Richard's GAIN feedback. Original note: \"soc report for mojoaistudio required (security, progress integrity, confidentiality)\". Shipped in GAIN v72 by expanding Vendor Contracts due diligence to track whether a SOC 2 report was reviewed and whether it covers Security, Processing Integrity, and Confidentiality. This supports documenting Mojo AI Studio or any other AI vendor's assurance package in the contract evidence workflow.",
+      "category": "feature",
+      "priority": 82,
+      "impact": "standard",
+      "status": "production",
+      "created_at": "2026-05-31",
+      "completed_at": "2026-05-31",
+      "dependencies": [],
+      "project": "GAIN",
+      "branch": "main",
+      "pr_url": null,
+      "notes": [
+        "Client feedback source: C:\\Users\\scott\\Downloads\\gain feedback from richard.txt",
+        "Original note: soc report for mojoaistudio required (security, progress integrity, confidentiality)",
+        "GAIN deployment: v72, commit 1223f60",
+        "Interpreted \"progress integrity\" as SOC 2 Processing Integrity."
+      ],
+      "proofUnits": []
     }
   ]
 }
