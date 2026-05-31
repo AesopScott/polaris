@@ -2452,7 +2452,7 @@ function generateSessionName(prompt) {
   return words.slice(0, 7).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'New Session';
 }
 
-// ─── Direct OpenRouter API — agent sessions (no CLI) ─────────────────────────
+// ─── Direct model-provider API — agent sessions (no CLI) ─────────────────────
 // Replaces CLI spawning. Eliminates CLAUDE.md cold-load (~29k tokens), 37-tool
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
@@ -6312,6 +6312,8 @@ async function executeDirectTool(name, input, workDir, sessionId) {
 
 // ── Streaming OpenRouter call ─────────────────────────────────────────────────
 
+// OpenRouter and DeepSeek direct share the tool-using agent loop, but DeepSeek
+// sessions must route to api.deepseek.com instead of OpenRouter.
 function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, tools = DIRECT_TOOLS, provider = null, apiProvider = 'openrouter') {
   return new Promise(resolve => {
     const isDeepSeekDirect = apiProvider === 'deepseek';
@@ -10298,7 +10300,9 @@ async function handleMessage(ws, raw) {
         runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[routine-agent] unhandled error:', err.stack || err.message));
       }
     } else {
-      console.log(`[routing] no routineTag → direct OpenRouter API (model=${msg.model || 'default'})`);
+      const providerLabel = directProvider === 'deepseek' ? 'DeepSeek direct API' : 'OpenRouter API';
+      console.log(`[routing] no routineTag -> ${providerLabel} (model=${msg.model || 'default'})`);
+      broadcast({ type: 'line', sessionId: id, text: `[routing] ${providerLabel} | model=${msg.model || 'default'}`, role: 'system' });
       runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[agent] unhandled error:', err.stack || err.message));
     }
     return;
