@@ -2569,6 +2569,32 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
   return layers.join('\n\n');
 }
 
+function buildDeepSeekQueueSystemPrompt(config, workDir) {
+  const layers = [
+    'You are a DeepSeek Q-mode build worker inside Polaris.',
+    'Q-mode is stateless and file-grounded: do not rely on prior chat history. Treat the current prompt and assigned queue file as the complete task packet.',
+    'Use tools to inspect files before editing. Keep work narrowly scoped to the Active Task in the queue file.',
+    'Before task-changing edits, pull latest origin/main and verify you are working in the session worktree. Do not move branches unless Scott or Prime explicitly directed it.',
+    'If you change code or docs, run targeted tests or checks, commit, push, and record proof in the queue file and Obsidian when the task asks for it.',
+    'If there is no executable Active Task, append/report an idle read check only. Do not invent work. Do not wait for Scott unless the queue explicitly requires a human gate.',
+  ];
+
+  if (workDir) {
+    const matched = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
+    const projectLines = [
+      matched?.name ? `Project name: ${matched.name}` : null,
+      `Working directory: ${workDir}`,
+      matched?.repo ? `Remote repository: ${matched.repo}` : null,
+      matched?.obsidianDir ? `Obsidian knowledge folder: ${matched.obsidianDir}` : null,
+      matched?.obsidianSessionsDir ? `Obsidian sessions folder: ${matched.obsidianSessionsDir}` : null,
+      `Project rules path: ${path.join(workDir, 'CLAUDE.md')}`,
+    ].filter(Boolean);
+    layers.push('Project context:\n' + projectLines.join('\n'));
+  }
+
+  return layers.join('\n\n');
+}
+
 // Loads the project's Obsidian knowledge base (.md files from obsidianDir) and
 // CLAUDE.md into session.projectMemory (cached after first call) and returns a
 // formatted block ready to prepend to a turn-1 stdin prompt. Used by both
@@ -6492,6 +6518,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   const runId = beginSessionRun(session);
   const config = readConfig();
   const apiProvider = session.directProvider === 'deepseek' ? 'deepseek' : 'openrouter';
+  const isDeepSeekQueueMode = apiProvider === 'deepseek' && session.deepQueueMode !== false;
   const apiKey = apiProvider === 'deepseek' ? config.deepSeekApiKey : config.openRouterApiKey;
   if (!apiKey) {
     const providerLabel = apiProvider === 'deepseek' ? 'DeepSeek' : 'OpenRouter';
@@ -6518,8 +6545,11 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
 
   const matchedProject = (config.projects || []).find(p => p.workDir && workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
 
-  // Load project memory from Obsidian once per session (server-side, never sent to API directly)
-  if (!session.projectMemory) {
+  // Load project memory from Obsidian once per session (server-side, never sent to API directly).
+  // DeepSeek Q-mode stays file-grounded and lean; it reads the queue/repo files it needs.
+  if (isDeepSeekQueueMode) {
+    session.projectMemory = {};
+  } else if (!session.projectMemory) {
     if (matchedProject?.obsidianDir) {
       const mem = {};
       try {
@@ -6537,8 +6567,11 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     }
   }
 
-  // Restore persisted message history on first use (survives server restarts)
-  if (!session.messages) session.messages = loadSessionMessages(sessionId);
+  // Restore persisted message history on first use (survives server restarts).
+  // DeepSeek is intentionally Q-mode only in Polaris: every queue poll starts
+  // from the current task packet, not from an additive transcript.
+  if (isDeepSeekQueueMode) session.messages = [];
+  else if (!session.messages) session.messages = loadSessionMessages(sessionId);
 
   // Extract text from any DOCX/PDF docs and prepend to the user message.
   const agentDocs  = session.pendingDocs  || [];
@@ -6642,11 +6675,18 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   session.startAt = session.startAt || Date.now();
   if (!session.resolvedModel) session.resolvedModel = model;
 
-  const systemPrompt = buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
+  const systemPrompt = isDeepSeekQueueMode
+    ? buildDeepSeekQueueSystemPrompt(config, workDir)
+    : buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
   const startMs = Date.now();
-  if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct:${apiProvider}] model=${model}`, role: 'system' });
+  if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct:${apiProvider}${isDeepSeekQueueMode ? ':q' : ''}] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
-  broadcast({ type: 'line', sessionId, text: `[project-memory] ${_memKeys.length} files loaded`, role: 'system' });
+  broadcast({
+    type: 'line',
+    sessionId,
+    text: isDeepSeekQueueMode ? '[project-memory] skipped for DeepSeek Q-mode' : `[project-memory] ${_memKeys.length} files loaded`,
+    role: 'system'
+  });
 
   // Diag log
   const diagPath = path.join(LOGS_DIR, `diag-${sessionId}.txt`);
@@ -6721,7 +6761,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
         session.steeringQueue.unshift(...steeringItems);
       }
     }
-    const callMessages = session.messages;
+    const callMessages = isDeepSeekQueueMode ? session.messages.slice() : session.messages;
     const _promptK = (systemPrompt.length + JSON.stringify(callMessages).length) / 4 / 1000;
     broadcast({ type: 'line', sessionId, text: _promptK >= 1 ? `(${_promptK.toFixed(1)}k)` : '(under 1k)', role: 'system' });
     const result = await callOpenRouterStream(sessionId, callMessages, systemPrompt, model, apiKey, sessionTools, provider, apiProvider);
@@ -10233,7 +10273,8 @@ async function handleMessage(ws, raw) {
     const launchAudio  = Array.isArray(msg.audio)  ? msg.audio.filter(a => a && typeof a.dataUrl === 'string')  : [];
     const launchVideos = Array.isArray(msg.videos) ? msg.videos.filter(v => v && typeof v.dataUrl === 'string') : [];
     const directProvider = msg.directProvider === 'deepseek' ? 'deepseek' : null;
-    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', directProvider, isDeepSeek: directProvider === 'deepseek', isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
+    const deepQueueMode = directProvider === 'deepseek' ? true : false;
+    const newSession = { id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, tier: tier || 'floor', directProvider, isDeepSeek: directProvider === 'deepseek', deepQueueMode, isChat: false, status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0, keepAliveInjected: false, lastKeepAliveAt: null, proc: null, watcher: null, timeout: null, lines: [], lastPrompt: prompt, claudeSessionId: null, routineTag, pendingImages: launchImages, pendingDocs: launchDocs, pendingAudio: launchAudio, pendingVideos: launchVideos, taskNumber: msg.taskNumber || null, taskState: msg.taskState || null, lastSkill: null };
     if (newSession.taskNumber && !newSession.taskState) {
       const inf = inferTaskState(newSession);
       if (inf) { newSession.taskState = inf.taskState; newSession.lastSkill = inf.lastSkill; }
@@ -10256,7 +10297,7 @@ async function handleMessage(ws, raw) {
 
     newSession.policy = buildDefaultPolicy(newSession, readConfig());
 
-    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, isDeepSeek: newSession.isDeepSeek, directProvider: newSession.directProvider, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
+    broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, model: msg.model || null, routineTag, isDeepSeek: newSession.isDeepSeek, directProvider: newSession.directProvider, deepQueueMode: newSession.deepQueueMode || false, taskNumber: newSession.taskNumber || null, taskState: newSession.taskState || null, lastSkill: newSession.lastSkill || null });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
@@ -13856,7 +13897,7 @@ wss.on('connection', (ws, req) => {
       type: 'init',
       sessions: Array.from(sessions.values()).map(s => ({
         id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
-        model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isDeepSeek: s.isDeepSeek || false, directProvider: s.directProvider || null,
+        model: s.model || null, isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isDeepSeek: s.isDeepSeek || false, directProvider: s.directProvider || null, deepQueueMode: s.deepQueueMode || false,
         status: s.status, startAt: s.startAt, endAt: s.endAt || null,
         resumeId: s.isCodex ? (s.codexThreadId || null) : (s.claudeSessionId || null),
         lastPrompt: s.lastPrompt || null,
