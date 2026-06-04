@@ -1,32 +1,32 @@
-'use strict';
+﻿'use strict';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MODULE TOPOLOGY — server.js is the orchestrator; do NOT import from it.
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// MODULE TOPOLOGY â€” server.js is the orchestrator; do NOT import from it.
 //
 // Typed boundaries live in src/runtime/ (TypeScript, compiled but not yet wired):
 //
-//   contracts      — all shared TS types (WebSocket messages, tools, sessions)
-//   sessionStore   — in-memory session Map, fork registry, persistence helpers
-//   agentRuntime   — backend resolution, session lifecycle, pending-turn queue
-//   toolRuntime    — native tool dispatch, worktree guard, MCP routing entry point
-//   mcpGateway     — MCP stdio/HTTP transport, tool discovery, result formatting
-//   crossCheck     — pre-approval and post-hoc change gates, audit JSONL trail
-//   backlog        — task CRUD, status lifecycle, archive, auto-commit
-//   httpRoutes     — HTTP route table, request dispatcher, response utilities
-//   wsAdapter      — WebSocket dispatch, broadcast helpers, 130-type handler map
+//   contracts      â€” all shared TS types (WebSocket messages, tools, sessions)
+//   sessionStore   â€” in-memory session Map, fork registry, persistence helpers
+//   agentRuntime   â€” backend resolution, session lifecycle, pending-turn queue
+//   toolRuntime    â€” native tool dispatch, worktree guard, MCP routing entry point
+//   mcpGateway     â€” MCP stdio/HTTP transport, tool discovery, result formatting
+//   crossCheck     â€” pre-approval and post-hoc change gates, audit JSONL trail
+//   backlog        â€” task CRUD, status lifecycle, archive, auto-commit
+//   httpRoutes     â€” HTTP route table, request dispatcher, response utilities
+//   wsAdapter      â€” WebSocket dispatch, broadcast helpers, 130-type handler map
 //
-// Dependency order (leaf → hub):
-//   contracts ← sessionStore ← agentRuntime
-//                            ← toolRuntime ← mcpGateway
-//                            ← crossCheck
-//                            ← backlog
-//                            ← httpRoutes
-//                            ← wsAdapter   (hub — depends on all of the above)
+// Dependency order (leaf â†’ hub):
+//   contracts â† sessionStore â† agentRuntime
+//                            â† toolRuntime â† mcpGateway
+//                            â† crossCheck
+//                            â† backlog
+//                            â† httpRoutes
+//                            â† wsAdapter   (hub â€” depends on all of the above)
 //
 // Each module is initialized via its init*() function at startup (see bottom of
 // this file). Implementations (handler bodies) remain here during the incremental
 // migration; typed wrappers are injected via the init*() opts objects.
-// ═══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const http = require('http');
 const fs = require('fs');
@@ -34,7 +34,7 @@ const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const { spawn, exec, execFile, execSync, execFileSync, spawnSync } = require('child_process');
-const execAsync = require('util').promisify(exec); // non-blocking async shell — keeps event loop free
+const execAsync = require('util').promisify(exec); // non-blocking async shell â€” keeps event loop free
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -55,7 +55,7 @@ const { BacklogStatus, ImpactEnum } = require('./compiled/contracts/backlog');
 const wsSchemas = require('./compiled/contracts/ws-messages');
 const { z } = require('zod');
 
-// ─── Paths ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const APPDATA      = process.env.APPDATA || os.homedir();
 const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', 'polaris');
 const MOCKUP_DEST  = process.env.MOCKUP_DEST  || path.join(POLARIS_DIR, 'mockup.html');
@@ -92,8 +92,8 @@ const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routine sessions
 const STALL_CHECK_MS  = 3000;   // heartbeat interval
-const STALL_WARN_MS   = 15000;  // idle → show stall badge at 15 s
-const STALL_KICK_MS   = 45000;  // idle → kill session at 45 s
+const STALL_WARN_MS   = 15000;  // idle â†’ show stall badge at 15 s
+const STALL_KICK_MS   = 45000;  // idle â†’ kill session at 45 s
 const WS_HEARTBEAT_MS = 15000;  // close renderer sockets that stop answering ping
 const WS_MISSED_PONG_LIMIT = 4;  // tolerate short UI/main-thread stalls before reconnecting
 const DEFAULT_WORKTREE_TTL_DAYS = 2; // purge detached/merged-branch session worktrees older than this many days
@@ -105,18 +105,18 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
-// ─── Session guidance coordination (inter-session state sharing) ────────────────
+// â”€â”€â”€ Session guidance coordination (inter-session state sharing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SESSION_GUIDANCE_DIR = path.join(POLARIS_DIR, 'session-guidance');
 const ORCHESTRATOR_ALERTS_PATH = path.join(SESSION_GUIDANCE_DIR, 'orchestrator-alerts.json');
 const SESSION_GUIDANCE_POLL_MS = 3 * 60 * 1000;  // 3 minutes
 const ALERT_PRUNING_MS = 10 * 60 * 1000;  // 10 minutes
 const ALERT_MAX_AGE_MS = 10 * 60 * 1000;  // alerts older than 10 minutes are pruned
 
-// ─── Video utilities (frame extraction) ────────────────────────────────────────
+// â”€â”€â”€ Video utilities (frame extraction) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const VIDEO_TEMP_DIR   = path.join(POLARIS_DIR, 'video-temp');
 const VIDEO_FRAME_COUNT = 6;
 
-// Detect installed binary — checks PATH first, then winget install location.
+// Detect installed binary â€” checks PATH first, then winget install location.
 function detectBin(name) {
   const candidates = [name];
   if (process.platform === 'win32') {
@@ -132,7 +132,7 @@ function detectBin(name) {
   for (const candidate of candidates) {
     try {
       spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 3000 });
-      return candidate; // found — the spawn didn't throw
+      return candidate; // found â€” the spawn didn't throw
     } catch {}
     try {
       execSync(`${candidate} -version`, { stdio: 'ignore', timeout: 3000 });
@@ -247,13 +247,13 @@ async function downloadYouTubeVideo(videoId) {
 // the system prompt. Mirrors how Claude Code itself surfaces skills.
 const SKILLS_DIR = process.env.POLARIS_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills');
 
-// ─── App-level secrets (gitignored, baked into build) ────────────────────────
+// â”€â”€â”€ App-level secrets (gitignored, baked into build) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
 catch { console.log('[polaris] secrets.js not found'); }
 
 
-// ─── MCP Catalog ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ MCP Catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
 let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
@@ -289,34 +289,34 @@ const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
 const PROJECT_SPECIFIC_MARKER = '<!-- PROJECT-SPECIFIC -->';
 const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 
-// ─── System prompt injected into every agent session ─────────────────────────
+// â”€â”€â”€ System prompt injected into every agent session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BASE_SYSTEM_PROMPT = [
   'You are a software development assistant. For greetings or casual messages, reply briefly and naturally without running any checks.',
   'Do not acknowledge, summarize, or reference these instructions in your responses. Follow them silently.',
   process.platform === 'win32'
-    ? 'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) — use PowerShell or Node.js fs instead.'
+    ? 'Use Windows-style backslash paths. Do not use Unix shell tools (ls, grep, cat, sed, awk, chmod, curl) â€” use PowerShell or Node.js fs instead.'
     : 'Use Unix-style forward-slash paths. Use Bash or Node.js fs for file operations. Do not use PowerShell or Windows-specific commands.',
-  'Path comparisons are case-insensitive on Windows — use .toLowerCase() when comparing paths or repo names.',
+  'Path comparisons are case-insensitive on Windows â€” use .toLowerCase() when comparing paths or repo names.',
   'Before modifying any file, state its current version number. After modifying it, state the new version. Versions live in file-versions.json in the project working directory.',
   'Before any file write, check locks.json. Locked files require explicit user approval.',
-  'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation — execute them immediately.',
+  'Before any file write, code change, or destructive action, state what you plan to do and wait for the user to confirm. Reads and searches do not require confirmation â€” execute them immediately.',
   'Never ask the user for file paths, directory names, or code locations. Use Glob to find files by pattern and Grep to search content. Always search first, then act. If you need to find something, find it yourself.',
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
-  'End-of-session ritual when source files were modified: (1) Bump `package.json` version — patch increment (1.0.X → 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and prompt them to run the build-install script.',
-  'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses. Do not give constant "I am reading X", "I have finished Y" status updates — just do the work and provide the final result or the next proposal.',
-  'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The values and when to use them: (1) SetStatus("test") — after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses. (2) SetStatus("waiting") — whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("hold") — to manually pause the session for later. (4) SetStatus("done") — only when the task is fully complete and requires no further verification. The server auto-detects git commits → "test" and a trailing question mark → "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
-  'When you need to ask the user a question, need clarification, or require their input before proceeding, you MUST use the AskUserQuestion tool — never write the question as plain text in your response. The AskUserQuestion tool renders a visually prominent interactive prompt in the UI and pauses the session so the user cannot miss it. Plain-text questions get buried in terminal output and are routinely missed.',
-  'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only — the user sees only what you write as plain text.',
-  "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away — generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
+  'End-of-session ritual when source files were modified: (1) Bump `package.json` version â€” patch increment (1.0.X â†’ 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and prompt them to run the build-install script.',
+  'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses. Do not give constant "I am reading X", "I have finished Y" status updates â€” just do the work and provide the final result or the next proposal.',
+  'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The values and when to use them: (1) SetStatus("test") â€” after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses. (2) SetStatus("waiting") â€” whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("hold") â€” to manually pause the session for later. (4) SetStatus("done") â€” only when the task is fully complete and requires no further verification. The server auto-detects git commits â†’ "test" and a trailing question mark â†’ "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
+  'When you need to ask the user a question, need clarification, or require their input before proceeding, you MUST use the AskUserQuestion tool â€” never write the question as plain text in your response. The AskUserQuestion tool renders a visually prominent interactive prompt in the UI and pauses the session so the user cannot miss it. Plain-text questions get buried in terminal output and are routinely missed.',
+  'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only â€” the user sees only what you write as plain text.',
+  "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away â€” generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
   "Source files inside the project workDir are auto-backed-up to %APPDATA%\\.claude\\polaris\\source-backups\\<projectName>\\ before every Edit, Write, or shell-tool write (Set-Content, Out-File, > redirection, etc.). To restore a corrupted file, find the most recent backup at that path (filename: <sanitizedRelPath>.<ISO>.<ext>) and copy it back to the source. Do not assume backups are absent without checking.",
-  "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these — consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The propose-before-act rule, approval gate, and Phase 0 backup all apply. After a code change, bump `package.json` and tell Scott to reinstall.",
+  "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these â€” consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The propose-before-act rule, approval gate, and Phase 0 backup all apply. After a code change, bump `package.json` and tell Scott to reinstall.",
   'If a "Steering Inputs" section appears in your system prompt, those are non-blocking prompts the user submitted while you were mid-task. Read them; incorporate anything relevant to your current work. No explicit response or acknowledgment required.',
   'Error reporting for generated code: When writing new functions or features that may encounter errors at runtime, include error handling with pushDebugLog() calls so failures are visible in the Polaris debug panel. Import with: const { pushDebugLog } = require("./lib/debugUtil.js"); Call pushDebugLog(message, true) in catch blocks with descriptive error details. For remote contexts where Node.js imports fail, send emit-debug-log WebSocket messages with {type: "emit-debug-log", message, isError}. This allows Scott to diagnose failures without manual log inspection. See docs/error-reporting-pattern.md for comprehensive guidance.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
   const patterns = config.protectedPatterns || ['*.md', '*.json'];
-  const patternRule = `Protected file patterns — these file types require explicit user approval before ANY modification. State the planned change and wait for confirmation before writing: ${patterns.join(', ')}`;
+  const patternRule = `Protected file patterns â€” these file types require explicit user approval before ANY modification. State the planned change and wait for confirmation before writing: ${patterns.join(', ')}`;
   const mcpServers = getConnectedMcpServers();
   const mcpLine = mcpServers.length > 0
     ? `You have the following MCP servers connected and their tools are available to you: ${mcpServers.join(', ')}. Use them proactively when relevant.`
@@ -327,9 +327,9 @@ function buildSystemPrompt(config) {
   return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '') + navigationLine;
 }
 
-// ─── Secret encryption (AES-256-GCM, stable file key) ────────────────────────
+// â”€â”€â”€ Secret encryption (AES-256-GCM, stable file key) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey', 'elevenLabsApiKey', 'braveSearchApiKey']);
-const SECRET_MASK    = '••••••••';
+const SECRET_MASK    = 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢';
 const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
 
 let _stableKey = null;
@@ -379,7 +379,7 @@ function decryptSecret(value) {
   const result = tryDecryptWithKey(value, getStableKey());
   if (result !== null) return result;
   const legacy = tryDecryptWithKey(value, getLegacyKey());
-  if (legacy !== null) { console.log('[enc] Decrypted with legacy key — will migrate on next startup'); return legacy; }
+  if (legacy !== null) { console.log('[enc] Decrypted with legacy key â€” will migrate on next startup'); return legacy; }
   console.error('[enc] Decryption failed with all keys');
   return '';
 }
@@ -425,7 +425,7 @@ function maskedConfig(cfg) {
   const result = { ...cfg };
   for (const key of SENSITIVE_KEYS) { result[key] = cfg[key] ? SECRET_MASK : ''; }
   // Derived flag: client uses this to decide whether to attempt ElevenLabs TTS.
-  // Key lives in mcp_credentials (Connect panel) — never sent to the client raw.
+  // Key lives in mcp_credentials (Connect panel) â€” never sent to the client raw.
   result.elevenLabsTtsEnabled = !!((cfg.mcp_credentials || {}).elevenlabs?.ELEVENLABS_API_KEY);
   return result;
 }
@@ -453,10 +453,10 @@ function migrateSecretsToEncrypted() {
   if (changed) writeJSON(CONFIG_PATH, raw);
 }
 
-// ─── IPC bridge to main.js ───────────────────────────────────────────────────
+// â”€â”€â”€ IPC bridge to main.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
-const pendingQuestions    = new Map(); // questionId → resolve
+const pendingQuestions    = new Map(); // questionId â†’ resolve
 let pendingGitPushes  = 0;  // count of in-flight obsidian-up git operations
 let shutdownRequested = false;
 function onGitPushComplete() {
@@ -465,8 +465,8 @@ function onGitPushComplete() {
     try { process.send({ type: 'ready-to-quit' }); } catch {}
   }
 }
-const pendingCrossChecks     = new Map(); // checkId → { resolve, timer }
-const pendingInstallerChecks = new Map(); // checkId → { resolve, timer }
+const pendingCrossChecks     = new Map(); // checkId â†’ { resolve, timer }
+const pendingInstallerChecks = new Map(); // checkId â†’ { resolve, timer }
 
 if (typeof process.on === 'function') {
   process.on('message', (msg) => {
@@ -488,7 +488,7 @@ if (typeof process.on === 'function') {
   });
 }
 
-// ─── MCP Catalog helpers ─────────────────────────────────────────────────────
+// â”€â”€â”€ MCP Catalog helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function readClaudeJson() {
   try {
     if (!fs.existsSync(CLAUDE_JSON_PATH)) return {};
@@ -589,13 +589,13 @@ function maskedMcpCredentials() {
   for (const [serverId, serverCreds] of Object.entries(creds)) {
     masked[serverId] = {};
     for (const [key, val] of Object.entries(serverCreds)) {
-      masked[serverId][key] = val ? '••••••••' : '';
+      masked[serverId][key] = val ? 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢' : '';
     }
   }
   return masked;
 }
 
-// ─── Support ticket submission ───────────────────────────────────────────────
+// â”€â”€â”€ Support ticket submission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getInstallId() {
   const cfg = readConfigRaw();
   if (cfg.installId) return cfg.installId;
@@ -708,7 +708,7 @@ async function submitSupportTicket(ws, msg) {
 }
 
 
-// ─── Git helper ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Git helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function runGit(args, cwd) {
   return new Promise(resolve => {
     exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd, windowsHide: true }, (err, stdout) => {
@@ -717,7 +717,7 @@ function runGit(args, cwd) {
   });
 }
 
-// ─── File sync ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ File sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function syncGlobalToProjects() {
   const config   = readConfig();
   const projects = (config.projects || []).filter(p => p.workDir);
@@ -727,7 +727,7 @@ function syncGlobalToProjects() {
   const fileDefs = [
     { name: 'CLAUDE.md', src: GLOBAL_CLAUDE_PATH,  projectSpecific: true,  polarisOnly: false },
     { name: 'MEMORY.md', src: GLOBAL_MEMORY_PATH,  projectSpecific: true,  polarisOnly: false },
-    // SOUL.md is the Polaris brand/mission doc — only sync to the Polaris project, not other projects
+    // SOUL.md is the Polaris brand/mission doc â€” only sync to the Polaris project, not other projects
     { name: 'SOUL.md',   src: globalSoulPath,       projectSpecific: false, polarisOnly: true  },
   ];
 
@@ -770,7 +770,7 @@ function syncGlobalToProjects() {
             }
           }
           const newContent = `${globalContent}\n\n${PROJECT_SPECIFIC_MARKER}${projectSection}`;
-          // Skip write if content is unchanged — prevents infinite watch→sync→write→watch loop.
+          // Skip write if content is unchanged â€” prevents infinite watchâ†’syncâ†’writeâ†’watch loop.
           if (fs.existsSync(dest) && fs.readFileSync(dest, 'utf8') === newContent) {
             results.push({ file: name, project: project.name || project.workDir, status: 'unchanged' });
             continue;
@@ -806,11 +806,11 @@ function watchGlobalFiles() {
 
 }
 
-// ─── State ────────────────────────────────────────────────────────────────────
-const sessions = new Map();   // sessionId → session object
-const forkMap  = new Map();   // primarySessionId → forkSessionId
-const projectSessionCounts = new Map(); // projectName → Set<sessionId> (excludes orchestrators)
-const orchestratorSessions = new Map(); // projectName → orchestratorSessionId
+// â”€â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const sessions = new Map();   // sessionId â†’ session object
+const forkMap  = new Map();   // primarySessionId â†’ forkSessionId
+const projectSessionCounts = new Map(); // projectName â†’ Set<sessionId> (excludes orchestrators)
+const orchestratorSessions = new Map(); // projectName â†’ orchestratorSessionId
 let   wss      = null;
 const ORCHESTRATION_QUIET_MODE = process.env.POLARIS_ORCHESTRATION_QUIET_MODE !== '0';
 let healthSnapshotCache = null;
@@ -889,7 +889,7 @@ async function getMeetupReservationSummary() {
       || (fileExists ? readEnvFileValue(mojoEnvPath, 'MEETUP_ADMIN_KEY') : '');
     console.log('[meetup] mojo-env: path=%s exists=%s env-source=%s cfg-source=%s file-source=%s final=%s',
       mojoEnvPath, fileExists, !!process.env.POLARIS_MEETUP_ADMIN_KEY, !!cfg.meetupAdminKey,
-      adminKey ? 'yes' : 'no', adminKey ? '✓' : 'MISSING');
+      adminKey ? 'yes' : 'no', adminKey ? 'âœ“' : 'MISSING');
     if (adminKey && /meetup-admin/.test(sourceUrl)) {
       headers['X-Admin-Key'] = adminKey;
     }
@@ -914,9 +914,9 @@ async function getMeetupReservationSummary() {
   return meetupReservationsInFlight;
 }
 
-// ─── Orchestrator Session Lifecycle ──────────────────────────────────────────
-// Rule: 1 session on a project → writes backlog directly.
-//       2+ sessions → only the orchestrator writes backlog.
+// â”€â”€â”€ Orchestrator Session Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Rule: 1 session on a project â†’ writes backlog directly.
+//       2+ sessions â†’ only the orchestrator writes backlog.
 // "Alone" is determined by projectSessionCounts, never by worktree isolation.
 
 function onSessionOpened(sessionId, projectName) {
@@ -928,6 +928,7 @@ function onSessionOpened(sessionId, projectName) {
   const set = projectSessionCounts.get(projectName);
   set.add(sessionId);
   console.log('[orchestrator] count for', projectName, '=', set.size);
+  if (!ORCHESTRATOR_AUTORUN) return;
   if (set.size === 2 && !orchestratorSessions.has(projectName)) {
     console.log('[orchestrator] spawning for', projectName);
     spawnOrchestratorSession(projectName).catch(err =>
@@ -949,7 +950,7 @@ function onSessionClosed(sessionId) {
   if (!set) return;
   set.delete(sessionId);
 
-  // Tear down when the last build session closes — orchestrator has no work until 2+ sessions return.
+  // Tear down when the last build session closes â€” orchestrator has no work until 2+ sessions return.
   if (set.size === 0) {
     const orchId = orchestratorSessions.get(projectName);
     if (orchId) teardownOrchestratorSession(orchId, projectName);
@@ -1003,10 +1004,15 @@ function teardownOrchestratorSession(orchId, projectName) {
   saveSessions();
 }
 
-// ─── Health Monitor Session ───────────────────────────────────────────────────
+// â”€â”€â”€ Health Monitor Session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const HEALTH_PROBE_PATH          = path.join(os.homedir(), '.claude', 'skills', 'health', 'scripts', 'polaris-health.ps1');
 const HEALTH_MONITOR_NAME        = 'Health Monitor Session';
+const HEALTH_MONITOR_ENABLED     = false; // Disabled: the self-probe can block Polaris while it calls back into /health.
 const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const HEALTH_MONITOR_AGENT_AUTORUN = false; // Keep diagnostics passive; never spawn Claude during health/crash loops.
+const STARTUP_CROSSCHECK_AUTORUN = true; // Re-enabled for normal operations.
+const ORCHESTRATOR_AUTORUN = false; // Meridian will own orchestration; Polaris must not auto-spawn orchestrators.
+const POLARIS_MODEL_RUNS_ENABLED = true; // Model subprocess/API runs are enabled.
 let   healthMonitorSessionId     = null;
 let   healthMonitorIntervalTimer = null;
 let   healthMonitorInputPollTimer = null;
@@ -1017,20 +1023,20 @@ const HEALTH_MONITOR_INBOX_MAX    = 50;                      // Fix 6: hard cap
 const HEALTH_ANALYSIS_DEBOUNCE_MS = 10 * 60 * 1000;         // 10 min between analysis triggers
 const HEALTH_AUTO_KILL_LOG        = path.join(os.homedir(), '.claude', 'polaris-health-kills.log');
 
-// Connect-tab write protection — token is generated at startup and sent only to the main UI window.
+// Connect-tab write protection â€” token is generated at startup and sent only to the main UI window.
 // Any WebSocket message that modifies MCP server config must include this token; otherwise the
 // request is queued and broadcast as an approval prompt so the user can allow or deny it.
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
-const pendingConnectApprovals = new Map(); // approvalId → { msg, ws }
+const pendingConnectApprovals = new Map(); // approvalId â†’ { msg, ws }
 
-// ─── Chrome extension bridge ──────────────────────────────────────────────────
+// â”€â”€â”€ Chrome extension bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The Polaris Browser Bridge Chrome extension (chrome-extension/) connects here
 // via WebSocket. toolBrowseChrome() uses this path first so it works with the
-// user's existing Chrome session — no restart or profile picker needed.
+// user's existing Chrome session â€” no restart or profile picker needed.
 let chromeExtensionWs = null;
-const browseChromePending = new Map(); // requestId → callback(result)
+const browseChromePending = new Map(); // requestId â†’ callback(result)
 
-// ── Capability Policy ────────────────────────────────────────────────────────
+// â”€â”€ Capability Policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Pure policy logic lives in lib/capabilityPolicy.js (importable in isolation).
 // This section retains only the side-effectful wrapper (evaluatePolicy) and the
 // audit/broadcast helpers. Types and core evaluator: see lib/capabilityPolicy.js.
@@ -1043,7 +1049,7 @@ function appendAuditEvent(event) {
   try {
     fs.appendFileSync(AUDIT_JSONL_PATH, JSON.stringify(event) + '\n', 'utf8');
   } catch (e) {
-    // Non-fatal — audit failure must not break tool execution
+    // Non-fatal â€” audit failure must not break tool execution
     console.error('[audit] appendAuditEvent failed:', e.message);
   }
 }
@@ -1052,7 +1058,7 @@ function appendAuditEvent(event) {
  * Unified policy enforcer. Evaluates action against session policy,
  * appends a structured event to audit.jsonl, and broadcasts a tool-audit
  * WebSocket message for any block or installer grant.
- * Does not throw — callers inspect result.allowed and throw if needed.
+ * Does not throw â€” callers inspect result.allowed and throw if needed.
  * @param {string} action - 'write'|'bash'|'powershell'|'installer'
  * @param {{filePath?: string, command?: string, workDir?: string, sessionId: string, tool?: string}} context
  * @param {CapabilityPolicy} policy
@@ -1067,11 +1073,15 @@ function evaluatePolicy(action, context, policy) {
   return result;
 }
 
-// ─── Session persistence ──────────────────────────────────────────────────────
+// â”€â”€â”€ Session persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
     chipLabel: s.chipLabel || null, chipColor: s.chipColor || null,
+    crossCheckProjectKey: s.crossCheckProjectKey || null,
+    crossCheckProjectName: s.crossCheckProjectName || null,
+    repoWorkDir: s.repoWorkDir || null,
+    worktreePath: s.worktreePath || null,
     model: s.model || null,
     isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
     status: s.status === 'running' ? 'done' : s.status,
@@ -1100,7 +1110,7 @@ function saveSessions() {
   } catch {}
 }
 
-// Maps backlog task status → the last skill that produced it.
+// Maps backlog task status â†’ the last skill that produced it.
 // Covers both the older Aesop scheme and the newer Polaris ship-task scheme.
 const BACKLOG_STATUS_TO_LAST_SKILL = {
   'planned':       'plan-task',
@@ -1143,8 +1153,8 @@ function loadPersistedSessions() {
     if (!Array.isArray(arr)) return;
     for (const s of arr) {
       if (!s.id) continue;
-      if (s.isOrchestrator) continue; // orchestrators are ephemeral — never reload after restart
-      if (s.name === HEALTH_MONITOR_NAME) continue; // health monitor is ephemeral — never reload after restart
+      if (s.isOrchestrator) continue; // orchestrators are ephemeral â€” never reload after restart
+      if (s.name === HEALTH_MONITOR_NAME) continue; // health monitor is ephemeral â€” never reload after restart
       const loaded = {
         ...s,
         status: s.status === 'running' ? 'done' : s.status,
@@ -1168,18 +1178,6 @@ function loadPersistedSessions() {
         forkMap.set(s.primarySessionId, s.id);
       }
     }
-    // Spawn orchestrators for projects already at 2+ sessions on startup
-    const postLoadCounts = new Map();
-    for (const s of sessions.values()) {
-      if (!s.projectName || s.isOrchestrator) continue;
-      postLoadCounts.set(s.projectName, (postLoadCounts.get(s.projectName) || 0) + 1);
-    }
-    for (const [projectName, count] of postLoadCounts) {
-      if (count >= 2 && !orchestratorSessions.has(projectName)) {
-        spawnOrchestratorSession(projectName).catch(err =>
-          console.error('[orchestrator] post-load spawn failed for', projectName, err));
-      }
-    }
   } catch (err) {
     console.error('[orchestrator] loadPersistedSessions error:', err);
   }
@@ -1187,7 +1185,25 @@ function loadPersistedSessions() {
 
 loadPersistedSessions();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+function ensureStartupOrchestrators() {
+  if (!ORCHESTRATOR_AUTORUN) {
+    console.log('[orchestrator] startup ensure disabled');
+    return;
+  }
+  const postLoadCounts = new Map();
+  for (const s of sessions.values()) {
+    if (!s.projectName || s.isOrchestrator || s.chipLabel === 'Cross Check') continue;
+    postLoadCounts.set(s.projectName, (postLoadCounts.get(s.projectName) || 0) + 1);
+  }
+  for (const [projectName, count] of postLoadCounts) {
+    if (count >= 2 && !orchestratorSessions.has(projectName)) {
+      spawnOrchestratorSession(projectName).catch(err =>
+        console.error('[orchestrator] post-load spawn failed for', projectName, err));
+    }
+  }
+}
+
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function readJSON(filePath, fallback) {
   try {
@@ -1197,7 +1213,7 @@ function readJSON(filePath, fallback) {
   }
 }
 
-// Like readJSON but falls back to config.backup.json → archives when the main
+// Like readJSON but falls back to config.backup.json â†’ archives when the main
 // config is missing, corrupt, or suspiciously thin (e.g. a partial write left
 // only {hiddenSessions:[...]}). All config write paths use this so a mid-kill
 // file corruption can never cause a silent wipe of projects/routines/keys.
@@ -1206,7 +1222,7 @@ function readConfigRaw() {
   if (main && Object.keys(main).length >= 3) return main;
   const backup = readJSON(CONFIG_PATH.replace('.json', '.backup.json'), null);
   if (backup && Object.keys(backup).length >= 3) {
-    console.warn('[config] readConfigRaw: main config thin/missing — recovered from backup');
+    console.warn('[config] readConfigRaw: main config thin/missing â€” recovered from backup');
     return backup;
   }
   // Last resort: scan archives newest-first for a config with meaningful data
@@ -1230,7 +1246,7 @@ const CONFIG_ARCHIVE_MAX    = 200;                  // keep N most recent supers
 const CONFIG_ARCHIVE_MAX_MB = 10;                   // also cap at total disk MB
 const CONFIG_ARCHIVE_MAX_BYTES = CONFIG_ARCHIVE_MAX_MB * 1024 * 1024;
 
-// mergeConfigDefensively — shallow-merge top-level fields, but deep-merge the
+// mergeConfigDefensively â€” shallow-merge top-level fields, but deep-merge the
 // projects array by project name. The default {...current, ...incoming} pattern
 // at the save-config handler clobbers any field the UI doesn't expose: e.g.
 // the Settings panel's project entries don't surface obsidianDir / obsidianSessionsDir
@@ -1238,8 +1254,8 @@ const CONFIG_ARCHIVE_MAX_BYTES = CONFIG_ARCHIVE_MAX_MB * 1024 * 1024;
 // project (the 2026-05-05 incident). Now: each incoming project object is
 // merged on top of the matching current project (by name), preserving fields
 // the form omitted. Project deletion still works (project absent from incoming
-// array → absent from output). Explicit clearing still works (incoming sends
-// the field as null/'' → overrides).
+// array â†’ absent from output). Explicit clearing still works (incoming sends
+// the field as null/'' â†’ overrides).
 //
 // Also logs loudly when mcpServers or routines go from populated to empty,
 // since those have been clobbered the same way and we want the next instance
@@ -1260,7 +1276,7 @@ function mergeConfigDefensively(current, incoming) {
     const curCount = cur ? (Array.isArray(cur) ? cur.length : Object.keys(cur).length) : 0;
     const incCount = inc ? (Array.isArray(inc) ? inc.length : Object.keys(inc).length) : 0;
     if (curCount > 0 && incCount === 0) {
-      console.warn(`[save-config] WARN: ${label} going from ${curCount} entries to 0 — likely a partial UI save. Recover from config-archive/ if unintended.`);
+      console.warn(`[save-config] WARN: ${label} going from ${curCount} entries to 0 â€” likely a partial UI save. Recover from config-archive/ if unintended.`);
     }
   };
   detectClobber('mcpServers', current.mcpServers, incoming.mcpServers);
@@ -1293,12 +1309,12 @@ function pruneConfigArchive() {
 
 function writeJSON(filePath, data) {
   // Two-tier backup before every config write:
-  //  1. config.backup.json — single-level "last known good" (legacy, kept).
-  //  2. config-archive/config.<ISO>.json — append-only archive, every
+  //  1. config.backup.json â€” single-level "last known good" (legacy, kept).
+  //  2. config-archive/config.<ISO>.json â€” append-only archive, every
   //     superseded config preserved up to the size caps below. Required
   //     after the 2026-05-05 incident where a saveSettings round-trip
   //     stripped obsidianDir, MCP servers, and routines from every project
-  //     — the single backup had already rotated past the loss point and
+  //     â€” the single backup had already rotated past the loss point and
   //     recovery was impossible. Storage cost is trivial (~4 KB per write).
   // Caps: 200 files OR 10 MB total, whichever fires first. Oldest pruned.
   if (filePath === CONFIG_PATH && fs.existsSync(CONFIG_PATH)) {
@@ -1317,7 +1333,7 @@ function writeJSON(filePath, data) {
   try {
     fs.renameSync(tmpPath, filePath);
   } catch {
-    // Rename failed (e.g. cross-device). Fall back to direct write — not atomic,
+    // Rename failed (e.g. cross-device). Fall back to direct write â€” not atomic,
     // but acceptable for session guidance files which are ephemeral and re-created
     // every 3 minutes. Config writes never hit this path (same-volume guarantee).
     fs.writeFileSync(filePath, serialized, 'utf8');
@@ -1325,7 +1341,7 @@ function writeJSON(filePath, data) {
   }
 }
 
-// ─── Session guidance coordination ───────────────────────────────────────────────
+// â”€â”€â”€ Session guidance coordination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Sessions poll every 3 minutes for orchestrator guidance and write their state.
 // Orchestrator writes alerts when it detects conflicts (branch collisions, etc.).
 // Alerts are auto-pruned after 10 minutes.
@@ -1407,7 +1423,7 @@ function deleteSessionStateFile(sessionId) {
   }
 }
 
-// Single read → push × N → write. All alert writes go through this to avoid
+// Single read â†’ push Ã— N â†’ write. All alert writes go through this to avoid
 // concurrent callers each doing their own read-modify-write on the same file.
 function writeOrchestratorAlertsBatch(newAlerts) {
   ensureSessionGuidanceDir();
@@ -1430,10 +1446,10 @@ function writeOrchestratorAlert(targetSessionId, severity, message) {
   }]);
 }
 
-// ─── OpenRouter catalog (model pricing) ──────────────────────────────────────
+// â”€â”€â”€ OpenRouter catalog (model pricing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fetches https://openrouter.ai/api/v1/models, caches on disk + in memory,
 // builds a {modelId: {in, out}} dict the UI uses for cost calculations. This
-// removes the need to maintain a hardcoded MODEL_COSTS table — every model
+// removes the need to maintain a hardcoded MODEL_COSTS table â€” every model
 // OpenRouter knows about gets accurate pricing automatically.
 let _orCatalogPromise = null;
 
@@ -1457,7 +1473,7 @@ function ensureOpenRouterCatalog(force = false) {
       path: '/api/v1/models',
       method: 'GET',
       headers,
-      // Defensive fresh agent — same pattern as callOpenRouterStream after
+      // Defensive fresh agent â€” same pattern as callOpenRouterStream after
       // the BAD_RECORD_MAC issues on 2026-05-05.
       agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
     }, res => {
@@ -1569,7 +1585,7 @@ function broadcastUsage(sessionId, usage, claudeSessionId, routineTag) {
   broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId, routineTag });
 }
 
-// ─── File versioning ─────────────────────────────────────────────────────────
+// â”€â”€â”€ File versioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getVersions() {
   return readJSON(VERSIONS_PATH, {});
 }
@@ -1611,11 +1627,11 @@ function readVersionLog() {
 
 const WATCH_EXCLUDE = /(^|[\\/])(\.git|node_modules|dist|release|\.next|\.cache|__pycache__|\.venv|coverage)([\\/]|$)/i;
 
-// ─── Live Server (per-project HTTP+WS with live reload) ─────────────────────
+// â”€â”€â”€ Live Server (per-project HTTP+WS with live reload) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // One server per project directory. fs.watch with 100ms debounce broadcasts
 // `reload` to a separate WS server (path `/__livereload`); injected script in
 // served HTML calls `location.reload()` on receipt.
-const LIVE_SERVERS = new Map(); // projectDir → instance
+const LIVE_SERVERS = new Map(); // projectDir â†’ instance
 const LIVE_SERVER_PORT_START = 5500;
 const LIVE_SERVER_INJECT = `
 <script>
@@ -1695,12 +1711,12 @@ async function startLiveServer(projectDir) {
         });
         const base = urlPath.replace(/\/$/, '');
         const rows = entries.map(e => {
-          const icon = e.isDirectory() ? '📁' : '📄';
+          const icon = e.isDirectory() ? 'ðŸ“' : 'ðŸ“„';
           const slash = e.isDirectory() ? '/' : '';
           return `<li style="padding:4px 0;font-family:Consolas,monospace;font-size:13px;"><a href="${base}/${encodeURIComponent(e.name)}${slash}" style="color:#60a5fa;text-decoration:none;">${icon} ${e.name}${slash}</a></li>`;
         }).join('');
         res.setHeader('Content-Type', 'text/html');
-        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>📂 ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
+        return res.end(`<!doctype html><html><head><title>${urlPath}</title><style>body{background:#0a0a14;color:#cbd5e1;font-family:'Segoe UI',sans-serif;padding:24px 32px;margin:0;}h2{color:#60a5fa;font-weight:600;}ul{list-style:none;padding:0;}a:hover{text-decoration:underline;}</style></head><body><h2>ðŸ“‚ ${urlPath || '/'}</h2><ul>${rows}</ul></body></html>`);
       }
       serveFile(fullPath, res);
     } catch (e) {
@@ -1747,7 +1763,7 @@ async function startLiveServer(projectDir) {
     if (!filename || WATCH_EXCLUDE.test(filename)) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      liveServerLog(inst, `${filename.replace(/\\/g, '/')} changed → reloaded ${clients.size} client(s)`);
+      liveServerLog(inst, `${filename.replace(/\\/g, '/')} changed â†’ reloaded ${clients.size} client(s)`);
       for (const ws of clients) { try { ws.send('reload'); } catch {} }
     }, 100);
   });
@@ -1780,11 +1796,11 @@ process.on('SIGTERM', () => { stopAllLiveServers(); process.exit(0); });
 process.on('exit',    () => { stopAllLiveServers(); });
 
 process.on('uncaughtException', (err) => {
-  console.error('[server] uncaughtException — server continuing:', err.stack || err.message);
+  console.error('[server] uncaughtException â€” server continuing:', err.stack || err.message);
 });
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.stack : String(reason);
-  console.error('[server] unhandledRejection — server continuing:', msg);
+  console.error('[server] unhandledRejection â€” server continuing:', msg);
 });
 
 function watchSessionFiles(sessionId, workDir) {
@@ -1809,7 +1825,7 @@ function watchSessionFiles(sessionId, workDir) {
   // Unhandled 'error' events on FSWatcher crash the Node process. Common
   // causes: workDir was deleted out from under the watcher (e.g. eval harness
   // tmp dirs cleaned up between fixtures), or permissions revoked. Log and
-  // swallow — the session is effectively done if its workDir vanished.
+  // swallow â€” the session is effectively done if its workDir vanished.
   watcher.on('error', err => {
     console.warn(`[polaris] watcher error on ${workDir} (session ${sessionId}): ${err.message}`);
   });
@@ -1851,7 +1867,7 @@ async function autoObsidianForSession(sessionId) {
   if (!s.modifiedFiles || s.modifiedFiles.size === 0) return;
   const config = readConfig();
   const vaultPath = config.obsidianVaultPath;
-  if (!vaultPath) return; // No vault configured — silently skip
+  if (!vaultPath) return; // No vault configured â€” silently skip
   const matchedProj = (config.projects || []).find(
     p => p.workDir && s.workDir && p.workDir.toLowerCase() === s.workDir.toLowerCase()
   );
@@ -1876,7 +1892,7 @@ async function autoObsidianForSession(sessionId) {
       `## Transcript\n\n\`\`\`\n${transcript}\n\`\`\`\n`;
     await fsp.writeFile(filePath, content, 'utf8');
     broadcast({ type: 'obsidian-auto-pushed', sessionId, filePath, fileCount: fileList.length });
-    console.log(`[obsidian-auto] ${sessionId} → ${filePath} (${fileList.length} files)`);
+    console.log(`[obsidian-auto] ${sessionId} â†’ ${filePath} (${fileList.length} files)`);
   } catch (e) {
     console.error('[obsidian-auto] failed:', e.message);
   }
@@ -1885,7 +1901,7 @@ async function autoObsidianForSession(sessionId) {
 // Scaffold Obsidian Build + Sessions folders when a new project is created
 function scaffoldObsidianProject(project, vaultPath) {
   const name = project.name || 'Project';
-  // obsidianDir is often an absolute path — use it directly when so
+  // obsidianDir is often an absolute path â€” use it directly when so
   const buildPath = project.obsidianDir && path.isAbsolute(path.normalize(project.obsidianDir))
     ? path.normalize(project.obsidianDir)
     : path.join(vaultPath, project.obsidianDir || `${name}_Build`);
@@ -1898,15 +1914,15 @@ function scaffoldObsidianProject(project, vaultPath) {
     if (!fs.existsSync(buildPath)) {
       fs.mkdirSync(buildPath, { recursive: true });
       const files = {
-        '1-Soul.md': `# 1-Soul.md — ${name}\n\n**What this project is:** [Describe the project]\n\n**Why it exists:** [Describe the motivation]\n\n**Non-goals:** [What this is not]\n\n**Connection to the larger mission:** [How it fits]\n`,
-        '2-Architecture.md': `# 2-Architecture.md — ${name}\n\n## Tech Stack\n- [List technologies]\n\n## System Overview\n[Describe the system]\n\n## Key Components\n| File | Purpose |\n|------|---------|\n| | |\n`,
-        '3-Build-Plan.md': `# 3-Build-Plan.md — ${name}\n\n## Current Phase\n[Describe current focus]\n\n## Roadmap\n| Priority | Item | Status | Notes |\n|----------|------|--------|-------|\n| | | | |\n`,
-        '4-Changelog.md': `# 4-Changelog.md — ${name}\n\n| Version | Date | Summary |\n|---------|------|---------|\n| | | |\n`,
-        '5-Permissions.md': `# 5-Permissions.md — ${name}\n\n## File Access\n[Describe file access rules]\n\n## Tool Restrictions\n[Describe tool restrictions]\n`,
-        '6-Obsidian.md': `# 6-Obsidian.md — ${name}\n\n## Vault Config\n- **Build folder:** ${buildPath}\n- **Sessions folder:** ${sessionsPath}\n`,
-        '7-Integrations.md': `# 7-Integrations.md — ${name}\n\n## External APIs\n[List external integrations]\n`,
-        '8-Logs.md': `# 8-Logs.md — ${name}\n\n[Logs and diagnostics will be appended here]\n`,
-        'FileMap.md': `# FileMap — ${name}\n# Working directory: ${project.workDir || ''}\n\n## Source Files\n| File | Purpose |\n|------|---------|\n| | |\n`,
+        '1-Soul.md': `# 1-Soul.md â€” ${name}\n\n**What this project is:** [Describe the project]\n\n**Why it exists:** [Describe the motivation]\n\n**Non-goals:** [What this is not]\n\n**Connection to the larger mission:** [How it fits]\n`,
+        '2-Architecture.md': `# 2-Architecture.md â€” ${name}\n\n## Tech Stack\n- [List technologies]\n\n## System Overview\n[Describe the system]\n\n## Key Components\n| File | Purpose |\n|------|---------|\n| | |\n`,
+        '3-Build-Plan.md': `# 3-Build-Plan.md â€” ${name}\n\n## Current Phase\n[Describe current focus]\n\n## Roadmap\n| Priority | Item | Status | Notes |\n|----------|------|--------|-------|\n| | | | |\n`,
+        '4-Changelog.md': `# 4-Changelog.md â€” ${name}\n\n| Version | Date | Summary |\n|---------|------|---------|\n| | | |\n`,
+        '5-Permissions.md': `# 5-Permissions.md â€” ${name}\n\n## File Access\n[Describe file access rules]\n\n## Tool Restrictions\n[Describe tool restrictions]\n`,
+        '6-Obsidian.md': `# 6-Obsidian.md â€” ${name}\n\n## Vault Config\n- **Build folder:** ${buildPath}\n- **Sessions folder:** ${sessionsPath}\n`,
+        '7-Integrations.md': `# 7-Integrations.md â€” ${name}\n\n## External APIs\n[List external integrations]\n`,
+        '8-Logs.md': `# 8-Logs.md â€” ${name}\n\n[Logs and diagnostics will be appended here]\n`,
+        'FileMap.md': `# FileMap â€” ${name}\n# Working directory: ${project.workDir || ''}\n\n## Source Files\n| File | Purpose |\n|------|---------|\n| | |\n`,
       };
       for (const [filename, content] of Object.entries(files)) {
         fs.writeFileSync(path.join(buildPath, filename), content, 'utf8');
@@ -1923,7 +1939,7 @@ function scaffoldObsidianProject(project, vaultPath) {
   } catch (e) {
     console.error('[obsidian-scaffold] failed:', e.message);
   }
-  // Fire git scaffolds async — don't block config-saved response
+  // Fire git scaffolds async â€” don't block config-saved response
   scaffoldGitRepo(project).catch(e => console.error('[scaffold-git] unhandled:', e.message));
 }
 
@@ -1932,7 +1948,7 @@ function scaffoldObsidianProject(project, vaultPath) {
 // backlog format mirrors the CareGuide-style task tracker used by /plan-task,
 // /start-build, /finish-build, /promote-stage, /promote-to-prod, and
 // /mark-tasks-complete. New projects start with an empty `tasks` array so
-// /plan-task can add the first entry. Idempotent — never overwrites.
+// /plan-task can add the first entry. Idempotent â€” never overwrites.
 function ensureProjectBacklogFile(project, opts = {}) {
   const { name, workDir } = project || {};
   if (!workDir) return null;
@@ -2011,8 +2027,8 @@ async function scaffoldGitRepo(project) {
 }
 
 // Extract signal-rich session content and distill into:
-//   1. Firestore (polaris_memories) — via Codex as independent extractor
-//   2. Obsidian knowledge files    — structured project data (architecture, build plan, changelog)
+//   1. Firestore (polaris_memories) â€” via Codex as independent extractor
+//   2. Obsidian knowledge files    â€” structured project data (architecture, build plan, changelog)
 async function extractSessionToKnowledge(sessionId) {
   const s = sessions.get(sessionId);
   if (!s || !s.workDir) return;
@@ -2024,11 +2040,11 @@ async function extractSessionToKnowledge(sessionId) {
 
   const apiKey = config.openRouterApiKey ? decryptSecret(config.openRouterApiKey) : null;
   if (!apiKey) {
-    console.warn('[extract-knowledge] no openRouterApiKey — extraction skipped');
+    console.warn('[extract-knowledge] no openRouterApiKey â€” extraction skipped');
     return;
   }
 
-  const ACTION_PREFIXES = ['⚙ Write(', '⚙ Edit(', '⚙ Bash(', '⚙ PowerShell('];
+  const ACTION_PREFIXES = ['âš™ Write(', 'âš™ Edit(', 'âš™ Bash(', 'âš™ PowerShell('];
   const signalLines = (s.lines || []).filter(l => {
     if (l.role === 'user' || l.role === 'assistant' || l.role === 'error') return true;
     if (l.role === 'system') return ACTION_PREFIXES.some(p => (l.text || '').startsWith(p));
@@ -2044,7 +2060,7 @@ async function extractSessionToKnowledge(sessionId) {
   const today = new Date().toISOString().slice(0, 10);
   const projectName = matched.name || s.projectName || 'Project';
 
-  // ─── Codex extraction (single call, returns both memories + structured data) ──
+  // â”€â”€â”€ Codex extraction (single call, returns both memories + structured data) â”€â”€
   const extractionPrompt = `You are an independent knowledge extractor reviewing a session transcript for the project "${projectName}". Your job is to identify what is worth preserving long-term.
 
 Return ONLY valid JSON with these keys (omit a key or set to null if nothing relevant was found):
@@ -2061,7 +2077,7 @@ Return ONLY valid JSON with these keys (omit a key or set to null if nothing rel
   "buildPlan": "roadmap changes, shipped features, open questions, or deferred items (string or null)",
   "integrations": "new external APIs, tools, services, or configuration changes (string or null)",
   "changelog": {
-    "version": "version number from a package.json bump — only if an explicit bump was detected, else null",
+    "version": "version number from a package.json bump â€” only if an explicit bump was detected, else null",
     "date": "${today}",
     "description": "Multi-sentence markdown changelog entry. MUST start with **feat:**, **fix:**, **refactor:**, **chore:**, **docs:**, **perf:**, **test:**, or **ci:**. Describe what landed AND why. Use backticks around filenames and function names. 2-6 sentences."
   }
@@ -2099,7 +2115,7 @@ ${transcript}`;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.warn('[extract-knowledge] no JSON in Codex response');
-      broadcast({ type: 'line', sessionId, text: '[Obsidian Rite] Codex returned no usable response — session notes not saved.', role: 'error' });
+      broadcast({ type: 'line', sessionId, text: '[Obsidian Rite] Codex returned no usable response â€” session notes not saved.', role: 'error' });
       return;
     }
     const _raw = JSON.parse(jsonMatch[0]);
@@ -2117,7 +2133,7 @@ ${transcript}`;
     return;
   }
 
-  // ─── Write memories to Firestore ──────────────────────────────────────────────
+  // â”€â”€â”€ Write memories to Firestore â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (extracted.memories.length > 0 && memory.isReady()) {
     const toWrite = extracted.memories.map(m => ({
       project:     projectName,
@@ -2129,10 +2145,10 @@ ${transcript}`;
       source:      'codex'
     }));
     const ids = await memory.addMemories(toWrite);
-    console.log(`[extract-knowledge] ${ids.length} memories → Firestore`);
+    console.log(`[extract-knowledge] ${ids.length} memories â†’ Firestore`);
   }
 
-  // ─── Write structured data to Obsidian (unchanged) ────────────────────────────
+  // â”€â”€â”€ Write structured data to Obsidian (unchanged) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const vaultPath = config.obsidianVaultPath;
   if (!vaultPath) return;
   const obsDir = path.isAbsolute(matched.obsidianDir)
@@ -2290,21 +2306,21 @@ ${transcript}`;
   }
 }
 
-//─── Lock enforcement ─────────────────────────────────────────────────────────
+//â”€â”€â”€ Lock enforcement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function isLocked(filePath, sessionId) {
   const locks = readJSON(LOCKS_PATH, {});
   const rel = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
   return !!(locks[rel] && locks[rel].sessions && locks[rel].sessions.includes(sessionId));
 }
 
-// ─── Prompt history ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Prompt history â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function addToHistory(prompt) {
   const history = readJSON(HISTORY_PATH, []);
   const updated = [prompt, ...history.filter(p => p !== prompt)].slice(0, 200);
   writeJSON(HISTORY_PATH, updated);
 }
 
-// ─── Code Health analysis ────────────────────────────────────────────────────
+// â”€â”€â”€ Code Health analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function computeCodeHealth(workDir) {
   // Churn: aggregate per-file commit count and line changes from full log
   const numstat = await runGit(['log', '--numstat', '--pretty=format:'], workDir);
@@ -2359,7 +2375,7 @@ async function computeCodeHealth(workDir) {
   return { churn, authors, fileStats };
 }
 
-// ─── SPACE event logging ──────────────────────────────────────────────────────
+// â”€â”€â”€ SPACE event logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function spaceSlug(name) {
   return (name || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
 }
@@ -2441,7 +2457,7 @@ function spaceComputeScores(projectName) {
   };
 }
 
-// ─── Session name generation ──────────────────────────────────────────────────
+// â”€â”€â”€ Session name generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STOP_WORDS = new Set(['a','an','the','and','or','but','in','on','at','to','for','of','with','by','from','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','ought','used','that','this','these','those','it','its','i','you','he','she','we','they','what','which','who','how','when','where','why','not','no','nor','so','yet','both','either','neither','just','also','then','than','as','if','though','although','because','since','unless','while','after','before']);
 
 function generateSessionName(prompt) {
@@ -2452,17 +2468,17 @@ function generateSessionName(prompt) {
   return words.slice(0, 7).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'New Session';
 }
 
-// ─── Direct model-provider API — agent sessions (no CLI) ─────────────────────
+// â”€â”€â”€ Direct model-provider API â€” agent sessions (no CLI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Replaces CLI spawning. Eliminates CLAUDE.md cold-load (~29k tokens), 37-tool
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
 
-const MAX_AGENT_MESSAGES = 40; // 20 turns × user+assistant
+const MAX_AGENT_MESSAGES = 40; // 20 turns Ã— user+assistant
 
 const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'Read', description: 'Read a file. Returns content with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer', description: 'Start line (1-based)' }, limit: { type: 'integer', description: 'Max lines to read' } }, required: ['file_path'] } } },
   { type: 'function', function: { name: 'Write', description: 'Write content to a file, creating it if needed.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } }, required: ['file_path', 'content'] } } },
-  { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find — must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
+  { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find â€” must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
   { type: 'function', function: { name: 'Glob', description: 'Find files matching a glob pattern. Returns absolute paths sorted by modified time.', parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'Glob e.g. "**/*.js"' }, path: { type: 'string', description: 'Directory to search (default: working dir)' } }, required: ['pattern'] } } },
   { type: 'function', function: { name: 'Grep', description: 'Search file contents for a regex pattern.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string', description: 'File or directory to search' }, glob: { type: 'string', description: 'File filter e.g. "*.ts"' }, output_mode: { type: 'string', description: 'One of: content, files_with_matches (default), count' }, context: { type: 'integer', description: 'Lines of context around matches' } }, required: ['pattern'] } } },
   { type: 'function', function: { name: 'Bash', description: 'Execute a shell command in the session working directory.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer', description: 'Timeout ms, max 120000' } }, required: ['command'] } } },
@@ -2474,12 +2490,12 @@ const DIRECT_TOOLS = [
   { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Pass a query to get the top-5 most relevant ranked excerpts with source citations and a retrieval trace. Pass filename to retrieve a specific file. Call with no arguments at session start for full context.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Takes precedence over query.' }, query: { type: 'string', description: 'Natural-language query to retrieve the top-5 most relevant Obsidian excerpts by BM25 + semantic ranking. Returns cited excerpts with file name and section heading.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
   { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "hold" to manually pause the session. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'hold', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
-  { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions — follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
-  { type: 'function', function: { name: 'GetNavigationSchema', description: 'Get the complete Polaris navigation pane structure — all buttons, labels, tooltips, handlers, and available panel IDs.', parameters: { type: 'object', properties: {}, required: [] } } },
+  { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions â€” follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
+  { type: 'function', function: { name: 'GetNavigationSchema', description: 'Get the complete Polaris navigation pane structure â€” all buttons, labels, tooltips, handlers, and available panel IDs.', parameters: { type: 'object', properties: {}, required: [] } } },
   { type: 'function', function: { name: 'GetButton', description: 'Get details about a specific navigation button by ID (e.g., "btn-status", "btn-build").', parameters: { type: 'object', properties: { buttonId: { type: 'string', description: 'Button ID to look up' } }, required: ['buttonId'] } } },
   { type: 'function', function: { name: 'GetPanel', description: 'Get the full HTML content of a specific panel (e.g., "cross-check-panel", "archive-panel").', parameters: { type: 'object', properties: { panelId: { type: 'string', description: 'Panel ID to retrieve' } }, required: ['panelId'] } } },
   { type: 'function', function: { name: 'FindButtonByLabel', description: 'Search for buttons by label text using case-insensitive partial matching.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Label text to search for' } }, required: ['label'] } } },
-  { type: 'function', function: { name: 'BrowseChrome', description: 'Read the fully-rendered text content of the active Chrome tab via the Chrome DevTools Protocol. Unlike WebFetch, this returns text after JavaScript has run — ideal for SPAs, login-walled content, or any page you already have open. Requires Chrome to be running with --remote-debugging-port=9222 (use the Launch Chrome button in Polaris). Optional: pass url to navigate the tab first, selector to extract a specific CSS element.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Optional URL to navigate to before reading content.' }, selector: { type: 'string', description: 'Optional CSS selector (e.g. "main", "#content") to extract a specific element instead of the full page body.' } }, required: [] } } },
+  { type: 'function', function: { name: 'BrowseChrome', description: 'Read the fully-rendered text content of the active Chrome tab via the Chrome DevTools Protocol. Unlike WebFetch, this returns text after JavaScript has run â€” ideal for SPAs, login-walled content, or any page you already have open. Requires Chrome to be running with --remote-debugging-port=9222 (use the Launch Chrome button in Polaris). Optional: pass url to navigate the tab first, selector to extract a specific CSS element.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Optional URL to navigate to before reading content.' }, selector: { type: 'string', description: 'Optional CSS selector (e.g. "main", "#content") to extract a specific element instead of the full page body.' } }, required: [] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = false, continuationContext = null) {
@@ -2506,7 +2522,7 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
     );
   }
 
-  // Project config identity and key paths (small — no CLAUDE.md or file map bulk injection)
+  // Project config identity and key paths (small â€” no CLAUDE.md or file map bulk injection)
   if (workDir) {
     const matched = (config.projects || []).find(p => p.workDir && p.workDir.toLowerCase() === workDir.toLowerCase());
     if (matched) {
@@ -2525,7 +2541,7 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
       if (matched.obsidianDir) {
         layers.push(
           `--- Project Memory (MANDATORY) ---\n` +
-          `Your project knowledge base is pre-loaded into Polaris memory. At the start of every session, before responding to any user request, call QueryMemory with no arguments to retrieve your full project context — soul, architecture, build plan, file map, changelog, and technical documentation. Do not skip this step.`
+          `Your project knowledge base is pre-loaded into Polaris memory. At the start of every session, before responding to any user request, call QueryMemory with no arguments to retrieve your full project context â€” soul, architecture, build plan, file map, changelog, and technical documentation. Do not skip this step.`
         );
       }
 
@@ -2537,7 +2553,7 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
   // model invokes the Skill tool to load the full body when triggered.
   const skills = discoverSkills();
   if (skills.length) {
-    const lines = skills.map(s => `- \`${s.name}\` — ${s.description}`).join('\n');
+    const lines = skills.map(s => `- \`${s.name}\` â€” ${s.description}`).join('\n');
     layers.push(
       '--- Available Skills ---\n' +
       'These user-global Claude Code skills are installed. When a user request matches a skill\'s ' +
@@ -2550,11 +2566,11 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
   layers.push(
     '--- Polaris Navigation Pane ---\n' +
     'You have four built-in tools to explore and reason about the Polaris UI navigation pane:\n' +
-    '- GetNavigationSchema() — returns all buttons and panel IDs in the nav grid\n' +
-    '- GetButton(buttonId) — returns label, tooltip, handler, and CSS classes for a specific button (e.g. "btn-build")\n' +
-    '- GetPanel(panelId) — returns the full HTML content of a panel (e.g. "cross-check-panel")\n' +
-    '- FindButtonByLabel(label) — case-insensitive search for buttons by display label\n' +
-    'Use these whenever the user asks about a panel, button, or UI feature — do not guess at IDs or structure.'
+    '- GetNavigationSchema() â€” returns all buttons and panel IDs in the nav grid\n' +
+    '- GetButton(buttonId) â€” returns label, tooltip, handler, and CSS classes for a specific button (e.g. "btn-build")\n' +
+    '- GetPanel(panelId) â€” returns the full HTML content of a panel (e.g. "cross-check-panel")\n' +
+    '- FindButtonByLabel(label) â€” case-insensitive search for buttons by display label\n' +
+    'Use these whenever the user asks about a panel, button, or UI feature â€” do not guess at IDs or structure.'
   );
 
   layers.push(
@@ -2609,7 +2625,7 @@ function buildProjectKnowledgeBlock(config, session) {
   );
   if (!matched) return '';
 
-  // Load and cache Obsidian files — mirrors runDirectAgent lines 3491-3508
+  // Load and cache Obsidian files â€” mirrors runDirectAgent lines 3491-3508
   if (!session.projectMemory) {
     const mem = {};
     if (matched.obsidianDir) {
@@ -2648,7 +2664,7 @@ function buildProjectKnowledgeBlock(config, session) {
   const backlogBlock = session.isCodex ? buildBacklogContextBlock(config, matched) : '';
   if (backlogBlock) parts.push(backlogBlock);
 
-  // Project memory directive — files loaded in memory but not injected into prompt
+  // Project memory directive â€” files loaded in memory but not injected into prompt
   if (matched.obsidianDir) {
     parts.push(
       `--- Project Knowledge Base (Obsidian) ---\n` +
@@ -2716,7 +2732,7 @@ function buildBacklogContextBlock(config, matchedProject) {
   return `--- Backlog Context ---\n${lines.join('\n')}`;
 }
 
-// ── Tool implementations ──────────────────────────────────────────────────────
+// â”€â”€ Tool implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Builds a compact Polaris runtime context block injected at the top of every
 // Claude Code (Max-plan) stdin prompt so the model always knows its host environment.
@@ -2753,7 +2769,7 @@ function buildPolarisContextBlock(config, session) {
     lines.push(
       '',
       'Current session project: (none selected)',
-      `No project is set for this session. Before doing anything else:\n1. Read the user's current message. If it names a project from the Available projects list, call mcp__polaris__SetProject immediately with that exact name — do not ask, just set it and proceed.\n2. If the user has not named a project, ask them to pick one (Available projects list below, plus "no project (scratch)" for one-off tasks), then call mcp__polaris__SetProject with the exact name.\nDo not proceed with the user's actual request until mcp__polaris__SetProject has been called.`,
+      `No project is set for this session. Before doing anything else:\n1. Read the user's current message. If it names a project from the Available projects list, call mcp__polaris__SetProject immediately with that exact name â€” do not ask, just set it and proceed.\n2. If the user has not named a project, ask them to pick one (Available projects list below, plus "no project (scratch)" for one-off tasks), then call mcp__polaris__SetProject with the exact name.\nDo not proceed with the user's actual request until mcp__polaris__SetProject has been called.`,
     );
   }
 
@@ -2792,7 +2808,7 @@ function buildPolarisContextBlock(config, session) {
   return lines.join('\n');
 }
 
-// ─── Navigation Pane Tools ──────────────────────────────────────────────────
+// â”€â”€â”€ Navigation Pane Tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let navigationCache = null;
 let navigationCacheTime = 0;
@@ -2955,7 +2971,7 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
-// ── obsidianRetrieval helpers ────────────────────────────────────────────────
+// â”€â”€ obsidianRetrieval helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function _memHash(mem) {
   const h = crypto.createHash('sha256');
@@ -3012,7 +3028,7 @@ function _appendMemoryTrace(projectName, query, results) {
       ts:         new Date().toISOString(),
       project:    projectName,
       query:      query || '',
-      topSources: results.slice(0, 3).map(r => `${r.file}${r.heading ? ` § ${r.heading}` : ''}`),
+      topSources: results.slice(0, 3).map(r => `${r.file}${r.heading ? ` Â§ ${r.heading}` : ''}`),
       scores:     results.slice(0, 3).map(r => Math.round(r._score * 1000) / 1000),
     };
     fs.appendFileSync(path.join(tracesDir, 'traces.jsonl'), JSON.stringify(record) + '\n', 'utf8');
@@ -3021,7 +3037,7 @@ function _appendMemoryTrace(projectName, query, results) {
   }
 }
 
-// ── toolQueryMemory ──────────────────────────────────────────────────────────
+// â”€â”€ toolQueryMemory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function toolQueryMemory({ filename, query } = {}, sessionId) {
   const session = sessions.get(sessionId);
@@ -3030,7 +3046,7 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
   }
   const mem = session?.projectMemory;
 
-  // Specific file request → go straight to Obsidian (escape hatch, unchanged)
+  // Specific file request â†’ go straight to Obsidian (escape hatch, unchanged)
   if (filename) {
     if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
     const key = Object.keys(mem).find(k => k.toLowerCase().includes(filename.toLowerCase()));
@@ -3073,10 +3089,10 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
         return obsidianRetrieval.buildTrace(results);
       }
     }
-    return `[MEMORY TRACE] — 0 results for query "${query}" — no matching Obsidian content found.`;
+    return `[MEMORY TRACE] â€” 0 results for query "${query}" â€” no matching Obsidian content found.`;
   }
 
-  // General query → Firestore (ranked) with Obsidian fallback
+  // General query â†’ Firestore (ranked) with Obsidian fallback
   if (memory.isReady()) {
     try {
       const config = readConfig();
@@ -3104,7 +3120,7 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
-// ── Skill discovery (all sources) ───────────────────────────────────────────
+// â”€â”€ Skill discovery (all sources) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Scans every place skills + commands + agents live, parses each one, returns
 // a flat array of entries that the system-prompt injector, the Skill tool, and
 // the Skills nav panel all consume.
@@ -3120,12 +3136,12 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
 //
 // Each entry shape:
 //   { name, description, source, group, category, filePath }
-//     name       — canonical name (e.g. "ship-task", "codex:rescue")
-//     description — one-line summary shown in system prompt and Skills panel
-//     source     — internal label: "user-skill" | "user-command" | "codex-skill" | etc.
-//     group      — "global" | "project"  (top-level panel section)
-//     category   — one of CATEGORIES values
-//     filePath   — absolute path to the .md file the Skill tool reads on invocation
+//     name       â€” canonical name (e.g. "ship-task", "codex:rescue")
+//     description â€” one-line summary shown in system prompt and Skills panel
+//     source     â€” internal label: "user-skill" | "user-command" | "codex-skill" | etc.
+//     group      â€” "global" | "project"  (top-level panel section)
+//     category   â€” one of CATEGORIES values
+//     filePath   â€” absolute path to the .md file the Skill tool reads on invocation
 //
 // Result is memoized per-process; the cache is keyed by a snapshot of mtimes
 // across every source dir so newly added or edited skills appear after a
@@ -3135,7 +3151,7 @@ const PLUGINS_CACHE_DIR = path.join(os.homedir(), '.claude', 'plugins', 'cache')
 const USER_COMMANDS_DIR = path.join(os.homedir(), '.claude', 'commands');
 
 // Categories shown in the Skills nav panel. Order here = display order.
-// Vendor-namespaced categories (Codex, Anthropic) sit at the bottom — they're
+// Vendor-namespaced categories (Codex, Anthropic) sit at the bottom â€” they're
 // contextually tied to their plugins and shouldn't be split across the
 // functional categories above just because some happen to do file editing
 // or scheduling. Keep all `codex:*` together, all `anthropic-skills:*` together.
@@ -3160,11 +3176,11 @@ const CATEGORY_ORDER = [
   CATEGORIES.ANTHROPIC,
 ];
 
-// Hardcoded name → category. Names not in the map fall back to UTILITIES.
+// Hardcoded name â†’ category. Names not in the map fall back to UTILITIES.
 // To add a new skill: drop it under ~/.claude/skills/ (or wherever) and add
 // one line here. The discovery picks it up on the next mtime change.
 const SKILL_CATEGORY_MAP = {
-  // Project workflow — task lifecycle, backlog, promotion
+  // Project workflow â€” task lifecycle, backlog, promotion
   'orchestrate':            CATEGORIES.WORKFLOW,
   'ship-task':              CATEGORIES.WORKFLOW,
   'plan-task':              CATEGORIES.WORKFLOW,
@@ -3177,7 +3193,7 @@ const SKILL_CATEGORY_MAP = {
   'mark-tasks-complete':    CATEGORIES.WORKFLOW,
   'flow-audit':             CATEGORIES.WORKFLOW,
 
-  // Project initiation — bootstrapping a new project
+  // Project initiation â€” bootstrapping a new project
   'project-initiation':     CATEGORIES.INITIATION,
   'soul':                   CATEGORIES.INITIATION,
   'architecture':           CATEGORIES.INITIATION,
@@ -3185,18 +3201,18 @@ const SKILL_CATEGORY_MAP = {
   'buildplan':              CATEGORIES.INITIATION,
   'grill-with-docs':        CATEGORIES.INITIATION,
 
-  // Code quality — analysis and improvement of existing code
+  // Code quality â€” analysis and improvement of existing code
   'refactor':               CATEGORIES.QUALITY,
   'cross-boundary-audit':   CATEGORIES.QUALITY,
   'review':                 CATEGORIES.QUALITY,
   'security-review':        CATEGORIES.QUALITY,
   'simplify':               CATEGORIES.QUALITY,
 
-  // Research — pre-decision discovery (find/evaluate before adopting)
+  // Research â€” pre-decision discovery (find/evaluate before adopting)
   'evaluate-repo':          CATEGORIES.RESEARCH,
   'find-skill':             CATEGORIES.RESEARCH,
 
-  // Codex integration — codex plugin (skills, commands, agents)
+  // Codex integration â€” codex plugin (skills, commands, agents)
   'codex:rescue':                CATEGORIES.CODEX,
   'codex:setup':                 CATEGORIES.CODEX,
   'codex:codex-cli-runtime':     CATEGORIES.CODEX,
@@ -3209,13 +3225,13 @@ const SKILL_CATEGORY_MAP = {
   'codex:status':                CATEGORIES.CODEX,
   'codex:codex-rescue':          CATEGORIES.CODEX,  // agent
 
-  // Tooling / config — harness configuration
+  // Tooling / config â€” harness configuration
   'update-config':           CATEGORIES.TOOLING,
   'keybindings-help':        CATEGORIES.TOOLING,
   'fewer-permission-prompts': CATEGORIES.TOOLING,
   'mcp':                     CATEGORIES.TOOLING,
 
-  // Utilities — general-purpose / domain-specific helpers
+  // Utilities â€” general-purpose / domain-specific helpers
   'humanize-writing':        CATEGORIES.UTILITIES,
   'aesop-course-builder':    CATEGORIES.UTILITIES,
   'aifactory':               CATEGORIES.UTILITIES,
@@ -3227,7 +3243,7 @@ const SKILL_CATEGORY_MAP = {
 
 function _categoryFor(name) {
   // Vendor-namespaced names go to their dedicated category regardless of what
-  // they do internally — keeps plugin skills grouped together so users can
+  // they do internally â€” keeps plugin skills grouped together so users can
   // find them by their plugin context rather than hunting functional buckets.
   if (name.startsWith('codex:')) return CATEGORIES.CODEX;
   if (name.startsWith('anthropic-skills:')) return CATEGORIES.ANTHROPIC;
@@ -3237,12 +3253,12 @@ function _categoryFor(name) {
 
 // Provenance classifies WHO authored the skill, so the panel can visually
 // distinguish Scott's custom work from third-party plugins from Claude Code
-// internals. Used purely for UI styling — does not affect invocation.
+// internals. Used purely for UI styling â€” does not affect invocation.
 //
-//   custom  — authored by the user (lives under ~/.claude/skills/ or ~/.claude/commands/
+//   custom  â€” authored by the user (lives under ~/.claude/skills/ or ~/.claude/commands/
 //             or a project's own .claude/ folder)
-//   vendor  — third-party plugin (codex:*, anthropic-skills:*)
-//   builtin — Claude Code internals or bundled skills with no on-disk source
+//   vendor  â€” third-party plugin (codex:*, anthropic-skills:*)
+//   builtin â€” Claude Code internals or bundled skills with no on-disk source
 function _provenanceFor(name, source) {
   if (name.startsWith('codex:') || name.startsWith('anthropic-skills:')) return 'vendor';
   if (source === 'supplement') return 'builtin';
@@ -3254,7 +3270,7 @@ function _provenanceFor(name, source) {
 // from the Claude Code binary itself or from plugins that don't expose files
 // in the standard cache layout. We surface them in the Skills panel for
 // completeness (so users see every skill the harness knows about). The Skill
-// tool won't be able to load a body for these — clicking them sends /<name>
+// tool won't be able to load a body for these â€” clicking them sends /<name>
 // to the focused session, and Claude Code's own slash-command handler picks
 // them up in Max chat sessions. In Direct sessions, the Skill tool returns a
 // friendly "this is a Claude Code built-in" note.
@@ -3262,28 +3278,28 @@ function _provenanceFor(name, source) {
 // Descriptions are paraphrased from the harness's available-skills system
 // prompt as observed 2026-05-18.
 const SUPPLEMENT_SKILLS = [
-  // anthropic-skills: namespace — bundled plugin. All under ANTHROPIC so the
+  // anthropic-skills: namespace â€” bundled plugin. All under ANTHROPIC so the
   // plugin's skills stay together regardless of what each one does.
-  { name: 'anthropic-skills:consolidate-memory',  description: 'Reflective pass over your memory files — merge duplicates, fix stale facts, prune the index.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:consolidate-memory',  description: 'Reflective pass over your memory files â€” merge duplicates, fix stale facts, prune the index.', category: CATEGORIES.ANTHROPIC },
   { name: 'anthropic-skills:docx',                description: 'Create, read, edit, or manipulate Word documents (.docx files) with formatting, tables of contents, headings, page numbers, letterheads.', category: CATEGORIES.ANTHROPIC },
-  { name: 'anthropic-skills:humanize-writing',    description: 'Bundled humanize-writing variant — rewrite text to sound more human, less AI-generated.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:humanize-writing',    description: 'Bundled humanize-writing variant â€” rewrite text to sound more human, less AI-generated.', category: CATEGORIES.ANTHROPIC },
   { name: 'anthropic-skills:pdf',                 description: 'Read, extract, merge, split, rotate, watermark, OCR, fill forms, or create PDF files.', category: CATEGORIES.ANTHROPIC },
-  { name: 'anthropic-skills:pptx',                description: 'Create, read, edit, or manipulate PowerPoint slide decks (.pptx) — slides, layouts, speaker notes.', category: CATEGORIES.ANTHROPIC },
-  { name: 'anthropic-skills:process-interviewer', description: 'Relentless process interviewer — extracts a complete unambiguous plan from the user before any building begins.', category: CATEGORIES.ANTHROPIC },
-  { name: 'anthropic-skills:setup-cowork',        description: 'Guided Cowork setup — install role-matched plugins, connect tools, try a skill.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:pptx',                description: 'Create, read, edit, or manipulate PowerPoint slide decks (.pptx) â€” slides, layouts, speaker notes.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:process-interviewer', description: 'Relentless process interviewer â€” extracts a complete unambiguous plan from the user before any building begins.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:setup-cowork',        description: 'Guided Cowork setup â€” install role-matched plugins, connect tools, try a skill.', category: CATEGORIES.ANTHROPIC },
   { name: 'anthropic-skills:skill-creator',       description: 'Create new skills from scratch, edit existing ones, run evals, or optimize skill descriptions.', category: CATEGORIES.ANTHROPIC },
-  { name: 'anthropic-skills:xlsx',                description: 'Open, read, edit, or create spreadsheet files (.xlsx, .xlsm, .csv, .tsv) — add columns, formulas, charts, clean messy data.', category: CATEGORIES.ANTHROPIC },
+  { name: 'anthropic-skills:xlsx',                description: 'Open, read, edit, or create spreadsheet files (.xlsx, .xlsm, .csv, .tsv) â€” add columns, formulas, charts, clean messy data.', category: CATEGORIES.ANTHROPIC },
   { name: 'anthropic-skills:youtube-transcribe',  description: 'Transcribe a YouTube video to plain text and save it to Obsidian.', category: CATEGORIES.ANTHROPIC },
   // Built-in / harness-bundled (no plugin prefix, source unclear)
-  { name: 'update-config',             description: 'Configure the Claude Code harness via settings.json — permissions, env vars, hooks, automated behaviors.', category: CATEGORIES.TOOLING },
+  { name: 'update-config',             description: 'Configure the Claude Code harness via settings.json â€” permissions, env vars, hooks, automated behaviors.', category: CATEGORIES.TOOLING },
   { name: 'keybindings-help',          description: 'Customize keyboard shortcuts, rebind keys, add chord bindings via ~/.claude/keybindings.json.', category: CATEGORIES.TOOLING },
   { name: 'simplify',                  description: 'Review changed code for reuse, quality, and efficiency; fix any issues found.', category: CATEGORIES.QUALITY },
   { name: 'fewer-permission-prompts',  description: 'Scan transcripts for common read-only Bash and MCP tool calls; add a prioritized allowlist to settings.json.', category: CATEGORIES.TOOLING },
   { name: 'loop',                      description: 'Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo) for polling, status checks, or recurring tasks.', category: CATEGORIES.TOOLING },
   { name: 'schedule',                  description: 'Create, update, list, or run scheduled remote agents (routines) that execute on a cron schedule.', category: CATEGORIES.TOOLING },
-  { name: 'claude-api',                description: 'Build, debug, and optimize Claude API / Anthropic SDK apps — caching, thinking, compaction, model migrations.', category: CATEGORIES.UTILITIES },
+  { name: 'claude-api',                description: 'Build, debug, and optimize Claude API / Anthropic SDK apps â€” caching, thinking, compaction, model migrations.', category: CATEGORIES.UTILITIES },
   { name: 'init',                      description: 'Initialize a new CLAUDE.md file with codebase documentation.', category: CATEGORIES.TOOLING },
-  { name: 'review',                    description: 'Review a pull request — Claude Code built-in, lighter than the Polaris /review-pr workflow.', category: CATEGORIES.QUALITY },
+  { name: 'review',                    description: 'Review a pull request â€” Claude Code built-in, lighter than the Polaris /review-pr workflow.', category: CATEGORIES.QUALITY },
   { name: 'security-review',           description: 'Built-in security review of the pending changes on the current branch.', category: CATEGORIES.QUALITY },
 ];
 
@@ -3343,7 +3359,7 @@ function _describeCommandFile(text) {
 }
 
 // Scan a directory of SKILL.md-bearing subdirectories (e.g. ~/.claude/skills).
-// Returns entries shaped like the main result. Follows symbolic links — many
+// Returns entries shaped like the main result. Follows symbolic links â€” many
 // skills in ~/.claude/skills are symlinks to skill repos elsewhere, and
 // `Dirent.isDirectory()` returns false on a symlink even when it points at a
 // directory. Resolve via `fs.statSync` (follow) to catch those.
@@ -3433,7 +3449,7 @@ function _skillsCacheSignature(workDir) {
   return parts.join('|');
 }
 
-// Main entry — returns a flat array of all discovered skills/commands/agents.
+// Main entry â€” returns a flat array of all discovered skills/commands/agents.
 // Pass `workDir` to include project-local sources for the active session.
 function discoverAllSkills(workDir = null) {
   const key = _skillsCacheSignature(workDir);
@@ -3465,7 +3481,7 @@ function discoverAllSkills(workDir = null) {
       seen.set(s.name, s);
     }
   }
-  // Layer the hardcoded supplement on top — only adds entries we haven't
+  // Layer the hardcoded supplement on top â€” only adds entries we haven't
   // already discovered on disk (so on-disk wins if a name overlaps).
   for (const sup of SUPPLEMENT_SKILLS) {
     if (seen.has(sup.name)) continue;
@@ -3486,8 +3502,8 @@ function discoverAllSkills(workDir = null) {
 }
 
 // ============================================================
-// BACKLOG (task #12) — global cross-project backlog + per-project backlogs
-// Global lives in the Obsidian vault at Backlog/backlog.json (no git — synced via Drive).
+// BACKLOG (task #12) â€” global cross-project backlog + per-project backlogs
+// Global lives in the Obsidian vault at Backlog/backlog.json (no git â€” synced via Drive).
 // Per-project lives at {workDir}/docs/backlog.json (auto-commits on the current branch
 // per Scott's rule: "All updates to backlog.json are automatically committed."
 // v1 commits on current branch; full "always to main" with stash/checkout dance is deferred.
@@ -3508,8 +3524,8 @@ function loadAllBacklogs() {
 
   const cfg = readConfig();
   const result = { global: null, projects: [], archive: { global: null, projects: [] } };
-  // Strip UTF-8 BOM that PowerShell adds by default — JSON.parse rejects BOM-prefixed text
-  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, ''));
+  // Strip UTF-8 BOM that PowerShell adds by default â€” JSON.parse rejects BOM-prefixed text
+  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8').replace(/^ï»¿/, ''));
 
   if (cfg.obsidianVaultPath) {
     const globalPath = path.join(cfg.obsidianVaultPath, 'Backlog', 'backlog.json');
@@ -3530,7 +3546,7 @@ function loadAllBacklogs() {
   }
 
   // Always include every project so the Backlog panel and Add Task scope
-  // dropdown list them all, even ones that don't have docs/backlog.json yet —
+  // dropdown list them all, even ones that don't have docs/backlog.json yet â€”
   // file is created on first task add via addBacklogTask().
   const projects = (cfg.projects || []).filter(p => p.workDir && p.name);
   for (const proj of projects) {
@@ -3614,13 +3630,13 @@ function addBacklogTask(scope, taskInput) {
       const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
       if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
     } catch (e) {
-      // Archive file doesn't exist yet or can't be read — that's fine
+      // Archive file doesn't exist yet or can't be read â€” that's fine
     }
     baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
     baseTask.scope = 'global';
     data.tasks.push(baseTask);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
-    // Vault is Drive-synced, not a git repo — no commit needed
+    // Vault is Drive-synced, not a git repo â€” no commit needed
     return baseTask;
   }
 
@@ -3635,7 +3651,7 @@ function addBacklogTask(scope, taskInput) {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (e) {
     if (e.code === 'ENOENT') {
-      // First task in this project — create docs/ and start an empty backlog
+      // First task in this project â€” create docs/ and start an empty backlog
       try { fs.mkdirSync(path.dirname(filePath), { recursive: true }); } catch {}
       data = { tasks: [] };
     } else {
@@ -3648,7 +3664,7 @@ function addBacklogTask(scope, taskInput) {
     const archiveData = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
     if (Array.isArray(archiveData.tasks)) archivedTasks = archiveData.tasks;
   } catch (e) {
-    // Archive file doesn't exist yet or can't be read — that's fine
+    // Archive file doesn't exist yet or can't be read â€” that's fine
   }
   baseTask.number = _nextBacklogTaskNumber(data.tasks, archivedTasks);
   data.tasks.push(baseTask);
@@ -3672,7 +3688,7 @@ function _autoCommitBacklog(repoDir, taskNumber, verbOverride) {
   exec('git add docs/backlog.json && git commit -m "chore(backlog): ' + verb + ' from Polaris"',
     { cwd: repoDir, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] },
     (err, stdout, stderr) => {
-      // Silently log errors instead of throwing — don't block the UI
+      // Silently log errors instead of throwing â€” don't block the UI
       if (err) {
         console.error('[backlog] auto-commit failed:', err.message);
       }
@@ -3761,7 +3777,7 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
   return tasksToArchive;
 }
 
-// ─── backlog.json write serializer (task #34) ────────────────────────────────
+// â”€â”€â”€ backlog.json write serializer (task #34) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Prevents concurrent /sync-state writes from interleaving as server.js grows
 // async paths during the src/runtime/ module migration (task #25). Node.js
 // serialises sync I/O in the event loop today, so this is defensive for future
@@ -3776,7 +3792,7 @@ function withBacklogLock(fn) {
 function updateBacklogTaskStatus(scope, taskNumber, newStatus, extraFields = {}) {
   console.log(`[backlog] updateBacklogTaskStatus scope=${scope} task=#${taskNumber} newStatus="${newStatus}"`);
   if (!BacklogStatus.safeParse(newStatus).success) {
-    console.warn(`[backlog] REJECTED status "${newStatus}" — not in BacklogStatus enum`);
+    console.warn(`[backlog] REJECTED status "${newStatus}" â€” not in BacklogStatus enum`);
     throw new Error('Invalid status "' + newStatus + '". Valid: ' + BacklogStatus.options.join(', '));
   }
   const cfg = readConfig();
@@ -3815,7 +3831,7 @@ function updateBacklogTaskStatus(scope, taskNumber, newStatus, extraFields = {})
     task.completed_at = null;
   }
   Object.assign(task, extraFields);
-  console.log(`[backlog] task #${taskNum} in ${scope}: ${prevStatus} → ${newStatus}`);
+  console.log(`[backlog] task #${taskNum} in ${scope}: ${prevStatus} â†’ ${newStatus}`);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
   try {
     _autoCommitBacklog(project.workDir, taskNum, 'set task #' + taskNum + ' status to ' + newStatus);
@@ -3958,7 +3974,7 @@ function moveBacklogTask(fromScope, taskNumber, toScope) {
   return { oldNumber: taskNum, newNumber, task };
 }
 
-// Backward-compat shim — the old discoverSkills() signature returned items
+// Backward-compat shim â€” the old discoverSkills() signature returned items
 // with `dirPath`. Some callers (buildDirectSystemPrompt) only need name +
 // description, which the new shape still provides.
 function discoverSkills() {
@@ -3982,11 +3998,11 @@ function _displayPathFor(entry) {
     }
     return p.replace(/\\/g, '/');
   }
-  // No filePath → bundled/built-in supplement entry. Map by namespace.
+  // No filePath â†’ bundled/built-in supplement entry. Map by namespace.
   if (entry.name.startsWith('anthropic-skills:')) {
-    return '(anthropic-skills plugin — bundled, no on-disk source)';
+    return '(anthropic-skills plugin â€” bundled, no on-disk source)';
   }
-  return '(Claude Code built-in — no on-disk source)';
+  return '(Claude Code built-in â€” no on-disk source)';
 }
 
 function groupedSkills(workDir = null) {
@@ -4028,17 +4044,17 @@ function toolSkill({ skill, args } = {}, sessionId) {
     return `Skill not found: "${skill}". Available skills: ${names || '(none)'}`;
   }
   // Supplement entries (anthropic-skills:*, built-ins like /init, /review)
-  // have no on-disk SKILL.md — they're Claude Code internals or bundled
+  // have no on-disk SKILL.md â€” they're Claude Code internals or bundled
   // plugins. They surface in the Skills panel for completeness but aren't
   // directly invokable through Polaris's Direct agent loop. In Max chat
   // sessions, the slash command works because Claude Code handles it.
   if (!match.filePath) {
-    return `"${match.name}" is a Claude Code built-in / bundled skill. It runs natively in Max chat sessions (just type the slash command). The Direct agent loop in Polaris doesn't load this skill's body — only on-disk skills under ~/.claude/skills/, ~/.claude/commands/, or the codex plugin are loadable here.\n\nDescription:\n${match.description}`;
+    return `"${match.name}" is a Claude Code built-in / bundled skill. It runs natively in Max chat sessions (just type the slash command). The Direct agent loop in Polaris doesn't load this skill's body â€” only on-disk skills under ~/.claude/skills/, ~/.claude/commands/, or the codex plugin are loadable here.\n\nDescription:\n${match.description}`;
   }
   let text = '';
   try { text = fs.readFileSync(match.filePath, 'utf8'); }
   catch (e) { return `Failed to read skill definition for "${skill}": ${e.message}`; }
-  // Strip frontmatter if present — the model has already seen name+description
+  // Strip frontmatter if present â€” the model has already seen name+description
   // in the system prompt; the body is what guides execution. Commands without
   // frontmatter pass through unchanged.
   let body = text;
@@ -4120,7 +4136,7 @@ function toolSetTaskState({ taskNumber, taskState, lastSkill } = {}, sessionId) 
   return `Task state updated: #${session.taskNumber} ${session.taskState} /${session.lastSkill}`;
 }
 
-// assertLocks — only the lock-file check extracted from assertWritable.
+// assertLocks â€” only the lock-file check extracted from assertWritable.
 // Called after evaluatePolicy handles the path-boundary check so enforcement
 // is identical: path boundary via policy, lock gate via this helper.
 function assertLocks(file_path, workDir) {
@@ -4142,11 +4158,11 @@ function assertLocks(file_path, workDir) {
     }
   } catch (e) {
     if (e.message.startsWith('Write blocked:')) throw e;
-    // locks.json missing or unreadable — treat as no locks
+    // locks.json missing or unreadable â€” treat as no locks
   }
 }
 
-// assertSafeWriteSize — hard cap on file write size to prevent corruption
+// assertSafeWriteSize â€” hard cap on file write size to prevent corruption
 // Catches catastrophic writes (e.g. agent interleaving CSS rules between every
 // character of an HTML file, exploding 8K lines to 1.7M lines as in v1.0.91).
 // Cheaper to reject here than to send to Cross-Check.
@@ -4157,7 +4173,7 @@ function assertSafeWriteSize(content, file_path) {
     throw new Error(
       `Write rejected: "${path.basename(file_path)}" would be ${mb} MB ` +
       `(limit ${MAX_WRITE_BYTES / (1024 * 1024)} MB). ` +
-      `This is almost certainly corruption — review the content before retrying.`
+      `This is almost certainly corruption â€” review the content before retrying.`
     );
   }
   // Count lines without allocating a split array for very large strings
@@ -4169,16 +4185,16 @@ function assertSafeWriteSize(content, file_path) {
     throw new Error(
       `Write rejected: "${path.basename(file_path)}" would be ${lines.toLocaleString()} lines ` +
       `(limit ${MAX_WRITE_LINES.toLocaleString()}). ` +
-      `This is almost certainly corruption — review the content before retrying.`
+      `This is almost certainly corruption â€” review the content before retrying.`
     );
   }
 }
 
-// ─── Source-file backup (Phase 0 of write-gate) ─────────────────────────────
+// â”€â”€â”€ Source-file backup (Phase 0 of write-gate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Snapshots a file to %APPDATA%\.claude\polaris\source-backups\ before any
 // agent-driven write. Covers Edit, Write, and shell-tool writes (PowerShell
 // Set-Content/Add-Content/Out-File, Bash > and >> redirection). Restore is a
-// plain file copy from the backup directory — no git archeology needed.
+// plain file copy from the backup directory â€” no git archeology needed.
 //
 // Naming: source-backups/<workDir basename>/<sanitizedRelPath>.<ISO>.<ext>
 // Retention: keep last SOURCE_BACKUP_MAX_PER_FILE per file path; prune oldest
@@ -4255,7 +4271,7 @@ function pruneSourceBackupsByTotalSize() {
   }
 }
 
-// detectShellWriteTargets — best-effort extraction of file paths a Bash or
+// detectShellWriteTargets â€” best-effort extraction of file paths a Bash or
 // PowerShell command will write to. Catches common dangerous patterns:
 // Set-Content / Add-Content / Out-File / Tee-Object / Copy-Item / Move-Item
 // and shell redirection > and >>. Returns absolute paths.
@@ -4280,11 +4296,11 @@ function detectShellWriteTargets(command, workDir) {
   return Array.from(targets);
 }
 
-// ─── Encoding sanity check (Phase 1 of write-gate) ─────────────────────────
+// â”€â”€â”€ Encoding sanity check (Phase 1 of write-gate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Catches the most common agent-induced corruption: writes performed in the
 // wrong encoding (e.g. PowerShell here-strings written as UTF-16 / CP1252,
 // rewriting the file with U+FFFD replacement chars and stripping the UTF-8
-// BOM). Two checks: (1) auto-preserve BOM if the original had one — fixes
+// BOM). Two checks: (1) auto-preserve BOM if the original had one â€” fixes
 // transparently rather than throwing; (2) reject the write if the new
 // content has more U+FFFD replacement chars than the original.
 function hasUtf8BOM(buf) {
@@ -4293,15 +4309,15 @@ function hasUtf8BOM(buf) {
 
 function countReplacementChars(text) {
   if (!text) return 0;
-  const m = text.match(/�/g);
+  const m = text.match(/ï¿½/g);
   return m ? m.length : 0;
 }
 
-// preserveBOMAndCheckEncoding — called from toolWrite / toolEdit before
+// preserveBOMAndCheckEncoding â€” called from toolWrite / toolEdit before
 // fs.writeFileSync. Returns the (possibly BOM-prefixed) content to write.
 // Throws if encoding corruption is detected.
 function preserveBOMAndCheckEncoding(filePath, newContent) {
-  if (!fs.existsSync(filePath)) return newContent;  // new file — nothing to compare
+  if (!fs.existsSync(filePath)) return newContent;  // new file â€” nothing to compare
   let origBuf;
   try { origBuf = fs.readFileSync(filePath); } catch { return newContent; }
 
@@ -4309,7 +4325,7 @@ function preserveBOMAndCheckEncoding(filePath, newContent) {
   // Strip any leading BOM the agent may have included; we'll add it back if the original had one.
   if (finalContent.charCodeAt(0) === 0xFEFF) finalContent = finalContent.slice(1);
 
-  const origText = origBuf.toString('utf8').replace(/^﻿/, '');
+  const origText = origBuf.toString('utf8').replace(/^ï»¿/, '');
   const origRepl = countReplacementChars(origText);
   const newRepl  = countReplacementChars(finalContent);
   if (newRepl > origRepl) {
@@ -4325,17 +4341,17 @@ function preserveBOMAndCheckEncoding(filePath, newContent) {
 
   // Auto-preserve UTF-8 BOM if original had one.
   if (hasUtf8BOM(origBuf) && finalContent.charCodeAt(0) !== 0xFEFF) {
-    finalContent = '﻿' + finalContent;
+    finalContent = 'ï»¿' + finalContent;
   }
   return finalContent;
 }
 
-// snapshotForShellEncodingCheck / verifyShellEncoding — called around shell
+// snapshotForShellEncodingCheck / verifyShellEncoding â€” called around shell
 // command execution. Captures raw bytes of write targets before exec; after
 // exec, compares replacement-char counts and BOM presence. Detected damage
 // is appended to the tool result as a strong warning so the agent (and the
 // human reading the terminal) sees it. The corrupted file is not rolled back
-// automatically — the backup taken in Phase 0 is the recovery path.
+// automatically â€” the backup taken in Phase 0 is the recovery path.
 function snapshotForShellEncodingCheck(targets) {
   const snapshots = new Map();
   for (const target of targets) {
@@ -4377,10 +4393,10 @@ function verifyShellEncoding(snapshots) {
   return warnings;
 }
 
-// askForCrossCheckApproval — broadcasts cross-check result to UI and waits for
+// askForCrossCheckApproval â€” broadcasts cross-check result to UI and waits for
 // the user to approve or reject. Mirror of toolAskUserQuestion's pattern.
 // pendingCrossChecks holds { resolve, timer } so the WS handler can clear the
-// timer when the user responds — otherwise the 10-minute timer pins the event
+// timer when the user responds â€” otherwise the 10-minute timer pins the event
 // loop until it fires.
 function askForCrossCheckApproval({ sessionId, filePath, operation, review, originalLines, newLines, originalBytes, newBytes }) {
   return new Promise(resolve => {
@@ -4391,12 +4407,11 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
         // Only spawn session on FAIL verdict timeout; PASS/ERROR auto-approve
         if (review?.verdict === 'FAIL') {
           resolve('reject');
-          autoLaunchCrossCheckSession({ sessionId, filePath, operation, review });
         } else {
           resolve('approve');
         }
       }
-    }, 600000); // 10 min timeout — defaults to reject for safety
+    }, 600000); // 10 min timeout â€” defaults to reject for safety
     pendingCrossChecks.set(checkId, { resolve, timer, sessionId, filePath, operation, review });
     broadcast({
       type: 'cross-check-pending',
@@ -4408,16 +4423,78 @@ function askForCrossCheckApproval({ sessionId, filePath, operation, review, orig
   });
 }
 
-function autoLaunchCrossCheckSession({ sessionId, filePath, operation, review }) {
+const crossCheckProjectSessions = new Map();
+
+function normalizeCrossCheckPath(p) {
+  return p ? path.resolve(p).replace(/\\/g, '/').toLowerCase() : '';
+}
+
+function crossCheckProjectKey(projectName, workDir) {
+  return normalizeCrossCheckPath(workDir) || `project:${projectName || 'unknown'}`;
+}
+
+function findProjectForCrossCheck({ sessionId, filePath, workDir }) {
   const config = readConfig();
   const sess = sessions.get(sessionId) || {};
-  const issueLines = Array.isArray(review?.issues) && review.issues.length
-    ? '\n\nIssues:\n' + review.issues.map(i => `- ${i}`).join('\n')
-    : '';
-  const opPart = operation ? ` on ${operation}` : '';
-  const prompt = `Cross-check ${review?.verdict || 'FAIL'}${opPart} of ${filePath}:\n\n${review?.summary || ''}${issueLines}\n\nPlease review and fix the issues identified above.`;
+  const candidates = [];
+  if (workDir) candidates.push(workDir);
+  if (sess.repoWorkDir) candidates.push(sess.repoWorkDir);
+  if (sess.workDir) candidates.push(sess.workDir);
+  if (filePath) candidates.push(path.dirname(filePath));
+
+  const projects = config.projects || [];
+  let matched = null;
+  let matchedLen = -1;
+  for (const project of projects) {
+    if (!project.workDir) continue;
+    const root = normalizeCrossCheckPath(project.workDir);
+    for (const candidate of candidates) {
+      const norm = normalizeCrossCheckPath(candidate);
+      if (!norm) continue;
+      if ((norm === root || norm.startsWith(root + '/')) && root.length > matchedLen) {
+        matched = project;
+        matchedLen = root.length;
+      }
+    }
+  }
+
+  const projectName = sess.projectName || matched?.name || null;
+  const projectWorkDir = matched?.workDir || sess.repoWorkDir || sess.workDir || workDir || null;
+  return { config, sourceSession: sess, projectName, projectWorkDir };
+}
+
+function indexCrossCheckProjectSession(session) {
+  if (!session || session.chipLabel !== 'Cross Check') return;
+  const key = session.crossCheckProjectKey || crossCheckProjectKey(session.crossCheckProjectName || session.projectName, session.repoWorkDir || session.workDir);
+  session.crossCheckProjectKey = key;
+  session.crossCheckProjectName = session.crossCheckProjectName || session.projectName || null;
+  crossCheckProjectSessions.set(key, session.id);
+}
+
+function getExistingCrossCheckSession(key) {
+  const id = crossCheckProjectSessions.get(key);
+  if (id && sessions.has(id)) return sessions.get(id);
+  for (const session of sessions.values()) {
+    if (session.chipLabel !== 'Cross Check') continue;
+    const existingKey = session.crossCheckProjectKey || crossCheckProjectKey(session.crossCheckProjectName || session.projectName, session.repoWorkDir || session.workDir);
+    if (existingKey === key) {
+      session.crossCheckProjectKey = key;
+      crossCheckProjectSessions.set(key, session.id);
+      return session;
+    }
+  }
+  crossCheckProjectSessions.delete(key);
+  return null;
+}
+
+function ensureCrossCheckSession({ projectName, projectWorkDir, config }) {
+  const key = crossCheckProjectKey(projectName, projectWorkDir);
+  const existing = getExistingCrossCheckSession(key);
+  if (existing) return existing;
+
+  const prompt = `Cross Check session for ${projectName || projectWorkDir || 'this project'}.\n\nStand by for cross-check failures. When a failure arrives, inspect the referenced files, fix the issue, run targeted verification, and report the result.`;
   const id = `chat_${Date.now()}`;
-  const name = generateSessionName(prompt);
+  const name = `Cross Check - ${projectName || path.basename(projectWorkDir || 'Project')}`;
   let chatModel;
   if (config.crossCheckModel) {
     chatModel = config.crossCheckModel;
@@ -4427,32 +4504,107 @@ function autoLaunchCrossCheckSession({ sessionId, filePath, operation, review })
       ? 'anthropic/claude-sonnet-4-6 (Max plan)'
       : (config.chatModel || 'deepseek/deepseek-chat');
   }
-  const effectiveWorkDir = sess.repoWorkDir || sess.workDir || null;
+  const effectiveWorkDir = projectWorkDir || null;
   sessions.set(id, {
-    id, name, workDir: effectiveWorkDir, projectName: sess.projectName || null,
+    id, name, workDir: effectiveWorkDir, projectName: projectName || null,
     chipLabel: 'Cross Check', chipColor: '#ef4444',
+    crossCheckProjectKey: key, crossCheckProjectName: projectName || null,
+    repoWorkDir: effectiveWorkDir,
     isChat: true, model: chatModel, tier: 'balanced',
-    status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
+    status: 'done', startAt: Date.now(), endAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
     keepAliveInjected: false, lastKeepAliveAt: null,
     proc: null, watcher: null, timeout: null,
     lines: [], lastPrompt: prompt, claudeSessionId: null,
     pendingImages: [], pendingDocs: [], pendingAudio: [], pendingVideos: [],
   });
-  onSessionOpened(id, sess.projectName || null);
-  if (effectiveWorkDir && fs.existsSync(effectiveWorkDir)) {
-    const wtPath = createSessionWorktree(id, effectiveWorkDir);
-    if (wtPath) {
-      const s = sessions.get(id);
-      if (s) { s.repoWorkDir = effectiveWorkDir; s.worktreePath = wtPath; s.workDir = wtPath; }
-    }
-  }
-  broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: sess.projectName || null, chipLabel: 'Cross Check', chipColor: '#ef4444', model: chatModel, isChat: true });
+  const created = sessions.get(id);
+  indexCrossCheckProjectSession(created);
+  broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, chipLabel: 'Cross Check', chipColor: '#ef4444', model: chatModel, isChat: true });
   broadcastInitialUserPrompt(id, prompt);
   saveSessions();
-  spawnChatRouter(id, prompt, config);
+  return sessions.get(id);
 }
 
-// askForInstallerPermission — blocks shell execution until the user explicitly
+function ensureCrossCheckSessionsForConfiguredProjects() {
+  if (!STARTUP_CROSSCHECK_AUTORUN) {
+    console.log('[cross-check] configured session auto-ensure disabled');
+    return;
+  }
+  const config = readConfig();
+  const seen = new Set();
+  const configuredProjects = config.projects || [];
+  const hasPolarisProject = configuredProjects.some(p => p?.name === 'Polaris' && p.workDir);
+  const projects = hasPolarisProject ? configuredProjects : [{ name: 'Polaris', workDir: __dirname }, ...configuredProjects];
+  for (const project of projects) {
+    if (!project?.workDir) continue;
+    if (!fs.existsSync(project.workDir)) continue;
+    const key = crossCheckProjectKey(project.name || null, project.workDir);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ensureCrossCheckSession({ projectName: project.name || null, projectWorkDir: project.workDir, config });
+  }
+}
+
+function closeCrossCheckSessionForProject(projectName, projectWorkDir) {
+  const key = crossCheckProjectKey(projectName || null, projectWorkDir || null);
+  const session = getExistingCrossCheckSession(key);
+  if (!session) return;
+  if (session.proc && !session.proc.killed) session.proc.kill();
+  if (session.timeout) clearTimeout(session.timeout);
+  if (session.watcher) session.watcher.close();
+  onSessionClosed(session.id);
+  deleteSessionStateFile(session.id);
+  removeSessionWorktree(session.id);
+  sessions.delete(session.id);
+  crossCheckProjectSessions.delete(key);
+  broadcast({ type: 'session-closed', sessionId: session.id });
+  saveSessions();
+}
+
+function buildCrossCheckFailurePrompt({ filePath, operation, review, source }) {
+  const issueLines = Array.isArray(review?.issues) && review.issues.length
+    ? '\n\nIssues:\n' + review.issues.map(i => `- ${i}`).join('\n')
+    : '';
+  const opPart = operation ? ` on ${operation}` : '';
+  const sourceLine = source ? `Source: ${source}\n` : '';
+  return `${sourceLine}Cross-check ${review?.verdict || 'FAIL'}${opPart} of ${filePath}:\n\n${review?.summary || ''}${issueLines}\n\nFix this failure in the project worktree. Inspect the referenced file, make the smallest safe correction, run targeted verification, and report what changed.`;
+}
+
+function ensureCrossCheckSessionWorktree(session) {
+  if (!session || session.worktreePath) return;
+  const sourceWorkDir = session.repoWorkDir || session.workDir;
+  if (!sourceWorkDir || !fs.existsSync(sourceWorkDir)) return;
+  const wtPath = createSessionWorktree(session.id, sourceWorkDir);
+  if (wtPath) {
+    session.repoWorkDir = sourceWorkDir;
+    session.worktreePath = wtPath;
+    session.workDir = wtPath;
+    broadcast({ type: 'session-project-changed', sessionId: session.id, projectName: session.projectName || null, workDir: wtPath });
+  }
+}
+
+function routeCrossCheckFailureToProjectSession({ sessionId, filePath, operation, review, workDir, source }) {
+  if (review?.verdict !== 'FAIL') return null;
+  const { config, projectName, projectWorkDir } = findProjectForCrossCheck({ sessionId, filePath, workDir });
+  const session = ensureCrossCheckSession({ projectName, projectWorkDir, config });
+  if (!session) return null;
+  ensureCrossCheckSessionWorktree(session);
+
+  const prompt = buildCrossCheckFailurePrompt({ filePath, operation, review, source });
+  const turn = { prompt, displayPrompt: prompt };
+  if (session.status === 'running') {
+    if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
+    session.pendingTurns.push({ ...turn, displayed: false });
+    broadcast({ type: 'queue-status', sessionId: session.id, pending: session.pendingTurns.length, turns: session.pendingTurns.map(t => ({ text: t.displayPrompt || t.prompt || '' })) });
+    broadcast({ type: 'line', sessionId: session.id, role: 'system', text: `[cross-check queued] ${path.basename(filePath || 'change')}` });
+  } else {
+    executeResumeTurn(session.id, turn);
+  }
+  saveSessions();
+  return session.id;
+}
+
+// askForInstallerPermission â€” blocks shell execution until the user explicitly
 // allows the installer in the UI. Defaults to reject after 5 min timeout.
 function askForInstallerPermission({ sessionId, exePath, command }) {
   return new Promise(resolve => {
@@ -4462,7 +4614,7 @@ function askForInstallerPermission({ sessionId, exePath, command }) {
         pendingInstallerChecks.delete(checkId);
         resolve('reject');
       }
-    }, 300000); // 5 min timeout — defaults to reject
+    }, 300000); // 5 min timeout â€” defaults to reject
     pendingInstallerChecks.set(checkId, { resolve, timer });
     broadcast({
       type: 'installer-permission-pending',
@@ -4472,12 +4624,12 @@ function askForInstallerPermission({ sessionId, exePath, command }) {
   });
 }
 
-// ─── Post-hoc cross-check (Phase 2 extension) ────────────────────────────────
+// â”€â”€â”€ Post-hoc cross-check (Phase 2 extension) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // For writes that have already happened (shell commands, Max CLI sessions),
 // the gate runs after the fact. The reviewer sees the same diff, but the UI
 // shows "Keep change" / "Restore original" instead of "Approve" / "Reject".
 // Restoring writes originalContent back to disk directly.
-const pendingPostHocChecks = new Map(); // checkId → { resolve, timer }
+const pendingPostHocChecks = new Map(); // checkId â†’ { resolve, timer }
 
 async function runPostHocCrossCheck({ sessionId, filePath, operation, originalContent, newContent, workDir, unifiedDiff }) {
   const cfg = readConfig();
@@ -4485,7 +4637,7 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
   const session = sessions.get(sessionId);
   if (session?.evalRunner || session?.isChat === false) return;
 
-  // Normalize CRLF → LF so the 200-byte bypass and line counts aren't thrown
+  // Normalize CRLF â†’ LF so the 200-byte bypass and line counts aren't thrown
   // off by Windows autocrlf converting LF on checkout.
   const origNorm = (originalContent || '').replace(/\r\n/g, '\n');
   const nextNorm = (newContent || '').replace(/\r\n/g, '\n');
@@ -4500,10 +4652,11 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
 
   let review;
   if (!apiKey) {
-    review = { verdict: 'ERROR', summary: 'No openRouterApiKey — review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
+    review = { verdict: 'ERROR', summary: 'No openRouterApiKey â€” review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
   } else {
     review = await crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent: origNorm, newContent: nextNorm, model: reviewerModel, apiKey, unifiedDiff });
   }
+  routeCrossCheckFailureToProjectSession({ sessionId, filePath, operation, review, workDir, source: 'post-hoc' });
 
   const origLines = origNorm.split('\n').length;
   const newLines  = nextNorm.split('\n').length;
@@ -4539,7 +4692,7 @@ async function runPostHocCrossCheck({ sessionId, filePath, operation, originalCo
   }
 }
 
-// runCrossCheckAndApproval — orchestrates engine + UI prompt + storage.
+// runCrossCheckAndApproval â€” orchestrates engine + UI prompt + storage.
 // Returns true if user approved (write should proceed), false if rejected.
 // Bypasses cross-check entirely if the change delta is under 200 bytes
 // (single-char fixes don't need a Sonnet call) or if cross-check is disabled.
@@ -4547,17 +4700,17 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
   const cfg = readConfig();
   if (cfg.crossCheckEnabled === false) return true; // explicitly disabled
 
-  // Bypass for Agent Eval sessions and background routine sessions — both run
+  // Bypass for Agent Eval sessions and background routine sessions â€” both run
   // unattended with no human to approve.
   const session = sessions.get(sessionId);
   if (session?.evalRunner || session?.isChat === false) return true;
 
-  // Pipeline skills write to backlog.json as trusted orchestration steps — bypass
+  // Pipeline skills write to backlog.json as trusted orchestration steps â€” bypass
   // approval for that specific file so /finish-build and /cross-boundary-audit
   // don't stall waiting for a human cross-check that can't fire unattended.
   if (filePath && path.basename(filePath) === 'backlog.json') return true;
 
-  // Normalize CRLF → LF so the 200-byte bypass and line counts aren't skewed
+  // Normalize CRLF â†’ LF so the 200-byte bypass and line counts aren't skewed
   // by Windows autocrlf adding \r on checkout when the new content uses LF.
   const origNorm = (originalContent || '').replace(/\r\n/g, '\n');
   const nextNorm = (newContent || '').replace(/\r\n/g, '\n');
@@ -4572,7 +4725,7 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
 
   let review;
   if (!apiKey) {
-    review = { verdict: 'ERROR', summary: 'No openRouterApiKey configured — review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
+    review = { verdict: 'ERROR', summary: 'No openRouterApiKey configured â€” review skipped, manual approval required', issues: [], model: reviewerModel, ms: 0, usage: null };
   } else {
     review = await crossCheckChange({
       sessionId, sessionPrompt, filePath,
@@ -4583,6 +4736,7 @@ async function runCrossCheckAndApproval({ sessionId, filePath, operation, origin
       unifiedDiff,
     });
   }
+  routeCrossCheckFailureToProjectSession({ sessionId, filePath, operation, review, source: 'pre-write' });
 
   const origLines = origNorm ? origNorm.split('\n').length : 0;
   const newLines  = nextNorm.split('\n').length;
@@ -4638,10 +4792,10 @@ async function toolEdit({ file_path, old_string, new_string, replace_all }, work
   if (!content.includes(old_string)) throw new Error(`old_string not found in ${file_path}`);
   const updated = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
   assertSafeWriteSize(updated, file_path);
-  // Build a compact diff from old_string → new_string so the cross-check
+  // Build a compact diff from old_string â†’ new_string so the cross-check
   // reviewer sees exactly what changed, not the entire file.  buildDiffContext
   // treats everything between the first and last changed line as one big
-  // removed/added block — for a large file with scattered hunks (e.g. adding a
+  // removed/added block â€” for a large file with scattered hunks (e.g. adding a
   // new function 6 000 lines in) the added section is truncated before the
   // reviewer can see it.  Passing the focused edit diff bypasses that path.
   const editDiff = buildEditDiff(file_path, old_string, new_string);
@@ -4718,9 +4872,9 @@ function extractReviewJson(text) {
   return null;
 }
 
-// ─── Cross-Check engine (Phase 2) ────────────────────────────────────────────
+// â”€â”€â”€ Cross-Check engine (Phase 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Reviews proposed file changes via a configurable model before they hit disk.
-// Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 — at
+// Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 â€” at
 // 90% of Sonnet's capability for ~3x lower cost, it's the right tier for a
 // structured-JSON classifier task that fires on every >200-byte write.
 // Override via cfg.crossCheckModel.
@@ -4728,7 +4882,7 @@ const CROSS_CHECK_DEFAULT_MODEL = 'anthropic/claude-haiku-4-5';
 const CROSS_CHECK_DIFF_BUDGET = 100 * 1024;  // 100 KB max combined before/after sent to reviewer
 
 function buildDiffContext(originalContent, newContent) {
-  // Normalize CRLF → LF so Windows checkouts (autocrlf=true) don't produce
+  // Normalize CRLF â†’ LF so Windows checkouts (autocrlf=true) don't produce
   // spurious whole-file diffs when the on-disk file has CRLF but the incoming
   // content from Claude has LF.  The reviewer model should see semantic changes,
   // not line-ending noise.
@@ -4738,7 +4892,7 @@ function buildDiffContext(originalContent, newContent) {
   if (totalBytes <= CROSS_CHECK_DIFF_BUDGET) {
     return { mode: 'full', original: orig, after: next };
   }
-  // Large file — emit a unified diff of just the changed region + context.
+  // Large file â€” emit a unified diff of just the changed region + context.
   // Finds the longest common prefix and suffix, leaving only the changed block.
   const origLines = orig.split('\n');
   const nextLines = next.split('\n');
@@ -4756,7 +4910,7 @@ function buildDiffContext(originalContent, newContent) {
   const nEnd   = Math.min(nextLines.length, nextLines.length - suffix + CTX);
   // Build each section separately so the budget can be split evenly between
   // removed and added lines.  Formerly the hunk was assembled in one pass and
-  // sliced at 100 KB — for a large file the entire removal region would consume
+  // sliced at 100 KB â€” for a large file the entire removal region would consume
   // the budget before a single '+' line appeared, making the reviewer see only
   // deletions and conclude the file was wiped.
   const header      = `@@ -${oStart + 1},${oEnd - oStart} +${oStart + 1},${nEnd - oStart} @@`;
@@ -4770,7 +4924,7 @@ function buildDiffContext(originalContent, newContent) {
     return { mode: 'unified-diff', diff: fullDiff };
   }
 
-  // Over budget — allocate half to removed and half to added so both sides are
+  // Over budget â€” allocate half to removed and half to added so both sides are
   // always visible to the reviewer regardless of the change size.
   const halfBudget = Math.floor(CROSS_CHECK_DIFF_BUDGET / 2);
   let trimmedRemoved = removedPart;
@@ -4797,7 +4951,7 @@ function buildEditDiff(filePath, oldStr, newStr) {
   const header  = `--- ${path.basename(filePath)}\n+++ ${path.basename(filePath)}\n@@ edit @@`;
   const full    = [header, removed, added].join('\n');
   if (Buffer.byteLength(full, 'utf8') <= CROSS_CHECK_DIFF_BUDGET) return full;
-  // Edge case: pathologically large edit — split budget evenly so both sides
+  // Edge case: pathologically large edit â€” split budget evenly so both sides
   // stay visible (same approach as buildDiffContext).
   const half = Math.floor(CROSS_CHECK_DIFF_BUDGET / 2);
   const trimRemoved = Buffer.byteLength(removed, 'utf8') > half
@@ -4824,7 +4978,7 @@ function callOpenRouterOnce(model, apiKey, messages, maxTokens = 800, timeoutMs 
         'X-Title':        'Polaris',
         'Connection':     'close',
       },
-      // Fresh agent per request — see callOpenRouterStream for rationale.
+      // Fresh agent per request â€” see callOpenRouterStream for rationale.
       agent: new https.Agent({ keepAlive: false, maxSockets: 1 }),
       timeout: timeoutMs,
     }, res => {
@@ -4858,9 +5012,9 @@ function withTimeout(promise, ms) {
 async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalContent, newContent, model, apiKey, unifiedDiff }) {
   const startMs = Date.now();
   const useModel = model || CROSS_CHECK_DEFAULT_MODEL;
-  // Normalize CRLF → LF for consistent line/byte counts.  On Windows with
+  // Normalize CRLF â†’ LF for consistent line/byte counts.  On Windows with
   // autocrlf=true the on-disk file has CRLF while incoming content uses LF;
-  // without normalization the SIZE header would show a spurious ±N-byte delta
+  // without normalization the SIZE header would show a spurious Â±N-byte delta
   // equal to the number of lines, misleading the reviewer model.
   const origNorm = originalContent ? originalContent.replace(/\r\n/g, '\n') : '';
   const nextNorm = newContent      ? newContent.replace(/\r\n/g, '\n')      : '';
@@ -4888,26 +5042,26 @@ async function crossCheckChange({ sessionId, sessionPrompt, filePath, originalCo
 
   const taskLine = sessionPrompt
     ? `TASK: ${sessionPrompt}`
-    : `TASK: (not captured — assess technical correctness only; do not FAIL solely because task context is missing)`;
+    : `TASK: (not captured â€” assess technical correctness only; do not FAIL solely because task context is missing)`;
 
-  const reviewPrompt = `TEXT-ONLY CODE REVIEW — DO NOT EXECUTE ANY COMMANDS OR USE ANY TOOLS.
+  const reviewPrompt = `TEXT-ONLY CODE REVIEW â€” DO NOT EXECUTE ANY COMMANDS OR USE ANY TOOLS.
 Your sole output must be one JSON object. No shell commands. No file reads. No tool calls. Just JSON.
 
 You are reviewing a file change for the Polaris project.
 
 ${taskLine}
 FILE: ${filePath}
-SIZE: ${origLines} → ${newLines} lines  /  ${origBytes} → ${newBytes} bytes
+SIZE: ${origLines} â†’ ${newLines} lines  /  ${origBytes} â†’ ${newBytes} bytes
 
 ${diffSection}
 
 Review for:
-1. Corruption — gibberish, structural damage, encoding mojibake, repeated identical content
-2. Correctness — does the change actually implement the stated task? (skip this check if TASK is not captured)
-3. Quality — broken syntax, dead code, security issues, malformed HTML/JS/CSS
+1. Corruption â€” gibberish, structural damage, encoding mojibake, repeated identical content
+2. Correctness â€” does the change actually implement the stated task? (skip this check if TASK is not captured)
+3. Quality â€” broken syntax, dead code, security issues, malformed HTML/JS/CSS
 
 If the diff is non-empty and the changes look intentional and technically sound, verdict is PASS.
-When TASK is not captured, base your verdict solely on corruption and quality signals — PASS if the changes look like valid, intentional code edits.
+When TASK is not captured, base your verdict solely on corruption and quality signals â€” PASS if the changes look like valid, intentional code edits.
 Output ONLY this JSON object with no other text:
 {"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
 
@@ -4931,7 +5085,7 @@ Output ONLY this JSON object with no other text:
         return { verdict: 'ERROR', summary: `Codex CLI exited with code ${proc.status}: ${proc.stderr || '(no stderr)'}`, issues: [], model: useModel, ms: Date.now() - startMs, usage: null };
       }
       const codexOutput = proc.stdout || '';
-      // Extract JSON from Codex response — uses envelope-aware extractor so CLI
+      // Extract JSON from Codex response â€” uses envelope-aware extractor so CLI
       // wrappers like {"output":"...{\"verdict\":...}"} are unwrapped correctly.
       const jsonStr = extractReviewJson(codexOutput);
       if (!jsonStr) {
@@ -4966,7 +5120,7 @@ Output ONLY this JSON object with no other text:
   if (result.error) {
     return { verdict: 'ERROR', summary: result.error, issues: [], model: useModel, ms, usage: null };
   }
-  // Robust JSON extraction — find the first balanced {} object, ignoring trailing prose/objects.
+  // Robust JSON extraction â€” find the first balanced {} object, ignoring trailing prose/objects.
   const jsonStr = extractFirstJson(result.content || '');
   if (!jsonStr) {
     return { verdict: 'ERROR', summary: 'No JSON in reviewer response', issues: [result.content?.slice(0, 200) || ''], model: useModel, ms, usage: result.usage };
@@ -5045,9 +5199,9 @@ function loadAllCrossChecks(limit = 200) {
   return all.sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, limit);
 }
 
-// ─── Pre-build cross-check ───────────────────────────────────────────────────
+// â”€â”€â”€ Pre-build cross-check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Aggregate cross-check pass over every file changed since the last check.
-// Build button gates on this — if the repo state hasn't been reviewed, build
+// Build button gates on this â€” if the repo state hasn't been reviewed, build
 // is rejected and the UI prompts the user to run the check first.
 const PRE_BUILD_CHECK_PATH  = path.join(POLARIS_DIR, 'pre-build-check.json');
 const LAST_BUILD_HEAD_PATH  = path.join(POLARIS_DIR, 'last-build-head.json');
@@ -5201,13 +5355,13 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
   let baseCommit = null;
   let baseVersion = null;
   try {
-    const raw = fs.readFileSync(headPath, 'utf8').replace(/^﻿/, '');
+    const raw = fs.readFileSync(headPath, 'utf8').replace(/^ï»¿/, '');
     const saved = JSON.parse(raw);
     baseCommit = saved.head || null;
     baseVersion = saved.version || null;
   } catch {}
 
-  // Fallback: no saved head — find the commit that bumped package.json to the
+  // Fallback: no saved head â€” find the commit that bumped package.json to the
   // current version. That's the effective "last build" boundary.
   if (!baseCommit) {
     try {
@@ -5226,7 +5380,7 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
           if (pkgAtHash.version === pkg.version) {
             baseCommit = hash; // keep updating to get the oldest matching commit
           } else {
-            break; // older version found — done
+            break; // older version found â€” done
           }
         } catch {}
       }
@@ -5254,11 +5408,11 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
   }
 
   if (!apiKey) {
-    sendTo(ws, { type: 'pre-build-check-error', message: 'No OpenRouter API key configured — cannot run reviewer model.' });
+    sendTo(ws, { type: 'pre-build-check-error', message: 'No OpenRouter API key configured â€” cannot run reviewer model.' });
     return;
   }
 
-  // ── Syntax check: run node --check on every JS file before AI review ────────
+  // â”€â”€ Syntax check: run node --check on every JS file before AI review â”€â”€â”€â”€â”€â”€â”€â”€
   const results = [];
   const syntaxFailed = new Set();
   for (const rel of files) {
@@ -5268,7 +5422,16 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
       execSync(`node --check "${abs}"`, { stdio: ['ignore', 'ignore', 'pipe'] });
     } catch (e) {
       const stderr = e.stderr ? e.stderr.toString().trim() : String(e.message || e);
-      results.push({ file: rel, verdict: 'FAIL', summary: 'Syntax error (node --check)', issues: [stderr], ms: 0 });
+      const review = { verdict: 'FAIL', summary: 'Syntax error (node --check)', issues: [stderr], model: 'node --check', ms: 0 };
+      results.push({ file: rel, verdict: 'FAIL', summary: review.summary, issues: review.issues, ms: 0 });
+      routeCrossCheckFailureToProjectSession({
+        sessionId: 'pre-build-check',
+        filePath: abs,
+        operation: 'Pre-build syntax',
+        review,
+        workDir: sourcePath,
+        source: 'pre-build',
+      });
       syntaxFailed.add(rel);
     }
   }
@@ -5278,7 +5441,7 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
     const rel = filesToReview[i];
     const abs = path.join(sourcePath, rel);
 
-    // Use git diff for the review — correct multi-hunk output regardless of file size.
+    // Use git diff for the review â€” correct multi-hunk output regardless of file size.
     let unifiedDiff = null;
     if (baseCommit) {
       try {
@@ -5309,6 +5472,14 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
       apiKey,
       unifiedDiff,
     });
+    routeCrossCheckFailureToProjectSession({
+      sessionId: 'pre-build-check',
+      filePath: abs,
+      operation: 'Pre-build',
+      review,
+      workDir: sourcePath,
+      source: 'pre-build',
+    });
     results.push({
       file: rel,
       verdict: review.verdict,
@@ -5318,7 +5489,7 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
     });
   }
 
-  // Group results by configured project (match sourcePath → project name)
+  // Group results by configured project (match sourcePath â†’ project name)
   const projects = (config.projects || []).filter(p => p.workDir);
   const normSource = sourcePath.replace(/\\/g, '/').toLowerCase();
   const groups = [];
@@ -5355,13 +5526,13 @@ async function runPreBuildCheck(ws, sourcePath, projectName) {
 
 function toolGlob({ pattern, path: searchPath }, workDir) {
   const base = searchPath || workDir || process.cwd();
-  // Convert glob to regex — escape special chars first, then expand * and ? wildcards
+  // Convert glob to regex â€” escape special chars first, then expand * and ? wildcards
   const regexStr = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex chars (not * or ?)
     .replace(/\*\*/g, '__DSTAR__')           // protect ** before replacing single *
-    .replace(/\*/g, '[^/\\\\]*')           // * → any non-separator chars
-    .replace(/__DSTAR__/g, '.*')           // ** → anything including separators
-    .replace(/\?/g, '[^/\\\\]');           // ? → single non-separator char
+    .replace(/\*/g, '[^/\\\\]*')           // * â†’ any non-separator chars
+    .replace(/__DSTAR__/g, '.*')           // ** â†’ anything including separators
+    .replace(/\?/g, '[^/\\\\]');           // ? â†’ single non-separator char
   const rx = new RegExp(`(^|[/\\\\])${regexStr}$`, 'i');
   const results = [];
   const walk = (dir, depth) => {
@@ -5413,7 +5584,7 @@ async function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mo
   } catch (e) { return e.stdout?.toString().trim() || '(no matches)'; }
 }
 
-// Shell safety enforcement ─────────────────────────────────────────────────
+// Shell safety enforcement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // COMMAND_CLASS_REGISTRY, SHELL_WRITE_VERBS, detectInstallerExe, and
 // assertSafeCommand are now in lib/capabilityPolicy.js (imported at top of file).
 
@@ -5424,12 +5595,12 @@ async function toolGrep({ pattern, path: searchPath, glob: globFilter, output_mo
  *   backupBeforeWrite + snapshotForShellEncodingCheck
  *
  * Order:
- *   1. Installer detection — interactive user gate. Runs before evaluatePolicy so that
+ *   1. Installer detection â€” interactive user gate. Runs before evaluatePolicy so that
  *      if the user approves, evaluatePolicy receives installerAllowed: true and emits an
  *      'installer' audit event rather than a block event. If user denies, throws
  *      immediately. Note: command-class violations are caught in step 2, not here; in
  *      practice no COMMAND_CLASS_REGISTRY entry matches an installer path.
- *   2. evaluatePolicy — handles command-class registry, write-boundary, and installer
+ *   2. evaluatePolicy â€” handles command-class registry, write-boundary, and installer
  *      audit event for user-approved installs.
  *   3. Write-target detection, backups, and encoding snapshots.
  *
@@ -5459,7 +5630,7 @@ async function shellPrecheck(command, workDir, sessionId, policy, action) {
     effectivePolicy = Object.freeze({ ...policy, installerAllowed: true });
   }
 
-  // Step 2: Full policy evaluation — command-class registry + write-boundary checks.
+  // Step 2: Full policy evaluation â€” command-class registry + write-boundary checks.
   // Replaces assertSafeCommand; also emits audit JSONL + tool-audit broadcast.
   const r = evaluatePolicy(
     action,
@@ -5484,7 +5655,7 @@ async function shellPrecheck(command, workDir, sessionId, policy, action) {
 async function toolBash({ command, timeout: tms }, workDir, sessionId) {
   const _bSess = sessions.get(sessionId);
   const _bPolicy = _bSess?.policy || buildDefaultPolicy({ workDir }, readConfig());
-  // shellPrecheck: installer gate → evaluatePolicy → write-target backup/snapshot.
+  // shellPrecheck: installer gate â†’ evaluatePolicy â†’ write-target backup/snapshot.
   // Replaces: assertSafeCommand + detectInstallerExe + the three-step precheck block.
   const { writeTargets, snapshots, priorContents } = await shellPrecheck(command, workDir, sessionId, _bPolicy, 'bash');
   let output;
@@ -5515,7 +5686,7 @@ async function toolBash({ command, timeout: tms }, workDir, sessionId) {
 async function toolPowerShell({ command, timeout: tms }, workDir, sessionId) {
   const _psSess = sessions.get(sessionId);
   const _psPolicy = _psSess?.policy || buildDefaultPolicy({ workDir }, readConfig());
-  // shellPrecheck: installer gate → evaluatePolicy → write-target backup/snapshot.
+  // shellPrecheck: installer gate â†’ evaluatePolicy â†’ write-target backup/snapshot.
   // Replaces: assertSafeCommand + detectInstallerExe + the three-step precheck block.
   const { writeTargets, snapshots, priorContents } = await shellPrecheck(command, workDir, sessionId, _psPolicy, 'powershell');
   let output;
@@ -5554,15 +5725,15 @@ function toolWebFetch({ url }) {
   });
 }
 
-// ─── Chrome browser tool ──────────────────────────────────────────────────────
+// â”€â”€â”€ Chrome browser tool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Two paths, tried in order:
 //
-//   1. Extension bridge (preferred) — the Polaris Browser Bridge Chrome extension
+//   1. Extension bridge (preferred) â€” the Polaris Browser Bridge Chrome extension
 //      (chrome-extension/ in the Polaris source) connects to the server WS and
 //      forwards requests to the active tab. Works with the user's existing Chrome
 //      session; no restart or profile picker needed.
 //
-//   2. CDP fallback — connects to Chrome on port 9222 via the DevTools Protocol.
+//   2. CDP fallback â€” connects to Chrome on port 9222 via the DevTools Protocol.
 //      Requires Chrome to have been started with --remote-debugging-port=9222.
 //      Use the Launch Chrome button if the extension isn't installed.
 //
@@ -5570,7 +5741,7 @@ function toolWebFetch({ url }) {
 // Optional selector: extract a specific CSS element instead of document.body.innerText.
 async function toolBrowseChrome({ url, selector } = {}) {
 
-  // ── Path 1: Extension bridge ─────────────────────────────────────────────────
+  // â”€â”€ Path 1: Extension bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (chromeExtensionWs && chromeExtensionWs.readyState === WebSocket.OPEN) {
     return new Promise((resolve) => {
       const requestId = crypto.randomUUID();
@@ -5587,7 +5758,7 @@ async function toolBrowseChrome({ url, selector } = {}) {
     });
   }
 
-  // ── Path 2: CDP fallback ─────────────────────────────────────────────────────
+  // â”€â”€ Path 2: CDP fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const CDP_PORT = 9222;
   let tabList;
   try {
@@ -5616,8 +5787,8 @@ async function toolBrowseChrome({ url, selector } = {}) {
   return new Promise((resolve) => {
     const wsClient = new WebSocket(tab.webSocketDebuggerUrl);
     let cmdId = 1;
-    const pending = new Map();   // id → { resolve, reject }
-    const eventOnce = new Map(); // method → resolve
+    const pending = new Map();   // id â†’ { resolve, reject }
+    const eventOnce = new Map(); // method â†’ resolve
     let settled = false;
 
     const timer = setTimeout(() => finish('Error: Chrome CDP timed out after 15s'), 15000);
@@ -5738,7 +5909,7 @@ function duckDuckGoSearch(query, count) {
           if (p.Abstract) lines.push(`Summary: ${p.Abstract}\nSource: ${p.AbstractURL}`);
           const topics = (p.RelatedTopics || []).filter(t => t.FirstURL && t.Text).slice(0, count);
           topics.forEach((t, i) => lines.push(`${i+1}. ${t.Text}\n   ${t.FirstURL}`));
-          if (!lines.length) resolve('No instant-answer results. Add braveSearchApiKey in Settings for full web search (search.brave.com — free tier 2000/month).');
+          if (!lines.length) resolve('No instant-answer results. Add braveSearchApiKey in Settings for full web search (search.brave.com â€” free tier 2000/month).');
           else resolve(lines.join('\n\n') + '\n\n(Tip: add braveSearchApiKey in Settings for full search results)');
         } catch { resolve('Search unavailable. Add braveSearchApiKey in Settings.'); }
       });
@@ -5764,7 +5935,7 @@ async function toolWebSearch({ query, num_results = 5 }) {
       if (result && !String(result).startsWith('Error')) return result;
     } catch { /* fall through */ }
   }
-  // Priority 3: Brave Search API direct (legacy — key set but MCP server not enabled)
+  // Priority 3: Brave Search API direct (legacy â€” key set but MCP server not enabled)
   if (config.braveSearchApiKey) return braveSearch(query, n, config.braveSearchApiKey);
   // Priority 4: DuckDuckGo instant answers (free, no key, limited)
   return duckDuckGoSearch(query, n);
@@ -5772,7 +5943,7 @@ async function toolWebSearch({ query, num_results = 5 }) {
 
 function toolAskUserQuestion({ question, options }, sessionId) {
   const session = sessions.get(sessionId);
-  if (session?.evalRunner || session?.routineTag) return Promise.resolve('(routine session — no user interaction available)');
+  if (session?.evalRunner || session?.routineTag) return Promise.resolve('(routine session â€” no user interaction available)');
   return new Promise(resolve => {
     const questionId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     pendingQuestions.set(questionId, resolve);
@@ -5780,7 +5951,7 @@ function toolAskUserQuestion({ question, options }, sessionId) {
     setTimeout(() => {
       if (pendingQuestions.has(questionId)) {
         pendingQuestions.delete(questionId);
-        resolve('(No response — question timed out after 5 minutes)');
+        resolve('(No response â€” question timed out after 5 minutes)');
       }
     }, 300000);
   });
@@ -5798,9 +5969,9 @@ function toolTodoWrite({ todos }, sessionId) {
   return 'Todos updated:\n' + normalized.map(t => `[${t.status}] ${t.content}`).join('\n');
 }
 
-// ── MCP Integration ───────────────────────────────────────────────────────────
+// â”€â”€ MCP Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const mcpProcesses = new Map(); // serverName → { proc, pending, buffer, nextId }
+const mcpProcesses = new Map(); // serverName â†’ { proc, pending, buffer, nextId }
 const mcpToolsCache = new Map();
 const MCP_CACHE_TTL = 60000;
 
@@ -5998,7 +6169,7 @@ async function callMcpTool(serverName, toolName, args) {
   return formatMcpResult(result);
 }
 
-// ── Per-session git worktrees ─────────────────────────────────────────────────
+// â”€â”€ Per-session git worktrees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each agent/chat session with a git project gets an isolated linked worktree
 // so concurrent sessions never share branch state. The session's workDir is
 // replaced with the worktree path; repoWorkDir retains the original project root.
@@ -6044,7 +6215,7 @@ function verifyWorktreeOwnership(sessionId) {
       .filter(l => l.startsWith('worktree '))
       .some(l => path.normalize(l.slice('worktree '.length).trim()).toLowerCase() === wtNorm);
     if (!found) {
-      const msg = 'Session worktree is no longer registered — isolation may be compromised';
+      const msg = 'Session worktree is no longer registered â€” isolation may be compromised';
       writeOrchestratorAlert(sessionId, 'error', msg);
       return msg;
     }
@@ -6069,14 +6240,14 @@ function removeSessionWorktree(sessionId) {
 // Sweep WORKTREES_DIR for abandoned detached-HEAD worktrees older than DEFAULT_WORKTREE_TTL_DAYS.
 // Called once at startup and then on a daily interval. Skips any worktree whose path is held by
 // an open session (checked against the live sessions Map). Named-branch worktrees (task/*, wip/*)
-// are never touched — only detached-HEAD session temporaries are eligible.
+// are never touched â€” only detached-HEAD session temporaries are eligible.
 function purgeStaleWorktrees() {
   if (!fs.existsSync(WORKTREES_DIR)) return;
 
   const thresholdMs = DEFAULT_WORKTREE_TTL_DAYS * 24 * 60 * 60 * 1000;
   const now = Date.now();
 
-  // Collect worktree paths claimed by currently open sessions — never remove these.
+  // Collect worktree paths claimed by currently open sessions â€” never remove these.
   const activeWtPaths = new Set();
   for (const [, s] of sessions) {
     if (s.worktreePath) activeWtPaths.add(path.normalize(s.worktreePath).toLowerCase());
@@ -6095,7 +6266,7 @@ function purgeStaleWorktrees() {
     try { stat = fs.statSync(wtPath); } catch { continue; }
     if (!stat.isDirectory()) continue;
 
-    // Age gate — skip anything still within the TTL window.
+    // Age gate â€” skip anything still within the TTL window.
     const ageMs = now - stat.mtimeMs;
     if (ageMs < thresholdMs) continue;
 
@@ -6129,7 +6300,7 @@ function purgeStaleWorktrees() {
         break;
       }
     } catch {
-      // git command failed — directory has no git registration (orphaned dir).
+      // git command failed â€” directory has no git registration (orphaned dir).
       isRegistered = false;
       isDetached    = false;
     }
@@ -6137,7 +6308,7 @@ function purgeStaleWorktrees() {
     // A named-branch worktree is normally protected, but once its branch is fully
     // merged into main it is just a shipped-task leftover and safe to reclaim. The
     // branch ref itself is left intact (branch deletion is the promote skill's job).
-    // main/stage are never eligible — only feature/task branches.
+    // main/stage are never eligible â€” only feature/task branches.
     let isMergedNamed = false;
     if (namedBranch && namedBranch !== 'main' && namedBranch !== 'stage'
         && mainWtPath && fs.existsSync(mainWtPath)) {
@@ -6151,7 +6322,7 @@ function purgeStaleWorktrees() {
 
     // Only remove registered detached worktrees, registered named worktrees whose branch
     // is already merged into main, or unregistered dirs whose name matches the Polaris
-    // session-ID pattern (chat_<digits>) — never delete arbitrary directories.
+    // session-ID pattern (chat_<digits>) â€” never delete arbitrary directories.
     const isPolarisSessionDir = /^chat_\d+$/.test(name);
     if (isRegistered && !isDetached && !isMergedNamed) continue;
     if (!isRegistered && !isPolarisSessionDir) continue;
@@ -6175,7 +6346,7 @@ function purgeStaleWorktrees() {
   }
 }
 
-// ── Orchestrator helpers ──────────────────────────────────────────────────────
+// â”€â”€ Orchestrator helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getSessionsForProject(projectName) {
   const result = [];
@@ -6245,7 +6416,7 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
       } catch {}
     }
   } catch (setupErr) {
-    // git checkout -b or other setup failure — normalize to error so caller handles it cleanly.
+    // git checkout -b or other setup failure â€” normalize to error so caller handles it cleanly.
     // finally still runs to attempt cleanup before this return takes effect.
     return { status: 'error', reason: setupErr.message || 'dry-run-setup-failed' };
   } finally {
@@ -6261,7 +6432,7 @@ function runDryMerge(repoPath, sourceBranch, targetBranch) {
   return mergeStatus === 'clean' ? { status: 'clean' } : { status: 'conflict', conflictFiles, diffExcerpt };
 }
 
-// Merge slot queue — serialises concurrent session push operations.
+// Merge slot queue â€” serialises concurrent session push operations.
 // State persisted to ORCHESTRATOR_STATE_PATH so it survives server restarts.
 const mergeSlots = { slots: {}, queue: [] };
 
@@ -6296,7 +6467,7 @@ function saveOrchestratorState() {
 
 loadOrchestratorState();
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'Bash', 'PowerShell']);
 
@@ -6336,7 +6507,7 @@ async function executeDirectTool(name, input, workDir, sessionId) {
   }
 }
 
-// ── Streaming OpenRouter call ─────────────────────────────────────────────────
+// â”€â”€ Streaming OpenRouter call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // OpenRouter and DeepSeek direct share the tool-using agent loop, but DeepSeek
 // sessions must route to api.deepseek.com instead of OpenRouter.
@@ -6372,7 +6543,7 @@ function callOpenRouterStream(sessionId, messages, systemPrompt, model, apiKey, 
       path:     isDeepSeekDirect ? '/chat/completions' : '/api/v1/chat/completions',
       method:   'POST',
       headers,
-      // Fresh agent per request — forces a new TCP+TLS handshake every call so
+      // Fresh agent per request â€” forces a new TCP+TLS handshake every call so
       // no Node-internal socket state can be reused across requests. Defensive
       // workaround for the BAD_RECORD_MAC errors observed 2026-05-05 across
       // multiple OpenRouter-routed providers (Google, Mistral). curl with
@@ -6510,11 +6681,20 @@ function loadSessionMessages(sessionId) {
   } catch { return []; }
 }
 
-// ── Agentic loop ──────────────────────────────────────────────────────────────
+// â”€â”€ Agentic loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMessage = true, continuationContext = null) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  if (!POLARIS_MODEL_RUNS_ENABLED) {
+    console.log('[model-run] blocked runDirectAgent for', sessionId);
+    session.status = 'hold';
+    session.endAt = Date.now();
+    broadcast({ type: 'line', sessionId, text: '[model-run] Polaris model execution is disabled during crash recovery.', role: 'system' });
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+    saveSessions();
+    return;
+  }
   const runId = beginSessionRun(session);
   const config = readConfig();
   const apiProvider = session.directProvider === 'deepseek' ? 'deepseek' : 'openrouter';
@@ -6586,7 +6766,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       effectiveMessage = `--- File: ${doc.name} ---\n${text.trim()}\n--- End: ${doc.name} ---\n\n` + effectiveMessage;
       broadcast({ type: 'line', sessionId, text: `[document extracted: ${doc.name} (${text.length} chars)]`, role: 'system' });
     } else {
-      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} — could not extract text]`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} â€” could not extract text]`, role: 'system' });
     }
   }
 
@@ -6601,10 +6781,10 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       try {
         const frames = await extractVideoFrames(video.dataUrl, video.name);
         agentImages = agentImages.concat(frames);
-        if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[video: ${video.name} → ${frames.length} frames extracted]`, role: 'system' });
+        if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[video: ${video.name} â†’ ${frames.length} frames extracted]`, role: 'system' });
       } catch (e) {
         console.error('[video] frame extraction failed:', e.message);
-        broadcast({ type: 'line', sessionId, text: `[video: ${video.name} — extraction failed]`, role: 'system' });
+        broadcast({ type: 'line', sessionId, text: `[video: ${video.name} â€” extraction failed]`, role: 'system' });
       }
     }
   }
@@ -6617,10 +6797,10 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     try {
       const frames = await downloadYouTubeVideo(videoId);
       agentImages = agentImages.concat(frames);
-      if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} → ${frames.length} frames extracted]`, role: 'system' });
+      if (frames.length > 0) broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} â†’ ${frames.length} frames extracted]`, role: 'system' });
     } catch (e) {
       console.error('[youtube] extraction failed:', e.message);
-      broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} — extraction failed]`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `[youtube: ${videoId} â€” extraction failed]`, role: 'system' });
     }
   }
 
@@ -6655,7 +6835,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     ? messageContent.some(p => p.type === 'image_url' || p.type === 'image')
     : false;
   const effectiveTier = hasImage && tier === 'floor' ? 'balanced' : tier;
-  // session.model wins when the launcher specifies an explicit model — used by
+  // session.model wins when the launcher specifies an explicit model â€” used by
   // the Agent Eval runner so a single config can be tested across many models
   // without rewriting config.json. Falls back to tier-mapped config when null.
   const tierModel = apiProvider === 'deepseek'
@@ -6669,7 +6849,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     : (effectiveTier === 'power'    ? (config.openRouterOpusProvider   || null)
      : effectiveTier === 'balanced' ? (config.openRouterSonnetProvider || null)
      :                                (config.openRouterFloorProvider  || null));
-  if (hasImage && tier === 'floor') broadcast({ type: 'line', sessionId, text: '[auto-escalated to balanced — image detected]', role: 'system' });
+  if (hasImage && tier === 'floor') broadcast({ type: 'line', sessionId, text: '[auto-escalated to balanced â€” image detected]', role: 'system' });
 
   session.status = 'running';
   session.startAt = session.startAt || Date.now();
@@ -6729,7 +6909,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     const elapsed = Date.now() - startMs;
     if (elapsed > SESSION_TIMEOUT_MS) {
       const elapsedMin = (elapsed / 60000).toFixed(1);
-      const timeoutMsg = `Session timed out after ${elapsedMin} min (limit: 30 min) — stopped automatically.`;
+      const timeoutMsg = `Session timed out after ${elapsedMin} min (limit: 30 min) â€” stopped automatically.`;
       dlog('TIMEOUT', timeoutMsg);
       broadcast({ type: 'line', sessionId, text: timeoutMsg, role: 'error' });
       broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -6744,7 +6924,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
 
     // Inject pending steering inputs as a proper user message in session.messages so the
     // conversation structure stays intact (assistant response will correctly follow it).
-    // Only inject when last message is not already 'user' — defer if so to avoid consecutive
+    // Only inject when last message is not already 'user' â€” defer if so to avoid consecutive
     // user messages which some models reject.
     const steeringItems = Array.isArray(session.steeringQueue) ? session.steeringQueue.splice(0) : [];
     if (steeringItems.length > 0) {
@@ -6752,12 +6932,12 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       if (lastRole !== 'user') {
         session.messages.push({
           role: 'user',
-          content: '[Steering — adjust current task if relevant; otherwise acknowledge and continue:]\n' +
+          content: '[Steering â€” adjust current task if relevant; otherwise acknowledge and continue:]\n' +
             steeringItems.map((s, i) => `[${i + 1}] ${s.text}`).join('\n'),
         });
-        // No broadcast needed — these were already shown in the transcript when the user typed them.
+        // No broadcast needed â€” these were already shown in the transcript when the user typed them.
       } else {
-        // Defer — put items back and try again next iteration
+        // Defer â€” put items back and try again next iteration
         session.steeringQueue.unshift(...steeringItems);
       }
     }
@@ -6768,11 +6948,11 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     if (!isSessionRunCurrent(sessionId, runId)) return;
 
     if (result.error) {
-      if (session.aborted) return; // kicked externally — status already set
+      if (session.aborted) return; // kicked externally â€” status already set
       if (retryCount < 3) {
         retryCount++;
         const wait = retryCount * 2000;
-        broadcast({ type: 'line', sessionId, text: `⚠️ API error. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
+        broadcast({ type: 'line', sessionId, text: `âš ï¸ API error. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
         dlog('RETRY_ERR', `count=${retryCount} err=${result.error}`);
         await new Promise(r => setTimeout(r, wait));
         iterations--;
@@ -6799,13 +6979,13 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       dlog('TOKENS', `in=${usage.input_tokens} out=${usage.output_tokens}`);
     }
 
-    // Detect empty response — model returned neither text nor tool calls
+    // Detect empty response â€” model returned neither text nor tool calls
     const hasContent = result.textAccum || (result.toolCalls && result.toolCalls.length > 0);
     if (!hasContent) {
       if (!session.aborted && retryCount < 3) {
         retryCount++;
         const wait = retryCount * 2000;
-        broadcast({ type: 'line', sessionId, text: `⚠️ Empty response. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
+        broadcast({ type: 'line', sessionId, text: `âš ï¸ Empty response. Retrying (${retryCount}/3) in ${wait/1000}s...`, role: 'system' });
         dlog('RETRY_EMPTY', `count=${retryCount} reason=${result.finishReason}`);
         await new Promise(r => setTimeout(r, wait));
         iterations--;
@@ -6846,7 +7026,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       const callId = assistantMsg.tool_calls[tcIdx]?.id || tc.id;
       let toolInput;
       try { toolInput = JSON.parse(tc.arguments); } catch { toolInput = {}; }
-      broadcast({ type: 'line', sessionId, text: `⚙ ${toolDisplayLabel(tc.name, toolInput)}`, role: 'tool' });
+      broadcast({ type: 'line', sessionId, text: `âš™ ${toolDisplayLabel(tc.name, toolInput)}`, role: 'tool' });
       dlog('TOOL', `${tc.name} ${tc.arguments.slice(0,200)}`);
       let toolResult;
       try { toolResult = await executeDirectTool(tc.name, toolInput, workDir, sessionId); }
@@ -6854,7 +7034,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
       if (!isSessionRunCurrent(sessionId, runId)) return;
       const resultStr = String(toolResult).slice(0, 50000);
       dlog('TOOL_RESULT', resultStr.slice(0, 200));
-      broadcast({ type: 'line', sessionId, text: `  ↳ ${resultStr.slice(0, 400)}${resultStr.length > 400 ? '…' : ''}`, role: 'tool' });
+      broadcast({ type: 'line', sessionId, text: `  â†³ ${resultStr.slice(0, 400)}${resultStr.length > 400 ? 'â€¦' : ''}`, role: 'tool' });
       session.messages.push({ role: 'tool', tool_call_id: callId, content: resultStr });
     }
   }
@@ -6868,8 +7048,8 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
     const lastIsAssistantText = lastMsg && lastMsg.role === 'assistant' &&
       lastMsg.content && lastMsg.content.trim().length > 0;
     if (!lastIsAssistantText) {
-      dlog('CONTINUATION', 'Loop ended without final assistant text — requesting final answer');
-      broadcast({ type: 'line', sessionId, text: '⚙ Requesting final answer...', role: 'tool' });
+      dlog('CONTINUATION', 'Loop ended without final assistant text â€” requesting final answer');
+      broadcast({ type: 'line', sessionId, text: 'âš™ Requesting final answer...', role: 'tool' });
       session.messages.push({ role: 'user', content: 'Please provide your final answer based on everything you have done so far.' });
       const contResult = await callOpenRouterStream(sessionId, session.messages, systemPrompt, model, apiKey, sessionTools, provider, apiProvider);
       if (!isSessionRunCurrent(sessionId, runId)) return;
@@ -6884,14 +7064,14 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   const s = sessions.get(sessionId);
   dlog('DONE', `${((Date.now()-startMs)/1000).toFixed(2)}s iters=${iterations}`);
   if (s?.aborted) {
-    // Stop handler already set status='done' and broadcast — just persist messages and free memory.
+    // Stop handler already set status='done' and broadcast â€” just persist messages and free memory.
     // Stop also clears session.pendingTurns, so no drain is needed here.
     saveSessionMessages(sessionId);
     releaseSessionMemory(sessionId);
     return;
   }
   // Determine terminal status:
-  // 1. 'waiting' always wins — agent explicitly needs user input.
+  // 1. 'waiting' always wins â€” agent explicitly needs user input.
   // 2. Any session that committed during the run ends as 'test', even if the agent set 'done'.
   // 3. Otherwise preserve what the agent set via SetStatus, or auto-detect from the last message.
   let termStatus;
@@ -6925,7 +7105,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
 
 // Drop heavy per-session fields after the agent loop finishes. The leak
 // drivers are projectMemory (full Obsidian dir, ~MB per session) and the
-// rolling messages window — both are explicitly null-guarded at the top of
+// rolling messages window â€” both are explicitly null-guarded at the top of
 // runDirectAgent and lazy-reload from disk / Obsidian on resume or fork, so
 // dropping them is safe. session.lines is intentionally preserved: it's
 // display-only state used by the UI's terminal scroll on reload, not
@@ -6933,7 +7113,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
 // for a done session if the UI is reloaded later.
 //
 // extractSessionToKnowledge runs fire-and-forget but reads session.lines
-// synchronously up to its first await — by the time we get here, its locals
+// synchronously up to its first await â€” by the time we get here, its locals
 // already hold whatever it needs in their own closures.
 function releaseSessionMemory(sessionId) {
   const s = sessions.get(sessionId);
@@ -6958,7 +7138,7 @@ async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
       timestamp,
       items: [
         `Session ${sessionId} ran for ${elapsedMin} min with no result.`,
-        `Hard limit is 30 minutes — run was stopped automatically.`,
+        `Hard limit is 30 minutes â€” run was stopped automatically.`,
       ],
       dismissed: false,
       isError:   true,
@@ -6975,7 +7155,7 @@ async function notifyRoutineTimeout(sessionId, routineTag, elapsedMs) {
       to:          [{ email: 'ravenshroud@gmail.com' }],
       from:        { email: 'noreply@aesopacademy.org', name: 'Polaris' },
       subject:     `[Polaris] Routine timeout: ${routineTag} (${elapsedMin} min)`,
-      htmlContent: `<p>Routine <strong>${routineTag}</strong> (session <code>${sessionId}</code>) ran ${elapsedMin} min with no result — stopped by the 30-minute hard cap.</p>`,
+      htmlContent: `<p>Routine <strong>${routineTag}</strong> (session <code>${sessionId}</code>) ran ${elapsedMin} min with no result â€” stopped by the 30-minute hard cap.</p>`,
       textContent: `Polaris routine timeout\n\nRoutine: ${routineTag}\nSession: ${sessionId}\nElapsed: ${elapsedMin} min\nLimit:   30 min\n\nStopped automatically.`,
     });
   } catch (e) {
@@ -6991,15 +7171,15 @@ function appendTokenLog(sessionId, model, usage) {
   try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify({ ts: Date.now(), sessionId, model: model || 'unknown', input: inp, output: out }) + '\n', 'utf8'); } catch {}
 }
 
-// ─── DeepSeek Direct API for routines ────────────────────────────────────────
-// Routines fire via api.deepseek.com — bypasses Claude CLI entirely (no 30K-token
+// â”€â”€â”€ DeepSeek Direct API for routines â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Routines fire via api.deepseek.com â€” bypasses Claude CLI entirely (no 30K-token
 // project-context cold load). DeepSeek pricing is ~$0.27/MTok in vs Anthropic's $3.
 function spawnDeepSeekRoutine(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
   if (!config.deepSeekApiKey) {
-    broadcast({ type: 'line', sessionId, text: 'DeepSeek API key not configured. Go to Settings → DeepSeek to add your key.', role: 'error' });
+    broadcast({ type: 'line', sessionId, text: 'DeepSeek API key not configured. Go to Settings â†’ DeepSeek to add your key.', role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
     session.status = 'error';
     session.endAt = Date.now();
@@ -7011,7 +7191,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
   session.status = 'running';
   session.startAt = Date.now();
   const startMs = Date.now();
-  const startMsg = `[routine→deepseek] firing | model=${model} | promptLen=${prompt.length} chars | routineTag=${session.routineTag || '(none)'}`;
+  const startMsg = `[routineâ†’deepseek] firing | model=${model} | promptLen=${prompt.length} chars | routineTag=${session.routineTag || '(none)'}`;
   console.log(startMsg);
   broadcast({ type: 'line', sessionId, text: startMsg, role: 'system' });
 
@@ -7032,7 +7212,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
     },
   };
 
-  console.log(`[routine→deepseek] sessionId=${sessionId} model=${model} promptLen=${prompt.length}`);
+  console.log(`[routineâ†’deepseek] sessionId=${sessionId} model=${model} promptLen=${prompt.length}`);
 
   const req = https.request(opts, res => {
     let raw = '';
@@ -7063,7 +7243,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
           // Cost estimate uses the legacy DeepSeek chat rate as a conservative local approximation.
           const cost = (usage.input_tokens * 0.27 + usage.output_tokens * 1.10) / 1_000_000;
           const elapsed = ((Date.now() - startMs) / 1000).toFixed(2);
-          const doneMsg = `[routine→deepseek] done | ${elapsed}s | in=${usage.input_tokens} out=${usage.output_tokens} | est cost $${cost.toFixed(6)}`;
+          const doneMsg = `[routineâ†’deepseek] done | ${elapsed}s | in=${usage.input_tokens} out=${usage.output_tokens} | est cost $${cost.toFixed(6)}`;
           console.log(doneMsg);
           broadcast({ type: 'line', sessionId, text: doneMsg, role: 'system' });
         }
@@ -7087,7 +7267,7 @@ function spawnDeepSeekRoutine(sessionId, prompt, config) {
   req.on('error', err => {
     const isTimeout = /timed out/i.test(err.message);
     const msg = isTimeout
-      ? `Routine timed out after 30 minutes — stopped automatically.`
+      ? `Routine timed out after 30 minutes â€” stopped automatically.`
       : `DeepSeek connection error: ${err.message}`;
     broadcast({ type: 'line', sessionId, text: msg, role: 'error' });
     broadcast({ type: 'session-status', sessionId, status: 'error' });
@@ -7152,7 +7332,7 @@ function handleStreamEvent(sessionId, msg) {
 }
 
 
-// ─── Spawn DeepSeek chat session ─────────────────────────────────────────────
+// â”€â”€â”€ Spawn DeepSeek chat session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -7203,15 +7383,24 @@ function isCodexToolRouterFailure(text) {
   return /codex_core::tools::router:\s+error=/i.test(String(text || ''));
 }
 
-// spawnMaxChat — chat-mode backend that spawns the Claude Code CLI and bills
+// spawnMaxChat â€” chat-mode backend that spawns the Claude Code CLI and bills
 // against the user's Max plan instead of OpenRouter API. Conversation history
-// is rebuilt into the prompt each turn (no CLI session-id tracking needed —
+// is rebuilt into the prompt each turn (no CLI session-id tracking needed â€”
 // Max plan covers the cost). Prompt is piped via stdin to avoid Windows'
 // 8191-char command-line limit. Default backend; `config.chatBackend = 'openrouter'`
 // switches to the legacy spawnChat path.
 async function spawnMaxChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  if (!POLARIS_MODEL_RUNS_ENABLED) {
+    console.log('[model-run] blocked spawnMaxChat for', sessionId);
+    session.status = 'hold';
+    session.endAt = Date.now();
+    broadcast({ type: 'line', sessionId, text: '[model-run] Polaris model execution is disabled during crash recovery.', role: 'system' });
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+    saveSessions();
+    return;
+  }
   const runId = beginSessionRun(session);
 
   const startMs = Date.now();
@@ -7259,7 +7448,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
 
   // On turn 2+, the CLI already has the conversation history stored on disk
-  // under session.claudeSessionId — just send the new user message.
+  // under session.claudeSessionId â€” just send the new user message.
   // On turn 1, send only visible conversation history + the user's prompt.
   // Host/project context is appended as a system prompt so it does not appear
   // as a user-visible transcript line in Claude Code.
@@ -7276,7 +7465,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
     hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
     // Inject top project memories at turn 1 so the model starts context-aware.
     // Use trace variant so we can log what was injected for the Injections panel.
-    // Log retention: capped at INJECTION_LOG_MAX_LINES entries (~500KB max) — see prune block below.
+    // Log retention: capped at INJECTION_LOG_MAX_LINES entries (~500KB max) â€” see prune block below.
     if (session.projectName) {
       const { block: memBlock, memories: injMems, queryType, effectiveQuery } =
         await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
@@ -7316,8 +7505,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
   broadcast({ type: 'line', sessionId, text: _chatPromptK >= 20 ? `(${_chatPromptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
-  // Translate session tier → Claude Code --model flag.
-  // Use full model ID for haiku — the 'haiku' shorthand resolves to 3.5, which isn't on Max.
+  // Translate session tier â†’ Claude Code --model flag.
+  // Use full model ID for haiku â€” the 'haiku' shorthand resolves to 3.5, which isn't on Max.
   const tierForCli = (session.tier || 'balanced').toLowerCase();
   const cliModel = tierForCli === 'power' ? 'claude-opus-4-7' : tierForCli === 'floor' ? 'claude-haiku-4-5-20251001' : 'sonnet';
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
@@ -7354,7 +7543,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
       dlog('DOC_EXTRACT', `name=${doc.name} chars=${text.length}`);
       broadcast({ type: 'line', sessionId, text: `[document extracted: ${doc.name} (${text.length} chars)]`, role: 'system' });
     } else {
-      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} — could not extract text]`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} â€” could not extract text]`, role: 'system' });
     }
   }
   if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
@@ -7393,7 +7582,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
   // Write .mcp.json so the Claude Code CLI can call Polaris-native tools (SetProject, SetStatus).
   // If the project has an explicit mcpServers allowlist, only those servers from ~/.mcp.json
-  // are injected — reducing tool noise in the session.
+  // are injected â€” reducing tool noise in the session.
   try {
     const mcpJsonPath = path.join(cwd, '.mcp.json');
     const existing = readJSON(mcpJsonPath, {});
@@ -7465,7 +7654,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
       let evt;
       try { evt = JSON.parse(line); }
       catch {
-        // Not JSON — surface as plain assistant text
+        // Not JSON â€” surface as plain assistant text
         broadcast({ type: 'line', sessionId, text: line, role: 'assistant' });
         dlog('STDOUT_RAW', line.slice(0, 200));
         continue;
@@ -7493,7 +7682,7 @@ async function spawnMaxChat(sessionId, prompt, config) {
             broadcast({ type: 'line', sessionId, text: part.text, role: 'assistant' });
           } else if (part.type === 'tool_use') {
             const summary = `${part.name || 'tool'}${part.input ? ' ' + JSON.stringify(part.input).slice(0, 120) : ''}`;
-            broadcast({ type: 'line', sessionId, text: `⚙ ${summary}`, role: 'tool' });
+            broadcast({ type: 'line', sessionId, text: `âš™ ${summary}`, role: 'tool' });
             if ((part.name === 'Bash' || part.name === 'PowerShell' || part.name === 'computer') && /\bgit\s+(commit|push)\b/i.test(JSON.stringify(part.input || {}))) {
               committedDuringRun = true;
             }
@@ -7581,9 +7770,9 @@ async function spawnMaxChat(sessionId, prompt, config) {
             let originalContent = '';
             try {
               originalContent = execSync(`git show HEAD:${relPath.replace(/\\/g, '/')}`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
-            } catch {} // new untracked file — originalContent stays ''
+            } catch {} // new untracked file â€” originalContent stays ''
             if (newContent !== originalContent) {
-              // Use git diff for the unified diff — correct multi-hunk output for any file size.
+              // Use git diff for the unified diff â€” correct multi-hunk output for any file size.
               let unifiedDiff;
               try {
                 unifiedDiff = execSync(`git diff HEAD -- "${relPath}"`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, maxBuffer: 4 * 1024 * 1024 }).toString();
@@ -7624,8 +7813,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
     startupWatchdog = setTimeout(() => {
       if (watchdogKilled || session.endAt || totalOutBytes > 0) return;
       watchdogKilled = true;
-      dlog('STARTUP_WATCHDOG', 'No stdout in 30s — killing and retrying');
-      broadcast({ type: 'line', sessionId, text: '[watchdog] Claude CLI unresponsive — retrying...', role: 'system' });
+      dlog('STARTUP_WATCHDOG', 'No stdout in 30s â€” killing and retrying');
+      broadcast({ type: 'line', sessionId, text: '[watchdog] Claude CLI unresponsive â€” retrying...', role: 'system' });
       proc.kill();
       spawnMaxChat(sessionId, prompt, config);
     }, 30000);
@@ -7635,9 +7824,21 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
 }
 
-// spawnChatRouter — dispatches chat sessions to the configured backend.
+// spawnChatRouter â€” dispatches chat sessions to the configured backend.
 // Default 'max' (Claude CLI under Max plan). 'openrouter' uses spawnChat.
 function spawnChatRouter(sessionId, prompt, config) {
+  if (!POLARIS_MODEL_RUNS_ENABLED) {
+    const session = sessions.get(sessionId);
+    if (session) {
+      console.log('[model-run] blocked spawnChatRouter for', sessionId);
+      session.status = 'hold';
+      session.endAt = Date.now();
+      broadcast({ type: 'line', sessionId, text: '[model-run] Polaris model execution is disabled during crash recovery.', role: 'system' });
+      broadcast({ type: 'session-status', sessionId, status: session.status });
+      saveSessions();
+    }
+    return;
+  }
   const backend = (config.chatBackend || 'max').toLowerCase();
   if (backend === 'openrouter') return spawnChat(sessionId, prompt, config);
   return spawnMaxChat(sessionId, prompt, config);
@@ -7672,7 +7873,7 @@ function buildCodexConfigToml(mcpServers) {
   return lines.join('\n');
 }
 
-// spawnCodexSession — runs a prompt via the Codex CLI (`codex exec --json`).
+// spawnCodexSession â€” runs a prompt via the Codex CLI (`codex exec --json`).
 // Turn 1: spawns a new session, captures thread_id from thread.started event.
 // Turn 2+: resumes via `codex exec resume <thread_id>`.
 // Prompt is written to stdin so there's no command-line length limit.
@@ -7682,6 +7883,15 @@ function buildCodexConfigToml(mcpServers) {
 async function spawnCodexSession(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  if (!POLARIS_MODEL_RUNS_ENABLED) {
+    console.log('[model-run] blocked spawnCodexSession for', sessionId);
+    session.status = 'hold';
+    session.endAt = Date.now();
+    broadcast({ type: 'line', sessionId, text: '[model-run] Polaris model execution is disabled during crash recovery.', role: 'system' });
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+    saveSessions();
+    return;
+  }
   const runId = beginSessionRun(session);
 
   const startMs = Date.now();
@@ -7755,7 +7965,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
       dlog('DOC_EXTRACT', `name=${doc.name} chars=${text.length}`);
       broadcast({ type: 'line', sessionId, text: `[document extracted: ${doc.name} (${text.length} chars)]`, role: 'system' });
     } else {
-      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} — could not extract text]`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `[document attached: ${doc.name} â€” could not extract text]`, role: 'system' });
     }
   }
   if (docTextPrefix) fullPrompt = docTextPrefix + fullPrompt;
@@ -7848,7 +8058,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
           const name = item.name || item.type;
           const inputStr = item.arguments ? JSON.stringify(item.arguments).slice(0, 120)
             : item.action ? JSON.stringify(item.action).slice(0, 120) : '';
-          broadcast({ type: 'line', sessionId, text: `⚙ ${name}${inputStr ? ' ' + inputStr : ''}`, role: 'tool' });
+          broadcast({ type: 'line', sessionId, text: `âš™ ${name}${inputStr ? ' ' + inputStr : ''}`, role: 'tool' });
           if (/\bgit\s+(commit|push)\b/i.test(JSON.stringify(item))) committedDuringRun = true;
         }
       } else if (t === 'item.completed') {
@@ -7940,7 +8150,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
               originalContent = execSync(`git show HEAD:${relPath.replace(/\\/g, '/')}`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
             } catch {}
             if (newContent !== originalContent) {
-              // Use git diff for the unified diff — correct multi-hunk output for any file size.
+              // Use git diff for the unified diff â€” correct multi-hunk output for any file size.
               let unifiedDiff;
               try {
                 unifiedDiff = execSync(`git diff HEAD -- "${relPath}"`, { cwd: session.workDir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, maxBuffer: 4 * 1024 * 1024 }).toString();
@@ -7983,7 +8193,7 @@ async function spawnCodexSession(sessionId, prompt, config) {
   }
 }
 
-// ─── ChatGPT CDP Integration ──────────────────────────────────────────────────
+// â”€â”€â”€ ChatGPT CDP Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const GPT_CDP_PORT = 9222;
 const GPT_TIER_MODELS = {
   floor:    { slug: 'gpt-5-5',          label: 'Auto',     display: 'GPT-5.5 Auto'     },
@@ -8061,8 +8271,8 @@ function buildGptContextPrompt(projectName) {
     ``,
     `2. Open **My Drive > Aesop Academy > Obsidian > ${sessionsFolder}** and read **every file** in that folder.`,
     ``,
-    `Read all files completely — don't skip or summarize while reading. Once you've finished, reply with a brief summary:`,
-    `- What the project does (1–2 sentences)`,
+    `Read all files completely â€” don't skip or summarize while reading. Once you've finished, reply with a brief summary:`,
+    `- What the project does (1â€“2 sentences)`,
     `- Current status / what's in progress`,
     `- Key architectural decisions`,
     `- What was covered in the most recent session`,
@@ -8109,7 +8319,7 @@ async function gptTypeAndSend(cdpSend, text) {
         ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
         return { ok: true, via: 'enter-key' };
       }
-      return { ok: false, error: btn ? 'disabled — text may not have registered' : 'not found' };
+      return { ok: false, error: btn ? 'disabled â€” text may not have registered' : 'not found' };
     })()
   `);
   if (!sent?.ok) throw new Error(`ChatGPT send: ${sent?.error}`);
@@ -8119,7 +8329,7 @@ async function gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCo
   let prevText = '';
   let doneCount = 0;
   let firstTokenMs = null, totalChars = 0, rateInterval = null;
-  const MAX_POLLS = maxPolls; // default 400 × 300 ms = 2 min; pass higher for context-loading turns
+  const MAX_POLLS = maxPolls; // default 400 Ã— 300 ms = 2 min; pass higher for context-loading turns
 
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise(r => setTimeout(r, 300));
@@ -8168,6 +8378,15 @@ async function gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCo
 async function spawnGptChat(sessionId, prompt, tier) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  if (!POLARIS_MODEL_RUNS_ENABLED) {
+    console.log('[model-run] blocked spawnGptChat for', sessionId);
+    session.status = 'hold';
+    session.endAt = Date.now();
+    broadcast({ type: 'line', sessionId, text: '[model-run] Polaris model execution is disabled during crash recovery.', role: 'system' });
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+    saveSessions();
+    return;
+  }
   const runId = beginSessionRun(session);
 
   const tierKey = (tier || 'balanced').toLowerCase();
@@ -8208,7 +8427,7 @@ async function spawnGptChat(sessionId, prompt, tier) {
       session.gptConversationStarted = true;
     }
 
-    // Best-effort model selection via UI (pill button → Radix dropdown)
+    // Best-effort model selection via UI (pill button â†’ Radix dropdown)
     const modelLabel = model.label;
     dlog('MODEL_SELECT', modelLabel);
     await cdpEval(cdpSend, `
@@ -8238,13 +8457,13 @@ async function spawnGptChat(sessionId, prompt, tier) {
     if (!session.gptContextLoaded && session.projectName) {
       const contextPrompt = buildGptContextPrompt(session.projectName);
       dlog('CONTEXT_INIT', `project=${session.projectName}`);
-      broadcast({ type: 'line', sessionId, text: `[gpt] loading project context for ${session.projectName}…`, role: 'system' });
+      broadcast({ type: 'line', sessionId, text: `[gpt] loading project context for ${session.projectName}â€¦`, role: 'system' });
       await gptTypeAndSend(cdpSend, contextPrompt);
       dlog('CONTEXT_SENT');
       await gptPollResponse(cdpSend, { sessionId, startMs, dlog, minMessageCount: 0, maxPolls: 1200 }); // 6 min for Drive reads
       dlog('CONTEXT_DONE');
       session.gptContextLoaded = true;
-      broadcast({ type: 'line', sessionId, text: '[gpt] context loaded — sending your message…', role: 'system' });
+      broadcast({ type: 'line', sessionId, text: '[gpt] context loaded â€” sending your messageâ€¦', role: 'system' });
       await new Promise(r => setTimeout(r, 800));
     }
 
@@ -8280,6 +8499,15 @@ async function spawnGptChat(sessionId, prompt, tier) {
 function spawnChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
+  if (!POLARIS_MODEL_RUNS_ENABLED) {
+    console.log('[model-run] blocked spawnChat for', sessionId);
+    session.status = 'hold';
+    session.endAt = Date.now();
+    broadcast({ type: 'line', sessionId, text: '[model-run] Polaris model execution is disabled during crash recovery.', role: 'system' });
+    broadcast({ type: 'session-status', sessionId, status: session.status });
+    saveSessions();
+    return;
+  }
   const runId = beginSessionRun(session);
 
   if (!config.openRouterApiKey) {
@@ -8375,7 +8603,7 @@ function spawnChat(sessionId, prompt, config) {
   req.end();
 }
 
-// ─── HTTP server ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     fs.readFile(MOCKUP_DEST, 'utf8', (err, data) => {
@@ -8434,7 +8662,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // Preview Panel file server — serves any file from a project's workDir over HTTP so
+  // Preview Panel file server â€” serves any file from a project's workDir over HTTP so
   // iframe + sibling resources resolve under the same origin as the Polaris UI (file://
   // would be blocked cross-origin). URL: /local/<urlSafeBase64-projectDir>/<relative-path>
   if (req.method === 'GET' && req.url.startsWith('/local/')) {
@@ -8444,7 +8672,7 @@ const httpServer = http.createServer((req, res) => {
       if (slash < 0) { res.writeHead(400); return res.end('Bad /local URL'); }
       const b64Dir = after.slice(0, slash);
       const relPath = decodeURIComponent(after.slice(slash + 1));
-      // url-safe base64 → standard base64
+      // url-safe base64 â†’ standard base64
       let std = b64Dir.replace(/-/g, '+').replace(/_/g, '/');
       while (std.length % 4) std += '=';
       const projectDir = Buffer.from(std, 'base64').toString('utf8');
@@ -8473,7 +8701,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /health-monitor/prompt — inject a question from the UI, another session, or external tooling.
+  // POST /health-monitor/prompt â€” inject a question from the UI, another session, or external tooling.
   // Requires X-Polaris-Token header matching UI_TOKEN (Fix 7: auth).
   // Invoke-WebRequest -Method POST http://127.0.0.1:40000/health-monitor/prompt -Headers @{'X-Polaris-Token'='<token>'} -Body '{"text":"Is CPU normal?"}'
   if (req.method === 'GET' && req.url === '/api/meetup-reservations') {
@@ -8564,10 +8792,10 @@ const httpServer = http.createServer((req, res) => {
           // Determine status and explanation
           if (snapshot.mcpHelpers >= 10) {
             snapshot.status = 'critical';
-            snapshot.explanation = `${snapshot.mcpHelpers} MCP helper processes active — consuming system resources and causing stalls`;
+            snapshot.explanation = `${snapshot.mcpHelpers} MCP helper processes active â€” consuming system resources and causing stalls`;
           } else if (snapshot.connections >= 20) {
             snapshot.status = 'critical';
-            snapshot.explanation = `${snapshot.connections} connections on port 40000 — possible connection leak or excessive session load`;
+            snapshot.explanation = `${snapshot.connections} connections on port 40000 â€” possible connection leak or excessive session load`;
           } else if (snapshot.idleSessions.length > 0) {
             snapshot.status = 'degraded';
             const kickCount = snapshot.idleSessions.filter(s => s.willKickAt <= 0).length;
@@ -8576,9 +8804,9 @@ const httpServer = http.createServer((req, res) => {
           } else if (snapshot.mcpHelpers > 0 || snapshot.connections >= 10) {
             snapshot.status = 'degraded';
             if (snapshot.mcpHelpers > 0) {
-              snapshot.explanation = `${snapshot.mcpHelpers} MCP helper process(es) detected — cleanup may be incomplete`;
+              snapshot.explanation = `${snapshot.mcpHelpers} MCP helper process(es) detected â€” cleanup may be incomplete`;
             } else {
-              snapshot.explanation = `${snapshot.connections} connections on port 40000 — elevated but not critical`;
+              snapshot.explanation = `${snapshot.connections} connections on port 40000 â€” elevated but not critical`;
             }
           }
         } catch (e) {
@@ -8646,10 +8874,10 @@ const httpServer = http.createServer((req, res) => {
         { id: 'Gyan.FFmpeg',  label: 'ffmpeg' },
         { id: 'yt-dlp.yt-dlp', label: 'yt-dlp' },
       ];
-      broadcast({ type: 'video-deps-install', status: 'started', message: 'Installing ffmpeg and yt-dlp via winget…' });
+      broadcast({ type: 'video-deps-install', status: 'started', message: 'Installing ffmpeg and yt-dlp via wingetâ€¦' });
       let allOk = true;
       for (const tool of tools) {
-        broadcast({ type: 'video-deps-install', status: 'progress', message: `Installing ${tool.label}…` });
+        broadcast({ type: 'video-deps-install', status: 'progress', message: `Installing ${tool.label}â€¦` });
         try {
           execSync(`winget install --id ${tool.id} --silent --accept-package-agreements --accept-source-agreements`, { encoding: 'utf8', timeout: 120000 });
           broadcast({ type: 'video-deps-install', status: 'progress', message: `${tool.label} installed.` });
@@ -8677,7 +8905,7 @@ const httpServer = http.createServer((req, res) => {
     try {
       const cfg = readConfig();
 
-      // Resolve repo root from config — first project with docs/backlog.json
+      // Resolve repo root from config â€” first project with docs/backlog.json
       const polarisProj = (cfg.projects || []).find(p =>
         p.workDir && fs.existsSync(path.join(p.workDir, 'docs', 'backlog.json'))
       );
@@ -8692,7 +8920,7 @@ const httpServer = http.createServer((req, res) => {
         try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
       };
 
-      // ── Backlog tasks keyed by branch ──────────────────────────────────────
+      // â”€â”€ Backlog tasks keyed by branch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const backlog = safeJSON(path.join(repoRoot, 'docs', 'backlog.json'));
       const archive = safeJSON(path.join(repoRoot, 'docs', 'backlog-archive.json'));
       const allTasks = [...(backlog.tasks || []), ...(archive.tasks || [])];
@@ -8702,14 +8930,14 @@ const httpServer = http.createServer((req, res) => {
         (tasksByBranch[t.branch] = tasksByBranch[t.branch] || []).push(t);
       });
 
-      // ── All open PRs in one query ──────────────────────────────────────────
+      // â”€â”€ All open PRs in one query â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const prsByBranch = {};
       try {
         const prRaw = run('gh pr list --state open --json number,title,url,headRefName --limit 50');
         if (prRaw) JSON.parse(prRaw).forEach(pr => { prsByBranch[pr.headRefName] = pr; });
       } catch { /* gh not available */ }
 
-      // ── Worktrees — filter out detached session temps ──────────────────────
+      // â”€â”€ Worktrees â€” filter out detached session temps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const wtRaw = run('git worktree list --porcelain');
       const worktrees = [];
       if (wtRaw) {
@@ -8725,12 +8953,12 @@ const httpServer = http.createServer((req, res) => {
         });
       }
 
-      // ── All local branches ─────────────────────────────────────────────────
+      // â”€â”€ All local branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const allBranchRaw = run('git branch --format=%(refname:short)');
       const allBranches = allBranchRaw.split('\n').filter(Boolean);
 
       // Active work branches: task/* and task-* and wip/*, excluding backup/* and already-merged
-      // (ahead === 0 means fully merged into main — skip those)
+      // (ahead === 0 means fully merged into main â€” skip those)
       const workBranches = allBranches.filter(b =>
         (b.startsWith('task/') || b.startsWith('task-') || b.startsWith('wip/')) &&
         !b.startsWith('backup/')
@@ -8751,33 +8979,33 @@ const httpServer = http.createServer((req, res) => {
       };
 
       const lines = [];
-      const hr = '─'.repeat(60);
+      const hr = 'â”€'.repeat(60);
 
-      // ── MAIN ──────────────────────────────────────────────────────────────
-      lines.push(`\n${'━'.repeat(60)}`);
+      // â”€â”€ MAIN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      lines.push(`\n${'â”'.repeat(60)}`);
       lines.push('  MAIN  (production)');
-      lines.push(`${'━'.repeat(60)}`);
+      lines.push(`${'â”'.repeat(60)}`);
       recentCommits('main').forEach(c => lines.push(`  ${c}`));
 
-      // ── STAGE ─────────────────────────────────────────────────────────────
+      // â”€â”€ STAGE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const stageExists = allBranches.includes('stage');
-      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push(`\n${'â”'.repeat(60)}`);
       lines.push('  STAGE  (ready for prod)');
-      lines.push(`${'━'.repeat(60)}`);
+      lines.push(`${'â”'.repeat(60)}`);
       if (stageExists) {
         const ahead = aheadCount('stage');
         lines.push(ahead > 0 ? `  ${ahead} commit(s) ahead of main` : '  (even with main)');
         recentCommits('stage').forEach(c => lines.push(`  ${c}`));
         const stagePR = prsByBranch['stage'];
-        if (stagePR) lines.push(`  PR #${stagePR.number} OPEN — ${stagePR.title}\n  ${stagePR.url}`);
+        if (stagePR) lines.push(`  PR #${stagePR.number} OPEN â€” ${stagePR.title}\n  ${stagePR.url}`);
       } else {
         lines.push('  (branch does not exist)');
       }
 
-      // ── ACTIVE WORK BRANCHES ──────────────────────────────────────────────
-      lines.push(`\n${'━'.repeat(60)}`);
+      // â”€â”€ ACTIVE WORK BRANCHES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      lines.push(`\n${'â”'.repeat(60)}`);
       lines.push('  ACTIVE BRANCHES');
-      lines.push(`${'━'.repeat(60)}`);
+      lines.push(`${'â”'.repeat(60)}`);
       if (workBranches.length === 0) {
         lines.push('  (none)');
       } else {
@@ -8794,18 +9022,18 @@ const httpServer = http.createServer((req, res) => {
           lines.push(`  ${ahead} commit(s) ahead of main`);
           if (wt) lines.push(`  Worktree: ${wt.path}`);
           recentCommits(branch, 3).forEach(c => lines.push(`    ${c}`));
-          if (pr) lines.push(`  PR #${pr.number} OPEN — ${pr.title}\n  ${pr.url}`);
+          if (pr) lines.push(`  PR #${pr.number} OPEN â€” ${pr.title}\n  ${pr.url}`);
           if (tasks.length > 0) {
-            tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] — ${t.title}`));
+            tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] â€” ${t.title}`));
           }
         });
       }
 
-      // ── NAMED WORKTREES ───────────────────────────────────────────────────
+      // â”€â”€ NAMED WORKTREES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const namedWTs = worktrees.filter(w => w.branch !== 'main' && w.branch !== 'stage');
-      lines.push(`\n${'━'.repeat(60)}`);
+      lines.push(`\n${'â”'.repeat(60)}`);
       lines.push('  WORKTREES');
-      lines.push(`${'━'.repeat(60)}`);
+      lines.push(`${'â”'.repeat(60)}`);
       if (namedWTs.length === 0) {
         lines.push('  (none besides main)');
       } else {
@@ -8814,7 +9042,7 @@ const httpServer = http.createServer((req, res) => {
           lines.push(`  Path: ${wt.path}`);
           lines.push(`  HEAD: ${wt.head.slice(0, 7)}`);
           const tasks = tasksByBranch[wt.branch] || [];
-          if (tasks.length > 0) tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] — ${t.title}`));
+          if (tasks.length > 0) tasks.forEach(t => lines.push(`  Task #${t.number} [${t.status}] â€” ${t.title}`));
         });
       }
 
@@ -8830,7 +9058,7 @@ const httpServer = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && req.url === '/api/time') {
-    // Returns the server's wall-clock time. Useful for time-sync routines —
+    // Returns the server's wall-clock time. Useful for time-sync routines â€”
     // the server (Node.js) has unrestricted network access and Windows keeps it NTP-synced.
     const now = new Date();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -8860,7 +9088,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // ─── Cross-check endpoint — triggered by PostToolUse hooks from Chat sessions ──
+  // â”€â”€â”€ Cross-check endpoint â€” triggered by PostToolUse hooks from Chat sessions â”€â”€
   if (req.method === 'POST' && req.url === '/api/cross-check-from-hook') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -8915,7 +9143,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // ─── Polaris MCP endpoint — exposes Polaris tools to Claude Code CLI ──────────
+  // â”€â”€â”€ Polaris MCP endpoint â€” exposes Polaris tools to Claude Code CLI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Claude Code (Max plan) sessions can't access DIRECT_TOOLS (those go to the
   // OpenRouter path). This HTTP MCP endpoint bridges the gap so SetProject,
   // SetStatus, and QueryMemory are available to the Claude Code harness too.
@@ -8987,7 +9215,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // MCP HTTP endpoint — exposes Polaris-native tools (SetProject, SetStatus) to Claude Code CLI
+  // MCP HTTP endpoint â€” exposes Polaris-native tools (SetProject, SetStatus) to Claude Code CLI
   if (req.method === 'POST' && req.url.startsWith('/mcp/')) {
     const sessionId = req.url.slice(5).split('?')[0];
     let body = '';
@@ -9000,7 +9228,7 @@ const httpServer = http.createServer((req, res) => {
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const { id, method, params } = rpc;
-      if (!('id' in rpc)) return res.end(''); // notification — no response
+      if (!('id' in rpc)) return res.end(''); // notification â€” no response
       if (method === 'initialize') {
         return res.end(JSON.stringify({ jsonrpc: '2.0', id, result: {
           protocolVersion: '2024-11-05',
@@ -9201,7 +9429,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // GET /branch-state — live session/branch data for the orchestrator panel
+  // GET /branch-state â€” live session/branch data for the orchestrator panel
   if (req.method === 'GET' && req.url.split('?')[0] === '/branch-state') {
     let body = '';
     req.on('data', c => { body += c; });
@@ -9253,7 +9481,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /reserve-merge-slot — acquire or queue a merge slot for a push
+  // POST /reserve-merge-slot â€” acquire or queue a merge slot for a push
   if (req.method === 'POST' && req.url === '/reserve-merge-slot') {
     let body = '';
     req.on('data', c => { body += c; });
@@ -9288,7 +9516,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /release-merge-slot — release a held slot and advance the queue
+  // POST /release-merge-slot â€” release a held slot and advance the queue
   if (req.method === 'POST' && req.url === '/release-merge-slot') {
     let body = '';
     req.on('data', c => { body += c; });
@@ -9331,7 +9559,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /dry-run-merge — detect conflicts before any real merge
+  // POST /dry-run-merge â€” detect conflicts before any real merge
   if (req.method === 'POST' && req.url === '/dry-run-merge') {
     let body = '';
     req.on('data', c => { body += c; });
@@ -9348,7 +9576,7 @@ const httpServer = http.createServer((req, res) => {
           [...sessions.values()].find(s => s.repoWorkDir && fs.existsSync(s.repoWorkDir))?.repoWorkDir;
         if (!repoPath) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'No repo path available — pass repoPath or have an active session' }));
+          res.end(JSON.stringify({ error: 'No repo path available â€” pass repoPath or have an active session' }));
           return;
         }
 
@@ -9363,7 +9591,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /push-git — slot reserve → dry-run → git push + retry → release slot
+  // POST /push-git â€” slot reserve â†’ dry-run â†’ git push + retry â†’ release slot
   if (req.method === 'POST' && req.url === '/push-git') {
     let body = '';
     req.on('data', c => { body += c; });
@@ -9415,13 +9643,13 @@ const httpServer = http.createServer((req, res) => {
         // Dry-run merge via shared helper
         const dryResult = runDryMerge(repoPath, branch, targetBranch);
         if (dryResult.status === 'conflict') {
-          // Hold slot — user must resolve conflict and release manually via /release-merge-slot
+          // Hold slot â€” user must resolve conflict and release manually via /release-merge-slot
           broadcast({ type: 'orchConflict', sessionId, sourceBranch: branch, targetBranch, conflictFiles: dryResult.conflictFiles, diffExcerpt: dryResult.diffExcerpt || '', slotId });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ status: 'conflict', conflictFiles: dryResult.conflictFiles, slotId }));
         }
         if (dryResult.status === 'error') {
-          // Branch restore failed — release slot so the queue doesn't deadlock, then surface the error
+          // Branch restore failed â€” release slot so the queue doesn't deadlock, then surface the error
           delete mergeSlots.slots[slotId];
           const errNextIdx = mergeSlots.queue.findIndex(q => q.targetBranch === targetBranch);
           if (errNextIdx !== -1) {
@@ -9432,7 +9660,7 @@ const httpServer = http.createServer((req, res) => {
             }
           }
           saveOrchestratorState();
-          broadcast({ type: 'orchAmber', sessionId, sourceBranch: branch, targetBranch, reason: dryResult.reason, detail: 'Branch restore failed during dry-run — push aborted to protect repo state', retryCount: 0, slotId: null });
+          broadcast({ type: 'orchAmber', sessionId, sourceBranch: branch, targetBranch, reason: dryResult.reason, detail: 'Branch restore failed during dry-run â€” push aborted to protect repo state', retryCount: 0, slotId: null });
           res.writeHead(500, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'dry-run-restore-failed', reason: dryResult.reason }));
         }
@@ -9479,7 +9707,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /push-obsidian — append timestamped session summary to project Build Plan in Obsidian
+  // POST /push-obsidian â€” append timestamped session summary to project Build Plan in Obsidian
   if (req.method === 'POST' && req.url === '/push-obsidian') {
     let body = '';
     req.on('data', c => { body += c; });
@@ -9526,7 +9754,7 @@ const httpServer = http.createServer((req, res) => {
         const contention = Object.keys(detectFileContention([session, ...activeSessions]));
         const ts = new Date().toISOString();
 
-        const summary = `\n---\n\n## Session Summary — ${ts}\n\n` +
+        const summary = `\n---\n\n## Session Summary â€” ${ts}\n\n` +
           `**Session:** ${session.name || session.id}  \n` +
           `**Branch:** ${info?.branch || '(unknown)'}  \n` +
           `**Worktree:** ${session.worktreePath || '(none)'}  \n` +
@@ -9545,7 +9773,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // POST /sync-state — receive canonical status update from LangGraph executor,
+  // POST /sync-state â€” receive canonical status update from LangGraph executor,
   // write to backlog.json (serialised via withBacklogLock), then broadcast
   // backlogs-data to refresh the UI.
   if (req.method === 'POST' && req.url === '/sync-state') {
@@ -9586,7 +9814,7 @@ const httpServer = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-// ─── Agent Eval feature ──────────────────────────────────────────────────────
+// â”€â”€â”€ Agent Eval feature â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Per-model agent-loop evaluation. Drives runDirectAgent against scripted
 // fixtures across a queue of models, asserts on tool calls + filesystem state,
 // emits per-cell results over WS. Mirrors the chat-style Benchmark Runner
@@ -9595,7 +9823,7 @@ const httpServer = http.createServer((req, res) => {
 const AGENT_EVAL_FIXTURES = [
   {
     id: '01-implement-imperative',
-    description: "When the user authorizes a change ('implement', 'apply'), agent must call Edit/Write — not just narrate.",
+    description: "When the user authorizes a change ('implement', 'apply'), agent must call Edit/Write â€” not just narrate.",
     seed: { files: { 'target.txt': 'the value is original\n' } },
     prompt: "Read target.txt, then use the Edit tool to change the word 'original' to 'updated'. Implement this now.",
     expect: {
@@ -9622,7 +9850,7 @@ const AGENT_EVAL_FIXTURES = [
   },
   {
     id: '03-basic-read',
-    description: 'Sanity baseline — simple Read + summarize.',
+    description: 'Sanity baseline â€” simple Read + summarize.',
     seed: { files: { 'config.json': '{ "appName": "Polaris", "version": "1.2.3", "env": "prod" }\n' } },
     prompt: 'Read config.json from the current working directory and tell me the version it specifies.',
     expect: {
@@ -9659,7 +9887,7 @@ function loadAgentEvalQueue() {
   }
 }
 
-// Same parser logic as test/agent-evals/lib/diagParser.js — kept inline here so
+// Same parser logic as test/agent-evals/lib/diagParser.js â€” kept inline here so
 // the packaged Electron build doesn't need to read from the source tree.
 function parseAgentEvalDiag(filePath) {
   let text;
@@ -9802,7 +10030,7 @@ async function runAgentEvalCell({ model, fixture, runIndex }) {
   };
 }
 
-// Live-write helpers — append rows to 5-Agentic-Benchmark.md as cells complete
+// Live-write helpers â€” append rows to 5-Agentic-Benchmark.md as cells complete
 // so the file is readable during a long run, not only after Save to Obsidian.
 // Survives WS disconnects since the server writes to disk directly. The final
 // aggregated table on agent-eval-complete writes a separate "## Run <stamp>"
@@ -9821,7 +10049,7 @@ function appendAgentEvalLiveHeader(stamp, totalCells, runs) {
     const header = [
       '',
       `### Live run ${stamp} (in progress)`,
-      `0/${totalCells} cells · ${runs} run(s) per cell · live-streaming as cells complete`,
+      `0/${totalCells} cells Â· ${runs} run(s) per cell Â· live-streaming as cells complete`,
       '',
       '| # | Model | Fixture | Run | Result | Iters | Tokens out | Time | Tools |',
       '|---:|---|---|---:|---|---:|---:|---:|---|',
@@ -9841,11 +10069,11 @@ function appendAgentEvalLiveRow(stamp, cell, completed, totalCells) {
   const file = _agentEvalObsidianFile();
   if (!file) return;
   try {
-    const tools = (cell.trace?.tools || []).join(', ') || '—';
-    const result = cell.pass ? '✓ PASS' : '✗ FAIL';
+    const tools = (cell.trace?.tools || []).join(', ') || 'â€”';
+    const result = cell.pass ? 'âœ“ PASS' : 'âœ— FAIL';
     const time = ((cell.elapsedMs || 0) / 1000).toFixed(1) + 's';
     const tokensOut = cell.trace?.tokens?.out ?? 0;
-    const iters = cell.trace?.iters ?? '—';
+    const iters = cell.trace?.iters ?? 'â€”';
     const errorSuffix = !cell.pass && cell.errors?.length ? ` <!-- ${cell.errors[0].slice(0, 80)} -->` : '';
     const row = `| ${completed}/${totalCells} | \`${cell.model}\` | ${cell.fixtureId || cell.fixture} | ${(cell.runIndex ?? 0) + 1} | ${result} | ${iters} | ${tokensOut} | ${time} | ${tools} |${errorSuffix}`;
     let content = fs.readFileSync(file, 'utf8');
@@ -9946,8 +10174,8 @@ function isSessionRunCurrent(sessionId, runId) {
   return !!session && session.activeRunId === runId && !session.aborted;
 }
 
-// ─── Resume turn dispatch + queue drain ──────────────────────────────────────
-// executeResumeTurn — runs the post-guard portion of the resume handler for a
+// â”€â”€â”€ Resume turn dispatch + queue drain â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// executeResumeTurn â€” runs the post-guard portion of the resume handler for a
 // single turn (whether it just arrived from the WS handler or was popped from
 // session.pendingTurns). drainPendingTurns is called from every terminal-status
 // broadcast in runDirectAgent / spawnMaxChat / spawnCodexSession / spawnGptChat,
@@ -9979,9 +10207,9 @@ function executeResumeTurn(sessionId, turn) {
   if (Array.isArray(videos) && videos.length) session.pendingVideos = videos.filter(v => v && typeof v.dataUrl === 'string');
   if (session.isChat) {
     const resumeAttachments = [
-      ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
-      ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
-      ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
+      ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `ðŸ“Ž ${i.name}`) : []),
+      ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `ðŸ“„ ${d.name}`)   : []),
+      ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `ðŸŽµ ${a.name}`)  : []),
     ];
   }
   broadcast({ type: 'session-status', sessionId, status: 'running' });
@@ -10008,7 +10236,7 @@ function executeResumeTurn(sessionId, turn) {
 function drainPendingTurns(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
-  // Convert steering queue → pending turns so they execute after this session ends
+  // Convert steering queue â†’ pending turns so they execute after this session ends
   if (Array.isArray(session.steeringQueue) && session.steeringQueue.length > 0) {
     if (!Array.isArray(session.pendingTurns)) session.pendingTurns = [];
     session.steeringQueue.forEach(s => session.pendingTurns.push({ prompt: s.text, displayPrompt: s.displayText, displayed: s.displayed || false }));
@@ -10031,19 +10259,19 @@ function drainPendingTurns(sessionId) {
 }
 
 
-// ─── WS receive-side schema registry (task #38) ──────────────────────────────
-// Maps every known client→server type string to its Zod schema. Built from the
+// â”€â”€â”€ WS receive-side schema registry (task #38) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Maps every known clientâ†’server type string to its Zod schema. Built from the
 // AnyClientMessage discriminated union so it stays in sync automatically when
 // new schemas are added to src/contracts/ws-messages.ts.
 // Schemas with z.enum type fields (LaunchMessage, TestApiKeyMessage,
 // LaunchExternalAppMessage) register each enum value separately.
-// Uses public Zod API (instanceof + .value / .options) — no _def internals.
+// Uses public Zod API (instanceof + .value / .options) â€” no _def internals.
 const WS_SCHEMA_REGISTRY = (() => {
   const registry = new Map();
   const register = (key, schema) => {
     if (registry.has(key)) {
       throw new Error(
-        `WS_SCHEMA_REGISTRY: duplicate type "${key}" — two schemas claim the same type string. Fix src/contracts/ws-messages.ts.`
+        `WS_SCHEMA_REGISTRY: duplicate type "${key}" â€” two schemas claim the same type string. Fix src/contracts/ws-messages.ts.`
       );
     }
     registry.set(key, schema);
@@ -10061,7 +10289,7 @@ const WS_SCHEMA_REGISTRY = (() => {
   return registry;
 })();
 
-// ─── WebSocket message handler ────────────────────────────────────────────────
+// â”€â”€â”€ WebSocket message handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
@@ -10094,7 +10322,7 @@ async function handleMessage(ws, raw) {
     return sendTo(ws, { type: 'ui-client-ack', clientId: ws.uiClientId || null, tabId: ws.uiTabId || null });
   }
 
-  // ── Chrome extension bridge ──────────────────────────────────────────────────
+  // â”€â”€ Chrome extension bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'chrome-extension-ready') {
     chromeExtensionWs = ws;
     ws.isChromeExtension = true;
@@ -10114,7 +10342,7 @@ async function handleMessage(ws, raw) {
     if (!prompt && !(images && images.length) && !(docs && docs.length) && !(audio && audio.length) && !(videos && videos.length)) return sendTo(ws, { type: 'error', text: 'Missing prompt' });
 
     // Auto-detect project from prompt text when none was selected from the dropdown.
-    // Skip detection when chipLabel is set (e.g. "Cross Check") — the label wins and
+    // Skip detection when chipLabel is set (e.g. "Cross Check") â€” the label wins and
     // the prompt may contain unrelated project directory names that would mis-match.
     const detectedProject = (!msg.projectName && !chipLabel) ? detectProjectFromPrompt(prompt) : null;
     const projectName = msg.projectName || (detectedProject ? detectedProject.name : null);
@@ -10173,9 +10401,9 @@ async function handleMessage(ws, raw) {
     broadcast({ type: 'session-created', sessionId: id, name, workDir: effectiveWorkDir, projectName: projectName || null, chipLabel: chipLabel || null, chipColor: chipColor || null, model: chatModel, isChat: true });
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     const launchAttachments = [
-      ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `📎 ${i.name}`) : []),
-      ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `📄 ${d.name}`)   : []),
-      ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `🎵 ${a.name}`)  : []),
+      ...(Array.isArray(images) ? images.filter(i => i?.name).map(i => `ðŸ“Ž ${i.name}`) : []),
+      ...(Array.isArray(docs)   ? docs.filter(d => d?.name).map(d => `ðŸ“„ ${d.name}`)   : []),
+      ...(Array.isArray(audio)  ? audio.filter(a => a?.name).map(a => `ðŸŽµ ${a.name}`)  : []),
     ];
     saveSessions();
     spawnChatRouter(id, prompt, config);
@@ -10301,7 +10529,7 @@ async function handleMessage(ws, raw) {
     broadcastInitialUserPrompt(id, prompt, displayPrompt);
     saveSessions();
 
-    // Tier guard — Balanced/Power must be explicitly configured. No silent fallback to Floor.
+    // Tier guard â€” Balanced/Power must be explicitly configured. No silent fallback to Floor.
     // Skipped when an explicit msg.model is provided (Agent Eval runner path) since the
     // explicit model overrides tier mapping anyway.
     if (!routineTag && !directProvider && !msg.model && (tier === 'balanced' || tier === 'power')) {
@@ -10309,7 +10537,7 @@ async function handleMessage(ws, raw) {
       const tierKey = tier === 'balanced' ? 'openRouterSonnetModel' : 'openRouterOpusModel';
       const tierName = tier === 'balanced' ? 'Balanced' : 'Power';
       if (!cfg[tierKey] || !cfg.openRouterApiKey) {
-        const errMsg = `The ${tierName} model is not configured. Go to Settings → OpenRouter to set up the model string and API key for this tier.`;
+        const errMsg = `The ${tierName} model is not configured. Go to Settings â†’ OpenRouter to set up the model string and API key for this tier.`;
         broadcast({ type: 'line', sessionId: id, text: errMsg, role: 'error' });
         broadcast({ type: 'session-status', sessionId: id, status: 'error' });
         const s = sessions.get(id);
@@ -10325,17 +10553,17 @@ async function handleMessage(ws, raw) {
       if (routineTag.startsWith('eval-')) {
         // Eval sessions: full agent loop with explicit OpenRouter model override
         // session.model is already set to the OpenRouter model ID from msg.model
-        const routeMsg = `[routing] eval session → runDirectAgent (model=${routineModel || 'default'})`;
+        const routeMsg = `[routing] eval session â†’ runDirectAgent (model=${routineModel || 'default'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
         runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[eval-agent] unhandled error:', err.stack || err.message));
       } else if (routineModel === 'chat') {
-        const routeMsg = `[routing] routineTag="${routineTag}" model=chat → chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
+        const routeMsg = `[routing] routineTag="${routineTag}" model=chat â†’ chat router (${cfg.chatModel || 'deepseek/deepseek-chat'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
         spawnChatRouter(id, prompt, cfg);
       } else {
-        const routeMsg = `[routing] routineTag="${routineTag}" → runDirectAgent (model=${routineModel || 'default'})`;
+        const routeMsg = `[routing] routineTag="${routineTag}" â†’ runDirectAgent (model=${routineModel || 'default'})`;
         console.log(routeMsg);
         broadcast({ type: 'line', sessionId: id, text: routeMsg, role: 'system' });
         runDirectAgent(id, prompt, sessionWorkDir).catch(err => console.error('[routine-agent] unhandled error:', err.stack || err.message));
@@ -10354,10 +10582,10 @@ async function handleMessage(ws, raw) {
     const session = sessions.get(sessionId);
     if (!session) return sendTo(ws, { type: 'error', text: 'Session not found' });
     const finalPrompt  = isSystemInstruction ? `[SYSTEM INSTRUCTION]: ${prompt}` : prompt;
-    const finalDisplay = isSystemInstruction ? `⚙ ${displayPrompt || prompt}` : displayPrompt;
+    const finalDisplay = isSystemInstruction ? `âš™ ${displayPrompt || prompt}` : displayPrompt;
     const turn = { prompt: finalPrompt, displayPrompt: finalDisplay, resumeId, model, projectName, images, docs, audio, videos };
     // If the session is running, show the prompt in the transcript immediately and queue it
-    // for immediate execution once the current task finishes — never kill the active task.
+    // for immediate execution once the current task finishes â€” never kill the active task.
     // CLI sessions (chat/codex/gpt) can't receive mid-task injections, so go straight to
     // pendingTurns. Direct Agent sessions also get steeringQueue so the loop can inject
     // the prompt between API iterations without waiting for the current task to fully end.
@@ -10391,9 +10619,6 @@ async function handleMessage(ws, raw) {
       pendingCrossChecks.delete(msg.checkId);
       clearTimeout(pending.timer);
       const decision = msg.decision === 'approve' ? 'approve' : 'reject';
-      if (decision === 'reject' && pending.review?.verdict === 'FAIL') {
-        autoLaunchCrossCheckSession({ sessionId: pending.sessionId, filePath: pending.filePath, operation: pending.operation, review: pending.review });
-      }
       pending.resolve(decision);
     }
     return;
@@ -10554,6 +10779,10 @@ async function handleMessage(ws, raw) {
   if (type === 'close-session') {
     const session = sessions.get(msg.sessionId);
     if (session) {
+      const wasCrossCheckSession = session.chipLabel === 'Cross Check';
+      const crossCheckName = session.crossCheckProjectName || session.projectName || null;
+      const crossCheckWorkDir = session.repoWorkDir || session.workDir || null;
+      const crossCheckKey = session.crossCheckProjectKey || crossCheckProjectKey(crossCheckName, crossCheckWorkDir);
       if (session.proc && !session.proc.killed) session.proc.kill();
       if (session.timeout) clearTimeout(session.timeout);
       if (session.watcher) session.watcher.close();
@@ -10567,8 +10796,22 @@ async function handleMessage(ws, raw) {
       }
       onSessionClosed(msg.sessionId);
       deleteSessionStateFile(msg.sessionId);
+      if (wasCrossCheckSession) {
+        removeSessionWorktree(msg.sessionId);
+        crossCheckProjectSessions.delete(crossCheckKey);
+      }
       sessions.delete(msg.sessionId);
       saveSessions();
+      if (wasCrossCheckSession) {
+        const config = readConfig();
+        const stillConfigured = (config.projects || []).find(p => {
+          if (crossCheckName && p.name === crossCheckName) return true;
+          return crossCheckWorkDir && p.workDir && normalizeCrossCheckPath(p.workDir) === normalizeCrossCheckPath(crossCheckWorkDir);
+        });
+        if (stillConfigured) {
+          ensureCrossCheckSession({ projectName: stillConfigured.name || crossCheckName, projectWorkDir: stillConfigured.workDir || crossCheckWorkDir, config });
+        }
+      }
     }
     broadcast({ type: 'session-closed', sessionId: msg.sessionId });
     return;
@@ -10724,7 +10967,7 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'advance-task') {
-    // Proxy to LangGraph executor POST /advance — advances the task graph one step.
+    // Proxy to LangGraph executor POST /advance â€” advances the task graph one step.
     // Suspends at HITL interrupt nodes; returns immediately on completion or pause.
     const { taskNumber } = msg;
     if (!taskNumber) { sendTo(ws, { type: 'advance-task-result', error: 'taskNumber required' }); return; }
@@ -10744,7 +10987,7 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'send-lang-signal') {
-    // Proxy to LangGraph executor POST /signal — delivers a human resume signal to unblock
+    // Proxy to LangGraph executor POST /signal â€” delivers a human resume signal to unblock
     // a paused HITL node (e.g. code_done, approved, request_changes).
     const { taskNumber, signal } = msg;
     if (!taskNumber || !signal) { sendTo(ws, { type: 'lang-signal-result', error: 'taskNumber and signal required' }); return; }
@@ -10852,7 +11095,7 @@ async function handleMessage(ws, raw) {
     }
     const resolvedOrKey = (apiKey === SECRET_MASK) ? readConfig().openRouterApiKey : apiKey;
     if (!resolvedOrKey || /[^\x20-\x7E]/.test(resolvedOrKey)) {
-      sendTo(ws, { type: 'openrouter-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' });
+      sendTo(ws, { type: 'openrouter-test-result', ok: false, message: 'Key contains invalid characters â€” clear the field and re-paste your key' });
       return;
     }
     const req = https.request({
@@ -10868,7 +11111,7 @@ async function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = data?.data?.length || 0;
-            sendTo(ws, { type: 'openrouter-test-result', ok: true, message: `Key valid — ${count} models available` });
+            sendTo(ws, { type: 'openrouter-test-result', ok: true, message: `Key valid â€” ${count} models available` });
           } catch {
             sendTo(ws, { type: 'openrouter-test-result', ok: true, message: 'Key valid' });
           }
@@ -10890,7 +11133,7 @@ async function handleMessage(ws, raw) {
     const { apiKey } = msg;
     if (!apiKey) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'No API key provided' }); return; }
     const resolvedAnthKey = (apiKey === SECRET_MASK) ? readConfig().anthropicApiKey : apiKey;
-    if (!resolvedAnthKey || /[^\x20-\x7E]/.test(resolvedAnthKey)) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Key contains invalid characters — clear the field and re-paste your key' }); return; }
+    if (!resolvedAnthKey || /[^\x20-\x7E]/.test(resolvedAnthKey)) { sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Key contains invalid characters â€” clear the field and re-paste your key' }); return; }
     const req = https.request({
       hostname: 'api.anthropic.com',
       path: '/v1/models',
@@ -10904,7 +11147,7 @@ async function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = data?.data?.length || 0;
-            sendTo(ws, { type: 'anthropic-test-result', ok: true, message: `Key valid — ${count} models available` });
+            sendTo(ws, { type: 'anthropic-test-result', ok: true, message: `Key valid â€” ${count} models available` });
           } catch { sendTo(ws, { type: 'anthropic-test-result', ok: true, message: 'Key valid' }); }
         } else if (res.statusCode === 401) {
           sendTo(ws, { type: 'anthropic-test-result', ok: false, message: 'Invalid API key (401)' });
@@ -10935,7 +11178,7 @@ async function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = data?.data?.length || 0;
-            sendTo(ws, { type: 'openai-test-result', ok: true, message: `Key valid — ${count} models available` });
+            sendTo(ws, { type: 'openai-test-result', ok: true, message: `Key valid â€” ${count} models available` });
           } catch { sendTo(ws, { type: 'openai-test-result', ok: true, message: 'Key valid' }); }
         } else if (res.statusCode === 401) {
           sendTo(ws, { type: 'openai-test-result', ok: false, message: 'Invalid API key (401)' });
@@ -10967,7 +11210,7 @@ async function handleMessage(ws, raw) {
           try {
             const data = JSON.parse(body);
             const count = (data?.voices || []).length;
-            sendTo(ws, { type: 'elevenlabs-test-result', ok: true, message: `Key valid — ${count} voices available` });
+            sendTo(ws, { type: 'elevenlabs-test-result', ok: true, message: `Key valid â€” ${count} voices available` });
           } catch { sendTo(ws, { type: 'elevenlabs-test-result', ok: true, message: 'Key valid' }); }
         } else if (res.statusCode === 401) {
           sendTo(ws, { type: 'elevenlabs-test-result', ok: false, message: 'Invalid API key (401)' });
@@ -10996,7 +11239,7 @@ async function handleMessage(ws, raw) {
       res.on('data', c => body += c);
       res.on('end', () => {
         if (res.statusCode === 200) {
-          sendTo(ws, { type: 'brave-test-result', ok: true, message: 'Key valid — search returned results' });
+          sendTo(ws, { type: 'brave-test-result', ok: true, message: 'Key valid â€” search returned results' });
         } else if (res.statusCode === 401 || res.statusCode === 403) {
           sendTo(ws, { type: 'brave-test-result', ok: false, message: `Invalid or unauthorized key (${res.statusCode})` });
         } else if (res.statusCode === 429) {
@@ -11079,12 +11322,12 @@ async function handleMessage(ws, raw) {
         const streamMs = ttftMs ? totalMs - ttftMs : totalMs;
         const tps = streamMs > 0 ? Math.round(outTokens / (streamMs / 1000)) : 0;
         if (!ttftMs) {
-          sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No tokens received — model may not support streaming' });
+          sendTo(ws, { type: 'test-model-result', tier, ok: false, message: 'No tokens received â€” model may not support streaming' });
           return;
         }
         sendTo(ws, {
           type: 'test-model-result', tier, ok: true,
-          message: `✓ TTFT: ${(ttftMs/1000).toFixed(2)}s · ${tps} tok/s · ${outTokens} tokens · ${(totalMs/1000).toFixed(2)}s total`,
+          message: `âœ“ TTFT: ${(ttftMs/1000).toFixed(2)}s Â· ${tps} tok/s Â· ${outTokens} tokens Â· ${(totalMs/1000).toFixed(2)}s total`,
         });
       });
     });
@@ -11174,7 +11417,7 @@ async function handleMessage(ws, raw) {
     const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
     const isPolaris   = sourcePath === POLARIS_WORK_DIR;
 
-    // Pre-build cross-check gate — required for all projects.
+    // Pre-build cross-check gate â€” required for all projects.
     if (!msg.skipCheck) {
       const status = getPreBuildCheckStatus(sourcePath, projectName);
       if (!status.fresh) {
@@ -11191,14 +11434,14 @@ async function handleMessage(ws, raw) {
     if (buildType === 'mac') {
       try {
         execSync('gh workflow run build-mac.yml', { cwd: sourcePath, encoding: 'utf8', timeout: 15000 });
-        sendTo(ws, { type: 'build-result', ok: true, message: 'Mac build triggered on GitHub Actions. The DMG artifact will be ready in ~5-10 min — check the Actions tab on the repo.' });
+        sendTo(ws, { type: 'build-result', ok: true, message: 'Mac build triggered on GitHub Actions. The DMG artifact will be ready in ~5-10 min â€” check the Actions tab on the repo.' });
       } catch (e) {
         sendTo(ws, { type: 'build-result', ok: false, message: `Failed to trigger Mac build: ${e.message || String(e)}. Make sure gh CLI is installed and authenticated (run: gh auth login).` });
       }
       return;
     }
     if (process.platform !== 'win32') {
-      sendTo(ws, { type: 'build-result', ok: false, message: 'macOS builds are done via GitHub Actions — push to main and the build-mac workflow will produce a DMG artifact.' });
+      sendTo(ws, { type: 'build-result', ok: false, message: 'macOS builds are done via GitHub Actions â€” push to main and the build-mac workflow will produce a DMG artifact.' });
       return;
     }
 
@@ -11240,7 +11483,7 @@ async function handleMessage(ws, raw) {
       const isPublic  = isPolaris && buildType === 'public';
       const closesApp = isPolaris && !isPublic;
       const okMsg = isPublic
-        ? `Public build started (pid ${child.pid}). The installer will appear in dist\\ when complete — Polaris stays running.`
+        ? `Public build started (pid ${child.pid}). The installer will appear in dist\\ when complete â€” Polaris stays running.`
         : closesApp
           ? `Build started (pid ${child.pid}). Polaris will close shortly; the new version will install automatically.`
           : `${projectName} build started (pid ${child.pid}). Watch the PowerShell window for progress.`;
@@ -11267,7 +11510,7 @@ async function handleMessage(ws, raw) {
         sendTo(ws, { type: 'agent-eval-saved', error: 'No results to save' });
         return;
       }
-      // Aggregate per (model × fixture): pass count, median latency, median iters,
+      // Aggregate per (model Ã— fixture): pass count, median latency, median iters,
       // median output tokens, union of tools used.
       const cells = new Map();
       for (const r of results) {
@@ -11286,7 +11529,7 @@ async function handleMessage(ws, raw) {
       const passed = results.filter(r => r.pass).length;
       const out = [];
       out.push(`### Run ${stamp}`);
-      out.push(`${passed}/${results.length} cells passed across ${cells.size} (model × fixture) pairs.`);
+      out.push(`${passed}/${results.length} cells passed across ${cells.size} (model Ã— fixture) pairs.`);
       out.push('');
       out.push('| Model | Fixture | Pass | Latency med (s) | Iters med | Tokens in med | Tokens out med | Cost total | Tools used |');
       out.push('|---|---|---|---:|---:|---:|---:|---:|---|');
@@ -11299,14 +11542,14 @@ async function handleMessage(ws, raw) {
         const tout = cell.runs.map(r => r.trace?.tokens?.out || 0);
         const cellCost = cell.runs.reduce((s, r) => s + (r.costUsd || 0), 0);
         runTotalCost += cellCost;
-        const costStr = cellCost === 0 ? '—' : (cellCost < 0.0001 ? '<$0.0001' : '$' + cellCost.toFixed(4));
-        const toolUnion = [...new Set(cell.runs.flatMap(r => r.trace?.tools || []))].join(', ') || '—';
+        const costStr = cellCost === 0 ? 'â€”' : (cellCost < 0.0001 ? '<$0.0001' : '$' + cellCost.toFixed(4));
+        const toolUnion = [...new Set(cell.runs.flatMap(r => r.trace?.tools || []))].join(', ') || 'â€”';
         out.push(`| \`${cell.model}\` | ${cell.fixture} | ${cell.passes}/${cell.runs.length} | ${median(lats).toFixed(2)} | ${median(iters)} | ${median(tin)} | ${median(tout)} | ${costStr} | ${toolUnion} |`);
       }
       out.push('');
-      out.push(`Total spend this run: ${runTotalCost === 0 ? '—' : (runTotalCost < 0.01 ? '<$0.01' : '$' + runTotalCost.toFixed(4))}`);
+      out.push(`Total spend this run: ${runTotalCost === 0 ? 'â€”' : (runTotalCost < 0.01 ? '<$0.01' : '$' + runTotalCost.toFixed(4))}`);
       out.push('');
-      // Insert under "## Results" — newest at top.
+      // Insert under "## Results" â€” newest at top.
       let content = fs.readFileSync(file, 'utf8');
       const block = out.join('\n') + '\n';
       if (/^##\s+Results\b/m.test(content)) {
@@ -11352,7 +11595,7 @@ async function handleMessage(ws, raw) {
       let content = fs.readFileSync(benchFile, 'utf8');
       const date = new Date().toISOString().slice(0, 10);
       const providerLabel = provider || 'auto';
-      const row = `| ${date} | ${model} | ${providerLabel} | ${(ttft/1000).toFixed(2)} | ${tps} | ${tokens} | ${(totalMs/1000).toFixed(2)} | ✓ |`;
+      const row = `| ${date} | ${model} | ${providerLabel} | ${(ttft/1000).toFixed(2)} | ${tps} | ${tokens} | ${(totalMs/1000).toFixed(2)} | âœ“ |`;
       content = content.replace(
         /(\| Status \|\n\|[-| ]+\|)/,
         `$1\n${row}`
@@ -11382,13 +11625,13 @@ async function handleMessage(ws, raw) {
       return;
     }
     const dimLines = [
-      `S (Satisfaction — session success rate): score=${scores.S.score}, trend=${scores.S.trend}, daily=[${scores.S.last7.join(',')}]`,
-      `P (Performance — output throughput):     score=${scores.P.score}, trend=${scores.P.trend}, daily=[${scores.P.last7.join(',')}]`,
-      `A (Activity — sessions launched per day): score=${scores.A.score}, trend=${scores.A.trend}, daily=[${scores.A.last7.join(',')}]`,
-      `C (Collaboration — parallel work):        score=${scores.C.score}, trend=${scores.C.trend}, daily=[${scores.C.last7.join(',')}]`,
-      `E (Efficiency — time to first output):    score=${scores.E.score}, trend=${scores.E.trend}, daily=[${scores.E.last7.join(',')}]`,
+      `S (Satisfaction â€” session success rate): score=${scores.S.score}, trend=${scores.S.trend}, daily=[${scores.S.last7.join(',')}]`,
+      `P (Performance â€” output throughput):     score=${scores.P.score}, trend=${scores.P.trend}, daily=[${scores.P.last7.join(',')}]`,
+      `A (Activity â€” sessions launched per day): score=${scores.A.score}, trend=${scores.A.trend}, daily=[${scores.A.last7.join(',')}]`,
+      `C (Collaboration â€” parallel work):        score=${scores.C.score}, trend=${scores.C.trend}, daily=[${scores.C.last7.join(',')}]`,
+      `E (Efficiency â€” time to first output):    score=${scores.E.score}, trend=${scores.E.trend}, daily=[${scores.E.last7.join(',')}]`,
     ].join('\n');
-    const prompt = `You are analyzing SPACE productivity data for the project "${projectName}". Day index 0 = 6 days ago, index 6 = today. All scores are 0–100.\n\n${dimLines}\n\nWrite a focused deep analysis (200–300 words) covering:\n1. Overall health and what the combined score pattern reveals\n2. The most significant anomaly or pattern in the day-by-day data (look at variance across the 7 days, not just the score)\n3. What the strongest and weakest dimensions suggest about how this project is being worked\n4. One specific, actionable recommendation backed by the numbers\n\nBe direct. Reference actual values. Use markdown headings for each section.`;
+    const prompt = `You are analyzing SPACE productivity data for the project "${projectName}". Day index 0 = 6 days ago, index 6 = today. All scores are 0â€“100.\n\n${dimLines}\n\nWrite a focused deep analysis (200â€“300 words) covering:\n1. Overall health and what the combined score pattern reveals\n2. The most significant anomaly or pattern in the day-by-day data (look at variance across the 7 days, not just the score)\n3. What the strongest and weakest dimensions suggest about how this project is being worked\n4. One specific, actionable recommendation backed by the numbers\n\nBe direct. Reference actual values. Use markdown headings for each section.`;
     callOpenRouterOnce('anthropic/claude-haiku-4-5', apiKey, [{ role: 'user', content: prompt }], 600)
       .then(result => {
         if (result.error) sendTo(ws, { type: 'space-analysis', projectName, error: result.error });
@@ -11431,7 +11674,7 @@ async function handleMessage(ws, raw) {
       return;
     }
 
-    // Read the full diag log — user explicitly requested no truncation.
+    // Read the full diag log â€” user explicitly requested no truncation.
     const srcDiagPath = path.join(LOGS_DIR, `diag-${src.id}.txt`);
     let diagContent;
     try {
@@ -11442,7 +11685,7 @@ async function handleMessage(ws, raw) {
 
     const continuationPrompt =
       'You are continuing a previous Polaris session. Below is the full diagnostic ' +
-      'log from that session — every tool call, prompt, and response. Pick up where ' +
+      'log from that session â€” every tool call, prompt, and response. Pick up where ' +
       'it left off: address any unfinished task or unanswered question. Do not ' +
       'restate the prior session\'s work; reference it only as needed.\n\n' +
       `--- PRIOR SESSION DIAG (sessionId=${src.id}) ---\n${diagContent}\n--- END DIAG ---`;
@@ -11454,7 +11697,7 @@ async function handleMessage(ws, raw) {
     const idPrefix = isCodex ? 'codex' : isGpt ? 'gpt' : isChatLike ? 'chat' : 's';
     const newId = `${idPrefix}_${Date.now()}`;
     const newName = `Transfer: ${src.name || 'session'}`;
-    const displayPrompt = `[Transfer from ${src.name || src.id}] Continuing prior session — full diag log handed to new session as context.`;
+    const displayPrompt = `[Transfer from ${src.name || src.id}] Continuing prior session â€” full diag log handed to new session as context.`;
 
     const newSession = {
       id: newId,
@@ -11495,7 +11738,7 @@ async function handleMessage(ws, raw) {
     if (isCodex) createdMsg.isCodex = true;
     broadcast(createdMsg);
 
-    // Display only the short header in the terminal — full diag is in lastPrompt.
+    // Display only the short header in the terminal â€” full diag is in lastPrompt.
     saveSessions();
 
     if (isCodex) {
@@ -11651,7 +11894,7 @@ async function handleMessage(ws, raw) {
     const apiKey = (msg.apiKey && msg.apiKey !== SECRET_MASK) ? msg.apiKey : readConfig().deepSeekApiKey;
     const model = msg.model || 'deepseek-v4-pro';
     if (!apiKey) {
-      sendTo(ws, { type: 'routine-api-model-test', ok: false, message: 'No API key — set DeepSeek key first' });
+      sendTo(ws, { type: 'routine-api-model-test', ok: false, message: 'No API key â€” set DeepSeek key first' });
       return;
     }
     const payload = JSON.stringify({ model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false });
@@ -11857,7 +12100,7 @@ async function handleMessage(ws, raw) {
   if (type === 'save-config') {
     const current = readConfigRaw();
     const updates = { ...msg.config };
-    // Projects and routines are immutable through save-config — they have
+    // Projects and routines are immutable through save-config â€” they have
     // dedicated upsert-project / delete-project / upsert-routine / delete-routine
     // handlers. Stripping them here prevents any bulk-array replacement path.
     delete updates.projects;
@@ -11887,7 +12130,7 @@ async function handleMessage(ws, raw) {
     return;
   }
 
-  // ── Atomic project mutations (one item at a time) ────────────────────────────
+  // â”€â”€ Atomic project mutations (one item at a time) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'upsert-project') {
     const proj = msg.project;
     if (!proj || !proj.name) return;
@@ -11903,6 +12146,7 @@ async function handleMessage(ws, raw) {
     writeJSON(CONFIG_PATH, cfg);
     if (idx < 0 && cfg.obsidianVaultPath) scaffoldObsidianProject(proj, cfg.obsidianVaultPath);
     if (idx < 0) scaffoldBacklog(proj);
+    if (proj.workDir && fs.existsSync(proj.workDir)) ensureCrossCheckSession({ projectName: proj.name || null, projectWorkDir: proj.workDir, config: readConfig() });
     sendTo(ws, { type: 'config-saved' });
     return;
   }
@@ -11911,14 +12155,16 @@ async function handleMessage(ws, raw) {
     const { name } = msg;
     if (!name) return;
     const cfg = readConfigRaw();
+    const removed = (cfg.projects || []).find(p => p.name === name);
     const before = (cfg.projects || []).length;
     cfg.projects = (cfg.projects || []).filter(p => p.name !== name);
     if (cfg.projects.length < before) writeJSON(CONFIG_PATH, cfg);
+    if (removed) closeCrossCheckSessionForProject(removed.name || null, removed.workDir || null);
     sendTo(ws, { type: 'config-saved' });
     return;
   }
 
-  // ── Atomic routine mutations (one item at a time) ────────────────────────────
+  // â”€â”€ Atomic routine mutations (one item at a time) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'upsert-routine') {
     const routine = msg.routine;
     if (!routine || !routine.name) return;
@@ -11955,7 +12201,7 @@ async function handleMessage(ws, raw) {
       return;
     }
     const text    = String(msg.text || '').slice(0, 1500);
-    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — British female
+    const voiceId = cfg.elevenLabsVoiceId || 'Xb7hH8MSUJpSbSDYk0k2'; // Alice â€” British female
     try {
       const state  = await ensureMcpProcess('elevenlabs', servers.elevenlabs);
       const raw    = await mcpStdioCall(state, 'tools/call', {
@@ -12043,7 +12289,7 @@ async function handleMessage(ws, raw) {
 
   if (type === 'set-session-status') {
     const result = toolSetStatus({ status: msg.status }, msg.sessionId);
-    console.log(`[set-session-status] ${msg.sessionId} → ${msg.status}: ${result}`);
+    console.log(`[set-session-status] ${msg.sessionId} â†’ ${msg.status}: ${result}`);
     return;
   }
 
@@ -12055,12 +12301,12 @@ async function handleMessage(ws, raw) {
     if (msg.taskState !== undefined) session.taskState = msg.taskState;
     if (msg.lastSkill !== undefined) session.lastSkill = msg.lastSkill;
     broadcast({ type: 'session-status', sessionId: msg.sessionId, status: session.status, taskNumber: session.taskNumber || null, taskState: session.taskState || null, lastSkill: session.lastSkill || null });
-    console.log(`[set-task-state] ${msg.sessionId} → #${session.taskNumber} ${session.taskState} /${session.lastSkill}`);
+    console.log(`[set-task-state] ${msg.sessionId} â†’ #${session.taskNumber} ${session.taskState} /${session.lastSkill}`);
     return;
   }
 
   if (type === 'restart') {
-    broadcast({ type: 'line', sessionId: null, text: 'Server restarting…', role: 'error' });
+    broadcast({ type: 'line', sessionId: null, text: 'Server restartingâ€¦', role: 'error' });
     setTimeout(() => process.exit(0), 300);
     return;
   }
@@ -12245,7 +12491,7 @@ async function handleMessage(ws, raw) {
         const code = reqUrl.searchParams.get('code');
         const oauthError = reqUrl.searchParams.get('error');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">✓ Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
+        res.end('<html><body style="font-family:sans-serif;padding:40px;background:#111;color:#eee;"><h2 style="color:#86efac;">âœ“ Google Drive connected!</h2><p>You can close this tab and return to Polaris.</p></body></html>');
         callbackServer.close();
         if (oauthError || !code) {
           sendTo(ws, { type: 'gdrive-oauth-complete', ok: false, error: oauthError || 'No auth code received' });
@@ -12564,7 +12810,7 @@ async function handleMessage(ws, raw) {
     let chromeRunning = false;
     try { chromeRunning = execSync('tasklist /FI "IMAGENAME eq chrome.exe" /NH 2>NUL').toString().toLowerCase().includes('chrome.exe'); } catch {}
     if (chromeRunning) {
-      sendTo(ws, { type: 'line', sessionId: null, text: '[chrome] Closing existing Chrome to enable remote debugging…', role: 'system' });
+      sendTo(ws, { type: 'line', sessionId: null, text: '[chrome] Closing existing Chrome to enable remote debuggingâ€¦', role: 'system' });
       try { execSync('taskkill /IM chrome.exe /F 2>NUL'); } catch {}
       // Wait for Chrome to fully exit before relaunching
       await new Promise(r => setTimeout(r, 1500));
@@ -12710,7 +12956,7 @@ async function handleMessage(ws, raw) {
           await fsp.mkdir(dir, { recursive: true });
           await fsp.writeFile(
             path.join(dir, `${nextNum}.md`),
-            `# ${label} ${nextNum}\n\n**Date:** ${today}\n**Project:** ${projectName || '—'}\n\n${noteContent}\n`,
+            `# ${label} ${nextNum}\n\n**Date:** ${today}\n**Project:** ${projectName || 'â€”'}\n\n${noteContent}\n`,
             'utf8'
           );
         } catch (e) { console.error(`[obsidian-commit] ${label} write failed:`, e.message); }
@@ -12793,7 +13039,7 @@ async function handleMessage(ws, raw) {
       const safeName = (projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_');
       const filePath = path.join(statusDir, `${safeName}.md`);
 
-      // Archive prior content before overwrite — guards against accidental clobbers.
+      // Archive prior content before overwrite â€” guards against accidental clobbers.
       try {
         await fsp.access(filePath);
         {
@@ -12815,7 +13061,7 @@ async function handleMessage(ws, raw) {
       }
 
       const now = new Date().toISOString().split('T')[0];
-      const content = `# ${projectName} — Status\n\n**Last Updated:** ${now}\n\n${note || ''}`;
+      const content = `# ${projectName} â€” Status\n\n**Last Updated:** ${now}\n\n${note || ''}`;
       await fsp.writeFile(filePath, content, 'utf8');
       sendTo(ws, { type: 'project-status-saved', projectName, filePath });
     } catch (e) {
@@ -12873,7 +13119,7 @@ async function handleMessage(ws, raw) {
     try {
       if (fs.existsSync(INJECTION_LOG_PATH)) {
         const stat = fs.statSync(INJECTION_LOG_PATH);
-        if (stat.size < 5_000_000) {  // 5MB hard cap — write-side prune keeps this under ~100KB normally
+        if (stat.size < 5_000_000) {  // 5MB hard cap â€” write-side prune keeps this under ~100KB normally
           const lines = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
           const limit = Math.min(parseInt(msg.limit, 10) || 50, 200);
           entries = lines.slice(-limit).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
@@ -12957,7 +13203,7 @@ async function handleMessage(ws, raw) {
     const primary = sessions.get(primarySessionId);
     if (!primary) return sendTo(ws, { type: 'archive-error', error: 'Session not found' });
     const forkId = `fork_${Date.now()}`;
-    const forkName = `${primary.name} ⑂ Fork`;
+    const forkName = `${primary.name} â‘‚ Fork`;
     const config = readConfig();
     const model = forkModelId || config.defaultForkModel || config.openRouterFloorModel || 'openrouter/auto';
     sessions.set(forkId, {
@@ -13008,10 +13254,10 @@ async function handleMessage(ws, raw) {
       const coursesPath = path.join(aesop.workDir, 'ai-academy', 'modules', 'courses-data.json');
       let allCourses = [];
       try {
-        const raw = fs.readFileSync(coursesPath, 'utf8').replace(/^﻿/, '');
+        const raw = fs.readFileSync(coursesPath, 'utf8').replace(/^ï»¿/, '');
         const parsed = JSON.parse(raw);
         allCourses = Array.isArray(parsed) ? parsed : (parsed.courses || []);
-      } catch (_) { /* unreadable — continue with empty */ }
+      } catch (_) { /* unreadable â€” continue with empty */ }
 
       const modulesDir = path.join(aesop.workDir, 'ai-academy', 'modules');
       const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -13026,7 +13272,7 @@ async function handleMessage(ws, raw) {
         }
       } catch (_) {}
 
-      // Match course → developed dir by exact course ID slug only.
+      // Match course â†’ developed dir by exact course ID slug only.
       // Name-slug and suffix matching caused false positives (e.g. course id="governance"
       // matched the "ai-governance" dir that belongs to a different course).
       const hasModules = c => {
@@ -13067,7 +13313,7 @@ async function handleMessage(ws, raw) {
             }
           } catch (_) { /* skip malformed draft */ }
         }
-      } catch (_) { /* drafts dir unreadable — continue with empty */ }
+      } catch (_) { /* drafts dir unreadable â€” continue with empty */ }
 
       const building = [];
       for (const [, s] of sessions) {
@@ -13084,7 +13330,7 @@ async function handleMessage(ws, raw) {
     return;
   }
 
-  // ─── get-eval-model-list ─────────────────────────────────────────────────
+  // â”€â”€â”€ get-eval-model-list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'get-eval-model-list') {
     try {
       const cfg       = readConfig();
@@ -13151,7 +13397,7 @@ async function handleMessage(ws, raw) {
     return;
   }
 
-  // ─── cleanup-eval-benchmark ───────────────────────────────────────────────
+  // â”€â”€â”€ cleanup-eval-benchmark â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'cleanup-eval-benchmark') {
     try {
       const cfg = readConfig();
@@ -13164,7 +13410,7 @@ async function handleMessage(ws, raw) {
     return;
   }
 
-  // ─── score-eval-benchmark ─────────────────────────────────────────────────
+  // â”€â”€â”€ score-eval-benchmark â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'score-eval-benchmark') {
     try {
       const cfg = readConfig();
@@ -13193,7 +13439,7 @@ async function handleMessage(ws, raw) {
     return;
   }
 
-  // ─── write-eval-to-obsidian ───────────────────────────────────────────────
+  // â”€â”€â”€ write-eval-to-obsidian â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (type === 'write-eval-to-obsidian') {
     try {
       const cfg       = readConfig();
@@ -13208,14 +13454,14 @@ async function handleMessage(ws, raw) {
       const fmtDur = ms => { const s = Math.floor(ms/1000), m = Math.floor(s/60); return m > 0 ? `${m}m ${s%60}s` : `${s}s`; };
 
       const tableRows = results.map(r =>
-        `| ${r.label} | ${r.error ? 'Error' : fmtDur(r.duration)} | ${r.error ? '—' : `${r.score}/${r.maxScore}`} | ${r.error ? '—' : Math.round(r.fileSize/1024)+'KB'} | ${r.error ? '✗' : '✓'} |`
+        `| ${r.label} | ${r.error ? 'Error' : fmtDur(r.duration)} | ${r.error ? 'â€”' : `${r.score}/${r.maxScore}`} | ${r.error ? 'â€”' : Math.round(r.fileSize/1024)+'KB'} | ${r.error ? 'âœ—' : 'âœ“'} |`
       ).join('\n');
 
       const fastest  = results.filter(r => !r.error).sort((a,b) => a.duration - b.duration)[0];
       const topScore = results.filter(r => !r.error).sort((a,b) => (b.score - a.score) || (a.duration - b.duration))[0];
 
       const md = [
-        `# Course Eval — ${runDate}`,
+        `# Course Eval â€” ${runDate}`,
         ``,
         `**Benchmark:** What Is Artificial Intelligence? (\`eval-benchmark\`, 1 module)  `,
         `**Models tested:** ${results.length}${runTime ? `  \n**Total time:** ${runTime}` : ''}  `,
@@ -13231,12 +13477,12 @@ async function handleMessage(ws, raw) {
         ``,
         `## Rubric Criteria`,
         ``,
-        `- \`file_created\` — Module HTML file exists`,
-        `- \`min_size\` — File > 10 KB (real content)`,
-        `- \`has_quiz\` — Contains quiz block`,
-        `- \`has_lab\` — Contains lab / chat block`,
-        `- \`has_vocab\` — Contains key-terms / vocabulary section`,
-        `- \`has_callout\` — Contains callout or side-note`,
+        `- \`file_created\` â€” Module HTML file exists`,
+        `- \`min_size\` â€” File > 10 KB (real content)`,
+        `- \`has_quiz\` â€” Contains quiz block`,
+        `- \`has_lab\` â€” Contains lab / chat block`,
+        `- \`has_vocab\` â€” Contains key-terms / vocabulary section`,
+        `- \`has_callout\` â€” Contains callout or side-note`,
       ].filter(l => l !== null).join('\n');
 
       const noteDir  = path.join(vaultPath, sessDir);
@@ -13251,8 +13497,8 @@ async function handleMessage(ws, raw) {
   }
 }
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-// ─── Domain Scout ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ Domain Scout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function httpsGetSimple(hostname, urlPath) {
   return new Promise((resolve, reject) => {
@@ -13323,11 +13569,11 @@ For each suggestion return a JSON object with:
 - audience: who the target users are
 
 Rules for FINDABLE domains (follow these carefully):
-- Be SPECIFIC to today's headlines — use words, concepts, or project names from the actual headlines below
+- Be SPECIFIC to today's headlines â€” use words, concepts, or project names from the actual headlines below
 - Prefer UNUSUAL combinations: compound words, portmanteaus, specific technical terms from the articles
-- Vary TLDs widely: .dev, .run, .build, .sh, .so, .io, .app, .co — not just .ai and .com which are saturated
-- Names 6–20 characters (excluding TLD) — longer compound names are more likely to be available
-- Avoid popular generic AI terms: agent, gpt, llm, chat, bot, copilot — those are all taken
+- Vary TLDs widely: .dev, .run, .build, .sh, .so, .io, .app, .co â€” not just .ai and .com which are saturated
+- Names 6â€“20 characters (excluding TLD) â€” longer compound names are more likely to be available
+- Avoid popular generic AI terms: agent, gpt, llm, chat, bot, copilot â€” those are all taken
 - Draw on the SPECIFIC tools, techniques, authors, or paper titles in the headlines
 - No trademark violations
 
@@ -13348,7 +13594,7 @@ Return ONLY a valid JSON array with exactly 30 items.`;
 
   let terms = [];
   try {
-    // Try to extract the JSON array robustly — AI may wrap in prose or markdown
+    // Try to extract the JSON array robustly â€” AI may wrap in prose or markdown
     const text = result.content;
     const jsonStart = text.indexOf('[');
     const jsonEnd   = text.lastIndexOf(']');
@@ -13375,7 +13621,7 @@ Return ONLY a valid JSON array with exactly 30 items.`;
     }
   }
 
-  // Accumulate results — merge new domains into persistent store
+  // Accumulate results â€” merge new domains into persistent store
   const scannedAt = new Date().toISOString();
   const newEntries = available.map(e => ({ ...e, scannedAt }));
   const allResultsRaw = readJSON(DOMAIN_SCOUT_RESULTS_PATH, []);
@@ -13394,9 +13640,9 @@ Return ONLY a valid JSON array with exactly 30 items.`;
         if (!fs.existsSync(scoutDir)) fs.mkdirSync(scoutDir, { recursive: true });
         const logPath = path.join(scoutDir, 'Domain-Scout-Log.md');
         const dateStr = new Date(scannedAt).toLocaleString();
-        let section = `\n## ${dateStr} — ${trulyNew.length} new domain${trulyNew.length === 1 ? '' : 's'}\n\n`;
+        let section = `\n## ${dateStr} â€” ${trulyNew.length} new domain${trulyNew.length === 1 ? '' : 's'}\n\n`;
         for (const { domain, trend, represents, value, audience } of trulyNew) {
-          section += `### ${domain}\n- **Trend:** ${trend || '—'}\n- **What:** ${represents || '—'}\n- **Value:** ${value || '—'}\n- **Audience:** ${audience || '—'}\n\n`;
+          section += `### ${domain}\n- **Trend:** ${trend || 'â€”'}\n- **What:** ${represents || 'â€”'}\n- **Value:** ${value || 'â€”'}\n- **Audience:** ${audience || 'â€”'}\n\n`;
         }
         if (fs.existsSync(logPath)) fs.appendFileSync(logPath, section, 'utf8');
         else fs.writeFileSync(logPath, `# Domain Scout Log\n${section}`, 'utf8');
@@ -13410,16 +13656,16 @@ Return ONLY a valid JSON array with exactly 30 items.`;
   const sorted = [...merged].sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt));
   const items = sorted.length
     ? [
-        `${sorted.length} domain${sorted.length === 1 ? '' : 's'} found (${trulyNew.length} new · ${checked.length} checked this scan):`,
+        `${sorted.length} domain${sorted.length === 1 ? '' : 's'} found (${trulyNew.length} new Â· ${checked.length} checked this scan):`,
         ...sorted.flatMap(({ domain, trend, represents, value, audience }) => [
           `${domain}`,
-          `   Trend: ${trend || '—'}`,
-          `   What: ${represents || '—'}`,
-          `   Value: ${value || '—'}`,
-          `   Audience: ${audience || '—'}`,
+          `   Trend: ${trend || 'â€”'}`,
+          `   What: ${represents || 'â€”'}`,
+          `   Value: ${value || 'â€”'}`,
+          `   Audience: ${audience || 'â€”'}`,
         ]),
       ]
-    : [`Checked ${checked.length} domains — none available yet. Try again later.`];
+    : [`Checked ${checked.length} domains â€” none available yet. Try again later.`];
 
   const notif = {
     id: Date.now().toString(),
@@ -13440,7 +13686,7 @@ Return ONLY a valid JSON array with exactly 30 items.`;
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
-// ─── Health Monitor Session ───────────────────────────────────────────────────
+// â”€â”€â”€ Health Monitor Session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function runHealthProbe() {
   try {
@@ -13457,12 +13703,12 @@ function runHealthProbe() {
 }
 
 function formatHealthSnapshot(data) {
-  if (!data) return '⚠️ Health probe failed — could not run script';
+  if (!data) return 'âš ï¸ Health probe failed â€” could not run script';
   const ts = new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
-  const icon    = data.status === 'Healthy' ? '✅' : data.status === 'Degraded' ? '⚠️' : '🔴';
+  const icon    = data.status === 'Healthy' ? 'âœ…' : data.status === 'Degraded' ? 'âš ï¸' : 'ðŸ”´';
   const healthMs = data.endpoints?.health?.ms ?? '?';
   const rootMs   = data.endpoints?.root?.ms   ?? '?';
   const helpers  = data.processCounts?.mcpHelpers               ?? '?';
@@ -13471,21 +13717,21 @@ function formatHealthSnapshot(data) {
     `[${ts}] ${icon} ${data.status}  /health: ${healthMs}ms  root: ${rootMs}ms  MCP helpers: ${helpers}  connections: ${conns}`,
   ];
   if (data.status !== 'Healthy') {
-    if (typeof helpers === 'number' && helpers > 0)  lines.push(`  └─ ⚠️ ${helpers} MCP helper process(es) running`);
-    if (typeof healthMs === 'number' && healthMs > 2000) lines.push(`  └─ ⚠️ /health latency high (${healthMs}ms)`);
-    if (typeof rootMs   === 'number' && rootMs   > 2000) lines.push(`  └─ ⚠️ root latency high (${rootMs}ms)`);
+    if (typeof helpers === 'number' && helpers > 0)  lines.push(`  â””â”€ âš ï¸ ${helpers} MCP helper process(es) running`);
+    if (typeof healthMs === 'number' && healthMs > 2000) lines.push(`  â””â”€ âš ï¸ /health latency high (${healthMs}ms)`);
+    if (typeof rootMs   === 'number' && rootMs   > 2000) lines.push(`  â””â”€ âš ï¸ root latency high (${rootMs}ms)`);
   }
   return lines.join('\n');
 }
 
 // Kill confirmed stale MCP helper processes (matched by command-line pattern, age > 30 min,
-// and NOT tracked as a live MCP helper in mcpProcesses). Fully async — never blocks event loop.
+// and NOT tracked as a live MCP helper in mcpProcesses). Fully async â€” never blocks event loop.
 // Returns array of { pid, age, cmd } for each process killed.
 async function autoRemediateHealth(data) {
   const killed = [];
   if (!data || !(data.processCounts?.mcpHelpers > 0)) return killed;
 
-  // Fix 4: build set of PIDs currently tracked as live MCP helpers — never kill these
+  // Fix 4: build set of PIDs currently tracked as live MCP helpers â€” never kill these
   const livePids = new Set([...mcpProcesses.values()].map(s => s.proc?.pid).filter(Boolean));
 
   try {
@@ -13508,7 +13754,7 @@ async function autoRemediateHealth(data) {
       if (!proc?.ProcessId) continue;
       // Fix 4: skip any PID that is a live tracked MCP helper
       if (livePids.has(proc.ProcessId)) {
-        console.log(`[health-monitor] skip kill PID ${proc.ProcessId} — tracked as live MCP helper`);
+        console.log(`[health-monitor] skip kill PID ${proc.ProcessId} â€” tracked as live MCP helper`);
         continue;
       }
       // Fix 5: raise age threshold to 30 min
@@ -13548,12 +13794,12 @@ function injectHealthSnapshot() {
   const session = sessions.get(healthMonitorSessionId);
   if (!session) { healthMonitorSessionId = null; return; }
 
-  // Fix 2: broadcast snapshot immediately — never block on remediation
+  // Fix 2: broadcast snapshot immediately â€” never block on remediation
   const data     = runHealthProbe();
   const snapshot = formatHealthSnapshot(data);
   broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: snapshot, role: 'system' });
 
-  // Update card color — don't interrupt a live conversation
+  // Update card color â€” don't interrupt a live conversation
   if (session.status !== 'running') {
     const cardStatus = !data ? 'error'
       : data.status === 'Healthy'  ? 'done'
@@ -13567,13 +13813,13 @@ function injectHealthSnapshot() {
 
   if (!session.messages) session.messages = [];
 
-  // Fix 1+2: remediation and agent analysis run fully async — event loop never blocked
+  // Fix 1+2: remediation and agent analysis run fully async â€” event loop never blocked
   (async () => {
     if (!healthMonitorSessionId) return;
     const sess = sessions.get(healthMonitorSessionId);
     if (!sess) return;
 
-    // Auto-remediate stale MCP helpers (async execFile — no spawnSync)
+    // Auto-remediate stale MCP helpers (async execFile â€” no spawnSync)
     const killed = await autoRemediateHealth(data);
     if (killed.length > 0) {
       const killLog = killed.map(k => `PID ${k.pid} (age ${k.age}m)`).join(', ');
@@ -13581,7 +13827,14 @@ function injectHealthSnapshot() {
     }
 
     if (data && data.status !== 'Healthy' && sess.status !== 'running') {
-      // Fix 3+9: single-flight guard + debounce — only trigger agent analysis when safe
+      if (!HEALTH_MONITOR_AGENT_AUTORUN) {
+        console.log(`[health-monitor] snapshot: ${data.status} â€” auto analysis disabled`);
+        sess.messages.push({ role: 'user', content: snapshot });
+        if (sess.messages.length > MAX_AGENT_MESSAGES) sess.messages = sess.messages.slice(-MAX_AGENT_MESSAGES);
+        saveSessions();
+        return;
+      }
+      // Fix 3+9: single-flight guard + debounce â€” only trigger agent analysis when safe
       const now = Date.now();
       if (!healthMonitorAgentRunning && (now - lastHealthAnalysisAt) > HEALTH_ANALYSIS_DEBOUNCE_MS) {
         lastHealthAnalysisAt = now;
@@ -13589,14 +13842,14 @@ function injectHealthSnapshot() {
           ? `\n[auto-remediated: killed ${killed.length} MCP helper(s): ${killed.map(k => `PID ${k.pid}`).join(', ')}]` : '';
         const analysisPrompt = `${snapshot}${killNote}\n\nAnalyze what's wrong and state the specific actions needed to resolve each remaining issue.`;
         saveSessions();
-        console.log(`[health-monitor] snapshot: ${data.status} — triggering agent analysis`);
+        console.log(`[health-monitor] snapshot: ${data.status} â€” triggering agent analysis`);
         healthMonitorAgentRunning = true;
         runDirectAgent(healthMonitorSessionId, analysisPrompt, sess.workDir, false)
           .catch(err => console.error('[health-monitor] agent analysis error:', err.message))
           .finally(() => { healthMonitorAgentRunning = false; });
         return;
       }
-      console.log(`[health-monitor] snapshot: ${data.status} — analysis ${healthMonitorAgentRunning ? 'in-flight (skipped)' : `debounced (last ${Math.round((Date.now() - lastHealthAnalysisAt) / 60000)}m ago)`}`);
+      console.log(`[health-monitor] snapshot: ${data.status} â€” analysis ${healthMonitorAgentRunning ? 'in-flight (skipped)' : `debounced (last ${Math.round((Date.now() - lastHealthAnalysisAt) / 60000)}m ago)`}`);
     } else {
       console.log(`[health-monitor] snapshot: ${data?.status || 'probe-failed'}`);
     }
@@ -13608,6 +13861,11 @@ function injectHealthSnapshot() {
 }
 
 function startHealthMonitorSession() {
+  if (!HEALTH_MONITOR_ENABLED) {
+    console.log('[health-monitor] startup disabled');
+    return;
+  }
+
   // Close any pre-existing Health Monitor Session (handles Polaris restarts)
   for (const [id, s] of sessions) {
     if (s.name === HEALTH_MONITOR_NAME) {
@@ -13654,7 +13912,7 @@ function startHealthMonitorSession() {
   if (healthMonitorIntervalTimer.unref) healthMonitorIntervalTimer.unref();
 
   // 30-second input poll: processes cross-session inbox injections and catches any
-  // stuck pendingTurns from UI typing (safety net — resume handler normally fires immediately)
+  // stuck pendingTurns from UI typing (safety net â€” resume handler normally fires immediately)
   if (healthMonitorInputPollTimer) clearInterval(healthMonitorInputPollTimer);
   healthMonitorInputPollTimer = setInterval(() => {
     if (!healthMonitorSessionId) return;
@@ -13663,6 +13921,12 @@ function startHealthMonitorSession() {
 
     // Cross-session injection: process next queued inbox prompt (Fix 3: single-flight guard)
     if (healthMonitorInbox.length > 0) {
+      if (!HEALTH_MONITOR_AGENT_AUTORUN) {
+        const dropped = healthMonitorInbox.length;
+        healthMonitorInbox.length = 0;
+        broadcast({ type: 'line', sessionId: healthMonitorSessionId, text: `[health-monitor] Auto analysis disabled; dropped ${dropped} queued health prompt(s).`, role: 'system' });
+        return;
+      }
       if (healthMonitorAgentRunning) return; // don't stack on top of in-flight analysis
       const { text, source } = healthMonitorInbox.shift();
       const prompt = (source && source !== 'external') ? `[from ${source}] ${text}` : text;
@@ -13685,20 +13949,38 @@ function startHealthMonitorSession() {
 
 httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`[polaris] HTTP server listening on http://127.0.0.1:${PORT}`);
-  checkVideoDeps(); // non-blocking — results cached in videoDeps
+  checkVideoDeps(); // non-blocking â€” results cached in videoDeps
   migrateSecretsToEncrypted();
   syncGlobalToProjects();
   watchGlobalFiles();
+  const ccEnsureTimer = setTimeout(() => {
+    if (!STARTUP_CROSSCHECK_AUTORUN) {
+      console.log('[cross-check] startup session ensure disabled');
+      return;
+    }
+    try { ensureCrossCheckSessionsForConfiguredProjects(); }
+    catch (e) { console.error('[cross-check] startup session ensure failed:', e.message); }
+  }, 20000);
+  if (ccEnsureTimer.unref) ccEnsureTimer.unref();
   const startupPurgeTimer = setTimeout(() => {
     try { purgeStaleWorktrees(); }
     catch (e) { console.error('[worktree] startup purge failed:', e.message); }
   }, 30000);
   if (startupPurgeTimer.unref) startupPurgeTimer.unref();
   const hmStartTimer = setTimeout(() => {
+    if (!HEALTH_MONITOR_ENABLED) {
+      console.log('[health-monitor] startup disabled');
+      return;
+    }
     try { startHealthMonitorSession(); }
     catch (e) { console.error('[health-monitor] startup error:', e.message); }
-  }, 10000); // 10 s — lets persisted sessions finish loading before creating the new card
+  }, 10000); // 10 s â€” lets persisted sessions finish loading before creating the new card
   if (hmStartTimer.unref) hmStartTimer.unref();
+  const orchStartTimer = setTimeout(() => {
+    try { ensureStartupOrchestrators(); }
+    catch (e) { console.error('[orchestrator] startup ensure failed:', e.message); }
+  }, 30000);
+  if (orchStartTimer.unref) orchStartTimer.unref();
   // Ensure the 'polaris' MCP server is trusted by the Claude Code CLI
   try {
     const ccSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
@@ -13716,7 +13998,7 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 
 wss = new WebSocket.Server({ server: httpServer });
 
-// ─── Memory decay — runs 30 s after startup then every 24 h ──────────────────
+// â”€â”€â”€ Memory decay â€” runs 30 s after startup then every 24 h â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MEMORY_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 async function runMemoryDecay() {
   try {
@@ -13756,10 +14038,10 @@ const wsHeartbeatTimer = setInterval(() => {
 }, WS_HEARTBEAT_MS);
 if (typeof wsHeartbeatTimer.unref === 'function') wsHeartbeatTimer.unref();
 
-// ── Session heartbeat / stall detector ───────────────────────────────────────
+// â”€â”€ Session heartbeat / stall detector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Checks every 3 s for running sessions with no broadcast activity.
-// 15 s idle → amber stall badge on card.
-// 45 s idle → kick: abort in-flight request, kill proc, set error status.
+// 15 s idle â†’ amber stall badge on card.
+// 45 s idle â†’ kick: abort in-flight request, kill proc, set error status.
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of sessions) {
@@ -13778,10 +14060,10 @@ setInterval(() => {
         });
         session.keepAliveInjected = true;
         session.lastKeepAliveAt = Date.now();
-        broadcast({ type: 'line', sessionId, text: '⚙ Session idle for 45s — requesting continuation', role: 'system' });
+        broadcast({ type: 'line', sessionId, text: 'âš™ Session idle for 45s â€” requesting continuation', role: 'system' });
       } else {
         // Max/Codex/chat sessions can be legitimately silent for long periods during
-        // tool execution — do not kill them. Just keep the stall badge visible.
+        // tool execution â€” do not kill them. Just keep the stall badge visible.
         broadcast({ type: 'session-stalled', sessionId, idleSec, stallCount: session.stallCount || 0 });
       }
     } else {
@@ -13792,15 +14074,15 @@ setInterval(() => {
   }
 }, STALL_CHECK_MS);
 
-// Daily sweep — purge stale session worktrees that survived past the TTL.
+// Daily sweep â€” purge stale session worktrees that survived past the TTL.
 const worktreePurgeTimer = setInterval(purgeStaleWorktrees, 24 * 60 * 60 * 1000);
 if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
-// ── Session guidance polling (every 3 minutes) ────────────────────────────────
+// â”€â”€ Session guidance polling (every 3 minutes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each session writes its state and reads orchestrator alerts.
 // Alerts targeted at a session are broadcast once as system lines; seen timestamps
 // prevent repeat broadcasts across polling ticks until the alert is pruned.
-const _seenAlerts = new Map(); // sessionId → Set<alert id (uuid, or timestamp for legacy alerts without id)>
+const _seenAlerts = new Map(); // sessionId â†’ Set<alert id (uuid, or timestamp for legacy alerts without id)>
 setInterval(() => {
   const alertsData = readOrchestratorAlerts();
   for (const [sessionId, session] of sessions) {
@@ -13813,7 +14095,7 @@ setInterval(() => {
       // Use uuid as the stable dedup key; fall back to timestamp for alerts written
       // before the id field was introduced (avoids repeat broadcasts on server upgrade).
       // Note: an alert written after deleteSessionStateFile but before this tick is
-      // benign — closing sessions have informational-only alerts.
+      // benign â€” closing sessions have informational-only alerts.
       const dedupeKey = alert.id ?? alert.timestamp;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
@@ -13826,7 +14108,7 @@ setInterval(() => {
   }
 }, SESSION_GUIDANCE_POLL_MS);
 
-// ── Alert pruning (every 10 minutes) ────────────────────────────────────────
+// â”€â”€ Alert pruning (every 10 minutes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Remove orchestrator alerts older than 10 minutes to prevent accumulation.
 setInterval(() => {
   pruneStaleAlerts();
