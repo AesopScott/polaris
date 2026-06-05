@@ -2625,7 +2625,10 @@ function buildProjectKnowledgeBlock(config, session) {
   if (matched.obsidianDir) {
     parts.push(
       `--- Project Knowledge Base (Obsidian) ---\n` +
-      `Your project knowledge base is loaded in memory. Call QueryMemory with no arguments to retrieve your full project context, or pass a filename to retrieve a specific file.`
+      `Project context is available via QueryMemory. ` +
+      `Use QueryMemory({ query: "..." }) for specific context (preferred). ` +
+      `Use QueryMemory({ filename: "file.md" }) to retrieve a specific file. ` +
+      `Do not call QueryMemory with no arguments unless explicitly asked for comprehensive project context.`
     );
   }
 
@@ -7400,40 +7403,6 @@ async function spawnMaxChat(sessionId, prompt, config) {
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
     hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
-    // Inject top project memories at turn 1 so the model starts context-aware.
-    // Use trace variant so we can log what was injected for the Injections panel.
-    // Log retention: capped at INJECTION_LOG_MAX_LINES entries (~500KB max) â€” see prune block below.
-    if (session.projectName) {
-      const { block: memBlock, memories: injMems, queryType, effectiveQuery } =
-        await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
-      if (memBlock) {
-        hiddenSystemPrompt += '\n\n' + memBlock;
-        try {
-          const record = {
-            ts: Date.now(),
-            sessionId,
-            sessionName: session.name || null,
-            project: session.projectName,
-            query: (prompt || '').slice(0, 200),
-            queryType,
-            effectiveQuery: (effectiveQuery || '').slice(0, 200),
-            memories: injMems.map(m => ({
-              content: (m.content || '').slice(0, 300),
-              type: m.type || 'fact',
-              strength: typeof m.strength === 'number' ? Math.round(m.strength * 100) / 100 : null,
-              accessCount: m.accessCount || 0,
-            })),
-          };
-          fs.appendFileSync(INJECTION_LOG_PATH, JSON.stringify(record) + '\n', 'utf8');
-          const stat = fs.statSync(INJECTION_LOG_PATH);
-          if (stat.size > 500_000) {
-            const all = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
-            if (all.length > INJECTION_LOG_MAX_LINES)
-              fs.writeFileSync(INJECTION_LOG_PATH, all.slice(-INJECTION_LOG_MAX_LINES).join('\n') + '\n', 'utf8');
-          }
-        } catch {}
-      }
-    }
     fullPrompt = history || prompt;
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
