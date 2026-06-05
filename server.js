@@ -7384,8 +7384,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
   dlog('PROMPT_BUILD', `resume=${isResume} historyTurns=${historyTurns} knowledgeFiles=${Object.keys(session.projectMemory||{}).length} bytes=${Buffer.byteLength(fullPrompt,'utf8')}`);
-  const _chatPromptK = (Buffer.byteLength(fullPrompt, 'utf8') + Buffer.byteLength(hiddenSystemPrompt, 'utf8')) / 4 / 1000;
-  broadcast({ type: 'line', sessionId, text: _chatPromptK >= 20 ? `(${_chatPromptK.toFixed(1)}k)` : '(under 20k)', role: 'system' });
+  const estimatedPromptK = (Buffer.byteLength(fullPrompt, 'utf8') + Buffer.byteLength(hiddenSystemPrompt, 'utf8')) / 4 / 1000;
+  broadcast({ type: 'line', sessionId, text: `(est ${estimatedPromptK.toFixed(1)}k input)`, role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
   // Translate session tier â†’ Claude Code --model flag.
@@ -7615,6 +7615,11 @@ async function spawnMaxChat(sessionId, prompt, config) {
       const modelTag = finalModel || 'claude-cli (Max plan)';
       try { appendTokenLog(sessionId, modelTag, finalUsage); } catch {}
       broadcastUsage(sessionId, finalUsage, session.claudeSessionId || null, null);
+      const totalInput = finalUsage.input_tokens + finalUsage.cache_creation_input_tokens + finalUsage.cache_read_input_tokens;
+      const totalOutput = finalUsage.output_tokens;
+      const totalUsed = totalInput + totalOutput;
+      const usageMsg = `[actual tokens: in=${finalUsage.input_tokens} cache_create=${finalUsage.cache_creation_input_tokens} cache_read=${finalUsage.cache_read_input_tokens} out=${totalOutput} total=${totalUsed}]`;
+      broadcast({ type: 'line', sessionId, text: usageMsg, role: 'system' });
     }
     // On Windows, Claude CLI exits with code=null when --input-format stream-json
     // is used without --resume. Treat null as success when we received a valid response.
