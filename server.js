@@ -7380,6 +7380,24 @@ async function spawnMaxChat(sessionId, prompt, config) {
       .map(l => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`)
       .join('\n\n');
     hiddenSystemPrompt = buildPolarisContextBlock(config, session) + buildProjectKnowledgeBlock(config, session);
+    // Inject ranked project memories at turn 1, capped at 5-8k tokens to balance context vs cost.
+    if (session.projectName) {
+      try {
+        const { block: memBlock } = await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
+        if (memBlock) {
+          const memStr = memBlock.trim();
+          const memTokens = Buffer.byteLength(memStr, 'utf8') / 4; // rough estimate
+          if (memTokens <= 8000) {
+            hiddenSystemPrompt += '\n\n' + memStr;
+          } else {
+            const trimmed = memStr.slice(0, 8000 * 4).trim();
+            hiddenSystemPrompt += '\n\n' + trimmed + '\n[... memory truncated at 8k tokens ...]';
+          }
+        }
+      } catch (e) {
+        dlog('MEMORY_INJECTION_ERR', e.message);
+      }
+    }
     fullPrompt = history || prompt;
   }
   const historyTurns = (session.lines||[]).filter(l=>l.role==='user'||l.role==='assistant').length;
