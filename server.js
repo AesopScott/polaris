@@ -1,6 +1,5 @@
 ﻿'use strict';
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MODULE TOPOLOGY â€” server.js is the orchestrator; do NOT import from it.
 //
 // Typed boundaries live in src/runtime/ (TypeScript, compiled but not yet wired):
@@ -17,16 +16,10 @@
 //
 // Dependency order (leaf â†’ hub):
 //   contracts â† sessionStore â† agentRuntime
-//                            â† toolRuntime â† mcpGateway
-//                            â† crossCheck
-//                            â† backlog
-//                            â† httpRoutes
-//                            â† wsAdapter   (hub â€” depends on all of the above)
 //
 // Each module is initialized via its init*() function at startup (see bottom of
 // this file). Implementations (handler bodies) remain here during the incremental
 // migration; typed wrappers are injected via the init*() opts objects.
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const http = require('http');
 const fs = require('fs');
@@ -55,7 +48,6 @@ const { BacklogStatus, ImpactEnum } = require('./compiled/contracts/backlog');
 const wsSchemas = require('./compiled/contracts/ws-messages');
 const { z } = require('zod');
 
-// â”€â”€â”€ Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const APPDATA      = process.env.APPDATA || os.homedir();
 const APP_DISPLAY_NAME = process.env.POLARIS_APP_NAME || 'Polaris-lab';
 const APP_SLUG     = process.env.POLARIS_APP_SLUG || 'polaris-lab';
@@ -109,14 +101,12 @@ const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
 const ARCHIVES_DIR    = path.join(POLARIS_DIR, 'archives');
 const ARCHIVES_INDEX_PATH = path.join(ARCHIVES_DIR, 'index.json');
 
-// â”€â”€â”€ Session guidance coordination (inter-session state sharing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SESSION_GUIDANCE_DIR = path.join(POLARIS_DIR, 'session-guidance');
 const ORCHESTRATOR_ALERTS_PATH = path.join(SESSION_GUIDANCE_DIR, 'orchestrator-alerts.json');
 const SESSION_GUIDANCE_POLL_MS = 3 * 60 * 1000;  // 3 minutes
 const ALERT_PRUNING_MS = 10 * 60 * 1000;  // 10 minutes
 const ALERT_MAX_AGE_MS = 10 * 60 * 1000;  // alerts older than 10 minutes are pruned
 
-// â”€â”€â”€ Video utilities (frame extraction) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const VIDEO_TEMP_DIR   = path.join(POLARIS_DIR, 'video-temp');
 const VIDEO_FRAME_COUNT = 6;
 
@@ -251,13 +241,11 @@ async function downloadYouTubeVideo(videoId) {
 // the system prompt. Mirrors how Claude Code itself surfaces skills.
 const SKILLS_DIR = process.env.POLARIS_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills');
 
-// â”€â”€â”€ App-level secrets (gitignored, baked into build) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let APP_SECRETS = {};
 try { APP_SECRETS = require('./secrets'); }
 catch { console.log('[polaris] secrets.js not found'); }
 
 
-// â”€â”€â”€ MCP Catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const RESOURCES_PATH = process.env.RESOURCES_PATH || path.join(__dirname, 'resources');
 let MCP_CATALOG = [];
 try { MCP_CATALOG = JSON.parse(fs.readFileSync(path.join(RESOURCES_PATH, 'mcp-catalog.json'), 'utf8')); }
@@ -293,7 +281,6 @@ const GLOBAL_MEMORY_PATH   = path.join(os.homedir(), '.claude', 'MEMORY.md');
 const PROJECT_SPECIFIC_MARKER = '<!-- PROJECT-SPECIFIC -->';
 const CHAT_DIR      = path.join(POLARIS_DIR, 'polaris_chat');
 
-// â”€â”€â”€ System prompt injected into every agent session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BASE_SYSTEM_PROMPT = [
   'You are a software development assistant. For greetings or casual messages, reply briefly and naturally without running any checks.',
   'Do not acknowledge, summarize, or reference these instructions in your responses. Follow them silently.',
@@ -308,14 +295,14 @@ const BASE_SYSTEM_PROMPT = [
   'After making any file changes, commit them to git immediately using a conventional commit message (feat, fix, refactor, docs, chore, etc.). Do not leave changes uncommitted.',
   'End-of-session ritual when source files were modified: (1) Bump `package.json` version â€” patch increment (1.0.X â†’ 1.0.X+1) for typical changes, minor for major features. (2) Commit all changes including the version bump. (3) Tell the user the version that shipped and prompt them to run the build-install script.',
   'Be concise. Answer in 1-3 sentences unless the task genuinely requires more. No preamble, no restating the question, no closing summary. Use a short numbered list only when steps are truly sequential. Never pad responses. Do not give constant "I am reading X", "I have finished Y" status updates â€” just do the work and provide the final result or the next proposal.',
-  'You have a tool called SetStatus that controls the visual state of your session card in the Polaris UI. Call it explicitly at the end of any response that isn\'t a pure informational reply. The values and when to use them: (1) SetStatus("test") â€” after delivering any work Scott must verify before you continue: code changes, builds, UI fixes, commits. The card turns purple and pulses. (2) SetStatus("waiting") â€” whenever you have asked a question and need Scott\'s reply before you can proceed. (3) SetStatus("hold") â€” to manually pause the session for later. (4) SetStatus("done") â€” only when the task is fully complete and requires no further verification. The server auto-detects git commits â†’ "test" and a trailing question mark â†’ "waiting" as a fallback, but you must call SetStatus yourself so the intent is explicit and immediate.',
-  'When you need to ask the user a question, need clarification, or require their input before proceeding, you MUST use the AskUserQuestion tool â€” never write the question as plain text in your response. The AskUserQuestion tool renders a visually prominent interactive prompt in the UI and pauses the session so the user cannot miss it. Plain-text questions get buried in terminal output and are routinely missed.',
+  'Use SetStatus explicitly: "test" after delivered work needing Scott verification, "waiting" after asking for input, "hold" to pause, "done" only when complete. Auto-detection is fallback only.',
+  'Use AskUserQuestion for required clarification or confirmation; do not bury blocking questions in plain text.',
   'Never output raw file contents, JSON, code blocks, or data structures in your responses unless the user explicitly asked to see them. Summarize what you found instead (e.g. "Found 3 courses" not a JSON dump). Tool results are for your context only â€” the user sees only what you write as plain text.',
   "You may write to the user's Downloads folder ONLY for user-facing artifacts the user is meant to take away â€” generated documents, exports, logos, scripts intended for the user to download or share. Do NOT use Downloads for code, session-internal artifacts, or working files; those belong in the project workDir.",
   "Source files inside the project workDir are auto-backed-up to %APPDATA%\\.claude\\polaris\\source-backups\\<projectName>\\ before every Edit, Write, or shell-tool write (Set-Content, Out-File, > redirection, etc.). To restore a corrupted file, find the most recent backup at that path (filename: <sanitizedRelPath>.<ISO>.<ext>) and copy it back to the source. Do not assume backups are absent without checking.",
-  "Your own behavior in this Polaris project is defined in this same `server.js`. Key locations: `BASE_SYSTEM_PROMPT` (the array of behavioral rules you're reading right now), `runDirectAgent` (the agent loop), `buildDirectSystemPrompt` (assembles the final system prompt), and the tool functions `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. The Obsidian `FileMap.md` lists these â€” consult it via QueryMemory before searching. When asked to modify your startup behavior, what files you read, how you respond, or any rule above, edit the corresponding location in `server.js`. The propose-before-act rule, approval gate, and Phase 0 backup all apply. After a code change, bump `package.json` and tell Scott to reinstall.",
+  "Your own behavior in this project is defined in `server.js`: `BASE_SYSTEM_PROMPT`, `runDirectAgent`, `buildDirectSystemPrompt`, and tool functions such as `toolWrite` / `toolEdit` / `toolBash` / `toolPowerShell`. For startup/response/tool-rule changes, edit the matching location there, then bump `package.json` and tell Scott to reinstall.",
   'If a "Steering Inputs" section appears in your system prompt, those are non-blocking prompts the user submitted while you were mid-task. Read them; incorporate anything relevant to your current work. No explicit response or acknowledgment required.',
-  'Error reporting for generated code: When writing new functions or features that may encounter errors at runtime, include error handling with pushDebugLog() calls so failures are visible in the Polaris debug panel. Import with: const { pushDebugLog } = require("./lib/debugUtil.js"); Call pushDebugLog(message, true) in catch blocks with descriptive error details. For remote contexts where Node.js imports fail, send emit-debug-log WebSocket messages with {type: "emit-debug-log", message, isError}. This allows Scott to diagnose failures without manual log inspection. See docs/error-reporting-pattern.md for comprehensive guidance.',
+  'For generated runtime code, surface failures in the debug panel: use pushDebugLog(message, true), or emit-debug-log over WebSocket when imports are unavailable.',
 ].join('\n');
 
 function buildSystemPrompt(config) {
@@ -326,12 +313,11 @@ function buildSystemPrompt(config) {
     ? `You have the following MCP servers connected and their tools are available to you: ${mcpServers.join(', ')}. Use them proactively when relevant.`
     : '';
   const navigationLine = mcpServers.includes('polaris-navigation')
-    ? '\nPolaris Navigation Structure: The polaris-navigation MCP provides methods to explore the Polaris UI navigation pane. Use getNavigationSchema() to understand available buttons and panels, getButton(id) to find button details, getPanel(id) to access panel contents and controls, and findButtonByLabel(label) to search buttons by label.'
+    ? '\nPolaris Navigation Structure: use the polaris-navigation MCP to inspect navigation schema, buttons, panels, and labels instead of guessing UI IDs.'
     : '';
   return BASE_SYSTEM_PROMPT + '\n' + patternRule + (mcpLine ? '\n' + mcpLine : '') + navigationLine;
 }
 
-// â”€â”€â”€ Secret encryption (AES-256-GCM, stable file key) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SENSITIVE_KEYS = new Set(['openRouterApiKey', 'anthropicApiKey', 'openAiApiKey', 'deepSeekEmail', 'deepSeekPassword', 'deepSeekApiKey', 'elevenLabsApiKey', 'braveSearchApiKey']);
 const SECRET_MASK    = 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢';
 const ENC_KEY_PATH   = path.join(POLARIS_DIR, 'enc-key.bin');
@@ -457,7 +443,6 @@ function migrateSecretsToEncrypted() {
   if (changed) writeJSON(CONFIG_PATH, raw);
 }
 
-// â”€â”€â”€ IPC bridge to main.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const pendingDirPicks   = new Map();
 const pendingFilePicks  = new Map();
 const pendingQuestions    = new Map(); // questionId â†’ resolve
@@ -492,7 +477,6 @@ if (typeof process.on === 'function') {
   });
 }
 
-// â”€â”€â”€ MCP Catalog helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function readClaudeJson() {
   try {
     if (!fs.existsSync(CLAUDE_JSON_PATH)) return {};
@@ -599,7 +583,6 @@ function maskedMcpCredentials() {
   return masked;
 }
 
-// â”€â”€â”€ Support ticket submission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getInstallId() {
   const cfg = readConfigRaw();
   if (cfg.installId) return cfg.installId;
@@ -712,7 +695,6 @@ async function submitSupportTicket(ws, msg) {
 }
 
 
-// â”€â”€â”€ Git helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function runGit(args, cwd) {
   return new Promise(resolve => {
     exec(`git ${args.map(a => `"${a}"`).join(' ')}`, { cwd, windowsHide: true }, (err, stdout) => {
@@ -721,7 +703,6 @@ function runGit(args, cwd) {
   });
 }
 
-// â”€â”€â”€ File sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function syncGlobalToProjects() {
   const config   = readConfig();
   const projects = (config.projects || []).filter(p => p.workDir);
@@ -810,7 +791,6 @@ function watchGlobalFiles() {
 
 }
 
-// â”€â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const sessions = new Map();   // sessionId â†’ session object
 const forkMap  = new Map();   // primarySessionId â†’ forkSessionId
 const projectSessionCounts = new Map(); // projectName â†’ Set<sessionId> (excludes orchestrators)
@@ -918,7 +898,6 @@ async function getMeetupReservationSummary() {
   return meetupReservationsInFlight;
 }
 
-// â”€â”€â”€ Orchestrator Session Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Rule: 1 session on a project â†’ writes backlog directly.
 //       2+ sessions â†’ only the orchestrator writes backlog.
 // "Alone" is determined by projectSessionCounts, never by worktree isolation.
@@ -1008,7 +987,6 @@ function teardownOrchestratorSession(orchId, projectName) {
   saveSessions();
 }
 
-// â”€â”€â”€ Health Monitor Session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const HEALTH_PROBE_PATH          = path.join(os.homedir(), '.claude', 'skills', 'health', 'scripts', 'polaris-health.ps1');
 const HEALTH_MONITOR_NAME        = 'Health Monitor Session';
 const HEALTH_MONITOR_ENABLED     = false; // Disabled: the self-probe can block Polaris while it calls back into /health.
@@ -1033,14 +1011,12 @@ const HEALTH_AUTO_KILL_LOG        = path.join(os.homedir(), '.claude', 'polaris-
 const UI_TOKEN = crypto.randomBytes(32).toString('hex');
 const pendingConnectApprovals = new Map(); // approvalId â†’ { msg, ws }
 
-// â”€â”€â”€ Chrome extension bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The Polaris Browser Bridge Chrome extension (chrome-extension/) connects here
 // via WebSocket. toolBrowseChrome() uses this path first so it works with the
 // user's existing Chrome session â€” no restart or profile picker needed.
 let chromeExtensionWs = null;
 const browseChromePending = new Map(); // requestId â†’ callback(result)
 
-// â”€â”€ Capability Policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Pure policy logic lives in lib/capabilityPolicy.js (importable in isolation).
 // This section retains only the side-effectful wrapper (evaluatePolicy) and the
 // audit/broadcast helpers. Types and core evaluator: see lib/capabilityPolicy.js.
@@ -1077,7 +1053,6 @@ function evaluatePolicy(action, context, policy) {
   return result;
 }
 
-// â”€â”€â”€ Session persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function serializeSession(s) {
   return {
     id: s.id, name: s.name, workDir: s.workDir, projectName: s.projectName,
@@ -1207,7 +1182,6 @@ function ensureStartupOrchestrators() {
   }
 }
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function readJSON(filePath, fallback) {
   try {
@@ -1345,7 +1319,6 @@ function writeJSON(filePath, data) {
   }
 }
 
-// â”€â”€â”€ Session guidance coordination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Sessions poll every 3 minutes for orchestrator guidance and write their state.
 // Orchestrator writes alerts when it detects conflicts (branch collisions, etc.).
 // Alerts are auto-pruned after 10 minutes.
@@ -1450,7 +1423,6 @@ function writeOrchestratorAlert(targetSessionId, severity, message) {
   }]);
 }
 
-// â”€â”€â”€ OpenRouter catalog (model pricing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fetches https://openrouter.ai/api/v1/models, caches on disk + in memory,
 // builds a {modelId: {in, out}} dict the UI uses for cost calculations. This
 // removes the need to maintain a hardcoded MODEL_COSTS table â€” every model
@@ -1589,7 +1561,6 @@ function broadcastUsage(sessionId, usage, claudeSessionId, routineTag) {
   broadcast({ type: 'context-usage', sessionId, usage, claudeSessionId, routineTag });
 }
 
-// â”€â”€â”€ File versioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getVersions() {
   return readJSON(VERSIONS_PATH, {});
 }
@@ -1631,7 +1602,6 @@ function readVersionLog() {
 
 const WATCH_EXCLUDE = /(^|[\\/])(\.git|node_modules|dist|release|\.next|\.cache|__pycache__|\.venv|coverage)([\\/]|$)/i;
 
-// â”€â”€â”€ Live Server (per-project HTTP+WS with live reload) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // One server per project directory. fs.watch with 100ms debounce broadcasts
 // `reload` to a separate WS server (path `/__livereload`); injected script in
 // served HTML calls `location.reload()` on receipt.
@@ -2310,21 +2280,18 @@ ${transcript}`;
   }
 }
 
-//â”€â”€â”€ Lock enforcement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function isLocked(filePath, sessionId) {
   const locks = readJSON(LOCKS_PATH, {});
   const rel = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
   return !!(locks[rel] && locks[rel].sessions && locks[rel].sessions.includes(sessionId));
 }
 
-// â”€â”€â”€ Prompt history â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function addToHistory(prompt) {
   const history = readJSON(HISTORY_PATH, []);
   const updated = [prompt, ...history.filter(p => p !== prompt)].slice(0, 200);
   writeJSON(HISTORY_PATH, updated);
 }
 
-// â”€â”€â”€ Code Health analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function computeCodeHealth(workDir) {
   // Churn: aggregate per-file commit count and line changes from full log
   const numstat = await runGit(['log', '--numstat', '--pretty=format:'], workDir);
@@ -2379,7 +2346,6 @@ async function computeCodeHealth(workDir) {
   return { churn, authors, fileStats };
 }
 
-// â”€â”€â”€ SPACE event logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function spaceSlug(name) {
   return (name || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
 }
@@ -2461,7 +2427,6 @@ function spaceComputeScores(projectName) {
   };
 }
 
-// â”€â”€â”€ Session name generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STOP_WORDS = new Set(['a','an','the','and','or','but','in','on','at','to','for','of','with','by','from','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','ought','used','that','this','these','those','it','its','i','you','he','she','we','they','what','which','who','how','when','where','why','not','no','nor','so','yet','both','either','neither','just','also','then','than','as','if','though','although','because','since','unless','while','after','before']);
 
 function generateSessionName(prompt) {
@@ -2472,7 +2437,6 @@ function generateSessionName(prompt) {
   return words.slice(0, 7).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'New Session';
 }
 
-// â”€â”€â”€ Direct model-provider API â€” agent sessions (no CLI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Replaces CLI spawning. Eliminates CLAUDE.md cold-load (~29k tokens), 37-tool
 // schema bloat, and unbounded --resume conversation replay. Instead: rolling
 // 20-turn window, 9 curated tool schemas, intentional system prompt.
@@ -2480,26 +2444,24 @@ function generateSessionName(prompt) {
 const MAX_AGENT_MESSAGES = 40; // 20 turns Ã— user+assistant
 
 const DIRECT_TOOLS = [
-  { type: 'function', function: { name: 'Read', description: 'Read a file. Returns content with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer', description: 'Start line (1-based)' }, limit: { type: 'integer', description: 'Max lines to read' } }, required: ['file_path'] } } },
-  { type: 'function', function: { name: 'Write', description: 'Write content to a file, creating it if needed.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } }, required: ['file_path', 'content'] } } },
-  { type: 'function', function: { name: 'Edit', description: 'Replace an exact string in a file with a new string. File must be read first.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string', description: 'Exact text to find â€” must be unique in the file' }, new_string: { type: 'string', description: 'Replacement text' }, replace_all: { type: 'boolean', description: 'Replace every occurrence (default false)' } }, required: ['file_path', 'old_string', 'new_string'] } } },
-  { type: 'function', function: { name: 'Glob', description: 'Find files matching a glob pattern. Returns absolute paths sorted by modified time.', parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'Glob e.g. "**/*.js"' }, path: { type: 'string', description: 'Directory to search (default: working dir)' } }, required: ['pattern'] } } },
-  { type: 'function', function: { name: 'Grep', description: 'Search file contents for a regex pattern.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string', description: 'File or directory to search' }, glob: { type: 'string', description: 'File filter e.g. "*.ts"' }, output_mode: { type: 'string', description: 'One of: content, files_with_matches (default), count' }, context: { type: 'integer', description: 'Lines of context around matches' } }, required: ['pattern'] } } },
-  { type: 'function', function: { name: 'Bash', description: 'Execute a shell command in the session working directory.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer', description: 'Timeout ms, max 120000' } }, required: ['command'] } } },
-  { type: 'function', function: { name: 'PowerShell', description: 'Execute a PowerShell command on Windows.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer' } }, required: ['command'] } } },
-  { type: 'function', function: { name: 'WebFetch', description: 'Fetch the text content of a URL.', parameters: { type: 'object', properties: { url: { type: 'string' }, prompt: { type: 'string', description: 'What to extract from the page' } }, required: ['url'] } } },
-  { type: 'function', function: { name: 'WebSearch', description: 'Search the web and return results. Uses You.com free tier first (no cost), then Brave Search if configured, then DuckDuckGo as fallback. Prefer this tool for all web searches.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' }, num_results: { type: 'integer', description: 'Max results to return (default 5)' } }, required: ['query'] } } },
-  { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask the user a clarifying question and wait for their response before continuing.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask' }, options: { type: 'array', items: { type: 'string' }, description: 'Optional predefined answer choices' } }, required: ['question'] } } },
-  { type: 'function', function: { name: 'TodoWrite', description: 'Update the task todo list to track progress.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' }, description: 'Each item is "content|status" where status is pending, in_progress, or completed. Example: ["Fix bug|in_progress","Write tests|pending"]' } }, required: ['todos'] } } },
-  { type: 'function', function: { name: 'QueryMemory', description: 'Query the project knowledge base loaded from Obsidian. Pass a query to get the top-5 most relevant ranked excerpts with source citations and a retrieval trace. Pass filename to retrieve a specific file. Call with no arguments at session start for full context.', parameters: { type: 'object', properties: { filename: { type: 'string', description: 'Optional filename or partial name to retrieve a specific file. Takes precedence over query.' }, query: { type: 'string', description: 'Natural-language query to retrieve the top-5 most relevant Obsidian excerpts by BM25 + semantic ranking. Returns cited excerpts with file name and section heading.' } }, required: [] } } },
-  { type: 'function', function: { name: 'SetProject', description: 'Set the active project for this session. Call this immediately after the user tells you which project they want to work on. Pass the exact project name as shown in the Available projects list, or null for no project (scratch).', parameters: { type: 'object', properties: { projectName: { type: 'string', description: 'Exact project name from the Available projects list, or omit/null for no project.' } }, required: [] } } },
-  { type: 'function', function: { name: 'SetStatus', description: 'Set the status of this session card in the Polaris UI. Use "test" after delivering work that needs user verification before continuing. Use "waiting" when paused and expecting user input. Use "hold" to manually pause the session. Use "done" when the task is fully complete.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'hold', 'done'], description: 'The new status to display on the session card.' } }, required: ['status'] } } },
-  { type: 'function', function: { name: 'Skill', description: 'Invoke a named user-global Claude Code skill from ~/.claude/skills/. Returns the full SKILL.md body which contains the skill\'s execution instructions â€” follow those instructions to complete the task. The list of available skill names and one-line descriptions is provided in the system prompt; use this tool when one of those skills matches the user\'s intent, or when the user types a slash command matching a skill name.', parameters: { type: 'object', properties: { skill: { type: 'string', description: 'Exact skill name as listed in the "Available skills" section of the system prompt.' }, args: { type: 'string', description: 'Optional arguments to pass to the skill (e.g. a task number for /start-build).' } }, required: ['skill'] } } },
-  { type: 'function', function: { name: 'GetNavigationSchema', description: 'Get the complete Polaris navigation pane structure â€” all buttons, labels, tooltips, handlers, and available panel IDs.', parameters: { type: 'object', properties: {}, required: [] } } },
-  { type: 'function', function: { name: 'GetButton', description: 'Get details about a specific navigation button by ID (e.g., "btn-status", "btn-build").', parameters: { type: 'object', properties: { buttonId: { type: 'string', description: 'Button ID to look up' } }, required: ['buttonId'] } } },
-  { type: 'function', function: { name: 'GetPanel', description: 'Get the full HTML content of a specific panel (e.g., "cross-check-panel", "archive-panel").', parameters: { type: 'object', properties: { panelId: { type: 'string', description: 'Panel ID to retrieve' } }, required: ['panelId'] } } },
-  { type: 'function', function: { name: 'FindButtonByLabel', description: 'Search for buttons by label text using case-insensitive partial matching.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Label text to search for' } }, required: ['label'] } } },
-  { type: 'function', function: { name: 'BrowseChrome', description: 'Read the fully-rendered text content of the active Chrome tab via the Chrome DevTools Protocol. Unlike WebFetch, this returns text after JavaScript has run â€” ideal for SPAs, login-walled content, or any page you already have open. Requires Chrome to be running with --remote-debugging-port=9222 (use the Launch Chrome button in Polaris). Optional: pass url to navigate the tab first, selector to extract a specific CSS element.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Optional URL to navigate to before reading content.' }, selector: { type: 'string', description: 'Optional CSS selector (e.g. "main", "#content") to extract a specific element instead of the full page body.' } }, required: [] } } },
+  { type: 'function', function: { name: 'Read', description: 'Read a file with line numbers.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, offset: { type: 'integer' }, limit: { type: 'integer' } }, required: ['file_path'] } } },
+  { type: 'function', function: { name: 'Write', description: 'Write file content.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, content: { type: 'string' } }, required: ['file_path', 'content'] } } },
+  { type: 'function', function: { name: 'Edit', description: 'Replace exact file text after reading it.', parameters: { type: 'object', properties: { file_path: { type: 'string' }, old_string: { type: 'string' }, new_string: { type: 'string' }, replace_all: { type: 'boolean' } }, required: ['file_path', 'old_string', 'new_string'] } } },
+  { type: 'function', function: { name: 'Glob', description: 'Find files by glob.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string' } }, required: ['pattern'] } } },
+  { type: 'function', function: { name: 'Grep', description: 'Search file contents.', parameters: { type: 'object', properties: { pattern: { type: 'string' }, path: { type: 'string' }, glob: { type: 'string' }, output_mode: { type: 'string' }, context: { type: 'integer' } }, required: ['pattern'] } } },
+  { type: 'function', function: { name: 'Bash', description: 'Run a shell command.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer' } }, required: ['command'] } } },
+  { type: 'function', function: { name: 'PowerShell', description: 'Run a PowerShell command.', parameters: { type: 'object', properties: { command: { type: 'string' }, description: { type: 'string' }, timeout: { type: 'integer' } }, required: ['command'] } } },
+  { type: 'function', function: { name: 'WebFetch', description: 'Fetch URL text.', parameters: { type: 'object', properties: { url: { type: 'string' }, prompt: { type: 'string' } }, required: ['url'] } } },
+  { type: 'function', function: { name: 'WebSearch', description: 'Search the web.', parameters: { type: 'object', properties: { query: { type: 'string' }, num_results: { type: 'integer' } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'AskUserQuestion', description: 'Ask a blocking question.', parameters: { type: 'object', properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, required: ['question'] } } },
+  { type: 'function', function: { name: 'TodoWrite', description: 'Update todos.', parameters: { type: 'object', properties: { todos: { type: 'array', items: { type: 'string' } } }, required: ['todos'] } } },
+  { type: 'function', function: { name: 'QueryMemory', description: 'Retrieve ranked project-memory excerpts or a named file.', parameters: { type: 'object', properties: { filename: { type: 'string' }, query: { type: 'string' } }, required: [] } } },
+  { type: 'function', function: { name: 'SetProject', description: 'Set the active project.', parameters: { type: 'object', properties: { projectName: { type: 'string' } }, required: [] } } },
+  { type: 'function', function: { name: 'SetStatus', description: 'Set card status.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['test', 'waiting', 'hold', 'done'] } }, required: ['status'] } } },
+  { type: 'function', function: { name: 'Skill', description: 'Load and follow an installed skill by exact name.', parameters: { type: 'object', properties: { skill: { type: 'string' }, args: { type: 'string' } }, required: ['skill'] } } },
+  { type: 'function', function: { name: 'GetNavigationSchema', description: 'Return navigation buttons and panel IDs.', parameters: { type: 'object', properties: {}, required: [] } } },
+  { type: 'function', function: { name: 'FindButtonByLabel', description: 'Search navigation buttons by label.', parameters: { type: 'object', properties: { label: { type: 'string' } }, required: ['label'] } } },
+  { type: 'function', function: { name: 'BrowseChrome', description: 'Read rendered text from Chrome via bridge or CDP.', parameters: { type: 'object', properties: { url: { type: 'string' }, selector: { type: 'string' } }, required: [] } } },
 ];
 
 function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine = false, injectFileMap = false, continuationContext = null) {
@@ -2545,7 +2507,7 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
       if (matched.obsidianDir) {
         layers.push(
           `--- Project Memory (MANDATORY) ---\n` +
-          `Your project knowledge base is pre-loaded into Polaris memory. At the start of every session, before responding to any user request, call QueryMemory with no arguments to retrieve your full project context â€” soul, architecture, build plan, file map, changelog, and technical documentation. Do not skip this step.`
+          `At session start, call QueryMemory with no arguments before responding so project context is loaded.`
         );
       }
 
@@ -2569,21 +2531,12 @@ function buildDirectSystemPrompt(config, workDir, projectMemory = {}, isRoutine 
 
   layers.push(
     '--- Polaris Navigation Pane ---\n' +
-    'You have four built-in tools to explore and reason about the Polaris UI navigation pane:\n' +
-    '- GetNavigationSchema() â€” returns all buttons and panel IDs in the nav grid\n' +
-    '- GetButton(buttonId) â€” returns label, tooltip, handler, and CSS classes for a specific button (e.g. "btn-build")\n' +
-    '- GetPanel(panelId) â€” returns the full HTML content of a panel (e.g. "cross-check-panel")\n' +
-    '- FindButtonByLabel(label) â€” case-insensitive search for buttons by display label\n' +
-    'Use these whenever the user asks about a panel, button, or UI feature â€” do not guess at IDs or structure.'
+    'Use GetNavigationSchema or FindButtonByLabel when users ask about Polaris UI buttons, panels, or navigation IDs.'
   );
 
   layers.push(
     '--- Error Reporting for Generated Code ---\n' +
-    'When writing new functions or features that may encounter errors at runtime, include error-reporting code so failures are visible in the debug panel.\n' +
-    'The utility function pushDebugLog(message, isError=false) is available from lib/debugUtil.js. Import it with: const { pushDebugLog } = require("./lib/debugUtil.js");\n' +
-    'Then call pushDebugLog("error message", true) in catch blocks to report errors.\n' +
-    'For remote server contexts where importing Node.js modules is not possible, use the WebSocket fallback: send an emit-debug-log message with {type: "emit-debug-log", message, isError}.\n' +
-    'This allows Scott to diagnose failures without manual log inspection.'
+    'For new runtime code, report catch-block failures with pushDebugLog(message, true) or emit-debug-log over WebSocket.'
   );
 
   return layers.join('\n\n');
@@ -2736,7 +2689,6 @@ function buildBacklogContextBlock(config, matchedProject) {
   return `--- Backlog Context ---\n${lines.join('\n')}`;
 }
 
-// â”€â”€ Tool implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Builds a compact Polaris runtime context block injected at the top of every
 // Claude Code (Max-plan) stdin prompt so the model always knows its host environment.
@@ -2812,7 +2764,6 @@ function buildPolarisContextBlock(config, session) {
   return lines.join('\n');
 }
 
-// â”€â”€â”€ Navigation Pane Tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let navigationCache = null;
 let navigationCacheTime = 0;
@@ -2975,7 +2926,6 @@ function toolRead({ file_path, offset, limit }, sessionId, workDir) {
   return lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join('\n');
 }
 
-// â”€â”€ obsidianRetrieval helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function _memHash(mem) {
   const h = crypto.createHash('sha256');
@@ -3041,7 +2991,6 @@ function _appendMemoryTrace(projectName, query, results) {
   }
 }
 
-// â”€â”€ toolQueryMemory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function toolQueryMemory({ filename, query } = {}, sessionId) {
   const session = sessions.get(sessionId);
@@ -3124,7 +3073,6 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
   return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
 }
 
-// â”€â”€ Skill discovery (all sources) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Scans every place skills + commands + agents live, parses each one, returns
 // a flat array of entries that the system-prompt injector, the Skill tool, and
 // the Skills nav panel all consume.
@@ -3781,7 +3729,6 @@ function archiveCompletedTasks(scope, taskNumbers, promotionPRNumber) {
   return tasksToArchive;
 }
 
-// â”€â”€â”€ backlog.json write serializer (task #34) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Prevents concurrent /sync-state writes from interleaving as server.js grows
 // async paths during the src/runtime/ module migration (task #25). Node.js
 // serialises sync I/O in the event loop today, so this is defensive for future
@@ -4194,7 +4141,6 @@ function assertSafeWriteSize(content, file_path) {
   }
 }
 
-// â”€â”€â”€ Source-file backup (Phase 0 of write-gate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Snapshots a file to %APPDATA%\.claude\polaris\source-backups\ before any
 // agent-driven write. Covers Edit, Write, and shell-tool writes (PowerShell
 // Set-Content/Add-Content/Out-File, Bash > and >> redirection). Restore is a
@@ -4300,7 +4246,6 @@ function detectShellWriteTargets(command, workDir) {
   return Array.from(targets);
 }
 
-// â”€â”€â”€ Encoding sanity check (Phase 1 of write-gate) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Catches the most common agent-induced corruption: writes performed in the
 // wrong encoding (e.g. PowerShell here-strings written as UTF-16 / CP1252,
 // rewriting the file with U+FFFD replacement chars and stripping the UTF-8
@@ -4628,7 +4573,6 @@ function askForInstallerPermission({ sessionId, exePath, command }) {
   });
 }
 
-// â”€â”€â”€ Post-hoc cross-check (Phase 2 extension) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // For writes that have already happened (shell commands, Max CLI sessions),
 // the gate runs after the fact. The reviewer sees the same diff, but the UI
 // shows "Keep change" / "Restore original" instead of "Approve" / "Reject".
@@ -4876,7 +4820,6 @@ function extractReviewJson(text) {
   return null;
 }
 
-// â”€â”€â”€ Cross-Check engine (Phase 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Reviews proposed file changes via a configurable model before they hit disk.
 // Returns { verdict, summary, issues, model, ms }. Default is Haiku 4.5 â€” at
 // 90% of Sonnet's capability for ~3x lower cost, it's the right tier for a
@@ -5203,7 +5146,6 @@ function loadAllCrossChecks(limit = 200) {
   return all.sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, limit);
 }
 
-// â”€â”€â”€ Pre-build cross-check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Aggregate cross-check pass over every file changed since the last check.
 // Build button gates on this â€” if the repo state hasn't been reviewed, build
 // is rejected and the UI prompts the user to run the check first.
@@ -5729,7 +5671,6 @@ function toolWebFetch({ url }) {
   });
 }
 
-// â”€â”€â”€ Chrome browser tool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Two paths, tried in order:
 //
 //   1. Extension bridge (preferred) â€” the Polaris Browser Bridge Chrome extension
@@ -5973,7 +5914,6 @@ function toolTodoWrite({ todos }, sessionId) {
   return 'Todos updated:\n' + normalized.map(t => `[${t.status}] ${t.content}`).join('\n');
 }
 
-// â”€â”€ MCP Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mcpProcesses = new Map(); // serverName â†’ { proc, pending, buffer, nextId }
 const mcpToolsCache = new Map();
@@ -6173,7 +6113,6 @@ async function callMcpTool(serverName, toolName, args) {
   return formatMcpResult(result);
 }
 
-// â”€â”€ Per-session git worktrees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each agent/chat session with a git project gets an isolated linked worktree
 // so concurrent sessions never share branch state. The session's workDir is
 // replaced with the worktree path; repoWorkDir retains the original project root.
@@ -6350,7 +6289,6 @@ function purgeStaleWorktrees() {
   }
 }
 
-// â”€â”€ Orchestrator helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getSessionsForProject(projectName) {
   const result = [];
@@ -6471,7 +6409,6 @@ function saveOrchestratorState() {
 
 loadOrchestratorState();
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'Bash', 'PowerShell']);
 
@@ -6511,7 +6448,6 @@ async function executeDirectTool(name, input, workDir, sessionId) {
   }
 }
 
-// â”€â”€ Streaming OpenRouter call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // OpenRouter and DeepSeek direct share the tool-using agent loop, but DeepSeek
 // sessions must route to api.deepseek.com instead of OpenRouter.
@@ -6685,7 +6621,6 @@ function loadSessionMessages(sessionId) {
   } catch { return []; }
 }
 
-// â”€â”€ Agentic loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMessage = true, continuationContext = null) {
   const session = sessions.get(sessionId);
@@ -7175,7 +7110,6 @@ function appendTokenLog(sessionId, model, usage) {
   try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify({ ts: Date.now(), sessionId, model: model || 'unknown', input: inp, output: out }) + '\n', 'utf8'); } catch {}
 }
 
-// â”€â”€â”€ DeepSeek Direct API for routines â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Routines fire via api.deepseek.com â€” bypasses Claude CLI entirely (no 30K-token
 // project-context cold load). DeepSeek pricing is ~$0.27/MTok in vs Anthropic's $3.
 function spawnDeepSeekRoutine(sessionId, prompt, config) {
@@ -7336,7 +7270,6 @@ function handleStreamEvent(sessionId, msg) {
 }
 
 
-// â”€â”€â”€ Spawn DeepSeek chat session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -8197,7 +8130,6 @@ async function spawnCodexSession(sessionId, prompt, config) {
   }
 }
 
-// â”€â”€â”€ ChatGPT CDP Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const GPT_CDP_PORT = 9222;
 const GPT_TIER_MODELS = {
   floor:    { slug: 'gpt-5-5',          label: 'Auto',     display: 'GPT-5.5 Auto'     },
@@ -8607,7 +8539,6 @@ function spawnChat(sessionId, prompt, config) {
   req.end();
 }
 
-// â”€â”€â”€ HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     fs.readFile(MOCKUP_DEST, 'utf8', (err, data) => {
@@ -9820,7 +9751,6 @@ const httpServer = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-// â”€â”€â”€ Agent Eval feature â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Per-model agent-loop evaluation. Drives runDirectAgent against scripted
 // fixtures across a queue of models, asserts on tool calls + filesystem state,
 // emits per-cell results over WS. Mirrors the chat-style Benchmark Runner
@@ -10180,7 +10110,6 @@ function isSessionRunCurrent(sessionId, runId) {
   return !!session && session.activeRunId === runId && !session.aborted;
 }
 
-// â”€â”€â”€ Resume turn dispatch + queue drain â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // executeResumeTurn â€” runs the post-guard portion of the resume handler for a
 // single turn (whether it just arrived from the WS handler or was popped from
 // session.pendingTurns). drainPendingTurns is called from every terminal-status
@@ -10265,7 +10194,6 @@ function drainPendingTurns(sessionId) {
 }
 
 
-// â”€â”€â”€ WS receive-side schema registry (task #38) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Maps every known clientâ†’server type string to its Zod schema. Built from the
 // AnyClientMessage discriminated union so it stays in sync automatically when
 // new schemas are added to src/contracts/ws-messages.ts.
@@ -10295,7 +10223,6 @@ const WS_SCHEMA_REGISTRY = (() => {
   return registry;
 })();
 
-// â”€â”€â”€ WebSocket message handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function handleMessage(ws, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
@@ -13503,8 +13430,6 @@ async function handleMessage(ws, raw) {
   }
 }
 
-// â”€â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€â”€ Domain Scout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function httpsGetSimple(hostname, urlPath) {
   return new Promise((resolve, reject) => {
@@ -13692,7 +13617,6 @@ Return ONLY a valid JSON array with exactly 30 items.`;
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 fs.mkdirSync(SOURCE_BACKUPS_DIR, { recursive: true });
 
-// â”€â”€â”€ Health Monitor Session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function runHealthProbe() {
   try {
@@ -14004,7 +13928,6 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 
 wss = new WebSocket.Server({ server: httpServer });
 
-// â”€â”€â”€ Memory decay â€” runs 30 s after startup then every 24 h â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MEMORY_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 async function runMemoryDecay() {
   try {
@@ -14044,7 +13967,6 @@ const wsHeartbeatTimer = setInterval(() => {
 }, WS_HEARTBEAT_MS);
 if (typeof wsHeartbeatTimer.unref === 'function') wsHeartbeatTimer.unref();
 
-// â”€â”€ Session heartbeat / stall detector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Checks every 3 s for running sessions with no broadcast activity.
 // 15 s idle â†’ amber stall badge on card.
 // 45 s idle â†’ kick: abort in-flight request, kill proc, set error status.
@@ -14084,7 +14006,6 @@ setInterval(() => {
 const worktreePurgeTimer = setInterval(purgeStaleWorktrees, 24 * 60 * 60 * 1000);
 if (typeof worktreePurgeTimer.unref === 'function') worktreePurgeTimer.unref();
 
-// â”€â”€ Session guidance polling (every 3 minutes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each session writes its state and reads orchestrator alerts.
 // Alerts targeted at a session are broadcast once as system lines; seen timestamps
 // prevent repeat broadcasts across polling ticks until the alert is pruned.
@@ -14114,7 +14035,6 @@ setInterval(() => {
   }
 }, SESSION_GUIDANCE_POLL_MS);
 
-// â”€â”€ Alert pruning (every 10 minutes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Remove orchestrator alerts older than 10 minutes to prevent accumulation.
 setInterval(() => {
   pruneStaleAlerts();
