@@ -47,7 +47,7 @@ export const TransferSessionMessage = WebSocketMessage.extend({
 export const SessionHeightMessage = WebSocketMessage.extend({
   type: z.literal('session-height'),
   sessionId: z.string(),
-  height: z.string().nullable(),
+  height: z.number().nullable(),
 });
 
 export const SessionColumnMessage = WebSocketMessage.extend({

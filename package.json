@@ -1,7 +1,7 @@
 {
-  "name": "polaris",
+  "name": "polaris-lab",
   "version": "1.0.642",
-  "description": "Polaris — Claude Code Command Center",
+  "description": "Polaris-lab — experimental Claude Code command center",
   "main": "main.js",
   "scripts": {
     "build:contracts": "tsc -p tsconfig.contracts.json",
@@ -21,20 +21,20 @@
     "test:retrieval": "vitest run test/memory/obsidianRetrieval"
   },
   "build": {
-    "appId": "com.scott.polaris",
-    "productName": "Polaris",
+    "appId": "com.scott.polaris.lab",
+    "productName": "Polaris-lab",
     "npmRebuild": false,
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon-lab.ico"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
       "deleteAppDataOnUninstall": false,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico"
+      "installerIcon": "assets/icon-lab.ico",
+      "uninstallerIcon": "assets/icon-lab.ico"
     },
     "mac": {
       "target": "dmg",

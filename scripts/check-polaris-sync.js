@@ -63,7 +63,7 @@ for (const launchType of ['launch-chat', 'launch-gpt', 'launch-codex', 'launch']
 }
 check(
   /async\s+function\s+discoverMcpTools\s*\(\s*allowlist\s*=\s*null\s*\)/.test(server)
-    && /getMcpServerConfigs\s*\(\s*normalized\s*\)/.test(server)
+    && /getMcpServerConfigs\s*\(\s*normalized\s*,\s*\{\s*sessionScope:\s*true\s*\}\s*\)/.test(server)
     && /matchedProject[\s\S]{0,600}discoverMcpTools\s*\(\s*mcpAllowlist\s*\)/.test(server),
   'Direct-agent MCP discovery should honor the active project mcpServers allowlist.'
 );

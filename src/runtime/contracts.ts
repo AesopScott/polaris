@@ -65,7 +65,7 @@ export interface TransferSessionMessage extends WebSocketMessage {
 export interface SessionHeightMessage extends WebSocketMessage {
   type: 'session-height';
   sessionId: string;
-  height: number;
+  height: number | null;
 }
 
 export interface SessionColumnMessage extends WebSocketMessage {
@@ -89,27 +89,27 @@ export interface SessionPinnedMessage extends WebSocketMessage {
 // Agent Interaction Messages
 export interface UserQuestionAnswerMessage extends WebSocketMessage {
   type: 'user-question-answer';
-  sessionId: string;
+  questionId: string;
   answer: string;
 }
 
 export interface CrossCheckDecisionMessage extends WebSocketMessage {
   type: 'cross-check-decision';
-  sessionId: string;
+  checkId: string;
   decision: 'approve' | 'reject';
   reason?: string;
 }
 
 export interface CrossCheckPostHocDecisionMessage extends WebSocketMessage {
   type: 'cross-check-post-hoc-decision';
-  sessionId: string;
+  checkId: string;
   decision: 'approve' | 'reject';
   reason?: string;
 }
 
 export interface InstallerPermissionDecisionMessage extends WebSocketMessage {
   type: 'installer-permission-decision';
-  sessionId: string;
+  checkId: string;
   decision: 'allow' | 'deny';
 }
 
@@ -117,21 +117,24 @@ export interface InstallerPermissionDecisionMessage extends WebSocketMessage {
 export interface DeleteQueueMessageMessage extends WebSocketMessage {
   type: 'delete-queue-message';
   sessionId: string;
-  messageId: string;
+  queueType: string;
+  index: number;
 }
 
 export interface EditQueueMessageMessage extends WebSocketMessage {
   type: 'edit-queue-message';
   sessionId: string;
-  messageId: string;
-  newContent: string;
+  queueType: string;
+  index: number;
+  prompt?: string;
+  displayPrompt?: string;
 }
 
 // Cost & Metrics Messages
 export interface CostUpdateMessage extends WebSocketMessage {
   type: 'cost-update';
   sessionId: string;
-  cost: number;
+  totalCost: number;
 }
 
 // Backlog Messages

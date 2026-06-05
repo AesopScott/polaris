@@ -9,7 +9,7 @@ if (!fs.existsSync(distDir)) {
   process.exit(0);
 }
 
-const installerPattern = /^Polaris (?:Private |Public )?Setup .+\.exe$/;
+const installerPattern = /^Polaris(?:-lab)? (?:Private |Public )?Setup .+\.exe$/;
 
 const installers = fs.readdirSync(distDir)
   .filter(name => installerPattern.test(name))
@@ -48,8 +48,8 @@ let removedBlockmaps = 0;
 let removedLegacy = 0;
 for (const name of fs.readdirSync(distDir)) {
   const legacyArtifact =
-    /^Polaris (?:Private |Public )?Setup .+\.exe_old$/.test(name) ||
-    /^polaris-.+\.nsis\.7z$/.test(name);
+    /^Polaris(?:-lab)? (?:Private |Public )?Setup .+\.exe_old$/.test(name) ||
+    /^polaris(?:-lab)?-.+\.nsis\.7z$/.test(name);
   if (legacyArtifact) {
     try {
       fs.unlinkSync(path.join(distDir, name));

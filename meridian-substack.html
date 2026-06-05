@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meridian: The Local Brain for Agentic Work</title>
+  <meta name="description" content="An essay on what Meridian is and why it is different from the agent tools that came before it.">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #171717;
+      --muted: #60646c;
+      --soft: #f5f1e8;
+      --paper: #fffdf7;
+      --line: #d8d0bf;
+      --accent: #0f766e;
+      --accent-dark: #174e47;
+      --warm: #b45309;
+      --blue: #1d4ed8;
+      --rose: #be123c;
+      --shadow: 0 18px 50px rgba(22, 22, 20, 0.12);
+      --serif: Georgia, "Times New Roman", serif;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--accent-dark);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    .page {
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 16px clamp(18px, 4vw, 54px);
+      border-bottom: 1px solid rgba(216, 208, 191, 0.8);
+      background: rgba(255, 253, 247, 0.94);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--accent-dark);
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--accent-dark);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-family: var(--serif);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .topbar nav {
+      display: flex;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .hero {
+      padding: clamp(42px, 7vw, 92px) clamp(18px, 4vw, 54px) 36px;
+      background:
+        linear-gradient(180deg, rgba(245, 241, 232, 0.9), rgba(255, 253, 247, 0.96)),
+        repeating-linear-gradient(90deg, rgba(15, 118, 110, 0.08) 0 1px, transparent 1px 80px),
+        repeating-linear-gradient(0deg, rgba(180, 83, 9, 0.07) 0 1px, transparent 1px 80px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
+      align-items: center;
+      gap: clamp(28px, 5vw, 70px);
+    }
+
+    .kicker {
+      margin: 0 0 16px;
+      color: var(--warm);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 82px;
+      font-weight: 700;
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 720px;
+      margin: 24px 0 0;
+      color: #343536;
+      font-family: var(--serif);
+      font-size: 29px;
+      line-height: 1.32;
+    }
+
+    .byline {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--accent-dark);
+      color: #fffdf7;
+      display: grid;
+      place-items: center;
+      font-family: var(--serif);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .system-visual {
+      position: relative;
+      min-height: 520px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      background: rgba(255, 253, 247, 0.82);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .system-visual::before {
+      content: "";
+      position: absolute;
+      inset: 22px;
+      border: 1px dashed rgba(15, 118, 110, 0.28);
+      pointer-events: none;
+    }
+
+    .connectors-svg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .connectors-svg line {
+      stroke: rgba(15, 118, 110, 0.38);
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+
+    .node {
+      position: absolute;
+      z-index: 1;
+      width: 156px;
+      height: 118px;
+      padding: 14px;
+      border: 1px solid rgba(23, 23, 23, 0.16);
+      background: #fffdf7;
+      box-shadow: 0 10px 28px rgba(22, 22, 20, 0.08);
+    }
+
+    .node strong {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .node span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .node.primary {
+      top: 204px;
+      left: 50%;
+      width: 174px;
+      min-height: 112px;
+      transform: translateX(-50%);
+      border: 2px solid var(--accent);
+      background: #f2fbf8;
+    }
+
+    .node.portfolio {
+      top: 54px;
+      left: 38px;
+      border-color: rgba(29, 78, 216, 0.32);
+    }
+
+    .node.heartbeat {
+      top: 54px;
+      right: 38px;
+      border-color: rgba(190, 18, 60, 0.32);
+    }
+
+    .node.workers {
+      left: 38px;
+      bottom: 54px;
+      border-color: rgba(180, 83, 9, 0.36);
+    }
+
+    .node.proof {
+      right: 38px;
+      bottom: 54px;
+      border-color: rgba(15, 118, 110, 0.34);
+    }
+
+    .caption {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      bottom: 22px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 52px 20px 86px;
+    }
+
+    article p {
+      margin: 0 0 24px;
+      font-family: var(--serif);
+      font-size: 23px;
+      line-height: 1.58;
+    }
+
+    article h2 {
+      margin: 54px 0 18px;
+      font-family: var(--serif);
+      font-size: 42px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .lead:first-letter {
+      float: left;
+      padding: 9px 8px 0 0;
+      color: var(--accent-dark);
+      font-family: var(--serif);
+      font-size: 72px;
+      line-height: 0.72;
+    }
+
+    blockquote {
+      margin: 38px 0;
+      padding: 4px 0 4px 24px;
+      border-left: 4px solid var(--accent);
+      color: var(--accent-dark);
+      font-family: var(--serif);
+      font-size: 34px;
+      line-height: 1.22;
+    }
+
+    .aside {
+      margin: 38px 0;
+      padding: 24px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+    }
+
+    .aside h3 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--warm);
+    }
+
+    .aside ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .aside li {
+      margin: 10px 0;
+      color: #313335;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 34px 0 42px;
+    }
+
+    .compare section {
+      padding: 22px;
+      border: 1px solid var(--line);
+      background: #fffdf7;
+    }
+
+    .compare h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      color: var(--accent-dark);
+    }
+
+    .compare p {
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.48;
+      color: var(--muted);
+    }
+
+    .signature {
+      margin-top: 54px;
+      padding-top: 26px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .signature strong {
+      color: var(--ink);
+    }
+
+    @media (max-width: 880px) {
+      .hero-inner {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 58px;
+      }
+
+      .subtitle {
+        font-size: 25px;
+      }
+
+      .system-visual {
+        min-height: 460px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .topbar nav {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .system-visual {
+        min-height: auto;
+        display: grid;
+        gap: 12px;
+        padding: 18px;
+      }
+
+      .system-visual::before,
+      .connectors-svg,
+      .caption {
+        display: none;
+      }
+
+      .node,
+      .node.primary,
+      .node.portfolio,
+      .node.heartbeat,
+      .node.workers,
+      .node.proof {
+        position: static;
+        width: auto;
+        height: auto;
+        min-height: 0;
+        transform: none;
+      }
+
+      .compare {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 44px;
+      }
+
+      .subtitle {
+        font-size: 21px;
+      }
+
+      article h2 {
+        font-size: 30px;
+      }
+
+      article p {
+        font-size: 20px;
+      }
+
+      blockquote {
+        font-size: 25px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" aria-label="Publication header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span>Meridian Notes</span>
+      </div>
+      <nav aria-label="Article links">
+        <a href="#what-it-is">What it is</a>
+        <a href="#why-different">Why different</a>
+        <a href="#prime-directive">Prime directive</a>
+        <a href="#why-now">Why now</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-inner">
+        <div>
+          <p class="kicker">Meridian</p>
+          <h1>Meridian is not another AI app. It is a local brain.</h1>
+          <p class="subtitle">The next step in agentic work is not a prettier chat box. It is an orchestrator that keeps track of the work, recruits the right workers, demands proof, and only interrupts the human when judgment is actually needed.</p>
+          <div class="byline">
+            <span class="avatar" aria-hidden="true">S</span>
+            <span>May 30, 2026</span>
+          </div>
+        </div>
+
+        <div class="system-visual" role="img" aria-label="Diagram showing Meridian as a local orchestrator connecting portfolio state, heartbeat, workers, proof, and human judgment.">
+          <svg class="connectors-svg" viewBox="0 0 430 520" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="215" y1="260" x2="116" y2="113"></line>
+            <line x1="215" y1="260" x2="314" y2="113"></line>
+            <line x1="215" y1="260" x2="116" y2="407"></line>
+            <line x1="215" y1="260" x2="314" y2="407"></line>
+          </svg>
+
+          <div class="node primary">
+            <strong>Meridian local brain</strong>
+            <span>Reads state, chooses next moves, injects instructions, records evidence.</span>
+          </div>
+          <div class="node portfolio">
+            <strong>Portfolio state</strong>
+            <span>Ventures, projects, objectives, priorities, and active initiatives.</span>
+          </div>
+          <div class="node heartbeat">
+            <strong>Heartbeat</strong>
+            <span>Alive, busy, blocked, failed, stale, sleeping, ready.</span>
+          </div>
+          <div class="node workers">
+            <strong>Worker sessions</strong>
+            <span>Builders, reviewers, researchers, verifiers, release operators.</span>
+          </div>
+          <div class="node proof">
+            <strong>Proof and artifacts</strong>
+            <span>Tests, screenshots, diffs, reviews, decisions, shipped outputs.</span>
+          </div>
+          <div class="caption">The human is not the router. The human is the judgment layer.</div>
+        </div>
+      </div>
+    </section>
+
+    <main>
+      <article>
+        <p class="lead">There is a pattern that anyone doing serious work with AI eventually runs into. At first, the model feels like leverage. Then the work gets bigger. You open more chats. You start more coding sessions. You give one agent context, then another. You ask one to build, another to review, another to test, another to summarize. For a while, this feels powerful.</p>
+
+        <p>Then, quietly, you become the operating system.</p>
+
+        <p>You are the one remembering which session is alive. You are the one noticing which task stalled. You are the one copying context from one place to another. You are the one deciding when proof is enough. You are the one translating a strategic goal into the next prompt, and the next prompt, and the next prompt after that.</p>
+
+        <p>The agents are doing work. But you are still coordinating the work.</p>
+
+        <blockquote>Meridian begins from a different premise: the human should not be the default coordinator. The human should be the bottleneck only for judgment.</blockquote>
+
+        <h2 id="what-it-is">What Meridian Is</h2>
+
+        <p>Meridian is a proactive portfolio orchestrator and builder. Its job is to advance projects, businesses, websites, tools, communities, and experiments until the user's judgment becomes the limiting factor.</p>
+
+        <p>That wording matters. Meridian is not primarily an app launcher. It is not a chat wrapper. It is not a place where agents sit around waiting to be individually prompted. It is a local system that maintains a model of the work: what ventures exist, what projects are active, what objectives are in motion, which sessions are alive, what is blocked, what proof exists, and what can safely happen next.</p>
+
+        <p>The simplest public version is this:</p>
+
+        <blockquote>You talk to the orchestrator. The orchestrator drives the worker sessions.</blockquote>
+
+        <p>Worker sessions still exist. They are visible. They can be inspected. They can be transferred, stopped, rerun, corrected, or debugged. But they are not supposed to be the main conversational surface. The normal path is not that the user opens five AI windows and becomes air traffic control. The normal path is that the user talks to Meridian, and Meridian manages the work beneath that conversation.</p>
+
+        <div class="aside">
+          <h3>Meridian keeps track of</h3>
+          <ul>
+            <li>Portfolio state: ventures, projects, initiatives, objectives, and tasks.</li>
+            <li>Harness heartbeat: what is alive, busy, blocked, failed, stale, or ready.</li>
+            <li>Worker sessions: builders, reviewers, verifiers, researchers, and release operators.</li>
+            <li>Proof: tests, screenshots, browser checks, diffs, reviews, and artifacts.</li>
+            <li>User bottlenecks: decisions only the human should make.</li>
+          </ul>
+        </div>
+
+        <h2 id="why-different">Why This Is Different</h2>
+
+        <p>Most AI tools still treat the chat session as the atomic unit of work. That made sense in the first wave. The model was the product, and the user was the operator. You asked. It answered. Then the tools got better, and the answer could become an action. It could write files, run tests, inspect a browser, open a pull request.</p>
+
+        <p>But even when the agent becomes more capable, the coordination problem remains. A single agent can lose the plot. Multiple agents can drift, duplicate work, block each other, or confidently report success without enough evidence. The more power you add, the more you need a layer that knows what is happening across the whole field.</p>
+
+        <p>That layer is Meridian.</p>
+
+        <div class="compare" aria-label="Comparison between common agent tools and Meridian">
+          <section>
+            <h3>Common agent tools</h3>
+            <p>The human opens sessions, distributes context, monitors progress, asks for reviews, checks proof, and decides what prompt to send next.</p>
+          </section>
+          <section>
+            <h3>Meridian</h3>
+            <p>The local brain reads state, watches heartbeat, recruits workers, injects steering, captures proof, and escalates only real judgment calls.</p>
+          </section>
+        </div>
+
+        <p>The distinction is subtle until you feel it. Meridian is not trying to make one agent magical. It is trying to make the whole work system coherent.</p>
+
+        <p>It treats agents as labor, not as the center of the product. It treats models as cognitive resources, not as the system of record. It treats proof as a native object, not an optional final sentence that says "done." It treats memory as lived process experience: what worked, what failed, what the user prefers, which commands prove which claims, which projects matter, and which decisions should not be remade every week.</p>
+
+        <h2 id="prime-directive">The Prime Directive</h2>
+
+        <blockquote>Do good work. That's the whole job.</blockquote>
+
+        <p>That is the prime directive behind Meridian. It sounds almost too plain to be a system philosophy, which is part of why it works. It does not say "maximize output." It does not say "keep agents busy." It does not say "automate everything that can be automated." It says the work has to be good.</p>
+
+        <p>Good work means the result matters, not just that a task moved from one status to another. It means Meridian should understand the intention behind the request, preserve the user's standards, and notice when motion is becoming theater. A system that opens ten sessions but produces no durable progress has not done good work. A system that ships fast but cannot prove what changed has not done good work. A system that hides uncertainty from the human has not done good work.</p>
+
+        <p>For Meridian, the prime directive becomes an operating constraint. Advance the portfolio, but do not confuse noise with progress. Use agents, but do not worship agents. Ask remote models for help, but do not outsource truth to them. Capture proof. Record decisions. Escalate the calls only the user should make. Protect attention. Preserve context. Leave the work better than it was found.</p>
+
+        <p>This is why Meridian is not trying to become a fully autonomous black box. The goal is not to remove care from the process. The goal is to make care scalable. Meridian should carry the burden of coordination so that human judgment can be spent where judgment actually changes the outcome.</p>
+
+        <h2>The Local Brain</h2>
+
+        <p>The phrase "local brain" is doing a lot of work here. Meridian is local-first because the user's machine is where the real context lives. Files live there. Repos live there. Browser checks happen there. Shell commands run there. Credentials, memory, draft artifacts, screenshots, test output, and half-finished work all exist in the local environment before they become anything public.</p>
+
+        <p>Remote models are still essential. Meridian can ask a strong model to plan, build, review, explain, research, or synthesize. But the remote model does not own truth. The local brain does. It decides what to trust, what to verify, what to store, what to retry, and what to ask the user.</p>
+
+        <p>This is one of the major philosophical breaks from the current AI product landscape. Meridian is not waiting for one giant model to become the entire company. It assumes that useful intelligence is distributed: local state, remote reasoning, harnesses, memory, proofs, policies, workflows, and human judgment all have different jobs.</p>
+
+        <h2>Heartbeat Changes Everything</h2>
+
+        <p>A static planner can tell you what should happen. A proactive operator needs to know what is happening.</p>
+
+        <p>That is why heartbeat is central to Meridian. Every harness and active worker should be able to report liveness. Alive. Busy. Blocked. Failed. Sleeping. Stale. Ready. These are not vibes. They are operational states.</p>
+
+        <p>Without heartbeat, AI work collapses back into guesswork. Did the session stall? Did the test run? Did the browser verification happen? Did the model hit a tool error? Did a branch conflict with another branch? Did a worker finish but fail to attach proof? If the human has to inspect everything manually, the system has not actually become autonomous. It has just become noisy.</p>
+
+        <p>Heartbeat lets Meridian notice reality. Once it can notice reality, it can act: inspect, retry, transfer, inject a correction, spawn a verifier, create a bottleneck, or mark the work stale.</p>
+
+        <h2>Proof Before Done</h2>
+
+        <p>One of the great failures of early agentic software work is that "done" often means "the model said it was done." Meridian has to be stricter than that.</p>
+
+        <p>Proof is a first-class object. A completed action should attach evidence: a test result, a screenshot, a browser check, a diff, a review, a decision brief, or a generated artifact. Some work can be proven automatically. Some work needs a human waiver. But important work should not disappear into a cheerful completion message with no trail behind it.</p>
+
+        <p>This is not bureaucracy. It is how trust scales. If Meridian is going to advance a portfolio while the user is not micromanaging every step, then Meridian has to be able to answer a very simple question: why do we believe this is true?</p>
+
+        <h2>The User Bottleneck</h2>
+
+        <p>The goal is not to remove the human. The goal is to stop wasting the human.</p>
+
+        <p>The user should make decisions about priority, taste, risk, strategy, spending, publishing, audience, and tradeoffs. The user should not have to remember to run the next command, notice that a worker session stalled, copy the same context into three windows, or manually summarize every active project before deciding what matters.</p>
+
+        <p>That is the meaning of the user bottleneck queue. Meridian should escalate the decisions only the user should make. Everything else should be advanced, verified, or packaged into a decision-ready state.</p>
+
+        <h2 id="why-now">Why Now</h2>
+
+        <p>Meridian exists because the first generation of AI tools worked well enough to reveal the next problem.</p>
+
+        <p>We now know that models can write code, use tools, inspect systems, make plans, and critique their own work. We also know they drift. They forget context. They overclaim. They need steering. They need proof. They need memory that is outside the prompt. They need a runtime that can see files, state, events, workers, workflows, and user preferences.</p>
+
+        <p>The interesting question is no longer "Can an AI agent do a task?" Increasingly, yes. The better question is: who coordinates the tasks into durable progress?</p>
+
+        <p>Today, the answer is usually the human.</p>
+
+        <p>Meridian is an attempt to change that answer.</p>
+
+        <blockquote>The future of agentic work is not one chat becoming omnipotent. It is a local orchestrator that knows the work, moves the work, proves the work, and protects the human's attention for the decisions that deserve it.</blockquote>
+
+        <p>That is why Meridian feels different from what came before. It is not trying to be the best individual worker. It is trying to become the layer that makes many workers useful.</p>
+
+        <p>And if it works, the experience of building with AI changes. You stop asking, "Which window did I leave that in?" You stop babysitting every thread. You stop being the glue between tools that should already know how to cooperate.</p>
+
+        <p>You talk to the orchestrator.</p>
+
+        <p>The orchestrator drives the work.</p>
+
+        <p>And eventually, the only thing left for you to do is decide what matters.</p>
+
+      </article>
+    </main>
+  </div>
+</body>
+</html>

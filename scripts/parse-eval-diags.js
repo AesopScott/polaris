@@ -2,7 +2,7 @@
 'use strict';
 
 // Post-hoc parser for agent-eval diag logs.
-// Reads %APPDATA%\.claude\polaris\logs\diag-eval_*.txt, applies the same
+// Reads %APPDATA%\.claude\polaris-lab\logs\diag-eval_*.txt, applies the same
 // pass/fail assertions runAgentEvalCell uses, aggregates per (model x fixture),
 // appends a "## Run <stamp>" section to 5-Agentic-Benchmark.md, and prints a
 // retry queue: models where every cell either errored with a network failure
@@ -18,7 +18,8 @@ const path = require('path');
 const os = require('os');
 
 const APPDATA = process.env.APPDATA || os.homedir();
-const POLARIS_DIR = path.join(APPDATA, '.claude', 'polaris');
+const APP_SLUG = process.env.POLARIS_APP_SLUG || 'polaris-lab';
+const POLARIS_DIR = process.env.POLARIS_DIR || path.join(APPDATA, '.claude', APP_SLUG);
 const LOGS_DIR = path.join(POLARIS_DIR, 'logs');
 const CONFIG_PATH = path.join(POLARIS_DIR, 'config.json');
 

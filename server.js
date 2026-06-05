@@ -57,9 +57,13 @@ const { z } = require('zod');
 
 // â”€â”€â”€ Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const APPDATA      = process.env.APPDATA || os.homedir();
-const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', 'polaris');
+const APP_DISPLAY_NAME = process.env.POLARIS_APP_NAME || 'Polaris-lab';
+const APP_SLUG     = process.env.POLARIS_APP_SLUG || 'polaris-lab';
+const IS_POLARIS_LAB = APP_SLUG === 'polaris-lab' || process.env.POLARIS_LAB === '1';
+const POLARIS_SOURCE_DIR = process.env.POLARIS_SOURCE_DIR || __dirname;
+const POLARIS_DIR  = process.env.POLARIS_DIR  || path.join(APPDATA, '.claude', APP_SLUG);
 const MOCKUP_DEST  = process.env.MOCKUP_DEST  || path.join(POLARIS_DIR, 'mockup.html');
-const PORT         = Number(process.env.SERVER_PORT) || 40000;
+const PORT         = Number(process.env.SERVER_PORT) || (IS_POLARIS_LAB ? 40010 : 40000);
 
 const CONFIG_PATH   = path.join(POLARIS_DIR, 'config.json');
 const LOCKS_PATH    = path.join(POLARIS_DIR, 'locks.json');
@@ -5207,9 +5211,9 @@ const PRE_BUILD_CHECK_PATH  = path.join(POLARIS_DIR, 'pre-build-check.json');
 const LAST_BUILD_HEAD_PATH  = path.join(POLARIS_DIR, 'last-build-head.json');
 const LAST_BUILD_HEADS_DIR  = path.join(POLARIS_DIR, 'last-build-heads');
 
-// Returns the per-project last-build-head path (Polaris uses its legacy singleton).
+// Returns the per-project last-build-head path (Polaris-lab uses its own runtime singleton).
 function lastBuildHeadPath(projectName, workDir) {
-  const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+  const POLARIS_WORK_DIR = POLARIS_SOURCE_DIR;
   if (workDir === POLARIS_WORK_DIR || workDir === POLARIS_WORK_DIR.replace(/\\/g, '/')) {
     return LAST_BUILD_HEAD_PATH;
   }
@@ -5217,9 +5221,9 @@ function lastBuildHeadPath(projectName, workDir) {
   return path.join(LAST_BUILD_HEADS_DIR, `${projectName}.json`);
 }
 
-// Returns the per-project pre-build-check state path (Polaris uses its legacy singleton).
+// Returns the per-project pre-build-check state path (Polaris-lab uses its own runtime singleton).
 function preBuildCheckPath(projectName, workDir) {
-  const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+  const POLARIS_WORK_DIR = POLARIS_SOURCE_DIR;
   if (!projectName || workDir === POLARIS_WORK_DIR || workDir === POLARIS_WORK_DIR.replace(/\\/g, '/')) {
     return PRE_BUILD_CHECK_PATH;
   }
@@ -5233,10 +5237,10 @@ async function getPendingBuilds() {
   const config = readConfig();
   const projects = config.projects || [];
   const results = [];
-  const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+  const POLARIS_WORK_DIR = POLARIS_SOURCE_DIR;
 
-  // Always include Polaris; other projects must have buildScript configured via the Projects panel.
-  const polarisEntry = { name: 'Polaris', workDir: POLARIS_WORK_DIR };
+  // Always include this app; other projects must have buildScript configured via the Projects panel.
+  const polarisEntry = { name: APP_DISPLAY_NAME, workDir: POLARIS_WORK_DIR };
   const projectsToCheck = [polarisEntry, ...projects.filter(p => p.workDir !== POLARIS_WORK_DIR && p.workDir !== POLARIS_WORK_DIR.replace(/\\/g, '/'))];
 
   for (const project of projectsToCheck) {
@@ -8703,7 +8707,7 @@ const httpServer = http.createServer((req, res) => {
 
   // POST /health-monitor/prompt â€” inject a question from the UI, another session, or external tooling.
   // Requires X-Polaris-Token header matching UI_TOKEN (Fix 7: auth).
-  // Invoke-WebRequest -Method POST http://127.0.0.1:40000/health-monitor/prompt -Headers @{'X-Polaris-Token'='<token>'} -Body '{"text":"Is CPU normal?"}'
+  // Invoke-WebRequest -Method POST http://127.0.0.1:<PORT>/health-monitor/prompt -Headers @{'X-Polaris-Token'='<token>'} -Body '{"text":"Is CPU normal?"}'
   if (req.method === 'GET' && req.url === '/api/meetup-reservations') {
     getMeetupReservationSummary()
       .then(summary => {
@@ -8775,10 +8779,12 @@ const httpServer = http.createServer((req, res) => {
     }
 
     try {
+      const psPort = String(PORT);
+      const psProcessName = APP_DISPLAY_NAME.replace(/'/g, "''");
       const ps = [
         "$m=Get-CimInstance Win32_Process -Filter \"name = 'node.exe'\" | ? { $_.CommandLine -match '@youdotcom-oss|server-brave-search|server-github|mcp-server-elevenlabs|@elevenlabs/mcp' };",
-        "$c=@(Get-NetTCPConnection -LocalPort 40000 -State Established -ErrorAction SilentlyContinue);",
-        "$p=Get-Process -Name Polaris -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;",
+        `$c=@(Get-NetTCPConnection -LocalPort ${psPort} -State Established -ErrorAction SilentlyContinue);`,
+        `$p=Get-Process -Name '${psProcessName}' -ErrorAction SilentlyContinue | Sort CPU -Descending | Select -First 1 ProcessName,Id,CPU,WorkingSet;`,
         "[pscustomobject]@{mcpHelpers=@($m).Count;connections=@($c).Count;topProcess=if($p){$p.ProcessName+':'+$p.Id+' cpu='+[math]::Round($p.CPU,1)+' memMB='+[math]::Round($p.WorkingSet/1MB,0)}else{$null}} | ConvertTo-Json -Compress"
       ].join(' ');
       execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', timeout: 6000 }, (err, stdout) => {
@@ -8795,7 +8801,7 @@ const httpServer = http.createServer((req, res) => {
             snapshot.explanation = `${snapshot.mcpHelpers} MCP helper processes active â€” consuming system resources and causing stalls`;
           } else if (snapshot.connections >= 20) {
             snapshot.status = 'critical';
-            snapshot.explanation = `${snapshot.connections} connections on port 40000 â€” possible connection leak or excessive session load`;
+            snapshot.explanation = `${snapshot.connections} connections on port ${PORT} â€” possible connection leak or excessive session load`;
           } else if (snapshot.idleSessions.length > 0) {
             snapshot.status = 'degraded';
             const kickCount = snapshot.idleSessions.filter(s => s.willKickAt <= 0).length;
@@ -8806,7 +8812,7 @@ const httpServer = http.createServer((req, res) => {
             if (snapshot.mcpHelpers > 0) {
               snapshot.explanation = `${snapshot.mcpHelpers} MCP helper process(es) detected â€” cleanup may be incomplete`;
             } else {
-              snapshot.explanation = `${snapshot.connections} connections on port 40000 â€” elevated but not critical`;
+              snapshot.explanation = `${snapshot.connections} connections on port ${PORT} â€” elevated but not critical`;
             }
           }
         } catch (e) {
@@ -11394,8 +11400,8 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'run-pre-build-check') {
-    const sourcePath  = msg.sourcePath  || 'C:\\Users\\scott\\Code\\Polaris';
-    const projectName = msg.projectName || 'Polaris';
+    const sourcePath  = msg.sourcePath  || POLARIS_SOURCE_DIR;
+    const projectName = msg.projectName || APP_DISPLAY_NAME;
     runPreBuildCheck(ws, sourcePath, projectName).catch(e => {
       console.error('[pre-build-check] failed:', e);
       sendTo(ws, { type: 'pre-build-check-error', message: e.message });
@@ -11404,17 +11410,17 @@ async function handleMessage(ws, raw) {
   }
 
   if (type === 'get-pre-build-check-status') {
-    const sourcePath  = msg.sourcePath  || 'C:\\Users\\scott\\Code\\Polaris';
-    const projectName = msg.projectName || 'Polaris';
+    const sourcePath  = msg.sourcePath  || POLARIS_SOURCE_DIR;
+    const projectName = msg.projectName || APP_DISPLAY_NAME;
     sendTo(ws, { type: 'pre-build-check-status', ...getPreBuildCheckStatus(sourcePath, projectName) });
     return;
   }
 
   if (type === 'run-build') {
-    const sourcePath  = msg.sourcePath || 'C:\\Users\\scott\\Code\\Polaris';
-    const projectName = msg.projectName || 'Polaris';
+    const sourcePath  = msg.sourcePath || POLARIS_SOURCE_DIR;
+    const projectName = msg.projectName || APP_DISPLAY_NAME;
     const buildType   = msg.buildType === 'public' ? 'public' : msg.buildType === 'mac' ? 'mac' : 'private';
-    const POLARIS_WORK_DIR = 'C:\\Users\\scott\\Code\\Polaris';
+    const POLARIS_WORK_DIR = POLARIS_SOURCE_DIR;
     const isPolaris   = sourcePath === POLARIS_WORK_DIR;
 
     // Pre-build cross-check gate â€” required for all projects.
@@ -13712,7 +13718,7 @@ function formatHealthSnapshot(data) {
   const healthMs = data.endpoints?.health?.ms ?? '?';
   const rootMs   = data.endpoints?.root?.ms   ?? '?';
   const helpers  = data.processCounts?.mcpHelpers               ?? '?';
-  const conns    = data.processCounts?.port40000Established     ?? '?';
+  const conns    = data.processCounts?.[`port${PORT}Established`] ?? data.processCounts?.port40000Established ?? '?';
   const lines = [
     `[${ts}] ${icon} ${data.status}  /health: ${healthMs}ms  root: ${rootMs}ms  MCP helpers: ${helpers}  connections: ${conns}`,
   ];

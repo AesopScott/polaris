@@ -1528,7 +1528,7 @@
           <input type="text" id="session-search" placeholder="Search sessions..." style="width:100%;padding:5px 28px 5px 10px;border-radius:5px;border:1px solid #444;font-size:12px;background:var(--input-bg);color:var(--text);box-sizing:border-box;" />
           <button id="session-search-clear" onclick="clearSessionSearch()" style="display:none;position:absolute;right:6px;background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;line-height:1;padding:0;">✕</button>
         </div>
-        <button id="health-pill" class="health-pill degraded" onclick="toggleHealthPanel()" title="Polaris health monitor"><span class="health-dot"></span><span id="health-pill-text">Health Checking</span></button>
+        <button id="health-pill" class="health-pill degraded" onclick="toggleHealthPanel()" title="Polaris health monitor" style="display:none;"><span class="health-dot"></span><span id="health-pill-text">Health Disabled</span></button>
         <div id="header-clock" style="text-align:center;font-family:Consolas,monospace;font-size:13px;font-weight:700;color:var(--tag-text);letter-spacing:0.04em;">--:--:--</div>
       </div>
     </div>
@@ -4508,6 +4508,7 @@
     lastChecked: null,
     lastDeepCheck: 0,
   };
+  const HEALTH_POLLING_ENABLED = false;
   let healthCheckInFlight = null;
   let healthPollTimer = null;
 
@@ -4529,6 +4530,15 @@
   }
 
   function renderHealthIndicator() {
+    if (!HEALTH_POLLING_ENABLED) {
+      const pill = document.getElementById('health-pill');
+      if (pill) pill.style.display = 'none';
+      setHealthText('health-detail-status', 'DISABLED');
+      setHealthText('health-detail-explanation', 'Health polling disabled');
+      setHealthText('health-detail-issue', 'Health polling disabled');
+      return;
+    }
+
     const derived = classifyHealth();
     healthState.status = derived.status;
     healthState.issue = derived.issue;
@@ -4619,6 +4629,10 @@
   }
 
   async function runHealthCheck(forceDeep = false) {
+    if (!HEALTH_POLLING_ENABLED) {
+      renderHealthIndicator();
+      return { ok: true, disabled: true };
+    }
     if (healthCheckInFlight) return healthCheckInFlight;
     healthCheckInFlight = (async () => {
       try {
@@ -4656,11 +4670,20 @@
   }
 
   function startHealthPolling() {
+    if (!HEALTH_POLLING_ENABLED) {
+      if (healthPollTimer) {
+        clearInterval(healthPollTimer);
+        healthPollTimer = null;
+      }
+      renderHealthIndicator();
+      return;
+    }
     if (healthPollTimer) return;
     healthPollTimer = setInterval(() => runHealthCheck(false), 15000);
   }
 
   function toggleHealthPanel(force) {
+    if (!HEALTH_POLLING_ENABLED) return;
     const panel = document.getElementById('health-panel');
     if (!panel) return;
     const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
@@ -16350,8 +16373,12 @@ This is your current workflow status across all branches. Review the tasks and P
     renderHealthIndicator();
     refreshMeetupReservations();
     setInterval(refreshMeetupReservations, 5 * 60 * 1000);
-    setTimeout(() => runHealthCheck(false), 250);
-    startHealthPolling();
+    if (HEALTH_POLLING_ENABLED) {
+      setTimeout(() => runHealthCheck(false), 250);
+      startHealthPolling();
+    } else {
+      renderHealthIndicator();
+    }
   });
 
 })();
