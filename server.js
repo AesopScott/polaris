@@ -3049,31 +3049,8 @@ async function toolQueryMemory({ filename, query } = {}, sessionId) {
   }
 
   // General query â†’ Firestore (ranked) with Obsidian fallback
-  if (memory.isReady()) {
-    try {
-      const config = readConfig();
-      const matched = (config.projects || []).find(
-        p => p.workDir && p.workDir.toLowerCase() === (session?.workDir || '').toLowerCase()
-      );
-      const projectName = matched?.name || session?.projectName || 'default';
-      const results = await memory.searchMemories(projectName, query || '', 5);
-
-      if (results.length > 0) {
-        for (const r of results) {
-          if (r.id) memory.reinforceMemory(r.id).catch(() => {});
-        }
-        return results
-          .map((r, i) => `[${i + 1}] ${r.content}\n    type: ${r.type} | tags: ${(r.tags || []).join(', ')}`)
-          .join('\n\n');
-      }
-    } catch (e) {
-      console.warn('[QueryMemory] Firestore search failed:', e.message);
-    }
-  }
-
-  // Fallback: Obsidian files
-  if (!mem || Object.keys(mem).length === 0) return 'No project memory loaded for this session.';
-  return Object.entries(mem).map(([k, v]) => `=== ${k} ===\n${v}`).join('\n\n');
+  // No query provided: prompt user to provide a query instead of dumping all files
+  return 'Project memory available. Use QueryMemory({ query: "..." }) to search for specific context, or QueryMemory({ filename: "..." }) to retrieve a specific file.';
 }
 
 // Scans every place skills + commands + agents live, parses each one, returns
