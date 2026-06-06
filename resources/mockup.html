@@ -4417,6 +4417,7 @@
   })();
   const ORCHESTRATION_QUIET_MODE = true;
   const sessionStore = {};   // id → { id, name, workDir, projectName, status, startAt, lines, lastPrompt, resumeId, usage }
+  window.sessionStore = sessionStore; // expose for cross-check rendering
   const QUEUE_POLL_INTERVAL_MS = 10000;
   const QUEUE_STALE_RUNNING_MS = 45000;
   const QUEUE_ACTIVE_STATUSES = new Set(['running', 'launching', 'monitoring']);
