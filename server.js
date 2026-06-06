@@ -1062,6 +1062,7 @@ function serializeSession(s) {
     repoWorkDir: s.repoWorkDir || null,
     worktreePath: s.worktreePath || null,
     model: s.model || null,
+    cliModel: s.cliModel || null,
     isChat: s.isChat || false, isGpt: s.isGpt || false, isCodex: s.isCodex || false, isOrchestrator: s.isOrchestrator || false,
     status: s.status === 'running' ? 'done' : s.status,
     startAt: s.startAt, endAt: s.endAt || null,
@@ -4439,7 +4440,7 @@ function ensureCrossCheckSession({ projectName, projectWorkDir, config }) {
     chipLabel: 'Cross Check', chipColor: '#ef4444',
     crossCheckProjectKey: key, crossCheckProjectName: projectName || null,
     repoWorkDir: effectiveWorkDir,
-    isChat: true, model: chatModel, tier: 'balanced',
+    isChat: true, model: chatModel, tier: 'balanced', cliModel: resolveCliModel('balanced'),
     status: 'done', startAt: Date.now(), endAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
     keepAliveInjected: false, lastKeepAliveAt: null,
     proc: null, watcher: null, timeout: null,
@@ -7306,6 +7307,19 @@ function isCodexToolRouterFailure(text) {
 // Max plan covers the cost). Prompt is piped via stdin to avoid Windows'
 // 8191-char command-line limit. Default backend; `config.chatBackend = 'openrouter'`
 // switches to the legacy spawnChat path.
+// resolveCliModel — translate a Polaris tier ('floor' | 'balanced' | 'power')
+// into the Claude CLI --model arg. Tier is a spawn-time input: every Claude CLI
+// chat session locks in its cliModel at session creation and reuses it across
+// resume turns. spawnMaxChat reads session.cliModel directly so tier never
+// influences model selection mid-conversation (e.g. after a server restart
+// drops session.tier, the locked cliModel is still authoritative).
+function resolveCliModel(tier) {
+  const t = (tier || 'balanced').toLowerCase();
+  return t === 'power' ? 'claude-opus-4-7'
+       : t === 'floor' ? 'claude-haiku-4-5-20251001'
+       : 'sonnet';
+}
+
 async function spawnMaxChat(sessionId, prompt, config) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -7406,11 +7420,12 @@ async function spawnMaxChat(sessionId, prompt, config) {
   broadcast({ type: 'line', sessionId, text: `(est ${estimatedPromptK.toFixed(1)}k input)`, role: 'system' });
 
   const claudeBin = config.claudeBinaryPath || 'claude';
-  // Translate session tier â†’ Claude Code --model flag.
-  // Use full model ID for haiku â€” the 'haiku' shorthand resolves to 3.5, which isn't on Max.
-  const tierForCli = (session.tier || 'balanced').toLowerCase();
-  const cliModel = tierForCli === 'power' ? 'claude-opus-4-7' : tierForCli === 'floor' ? 'claude-haiku-4-5-20251001' : 'sonnet';
-  dlog('TIER_DEBUG', `session.tier=${session.tier} tierForCli=${tierForCli} cliModel=${cliModel}`);
+  // Claude CLI model is locked at session spawn (session.cliModel). Pre-fix
+  // sessions persisted before cliModel existed fall back to resolving from
+  // tier here; new sessions always have cliModel set at creation.
+  const cliModel = session.cliModel || resolveCliModel(session.tier);
+  if (!session.cliModel) session.cliModel = cliModel;
+  dlog('TIER_DEBUG', `session.tier=${session.tier} session.cliModel=${session.cliModel} cliModel=${cliModel}`);
   // stream-json + verbose gives per-event JSON: assistant deltas, tool_use,
   // tool_result, and a final result event with usage tokens. Lets us populate
   // the context bar / token log accurately and surface tool activity.
@@ -10283,7 +10298,7 @@ async function handleMessage(ws, raw) {
     sessions.set(id, {
       id, name, workDir: effectiveWorkDir, projectName: projectName || null,
       chipLabel: chipLabel || null, chipColor: chipColor || null,
-      isChat: true, model: chatModel, tier: chatTier,
+      isChat: true, model: chatModel, tier: chatTier, cliModel: resolveCliModel(chatTier),
       status: 'running', startAt: Date.now(), lastActivityAt: Date.now(), stallCount: 0,
       keepAliveInjected: false, lastKeepAliveAt: null,
       proc: null, watcher: null, timeout: null,
@@ -11609,6 +11624,7 @@ async function handleMessage(ws, raw) {
       projectName: src.projectName || null,
       model: src.model || null,
       tier: src.tier || null,
+      cliModel: src.cliModel || resolveCliModel(src.tier),
       isChat: !!src.isChat,
       isGpt,
       isCodex,
