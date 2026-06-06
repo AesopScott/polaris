@@ -15122,7 +15122,9 @@ This is your current workflow status across all branches. Review the tasks and P
       }).catch(e => pushDebugLog('[focus-dbg] fetch error: ' + e.message, true));
       renderGrid();
     }
-    requestAnimationFrame(() => enterResumeMode(sid, s.model || null));
+    const tier = document.querySelector('.model-select')?.value || 'balanced';
+    const model = resolveModel(tier);
+    requestAnimationFrame(() => enterResumeMode(sid, model));
   }
 
   function camMarkDone(sid, label, color, alreadyClosed = false) {
