@@ -1549,7 +1549,8 @@
         <button id="btn-settings" class="hbtn btn-config" data-tooltip="Configure API keys, model tiers, Obsidian vault path, and app preferences"><span class="lbl">Settings</span></button>
         <!-- Row 2 -->
         <div class="nav-spacer nav-spacer-row-2"></div>
-        <button id="btn-orchestrator" class="hbtn btn-config" onclick="toggleOrchestratorPanel()" data-tooltip="Orchestrator — monitor concurrent sessions, detect file contention, and coordinate branch pushes"><span class="lbl">Orch</span></button>
+        <!-- Orchestrator button disabled per user request -->
+        <!-- <button id="btn-orchestrator" class="hbtn btn-config" onclick="toggleOrchestratorPanel()" data-tooltip="Orchestrator — monitor concurrent sessions, detect file contention, and coordinate branch pushes"><span class="lbl">Orch</span></button> -->
         <button id="btn-diamond" class="hbtn btn-interface" onclick="openDiamond()" data-tooltip="Diamond — launch the standalone social operating system"><span class="lbl">Diamond</span></button>
         <button id="btn-manifest" class="hbtn btn-gold" onclick="openManifest()" data-tooltip="Build Manifest — select which features and API keys to include in a public Polaris build"><span class="lbl">Manifest</span></button>
         <button id="btn-cross-check" class="hbtn btn-tracking" onclick="toggleCrossCheckPanel()" data-tooltip="View Cross-Check history — every reviewed file write, with verdict, summary, and full diff"><span class="lbl">Cross ✓</span></button>
@@ -5232,21 +5233,13 @@
 
       case 'orchConflict': {
         if (typeof renderOrchConflict === 'function') renderOrchConflict(msg);
-        const panel = document.getElementById('orchestrator-panel');
-        if (panel && panel.classList.contains('hidden')) {
-          panel.classList.remove('hidden');
-          if (typeof checkAutoActivate === 'function') checkAutoActivate();
-        }
+        // Auto-open disabled per user request
         break;
       }
 
       case 'orchAmber': {
         if (typeof renderOrchAmber === 'function') renderOrchAmber(msg);
-        const panel = document.getElementById('orchestrator-panel');
-        if (panel && panel.classList.contains('hidden')) {
-          panel.classList.remove('hidden');
-          if (typeof checkAutoActivate === 'function') checkAutoActivate();
-        }
+        // Auto-open disabled per user request
         break;
       }
 
