@@ -993,7 +993,7 @@ const HEALTH_MONITOR_ENABLED     = false; // Disabled: the self-probe can block 
 const HEALTH_MONITOR_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const HEALTH_MONITOR_AGENT_AUTORUN = false; // Keep diagnostics passive; never spawn Claude during health/crash loops.
 const STARTUP_CROSSCHECK_AUTORUN = true; // Re-enabled for normal operations.
-const ORCHESTRATOR_AUTORUN = false; // Meridian will own orchestration; Polaris must not auto-spawn orchestrators.
+const ORCHESTRATOR_AUTORUN = true; // Auto-spawn orchestration sessions when 2+ concurrent sessions exist
 const POLARIS_MODEL_RUNS_ENABLED = true; // Model subprocess/API runs are enabled.
 let   healthMonitorSessionId     = null;
 let   healthMonitorIntervalTimer = null;
@@ -7846,14 +7846,15 @@ async function spawnCodexSession(sessionId, prompt, config) {
 
   const isResume = !!session.codexThreadId;
   const codexBin = config.codexBinaryPath || 'codex';
+  const codexCliModel = config.codexCliModel || 'gpt-5.4';
 
   // Keep permissions explicit in the CLI invocation instead of relying on
   // config profiles that can drift across Codex CLI versions. The bypass flag
   // is intentionally dangerous: Polaris only uses it for the user-selected
   // Codex mode on this local machine.
   const args = isResume
-    ? ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', 'resume', session.codexThreadId, '-']
-    : ['exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'];
+    ? ['exec', '--json', '--ignore-user-config', '--model', codexCliModel, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', 'resume', session.codexThreadId, '-']
+    : ['exec', '--json', '--ignore-user-config', '--model', codexCliModel, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check'];
 
   // Turn 1: prepend Polaris/project/backlog context. Codex CLI does not expose
   // a hidden system-prompt channel in this path, so this context goes through
