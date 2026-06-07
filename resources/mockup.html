@@ -16556,19 +16556,9 @@ This is your current workflow status across all branches. Review the tasks and P
     return counts;
   }
 
-  // Auto-activate: open panel if any project has 2+ active sessions
+  // Auto-activate disabled per user request
   function checkAutoActivate() {
-    const counts = countActiveByProject();
-    const shouldBeOpen = Object.values(counts).some(n => n >= 2);
-    const panel = document.getElementById('orchestrator-panel');
-    if (!panel) return;
-    if (shouldBeOpen && panel.classList.contains('hidden')) {
-      panel.classList.remove('hidden');
-      startOrchPoll();
-    } else if (!shouldBeOpen && !panel.classList.contains('hidden')) {
-      panel.classList.add('hidden');
-      stopOrchPoll();
-    }
+    // Manual button control only
   }
 
   function startOrchPoll() {
