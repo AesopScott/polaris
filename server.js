@@ -4990,8 +4990,8 @@ Review for:
 
 If the diff is non-empty and the changes look intentional and technically sound, verdict is PASS.
 When TASK is not captured, base your verdict solely on corruption and quality signals â€” PASS if the changes look like valid, intentional code edits.
-Output ONLY this JSON object with no other text:
-{"verdict":"PASS" or "FAIL","summary":"one-line summary","issues":["issue 1"]}`;
+Output ONLY this JSON object with no other text (verdict must be PASS or FAIL):
+{“verdict”:”PASS”,”summary”:”one-line summary”,”issues”:[]}`;
 
   // Use Codex CLI if model is set to "codex"
   let result;
