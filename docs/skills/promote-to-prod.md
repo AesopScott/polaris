@@ -98,7 +98,7 @@ Each project gets two sibling folders at the vault root. This is hard-coded — 
 
 ## Scope and limits
 
-- **Rollup-scoped, not single-task.** This skill processes EVERY non-production task found on either main or stage branches. Single-task invocation is not possible — the rollup is the unit of promotion. Tasks in any non-production status are accepted.
+- **Rollup-scoped, not single-task.** This skill processes eligible reviewed tasks found on either main or stage branches. Single-task invocation is not possible — the rollup is the unit of promotion. A task is eligible only when its backlog status is `review-passed` (Polaris/direct-to-main) or `staged` (CareGuide stage path).
 - **This is the ONLY skill in the workflow that can mark tasks `production`.** There is no `origin/prod` branch and no prod-branch merge. Production promotion means the reviewed code is on `origin/main`, the main deploy succeeds, and backlog/archive state is closed.
 - **Flips backlog statuses to `production` inside this workflow** (Step 9) only if Step 8's prod deploy verification succeeds. Failure leaves the backlog untouched.
 - **Two production paths:** CareGuide may promote stage → main when `stage` is ahead of main. Every other project promotes task PRs to main directly, even if a `stage` branch exists. In both paths, production is verified from `main`.
@@ -305,8 +305,8 @@ For each task PR from both branches, extract the task number from the title (`Ta
 
 **Path B (direct to main):** Find reviewed task PRs targeting main (not yet marked production):
 
-1. Find all open task PRs targeting main: `gh pr list --state open --base main --limit 50 --json number,title,headRefName,url` — include reviewed, non-production tasks ready to ship.
-2. Also find task PRs already merged to main but not yet marked `production`: `gh pr list --state merged --base main --limit 50 --json number,title,mergedAt,url` — filter to PRs merged AFTER the most recent production/archive closeout.
+1. Find all open task PRs targeting main: `gh pr list --state open --base main --limit 50 --json number,title,headRefName,url`. For each candidate, read `docs/backlog.json` before any merge action and include only tasks whose status is exactly `review-passed`. If a task is `build-finished`, `pr-reviewed`, `codex-reviewed`, `review-blocked`, or anything else, exclude it and report that PHASE 6C approval is required first.
+2. Also find task PRs already merged to main but not yet marked `production`: `gh pr list --state merged --base main --limit 50 --json number,title,mergedAt,url` — filter to PRs merged AFTER the most recent production/archive closeout, then apply the same backlog status gate before backlog closeout.
 
 For each task PR, extract the task number from the title (`Task #{N}: ...`). Read `docs/backlog.json` and pull each task's `title`, `description`, `status`, and `pr_url`.
 
