@@ -2468,22 +2468,28 @@
     </div>
   </div>
 
-  <!-- Memory Panel (task #28) -->
-  <div class="projects-panel hidden palette" id="memory-panel" style="width:680px;max-height:700px;">
+  <!-- Memory Panel (task #28, #52) -->
+  <div class="projects-panel hidden palette" id="memory-panel" style="width:860px;max-height:760px;">
     <div class="resize-handle resize-tl"></div><div class="resize-handle resize-bl"></div><div class="resize-handle resize-br"></div>
     <div class="preview-toolbar">
       <span class="preview-drag-handle">⠿⠿</span>
       <span style="flex:1;font-size:13px;font-weight:800;">Memory Index</span>
       <button class="preview-close-btn" onclick="closeMemoryPanel()">✕</button>
     </div>
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);">
-      <span style="font-size:11px;opacity:0.5;">Obsidian retrieval index stats and last 20 QueryMemory events.</span>
-      <button onclick="refreshMemoryPanel()" style="margin-left:auto;background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--header-bg);flex-wrap:wrap;">
+      <span style="font-size:11px;opacity:0.5;">Firestore memory correction plus Obsidian retrieval index history.</span>
+      <select id="memory-project-select" onchange="refreshMemoryPanel()" style="margin-left:auto;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:11px;min-width:160px;"></select>
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;opacity:0.75;">
+        <input id="memory-include-global" type="checkbox" checked onchange="refreshMemoryPanel()" style="accent-color:#60a5fa;"> global
+      </label>
+      <button onclick="refreshMemoryPanel()" style="background:#374151;color:#9ca3af;border:none;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">Refresh</button>
     </div>
     <div id="memory-panel-stats" style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;display:flex;gap:24px;flex-wrap:wrap;min-height:44px;align-items:center;">
       <span style="opacity:0.4;">No index loaded — call QueryMemory with a query to build one.</span>
     </div>
-    <div id="memory-panel-history" style="padding:0;overflow-y:auto;flex:1;max-height:520px;"></div>
+    <div id="memory-firestore-list" style="padding:0;overflow-y:auto;max-height:390px;border-bottom:1px solid var(--border);"></div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:800;letter-spacing:0.08em;color:#64748b;">QUERYMEMORY HISTORY</div>
+    <div id="memory-panel-history" style="padding:0;overflow-y:auto;flex:1;max-height:220px;"></div>
   </div>
 
   <!-- Status Update Modal -->
@@ -3215,6 +3221,7 @@
 
 </div>
 
+<script>window._uiToken = '__POLARIS_UI_TOKEN__';</script>
 <script>
   const accentColors = { 1: '#60a5fa', 2: '#f59e0b', 3: '#a78bfa', 4: '#34d399', 5: '#fb923c' };
   const icons = {};
@@ -5461,6 +5468,20 @@
 
       case 'memory-status':
         if (typeof renderMemoryPanel === 'function') renderMemoryPanel(msg.stats, msg.history);
+        break;
+
+      case 'firestore-memories':
+        if (typeof renderFirestoreMemories === 'function') renderFirestoreMemories(msg);
+        break;
+
+      case 'memory-edit-result':
+        if (msg.ok) {
+          pushDebugLog(`[memory] ${msg.action || 'edit'} saved ${msg.id || ''}`);
+          if (typeof refreshMemoryPanel === 'function') refreshMemoryPanel();
+        } else {
+          pushDebugLog(`[memory] ${msg.action || 'edit'} failed: ${msg.error || 'unknown error'}`, true);
+          alert(`Memory ${msg.action || 'edit'} failed: ${msg.error || 'unknown error'}`);
+        }
         break;
 
       case 'backlog-error':
@@ -13524,9 +13545,29 @@ This is your current workflow status across all branches. Review the tasks and P
   window.saveStatusNote    = saveStatusNote;
 
   // ── Memory Panel (task #28) ───────────────────────────────────────────────────
+  let _memoryRows = {};
+
+  function selectedMemoryProject() {
+    const sel = document.getElementById('memory-project-select');
+    if (sel && sel.value) return sel.value;
+    if (resumeTarget && sessionStore[resumeTarget.sessionId]?.projectName) return sessionStore[resumeTarget.sessionId].projectName;
+    if (focusedProject) return focusedProject;
+    return (projectsList || []).find(p => p.name)?.name || 'Polaris';
+  }
+
+  function renderMemoryProjectSelect() {
+    const sel = document.getElementById('memory-project-select');
+    if (!sel) return;
+    const previous = sel.value || selectedMemoryProject();
+    const names = [...new Set([...(projectsList || []).map(p => p.name).filter(Boolean), 'global'])];
+    sel.innerHTML = names.map(name => `<option value="${escHtmlAttr(name)}">${escHtml(name)}</option>`).join('');
+    sel.value = names.includes(previous) ? previous : (names[0] || 'Polaris');
+  }
+
   function openMemoryPanel() {
     document.getElementById('memory-panel').classList.remove('hidden');
     document.getElementById('overlay-bg').classList.remove('hidden');
+    renderMemoryProjectSelect();
     refreshMemoryPanel();
   }
   function closeMemoryPanel() {
@@ -13539,8 +13580,14 @@ This is your current workflow status across all branches. Review the tasks and P
     else closeMemoryPanel();
   }
   function refreshMemoryPanel() {
+    renderMemoryProjectSelect();
     const focusedSessionId = resumeTarget ? resumeTarget.sessionId : null;
     wsSend({ type: 'get-memory-status', sessionId: focusedSessionId });
+    wsSend({
+      type: 'get-firestore-memories',
+      project: selectedMemoryProject(),
+      includeGlobal: document.getElementById('memory-include-global')?.checked !== false,
+    });
   }
   function renderMemoryPanel(stats, history) {
     const statsEl = document.getElementById('memory-panel-stats');
@@ -13579,11 +13626,88 @@ This is your current workflow status across all branches. Review the tasks and P
     }).join('');
   }
 
+  function formatMemoryAge(seconds) {
+    if (!seconds) return 'unknown age';
+    const days = Math.max(0, Math.floor((Date.now() / 1000 - seconds) / 86400));
+    if (days === 0) return 'today';
+    if (days === 1) return '1 day';
+    return `${days} days`;
+  }
+
+  function renderFirestoreMemories(msg) {
+    const listEl = document.getElementById('memory-firestore-list');
+    if (!listEl) return;
+    const memories = msg.memories || [];
+    _memoryRows = {};
+
+    if (!msg.ok) {
+      listEl.innerHTML = `<div style="padding:14px 16px;color:#f87171;font-size:12px;">${escHtml(msg.error || 'Unable to load Firestore memories')}</div>`;
+      return;
+    }
+
+    if (memories.length === 0) {
+      listEl.innerHTML = '<div style="padding:14px 16px;opacity:0.45;font-size:12px;">No active Firestore memories for this project.</div>';
+      return;
+    }
+
+    listEl.innerHTML = memories.map((m, i) => {
+      const key = `m${i}`;
+      _memoryRows[key] = m;
+      const tags = (m.tags || []).join(', ');
+      const strength = m.strength == null ? '—' : Number(m.strength).toFixed(2);
+      const age = formatMemoryAge(m.lastAccessedAt || m.createdAt);
+      const projectColor = m.project === 'global' ? '#a78bfa' : '#60a5fa';
+      return `<div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <span style="color:${projectColor};font-weight:800;font-size:10px;letter-spacing:0.06em;">${escHtml(m.project || 'project')}</span>
+          <span style="opacity:0.35;">${escHtml(m.type || 'fact')}</span>
+          <span style="opacity:0.35;">strength ${escHtml(strength)}</span>
+          <span style="opacity:0.35;">access ${Number(m.accessCount || 0)}</span>
+          <span style="opacity:0.35;">${escHtml(age)}</span>
+          <button onclick="saveMemoryEdit('${key}')" style="margin-left:auto;background:#2563eb;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Save</button>
+          <button onclick="archiveMemoryRow('${key}')" style="background:#7f1d1d;color:#fecaca;border:1px solid #ef444466;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Archive</button>
+        </div>
+        <textarea id="memory-content-${key}" style="width:100%;min-height:58px;resize:vertical;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;font-family:inherit;box-sizing:border-box;line-height:1.45;">${escHtml(m.content || '')}</textarea>
+        <div style="display:grid;grid-template-columns:110px 90px 1fr;gap:8px;margin-top:8px;">
+          <select id="memory-type-${key}" style="background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;">
+            ${['decision','preference','feedback','pattern','fact'].map(t => `<option value="${t}" ${t === (m.type || 'fact') ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <input id="memory-importance-${key}" type="number" min="1" max="5" step="1" value="${escHtml(String(m.importance || ''))}" placeholder="importance" style="background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;">
+          <input id="memory-tags-${key}" value="${escHtmlAttr(tags)}" placeholder="tags, comma separated" style="background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;">
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function saveMemoryEdit(key) {
+    const row = _memoryRows[key];
+    if (!row) return;
+    wsSend({
+      type: 'update-memory',
+      uiToken: window._uiToken,
+      id: row.id,
+      content: document.getElementById(`memory-content-${key}`)?.value || '',
+      memoryType: document.getElementById(`memory-type-${key}`)?.value || 'fact',
+      importance: document.getElementById(`memory-importance-${key}`)?.value || undefined,
+      tags: document.getElementById(`memory-tags-${key}`)?.value || '',
+    });
+  }
+
+  function archiveMemoryRow(key) {
+    const row = _memoryRows[key];
+    if (!row) return;
+    if (!confirm('Archive this memory now?')) return;
+    wsSend({ type: 'archive-memory', uiToken: window._uiToken, id: row.id });
+  }
+
   window.openMemoryPanel   = openMemoryPanel;
   window.closeMemoryPanel  = closeMemoryPanel;
   window.toggleMemoryPanel = toggleMemoryPanel;
   window.refreshMemoryPanel = refreshMemoryPanel;
   window.renderMemoryPanel  = renderMemoryPanel;
+  window.renderFirestoreMemories = renderFirestoreMemories;
+  window.saveMemoryEdit = saveMemoryEdit;
+  window.archiveMemoryRow = archiveMemoryRow;
 
   // ── Restart & Reset Layout ────────────────────────────────────────────────────
   function doRestart() {

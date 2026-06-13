@@ -86,6 +86,7 @@ const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
+const MEMORY_DISTILL_STATE_PATH  = path.join(POLARIS_DIR, 'memory-distillation-state.json');
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routine sessions
 const STALL_CHECK_MS  = 3000;   // heartbeat interval
 const STALL_WARN_MS   = 15000;  // idle â†’ show stall badge at 15 s
@@ -2045,6 +2046,7 @@ Return ONLY valid JSON with these keys (omit a key or set to null if nothing rel
     {
       "content": "concise fact, decision, preference, or pattern worth remembering (1-2 sentences)",
       "type": "decision | preference | pattern | feedback | fact",
+      "importance": 4,
       "tags": ["keyword1", "keyword2"]
     }
   ],
@@ -2062,6 +2064,7 @@ Rules for memories[]:
 - Only include facts that would still be useful in a future session with no context
 - Prefer decisions, constraints, preferences, and non-obvious patterns
 - Skip ephemeral details (what file was edited, step-by-step actions taken)
+- Score importance from 1-5 so durable memories decay appropriately: decision=5, preference=4, feedback=4, pattern=3, fact=2 by default. Raise or lower by one point only when the transcript clearly warrants it.
 - Maximum 8 memories per session
 
 Session transcript:
@@ -2114,6 +2117,7 @@ ${transcript}`;
       project:     projectName,
       content:     m.content,
       type:        m.type || 'fact',
+      importance:  m.importance,
       tags:        m.tags || [],
       sessionId,
       sessionType: s.type || 'chat',
@@ -8534,8 +8538,9 @@ const httpServer = http.createServer((req, res) => {
         res.end(`Could not load mockup.html from AppData\nError: ${err.code}\nPath: ${err.path || MOCKUP_DEST}`);
         return;
       }
+      const html = data.replace('__POLARIS_UI_TOKEN__', UI_TOKEN);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(data);
+      res.end(html);
     });
     return;
   }
@@ -10970,6 +10975,60 @@ async function handleMessage(ws, raw) {
     } catch {}
 
     sendTo(ws, { type: 'memory-status', stats, history });
+    return;
+  }
+
+  if (type === 'get-firestore-memories') {
+    const project = String(msg.project || '').trim();
+    const includeGlobal = msg.includeGlobal !== false;
+    if (!project) {
+      sendTo(ws, { type: 'firestore-memories', ok: false, error: 'Project is required', memories: [] });
+      return;
+    }
+    const toClientMemory = m => ({
+      id:            m.id,
+      project:       m.project || null,
+      content:       m.content || '',
+      type:          m.type || 'fact',
+      tags:          Array.isArray(m.tags) ? m.tags : [],
+      importance:    m.importance ?? null,
+      strength:      m.strength ?? null,
+      accessCount:   m.accessCount || 0,
+      createdAt:     m.createdAt?.seconds || null,
+      lastAccessedAt:m.lastAccessedAt?.seconds || null,
+      updatedAt:     m.updatedAt?.seconds || null,
+    });
+    try {
+      const memories = await memory.listMemoriesForProject(project, { includeGlobal, limit: 100 });
+      sendTo(ws, { type: 'firestore-memories', ok: true, project, includeGlobal, memories: memories.map(toClientMemory) });
+    } catch (e) {
+      sendTo(ws, { type: 'firestore-memories', ok: false, project, includeGlobal, error: e.message, memories: [] });
+    }
+    return;
+  }
+
+  if (type === 'update-memory') {
+    if (msg.uiToken !== UI_TOKEN) {
+      sendTo(ws, { type: 'memory-edit-result', ok: false, action: 'update', id: msg.id || null, error: 'Memory edits can only be saved from the UI' });
+      return;
+    }
+    const result = await memory.updateMemory(msg.id, {
+      content: msg.content,
+      type: msg.memoryType || msg.memory_type || msg.kind || msg.memType || msg.typeValue,
+      tags: msg.tags,
+      importance: msg.importance,
+    });
+    sendTo(ws, { type: 'memory-edit-result', action: 'update', ...result });
+    return;
+  }
+
+  if (type === 'archive-memory') {
+    if (msg.uiToken !== UI_TOKEN) {
+      sendTo(ws, { type: 'memory-edit-result', ok: false, action: 'archive', id: msg.id || null, error: 'Memory edits can only be saved from the UI' });
+      return;
+    }
+    const result = await memory.archiveMemory(msg.id);
+    sendTo(ws, { type: 'memory-edit-result', action: 'archive', ...result });
     return;
   }
 
@@ -13917,6 +13976,145 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 wss = new WebSocket.Server({ server: httpServer });
 
 const MEMORY_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const MEMORY_DISTILL_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+const MEMORY_DISTILL_RUNNING_TTL_MS = 2 * 60 * 60 * 1000;
+let memoryDistillationRunning = false;
+
+function buildMemoryDistillationPrompt(cluster) {
+  const lines = cluster.memories.map((m, i) => {
+    const tags = Array.isArray(m.tags) && m.tags.length ? ` tags=${m.tags.join(', ')}` : '';
+    return `${i + 1}. (${m.type || 'fact'}${tags}) ${String(m.content || '').trim()}`;
+  }).join('\n');
+  return `You are consolidating episodic Polaris memories into one higher-order durable memory.
+
+Project: ${cluster.project}
+
+Source memories:
+${lines}
+
+Write one consolidated memory that captures the repeated pattern, preference, or lesson. Do not mention that it came from multiple source memories.
+
+Return ONLY valid JSON:
+{
+  "content": "one concise durable memory, 1-2 sentences",
+  "type": "preference | pattern | feedback | fact",
+  "importance": 3,
+  "tags": ["keyword", "keyword"]
+}`;
+}
+
+function parseMemorySynthesis(raw) {
+  const text = String(raw || '').trim();
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON object returned');
+  const parsed = JSON.parse(match[0]);
+  if (!parsed.content || typeof parsed.content !== 'string') throw new Error('Synthesis content is required');
+  return {
+    content: parsed.content.trim(),
+    type: parsed.type || 'pattern',
+    importance: parsed.importance || 4,
+    tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+  };
+}
+
+function shouldRunMemoryDistillation(now = Date.now(), state = readJSON(MEMORY_DISTILL_STATE_PATH, {})) {
+  const lastCompleted = state.lastCompletedAt ? Date.parse(state.lastCompletedAt) : 0;
+  const started = state.startedAt ? Date.parse(state.startedAt) : 0;
+  if (state.status === 'running' && started && now - started < MEMORY_DISTILL_RUNNING_TTL_MS) {
+    return { due: false, reason: 'already-running' };
+  }
+  if (lastCompleted && now - lastCompleted < MEMORY_DISTILL_INTERVAL_MS) {
+    return { due: false, reason: 'not-due' };
+  }
+  return { due: true };
+}
+
+async function runMemoryDistillation({ force = false } = {}) {
+  if (memoryDistillationRunning) return { skipped: true, reason: 'already-running' };
+  const state = readJSON(MEMORY_DISTILL_STATE_PATH, {});
+  const cadence = shouldRunMemoryDistillation(Date.now(), state);
+  if (!force && !cadence.due) return { skipped: true, reason: cadence.reason };
+  memoryDistillationRunning = true;
+  writeJSON(MEMORY_DISTILL_STATE_PATH, { ...state, status: 'running', startedAt: new Date().toISOString() });
+  try {
+    const cfg = readConfig();
+    const apiKey = cfg.openRouterApiKey ? decryptSecret(cfg.openRouterApiKey) : null;
+    if (!apiKey) {
+      console.warn('[memory-distill] skipped: no OpenRouter API key configured');
+      const skipped = { skipped: true, reason: 'missing-api-key' };
+      writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'skipped', reason: skipped.reason, lastSkippedAt: new Date().toISOString() });
+      return skipped;
+    }
+
+    const candidates = await memory.listDistillationCandidates({ limit: 500 });
+    const clusters = memory.clusterMemoriesForDistillation(candidates, { threshold: 0.42, minClusterSize: 3 }).slice(0, 8);
+    console.log(`[memory-distill] candidates=${candidates.length} clusters=${clusters.length}`);
+    if (clusters.length === 0) {
+      const emptyResult = { synthesized: 0, archived: 0 };
+      writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'complete', lastCompletedAt: new Date().toISOString(), ...emptyResult });
+      return emptyResult;
+    }
+
+    const results = [];
+    for (const cluster of clusters) {
+      const result = await callOpenRouterOnce(
+        'openai/gpt-4.1-mini',
+        apiKey,
+        [{ role: 'user', content: buildMemoryDistillationPrompt(cluster) }],
+        700,
+        60000
+      );
+      if (result.error) {
+        console.warn(`[memory-distill] synthesis failed project=${cluster.project}: ${result.error}`);
+        results.push({ project: cluster.project, error: result.error });
+        continue;
+      }
+      let synthesis;
+      try {
+        synthesis = parseMemorySynthesis(result.content);
+      } catch (e) {
+        console.warn(`[memory-distill] parse failed project=${cluster.project}: ${e.message}`);
+        results.push({ project: cluster.project, error: e.message });
+        continue;
+      }
+      const applied = await memory.applyDistilledMemory({ cluster, synthesis });
+      if (applied.ok) {
+        console.log(`[memory-distill] synthesized ${applied.id} project=${cluster.project} archived=${applied.archived}`);
+      } else {
+        console.warn(`[memory-distill] apply failed project=${cluster.project}: ${applied.error}`);
+      }
+      results.push({ project: cluster.project, ...applied });
+    }
+
+    const synthesized = results.filter(r => r.ok).length;
+    const archived = results.reduce((sum, r) => sum + (r.archived || 0), 0);
+    if (synthesized > 0) {
+      const notif = {
+        id: `memory-distill-${Date.now()}`,
+        routineName: 'Memory Distillation',
+        title: 'Memory Distillation Complete',
+        timestamp: new Date().toISOString(),
+        items: [
+          `Synthesized ${synthesized} higher-order memor${synthesized === 1 ? 'y' : 'ies'}`,
+          `Archived ${archived} episodic source memories`,
+        ],
+      };
+      const existing = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+      writeJSON(ROUTINE_NOTIFICATIONS_PATH, [...existing.filter(n => n.routineName !== 'Memory Distillation'), notif]);
+      broadcast({ type: 'event-routine-notifications', notifications: readJSON(ROUTINE_NOTIFICATIONS_PATH, []) });
+    }
+    const complete = { synthesized, archived, results };
+    writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'complete', lastCompletedAt: new Date().toISOString(), synthesized, archived });
+    return complete;
+  } catch (e) {
+    console.warn('[memory-distill] error:', e.message);
+    writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'failed', error: e.message, failedAt: new Date().toISOString() });
+    return { error: e.message };
+  } finally {
+    memoryDistillationRunning = false;
+  }
+}
+
 async function runMemoryDecay() {
   try {
     const result = await memory.decayMemories();
@@ -13929,6 +14127,11 @@ setTimeout(() => {
   runMemoryDecay();
   setInterval(runMemoryDecay, MEMORY_DECAY_INTERVAL_MS);
 }, 30_000);
+
+setTimeout(() => {
+  runMemoryDistillation();
+  setInterval(runMemoryDistillation, MEMORY_DISTILL_INTERVAL_MS);
+}, 90_000);
 
 const wsHeartbeatTimer = setInterval(() => {
   if (!wss) return;
@@ -14122,7 +14325,6 @@ wss.on('connection', (ws, req) => {
       appVersion: require('./package.json').version,
       recentCommits,
       connectedMcpServers: [...new Set([...getEnabledMcpServers(), ...getConnectedMcpServers()])].filter(s => s !== 'polaris'),
-      uiToken: UI_TOKEN,
       publicBuild: IS_PUBLIC_BUILD,
     });
 

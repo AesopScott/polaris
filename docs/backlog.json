@@ -122,10 +122,43 @@
       "category": "enhancement",
       "priority": 10,
       "impact": "standard",
-      "status": "backlog",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": []
+      "completed_at": "2026-06-13",
+      "dependencies": [],
+      "branch": "codex/task-49-memory-importance",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/70",
+      "plan": "Add importance-aware memory writes without changing retrieval or decay behavior. The memory module normalizes explicit importance scores to 1-5, defaults by type when absent, stores the importance value, and maps it to initial strength in the 0.6-1.0 range. The session extractor prompt now asks for an importance score alongside each memory and passes it through to Firestore writes. Focused tests cover default scoring, clamping, and strength mapping.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Importance defaults match memory type semantics",
+          "expectedBehavior": "decision defaults to 5, preference and feedback to 4, pattern to 3, and fact to 2.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no importance normalization helper or type defaults.",
+          "expectedPassingEvidence": "Vitest passes memory importance scoring tests in test/memory/memory.test.js."
+        },
+        {
+          "number": 2,
+          "title": "Initial strength maps from importance instead of hardcoded 1.0",
+          "expectedBehavior": "New memories use initial strength values from 0.6 through 1.0 based on normalized importance.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, addMemory() and addMemories() always wrote strength: 1.0.",
+          "expectedPassingEvidence": "Tests prove importance 1-5 maps to 0.6, 0.7, 0.8, 0.9, and 1.0 respectively, and code inspection shows both write paths call initialStrengthForMemory()."
+        },
+        {
+          "number": 3,
+          "title": "Extractor requests and forwards importance",
+          "expectedBehavior": "extractSessionToKnowledge() asks the model for importance and forwards m.importance to memory.addMemories().",
+          "proofType": "code-audit",
+          "exactCommand": "node --check server.js",
+          "expectedInitialFailure": "Before this change, the extractor JSON schema only requested content/type/tags and dropped importance before writing memories.",
+          "expectedPassingEvidence": "server.js syntax check passes and the extraction prompt plus toWrite mapping include importance."
+        }
+      ],
+      "updated_at": "2026-06-13T22:49:02.704Z"
     },
     {
       "number": 50,
@@ -134,12 +167,45 @@
       "category": "enhancement",
       "priority": 10,
       "impact": "standard",
-      "status": "backlog",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [
         49
-      ]
+      ],
+      "branch": "codex/task-50-memory-dedupe",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/71",
+      "plan": "Add write-time memory deduplication to the batch memory write path. New pure helpers compute tag Jaccard similarity, normalized substring overlap, combined memory similarity, duplicate selection, and a consolidation plan that splits candidates into writes versus reinforcements. addMemories() now fetches active existing memories once per project in the batch, reinforces near-duplicates above the 0.7 threshold, writes only new memories, and suppresses repeated candidates inside the same extraction batch.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Similarity helpers detect near-duplicate memories",
+          "expectedBehavior": "Memory candidates are compared using tag Jaccard similarity plus normalized substring overlap on content.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no similarity helpers or duplicate detection functions.",
+          "expectedPassingEvidence": "Vitest passes tests for jaccardSimilarity(), substringOverlap(), memorySimilarity(), and findDuplicateMemory()."
+        },
+        {
+          "number": 2,
+          "title": "Batch consolidation splits writes from reinforcements",
+          "expectedBehavior": "Candidates similar to existing project memories above the 0.7 threshold are reinforced instead of written as new documents.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, addMemories() wrote every candidate as a new document.",
+          "expectedPassingEvidence": "Tests prove planMemoryConsolidation() returns one reinforcement and one write for mixed batches."
+        },
+        {
+          "number": 3,
+          "title": "Intra-batch duplicates are suppressed",
+          "expectedBehavior": "Repeated candidates from the same extraction batch do not produce duplicate new Firestore documents.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, two identical candidates in one batch generated two writes.",
+          "expectedPassingEvidence": "Tests prove repeated candidates produce one write and one reinforcement plan item."
+        }
+      ],
+      "updated_at": "2026-06-13T22:59:26.447Z"
     },
     {
       "number": 52,
@@ -148,10 +214,43 @@
       "category": "feature",
       "priority": 30,
       "impact": "standard",
-      "status": "backlog",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
-      "dependencies": []
+      "completed_at": "2026-06-13",
+      "dependencies": [],
+      "branch": "codex/task-52-memory-edit-ui",
+      "plan": "Add a human correction loop for Firestore memories inside the existing Memory panel. The memory module now exposes list, edit, and archive helpers; server WebSocket handlers list active project/global memories and protect edit/archive writes with the UI token; the Memory panel lets Scott select a project, include global memories, edit content/type/tags/importance inline, and archive bad memories immediately. Editing resets strength using the importance-based initial strength calculation so corrected memories re-enter retrieval with the right durability.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Memory edits normalize fields and reset strength",
+          "expectedBehavior": "Editing content/type/tags/importance trims content, normalizes comma-separated tags, clamps importance, and resets strength from the importance/type mapping.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no prepareMemoryEdit() helper or human edit normalization path.",
+          "expectedPassingEvidence": "Vitest passes prepareMemoryEdit() coverage for tag normalization, content trimming, importance preservation, and strength reset."
+        },
+        {
+          "number": 2,
+          "title": "Memory panel can list project and global Firestore memories",
+          "expectedBehavior": "The UI can request active memories for the selected project and optionally include global memories, with rows showing content, type, tags, strength, accessCount, and age.",
+          "proofType": "unit-test-and-parse-check",
+          "exactCommand": "npm run test:memory && node HTML script parse check",
+          "expectedInitialFailure": "Before this change, the Memory panel only displayed Obsidian retrieval index stats and QueryMemory history.",
+          "expectedPassingEvidence": "Vitest passes listMemoryDocs() fake-Firestore coverage for project+global listing, and the mockup.html script blocks parse cleanly."
+        },
+        {
+          "number": 3,
+          "title": "Archive and edit writes are gated and routed through WebSocket handlers",
+          "expectedBehavior": "Saving an edit calls update-memory with the UI bootstrap token and archiving calls archive-memory with the UI bootstrap token; server-side writes reject missing tokens and the token is not distributed in WebSocket init messages.",
+          "proofType": "code-audit-and-syntax",
+          "exactCommand": "node --check server.js",
+          "expectedInitialFailure": "Before this change, there were no update-memory or archive-memory WebSocket handlers.",
+          "expectedPassingEvidence": "server.js syntax check passes, mockup.html script parsing passes, and code inspection shows UI-token checks before update/archive writes while the token is injected through the served renderer HTML instead of the WebSocket init payload."
+        }
+      ],
+      "updated_at": "2026-06-13T23:22:23.583Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/73"
     },
     {
       "number": 53,
@@ -160,12 +259,45 @@
       "category": "feature",
       "priority": 40,
       "impact": "major",
-      "status": "backlog",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [
         50
-      ]
+      ],
+      "branch": "codex/task-53-memory-distillation",
+      "plan": "Add weekly higher-order memory distillation. The memory module filters distillation candidates, pages through active Firestore memories before client-side eligibility filtering, requires content evidence before project/tag similarity can form synthesis clusters, prepares provenance-tagged distilled memories, and applies transaction-guarded Firestore writes that create the higher-order memory only when source memories are still active. The server runs a fire-and-forget routine with durable weekly cadence state, a one-at-a-time in-process guard, OpenRouter synthesis per cluster, server logs, and routine notifications when memories are synthesized.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Distillation candidates exclude unsafe inputs",
+          "expectedBehavior": "Archived memories, decisions, already-distilled memories, and empty/projectless records are not eligible for higher-order synthesis.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no distillation candidate filter.",
+          "expectedPassingEvidence": "Vitest passes isDistillationCandidate() coverage for active, archived, decision, and already-distilled memories."
+        },
+        {
+          "number": 2,
+          "title": "Repeated episodic memories cluster by project and similarity",
+          "expectedBehavior": "Three or more similar non-decision memories in the same project form a cluster only when their content overlaps; broad matching tags alone do not cluster unrelated memories, and similar memories from another project stay isolated.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no higher-order clustering helper.",
+          "expectedPassingEvidence": "Vitest passes clusterMemoriesForDistillation() coverage for project-scoped positive clustering, source id/tag aggregation, and the regression that unrelated same-tag memories produce zero clusters."
+        },
+        {
+          "number": 3,
+          "title": "Weekly routine writes synthesis and archives originals",
+          "expectedBehavior": "The server routine pages active memory candidates, runs at most weekly by durable state, asks the model for one higher-order memory per cluster, transactionally writes a distilled memory with provenance tags only if source memories remain active, archives sources, and logs results.",
+          "proofType": "syntax-and-code-audit",
+          "exactCommand": "node --check server.js && npm run test:memory",
+          "expectedInitialFailure": "Before this change, only daily decay was scheduled; no weekly distillation routine or applyDistilledMemory() path existed.",
+          "expectedPassingEvidence": "server.js syntax check passes, memory tests cover prepareDistilledMemory()/applyDistilledMemory() helpers, and code inspection shows paginated listDistillationCandidates(), shouldRunMemoryDistillation() durable cadence gating, runMemoryDistillation() state writes, OpenRouter synthesis, transaction guarded applyDistilledMemory(), console logs, and routine notification on success."
+        }
+      ],
+      "updated_at": "2026-06-13T23:38:23.852Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/74"
     },
     {
       "number": 54,
@@ -174,12 +306,45 @@
       "category": "feature",
       "priority": 50,
       "impact": "standard",
-      "status": "backlog",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [
         50
-      ]
+      ],
+      "branch": "codex/task-54-global-memory",
+      "plan": "Add a global Firestore memory tier alongside project-scoped memories. Writes tagged with project: global are normalized into the global project bucket, and searchMemories() now queries both the requested project and global, deduplicates by document id, then ranks the merged candidates together with the existing BM25, strength, and recency scoring. Focused tests cover global-tag write routing, search project expansion, and merged ranking.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Global-tagged memories write to the global tier",
+          "expectedBehavior": "A memory tagged project: global is stored with project set to global so it can be queried by any project search.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, prepareMemoryWrite() kept the requested project and only preserved project: global as an inert tag.",
+          "expectedPassingEvidence": "Vitest passes tests for hasGlobalProjectTag(), normalizeMemoryProject(), and prepareMemoryWrite() routing tagged memories to project global."
+        },
+        {
+          "number": 2,
+          "title": "Project memory search includes global memories",
+          "expectedBehavior": "searchMemories(project, query) queries both the requested project and global tier, avoiding a duplicate query when the requested project is already global.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, searchMemories() queried only project == requested and never fetched global memories.",
+          "expectedPassingEvidence": "Vitest passes tests for memoryProjectsForSearch() returning [requested, global] and searchMemoryDocs() proving the Firestore query path fetches both project buckets."
+        },
+        {
+          "number": 3,
+          "title": "Merged project and global memories rank together",
+          "expectedBehavior": "Project-scoped and global memory docs are scored in one merged candidate set so the most relevant memory wins regardless of tier.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, ranking operated only on one Firestore snapshot for one project.",
+          "expectedPassingEvidence": "Vitest passes rankMemoryResults() coverage proving a global preference can outrank a weaker project memory, plus searchMemoryDocs() coverage proving merged Firestore docs are ranked together."
+        }
+      ],
+      "updated_at": "2026-06-13T23:10:22.037Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/72"
     },
     {
       "number": 55,
