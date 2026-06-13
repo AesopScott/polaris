@@ -94,7 +94,7 @@
       "completed_at": null,
       "dependencies": [],
       "branch": "codex/task-49-memory-importance",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/70",
       "plan": "Add importance-aware memory writes without changing retrieval or decay behavior. The memory module normalizes explicit importance scores to 1-5, defaults by type when absent, stores the importance value, and maps it to initial strength in the 0.6-1.0 range. The session extractor prompt now asks for an importance score alongside each memory and passes it through to Firestore writes. Focused tests cover default scoring, clamping, and strength mapping.",
       "proofUnits": [
         {
@@ -125,7 +125,7 @@
           "expectedPassingEvidence": "server.js syntax check passes and the extraction prompt plus toWrite mapping include importance."
         }
       ],
-      "updated_at": "2026-06-13T22:43:53.320Z"
+      "updated_at": "2026-06-13T22:45:26.686Z"
     },
     {
       "number": 50,
