@@ -13,7 +13,7 @@ Persistent memory store for Polaris sessions. Holds structured memory entries ex
 {
   project:     string   — project name scope (e.g. "Polaris", "CareGuide")
   content:     string   — the memory text
-  type:        string   — "instruction" | "preference" | "fact"
+  type:        string   — "instruction" | "decision" | "preference" | "feedback" | "pattern" | "fact"
   tags:        string[] — optional keyword tags
   strength:    number   — 0.0–1.0, Ebbinghaus decay curve with type-calibrated stability; reinforced on retrieval
   sessionId:   string   — source session ID (optional)

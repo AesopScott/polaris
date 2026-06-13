@@ -156,8 +156,11 @@ describe('memory importance scoring', () => {
   it('uses memory type to calibrate forgetting stability', () => {
     const base = { accessCount: 0 };
     expect(stabilityForMemory({ ...base, type: 'fact' })).toBeCloseTo(7 * Math.log(2), 6);
+    expect(stabilityForMemory({ ...base, type: 'pattern' })).toBeCloseTo(8.75 * Math.log(2), 6);
+    expect(stabilityForMemory({ ...base, type: 'feedback' })).toBeCloseTo(10.5 * Math.log(2), 6);
     expect(stabilityForMemory({ ...base, type: 'preference' })).toBeCloseTo(14 * Math.log(2), 6);
     expect(stabilityForMemory({ ...base, type: 'decision' })).toBeCloseTo(21 * Math.log(2), 6);
+    expect(stabilityForMemory({ ...base, type: 'instruction' })).toBeCloseTo(21 * Math.log(2), 6);
     expect(stabilityForMemory({ ...base, type: 'unknown' })).toBeCloseTo(stabilityForMemory({ ...base, type: 'fact' }), 6);
   });
 
@@ -170,11 +173,18 @@ describe('memory importance scoring', () => {
       lastAccessedAt: { seconds: now - 86400 * 14 },
     };
     const fact = decayedStrengthForMemory({ ...stale, type: 'fact' }, now);
+    const pattern = decayedStrengthForMemory({ ...stale, type: 'pattern' }, now);
+    const feedback = decayedStrengthForMemory({ ...stale, type: 'feedback' }, now);
     const preference = decayedStrengthForMemory({ ...stale, type: 'preference' }, now);
     const decision = decayedStrengthForMemory({ ...stale, type: 'decision', importance: 5, strength: 1 }, now);
+    const instruction = decayedStrengthForMemory({ ...stale, type: 'instruction', importance: 5, strength: 1 }, now);
 
+    expect(pattern).toBeGreaterThan(fact);
+    expect(feedback).toBeGreaterThan(pattern);
     expect(preference).toBeGreaterThan(fact);
+    expect(preference).toBeGreaterThan(feedback);
     expect(decision).toBeGreaterThan(preference);
+    expect(instruction).toBeCloseTo(decision, 6);
   });
 });
 
