@@ -6,11 +6,16 @@ import {
   initialStrengthForMemory,
   prepareMemoryWrite,
   decayedStrengthForMemory,
+  GLOBAL_MEMORY_PROJECT,
+  hasGlobalProjectTag,
+  normalizeMemoryProject,
   jaccardSimilarity,
   substringOverlap,
   memorySimilarity,
   findDuplicateMemory,
   planMemoryConsolidation,
+  memoryProjectsForSearch,
+  rankMemoryResults,
 } from '../../lib/memory.js';
 
 describe('memory importance scoring', () => {
@@ -69,6 +74,22 @@ describe('memory importance scoring', () => {
       accessCount: 0,
       _archived: false,
     });
+  });
+
+  it('routes project-global tagged writes into the global memory tier', () => {
+    expect(GLOBAL_MEMORY_PROJECT).toBe('global');
+    expect(hasGlobalProjectTag(['Project: Global'])).toBe(true);
+    expect(hasGlobalProjectTag(['project:global'])).toBe(true);
+    expect(normalizeMemoryProject('Polaris', ['project: global'])).toBe('global');
+
+    const doc = prepareMemoryWrite({
+      project: 'Polaris',
+      content: 'Scott prefers direct progress updates across projects.',
+      type: 'preference',
+      tags: ['style', 'project: global'],
+    });
+
+    expect(doc.project).toBe('global');
   });
 
   it('decays from the importance-derived peak without raising strength', () => {
@@ -241,5 +262,39 @@ describe('memory write deduplication', () => {
     expect(plan.toWrite).toHaveLength(0);
     expect(plan.toReinforce).toHaveLength(1);
     expect(plan.toReinforce[0].existing.id).toBe('existing-1');
+  });
+});
+
+describe('cross-project memory search tier', () => {
+  it('searches the requested project and the global tier', () => {
+    expect(memoryProjectsForSearch('Polaris')).toEqual(['Polaris', 'global']);
+    expect(memoryProjectsForSearch('global')).toEqual(['global']);
+    expect(memoryProjectsForSearch('  global  ')).toEqual(['global']);
+  });
+
+  it('ranks project and global memories together', () => {
+    const now = 2_000_000;
+    const ranked = rankMemoryResults([
+      {
+        id: 'project-low',
+        project: 'Polaris',
+        content: 'Use terse updates for local UI work.',
+        tags: ['updates'],
+        strength: 0.8,
+        lastAccessedAt: { seconds: now },
+      },
+      {
+        id: 'global-high',
+        project: 'global',
+        content: 'Scott prefers concise summaries and direct progress updates.',
+        tags: ['project: global', 'preference', 'updates'],
+        strength: 0.9,
+        lastAccessedAt: { seconds: now },
+      },
+    ], 'concise progress updates', 2, now);
+
+    expect(ranked).toHaveLength(2);
+    expect(ranked[0].id).toBe('global-high');
+    expect(ranked[0]._score).toBeGreaterThan(ranked[1]._score);
   });
 });

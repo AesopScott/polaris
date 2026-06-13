@@ -207,12 +207,44 @@
       "category": "feature",
       "priority": 50,
       "impact": "standard",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-26",
       "completed_at": null,
       "dependencies": [
         50
-      ]
+      ],
+      "branch": "codex/task-54-global-memory",
+      "plan": "Add a global Firestore memory tier alongside project-scoped memories. Writes tagged with project: global are normalized into the global project bucket, and searchMemories() now queries both the requested project and global, deduplicates by document id, then ranks the merged candidates together with the existing BM25, strength, and recency scoring. Focused tests cover global-tag write routing, search project expansion, and merged ranking.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Global-tagged memories write to the global tier",
+          "expectedBehavior": "A memory tagged project: global is stored with project set to global so it can be queried by any project search.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, prepareMemoryWrite() kept the requested project and only preserved project: global as an inert tag.",
+          "expectedPassingEvidence": "Vitest passes tests for hasGlobalProjectTag(), normalizeMemoryProject(), and prepareMemoryWrite() routing tagged memories to project global."
+        },
+        {
+          "number": 2,
+          "title": "Project memory search includes global memories",
+          "expectedBehavior": "searchMemories(project, query) queries both the requested project and global tier, avoiding a duplicate query when the requested project is already global.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, searchMemories() queried only project == requested and never fetched global memories.",
+          "expectedPassingEvidence": "Vitest passes tests for memoryProjectsForSearch() returning [requested, global] and only [global] for global searches."
+        },
+        {
+          "number": 3,
+          "title": "Merged project and global memories rank together",
+          "expectedBehavior": "Project-scoped and global memory docs are scored in one merged candidate set so the most relevant memory wins regardless of tier.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, ranking operated only on one Firestore snapshot for one project.",
+          "expectedPassingEvidence": "Vitest passes rankMemoryResults() coverage proving a global preference can outrank a weaker project memory for the same query."
+        }
+      ],
+      "updated_at": "2026-06-13T23:04:30.052Z"
     },
     {
       "number": 55,
