@@ -181,9 +181,9 @@
       "category": "feature",
       "priority": 30,
       "impact": "standard",
-      "status": "build-finished",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [],
       "branch": "codex/task-52-memory-edit-ui",
       "plan": "Add a human correction loop for Firestore memories inside the existing Memory panel. The memory module now exposes list, edit, and archive helpers; server WebSocket handlers list active project/global memories and protect edit/archive writes with the UI token; the Memory panel lets Scott select a project, include global memories, edit content/type/tags/importance inline, and archive bad memories immediately. Editing resets strength using the importance-based initial strength calculation so corrected memories re-enter retrieval with the right durability.",
@@ -216,7 +216,7 @@
           "expectedPassingEvidence": "server.js syntax check passes, mockup.html script parsing passes, and code inspection shows UI-token checks before update/archive writes while the token is injected through the served renderer HTML instead of the WebSocket init payload."
         }
       ],
-      "updated_at": "2026-06-13T23:20:33.714Z",
+      "updated_at": "2026-06-13T23:22:23.583Z",
       "pr_url": "https://github.com/AesopScott/polaris/pull/73"
     },
     {
