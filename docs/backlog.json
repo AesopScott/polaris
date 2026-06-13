@@ -216,7 +216,8 @@
           "expectedPassingEvidence": "server.js syntax check passes and code inspection shows UI-token checks before update/archive writes."
         }
       ],
-      "updated_at": "2026-06-13T23:16:15.454Z"
+      "updated_at": "2026-06-13T23:17:40.756Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/73"
     },
     {
       "number": 53,
