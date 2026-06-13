@@ -232,7 +232,7 @@
           "proofType": "unit-test",
           "exactCommand": "npm run test:memory",
           "expectedInitialFailure": "Before this change, searchMemories() queried only project == requested and never fetched global memories.",
-          "expectedPassingEvidence": "Vitest passes tests for memoryProjectsForSearch() returning [requested, global] and only [global] for global searches."
+          "expectedPassingEvidence": "Vitest passes tests for memoryProjectsForSearch() returning [requested, global] and searchMemoryDocs() proving the Firestore query path fetches both project buckets."
         },
         {
           "number": 3,
@@ -241,10 +241,10 @@
           "proofType": "unit-test",
           "exactCommand": "npm run test:memory",
           "expectedInitialFailure": "Before this change, ranking operated only on one Firestore snapshot for one project.",
-          "expectedPassingEvidence": "Vitest passes rankMemoryResults() coverage proving a global preference can outrank a weaker project memory for the same query."
+          "expectedPassingEvidence": "Vitest passes rankMemoryResults() coverage proving a global preference can outrank a weaker project memory, plus searchMemoryDocs() coverage proving merged Firestore docs are ranked together."
         }
       ],
-      "updated_at": "2026-06-13T23:06:07.295Z",
+      "updated_at": "2026-06-13T23:09:02.911Z",
       "pr_url": "https://github.com/AesopScott/polaris/pull/72"
     },
     {

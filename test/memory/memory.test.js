@@ -16,6 +16,7 @@ import {
   planMemoryConsolidation,
   memoryProjectsForSearch,
   rankMemoryResults,
+  searchMemoryDocs,
 } from '../../lib/memory.js';
 
 describe('memory importance scoring', () => {
@@ -296,5 +297,59 @@ describe('cross-project memory search tier', () => {
     expect(ranked).toHaveLength(2);
     expect(ranked[0].id).toBe('global-high');
     expect(ranked[0]._score).toBeGreaterThan(ranked[1]._score);
+  });
+
+  it('queries Firestore for requested and global projects before ranking', async () => {
+    const queriedProjects = [];
+    const docsByProject = {
+      Polaris: [{
+        id: 'project-memory',
+        data: () => ({
+          project: 'Polaris',
+          content: 'Use terse updates for local UI work.',
+          tags: ['updates'],
+          strength: 0.8,
+          lastAccessedAt: { seconds: 2_000_000 },
+        }),
+      }],
+      global: [{
+        id: 'global-memory',
+        data: () => ({
+          project: 'global',
+          content: 'Scott prefers concise summaries and direct progress updates.',
+          tags: ['project: global', 'preference', 'updates'],
+          strength: 0.9,
+          lastAccessedAt: { seconds: 2_000_000 },
+        }),
+      }],
+    };
+
+    const firestore = {
+      collection: () => {
+        const chain = {
+          project: null,
+          where(field, op, value) {
+            if (field === 'project' && op === '==') this.project = value;
+            return this;
+          },
+          orderBy() {
+            return this;
+          },
+          limit() {
+            return this;
+          },
+          async get() {
+            queriedProjects.push(this.project);
+            return { docs: docsByProject[this.project] || [] };
+          },
+        };
+        return chain;
+      },
+    };
+
+    const results = await searchMemoryDocs(firestore, 'Polaris', 'concise progress updates', 2);
+
+    expect(queriedProjects).toEqual(['Polaris', 'global']);
+    expect(results.map(result => result.id)).toEqual(['global-memory', 'project-memory']);
   });
 });
