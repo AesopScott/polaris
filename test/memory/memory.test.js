@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeImportance,
   initialStrengthForMemory,
+  prepareMemoryWrite,
+  decayedStrengthForMemory,
 } from '../../lib/memory.js';
 
 describe('memory importance scoring', () => {
@@ -35,5 +37,60 @@ describe('memory importance scoring', () => {
     expect(initialStrengthForMemory({ importance: 'nope', type: 'pattern' })).toBe(0.8);
     expect(initialStrengthForMemory({ importance: '', type: 'feedback' })).toBe(0.9);
     expect(initialStrengthForMemory({ type: 'unknown' })).toBe(0.7);
+    expect(initialStrengthForMemory({ type: 'constructor' })).toBe(0.7);
+  });
+
+  it('prepares write payloads with normalized importance and derived strength', () => {
+    const doc = prepareMemoryWrite({
+      project: 'Polaris',
+      content: 'Scott prefers concise summaries',
+      type: 'preference',
+      importance: '5',
+      tags: ['style'],
+      sessionId: 's1',
+      sessionType: 'chat',
+    });
+
+    expect(doc).toMatchObject({
+      project: 'Polaris',
+      content: 'Scott prefers concise summaries',
+      type: 'preference',
+      tags: ['style'],
+      sessionId: 's1',
+      sessionType: 'chat',
+      source: 'codex',
+      importance: 5,
+      strength: 1,
+      accessCount: 0,
+      _archived: false,
+    });
+  });
+
+  it('decays from the importance-derived peak without raising strength', () => {
+    const now = 1_800_000;
+    const freshFact = {
+      type: 'fact',
+      importance: 2,
+      strength: 0.7,
+      accessCount: 0,
+      lastAccessedAt: { seconds: now },
+    };
+    expect(decayedStrengthForMemory(freshFact, now)).toBe(0.7);
+
+    const staleFact = {
+      ...freshFact,
+      lastAccessedAt: { seconds: now - 86400 * 7 },
+    };
+    expect(decayedStrengthForMemory(staleFact, now)).toBeLessThan(0.7);
+  });
+
+  it('keeps legacy memories without importance on the old 1.0 peak', () => {
+    const now = 1_800_000;
+    expect(decayedStrengthForMemory({
+      type: 'fact',
+      strength: 1,
+      accessCount: 0,
+      lastAccessedAt: { seconds: now },
+    }, now)).toBe(1);
   });
 });
