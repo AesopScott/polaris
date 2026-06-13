@@ -156,7 +156,7 @@
       "title": "Reconcile duplicate build-plan files (3-Build_Plan.md vs 3-Build-Plan.md)",
       "category": "Infrastructure",
       "priority": 1,
-      "status": "review-passed",
+      "status": "production",
       "dependencies": [],
       "impact": "standard",
       "branch": "codex/task-58-build-plan-reconcile",
@@ -188,7 +188,8 @@
           "expectedPassingEvidence": "The registry documents hyphen-first canonical lookup and npm checks/tests pass."
         }
       ],
-      "updated_at": "2026-06-13T17:42:21.192Z"
+      "updated_at": "2026-06-13T17:42:21.192Z",
+      "completed_at": "2026-06-13"
     },
     {
       "number": 59,
@@ -210,7 +211,7 @@
       "title": "Isolate backlog writes from the shared primary repo (concurrency hazard)",
       "category": "Infrastructure",
       "priority": 2,
-      "status": "review-passed",
+      "status": "production",
       "dependencies": [],
       "impact": "standard",
       "branch": "codex/task-58-build-plan-reconcile",
@@ -242,7 +243,8 @@
           "expectedPassingEvidence": "npm run check:sync, npm run test:contracts, and npm run test:policy pass on v1.0.646."
         }
       ],
-      "updated_at": "2026-06-13T17:42:21.193Z"
+      "updated_at": "2026-06-13T17:42:21.193Z",
+      "completed_at": "2026-06-13"
     },
     {
       "number": 62,
