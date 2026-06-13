@@ -233,7 +233,7 @@
         50
       ],
       "branch": "codex/task-53-memory-distillation",
-      "plan": "Add weekly higher-order memory distillation. The memory module filters distillation candidates, requires content evidence before project/tag similarity can form synthesis clusters, prepares provenance-tagged distilled memories, and applies transaction-guarded Firestore writes that create the higher-order memory only when source memories are still active. The server runs a fire-and-forget routine with durable weekly cadence state, a one-at-a-time in-process guard, OpenRouter synthesis per cluster, server logs, and routine notifications when memories are synthesized.",
+      "plan": "Add weekly higher-order memory distillation. The memory module filters distillation candidates, pages through active Firestore memories before client-side eligibility filtering, requires content evidence before project/tag similarity can form synthesis clusters, prepares provenance-tagged distilled memories, and applies transaction-guarded Firestore writes that create the higher-order memory only when source memories are still active. The server runs a fire-and-forget routine with durable weekly cadence state, a one-at-a-time in-process guard, OpenRouter synthesis per cluster, server logs, and routine notifications when memories are synthesized.",
       "proofUnits": [
         {
           "number": 1,
@@ -256,14 +256,14 @@
         {
           "number": 3,
           "title": "Weekly routine writes synthesis and archives originals",
-          "expectedBehavior": "The server routine runs at most weekly by durable state, asks the model for one higher-order memory per cluster, transactionally writes a distilled memory with provenance tags only if source memories remain active, archives sources, and logs results.",
+          "expectedBehavior": "The server routine pages active memory candidates, runs at most weekly by durable state, asks the model for one higher-order memory per cluster, transactionally writes a distilled memory with provenance tags only if source memories remain active, archives sources, and logs results.",
           "proofType": "syntax-and-code-audit",
           "exactCommand": "node --check server.js && npm run test:memory",
           "expectedInitialFailure": "Before this change, only daily decay was scheduled; no weekly distillation routine or applyDistilledMemory() path existed.",
-          "expectedPassingEvidence": "server.js syntax check passes, memory tests cover prepareDistilledMemory()/applyDistilledMemory() helpers, and code inspection shows shouldRunMemoryDistillation() durable cadence gating, runMemoryDistillation() state writes, OpenRouter synthesis, transaction guarded applyDistilledMemory(), console logs, and routine notification on success."
+          "expectedPassingEvidence": "server.js syntax check passes, memory tests cover prepareDistilledMemory()/applyDistilledMemory() helpers, and code inspection shows paginated listDistillationCandidates(), shouldRunMemoryDistillation() durable cadence gating, runMemoryDistillation() state writes, OpenRouter synthesis, transaction guarded applyDistilledMemory(), console logs, and routine notification on success."
         }
       ],
-      "updated_at": "2026-06-13T23:34:14.537Z",
+      "updated_at": "2026-06-13T23:36:37.566Z",
       "pr_url": "https://github.com/AesopScott/polaris/pull/74"
     },
     {
