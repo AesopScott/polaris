@@ -1,6 +1,6 @@
 {
   "name": "polaris-lab",
-  "version": "1.0.650",
+  "version": "1.0.652",
   "description": "Polaris-lab — experimental Claude Code command center",
   "main": "main.js",
   "scripts": {

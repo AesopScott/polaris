@@ -89,10 +89,43 @@
       "category": "enhancement",
       "priority": 10,
       "impact": "standard",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-26",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "branch": "codex/task-49-memory-importance",
+      "pr_url": null,
+      "plan": "Add importance-aware memory writes without changing retrieval or decay behavior. The memory module normalizes explicit importance scores to 1-5, defaults by type when absent, stores the importance value, and maps it to initial strength in the 0.6-1.0 range. The session extractor prompt now asks for an importance score alongside each memory and passes it through to Firestore writes. Focused tests cover default scoring, clamping, and strength mapping.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Importance defaults match memory type semantics",
+          "expectedBehavior": "decision defaults to 5, preference and feedback to 4, pattern to 3, and fact to 2.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no importance normalization helper or type defaults.",
+          "expectedPassingEvidence": "Vitest passes memory importance scoring tests in test/memory/memory.test.js."
+        },
+        {
+          "number": 2,
+          "title": "Initial strength maps from importance instead of hardcoded 1.0",
+          "expectedBehavior": "New memories use initial strength values from 0.6 through 1.0 based on normalized importance.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, addMemory() and addMemories() always wrote strength: 1.0.",
+          "expectedPassingEvidence": "Tests prove importance 1-5 maps to 0.6, 0.7, 0.8, 0.9, and 1.0 respectively, and code inspection shows both write paths call initialStrengthForMemory()."
+        },
+        {
+          "number": 3,
+          "title": "Extractor requests and forwards importance",
+          "expectedBehavior": "extractSessionToKnowledge() asks the model for importance and forwards m.importance to memory.addMemories().",
+          "proofType": "code-audit",
+          "exactCommand": "node --check server.js",
+          "expectedInitialFailure": "Before this change, the extractor JSON schema only requested content/type/tags and dropped importance before writing memories.",
+          "expectedPassingEvidence": "server.js syntax check passes and the extraction prompt plus toWrite mapping include importance."
+        }
+      ],
+      "updated_at": "2026-06-13T22:43:53.320Z"
     },
     {
       "number": 50,

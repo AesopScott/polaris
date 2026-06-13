@@ -2045,6 +2045,7 @@ Return ONLY valid JSON with these keys (omit a key or set to null if nothing rel
     {
       "content": "concise fact, decision, preference, or pattern worth remembering (1-2 sentences)",
       "type": "decision | preference | pattern | feedback | fact",
+      "importance": 4,
       "tags": ["keyword1", "keyword2"]
     }
   ],
@@ -2062,6 +2063,7 @@ Rules for memories[]:
 - Only include facts that would still be useful in a future session with no context
 - Prefer decisions, constraints, preferences, and non-obvious patterns
 - Skip ephemeral details (what file was edited, step-by-step actions taken)
+- Score importance from 1-5 so durable memories decay appropriately: decision=5, preference=4, feedback=4, pattern=3, fact=2 by default. Raise or lower by one point only when the transcript clearly warrants it.
 - Maximum 8 memories per session
 
 Session transcript:
@@ -2114,6 +2116,7 @@ ${transcript}`;
       project:     projectName,
       content:     m.content,
       type:        m.type || 'fact',
+      importance:  m.importance,
       tags:        m.tags || [],
       sessionId,
       sessionType: s.type || 'chat',
