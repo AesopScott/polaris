@@ -96,9 +96,9 @@ async function runOne(fixture, opts = {}) {
 
   if (expect.response) {
     const lineText = (launchResult?.events || [])
-      .filter(e => e.type === 'line' && (e.role === 'assistant' || e.role === 'system'))
+      .filter(e => e.type === 'line' && e.role === 'assistant')
       .map(e => e.text || '')
-      .join('\n');
+      .join('');
     if (expect.response.contains && !lineText.includes(expect.response.contains)) {
       errors.push(`response missing substring '${expect.response.contains}'`);
     }

@@ -41,6 +41,12 @@ function fixtureMatches(fixture, argv) {
   return true;
 }
 
+function markdownCell(value) {
+  return String(value ?? '')
+    .replace(/\r?\n/g, '<br>')
+    .replace(/\|/g, '\\|');
+}
+
 function compactResult(result) {
   const trace = result.trace || {};
   return {
@@ -77,7 +83,8 @@ function writeMarkdownScorecard(filePath, scorecard) {
     '| --- | --- | --- | ---: | ---: | --- | ---: | ---: | --- |',
   ];
   for (const r of scorecard.fixtures) {
-    lines.push(`| ${r.id} | ${r.pass ? 'yes' : 'no'} | ${r.status || ''} | ${(r.elapsedMs / 1000).toFixed(1)} | ${r.finalIters} | ${r.tools.join(', ') || '-'} | ${r.tokensIn} | ${r.tokensOut} | ${(r.errors || []).join('<br>') || '-'} |`);
+    const errors = (r.errors || []).map(markdownCell).join('<br>') || '-';
+    lines.push(`| ${markdownCell(r.id)} | ${r.pass ? 'yes' : 'no'} | ${markdownCell(r.status || '')} | ${(r.elapsedMs / 1000).toFixed(1)} | ${r.finalIters} | ${markdownCell(r.tools.join(', ') || '-')} | ${r.tokensIn} | ${r.tokensOut} | ${errors} |`);
   }
   fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });
   fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
@@ -88,12 +95,16 @@ async function main() {
   const fixtureDir = path.join(__dirname, 'fixtures');
   const all = listFixtures(fixtureDir);
   const filter = argv.fixtures ? String(argv.fixtures).split(',').map(s => s.trim()) : null;
-  let selected = filter ? all.filter(f => filter.some(p => f.startsWith(p) || f.includes(p))) : all;
-  if (argv.suite || argv.tags) {
-    selected = selected.filter(f => {
-      try { return fixtureMatches(loadFixture(path.join(fixtureDir, f)), argv); }
-      catch { return false; }
-    });
+  const candidateFiles = filter ? all.filter(f => filter.some(p => f.startsWith(p) || f.includes(p))) : all;
+  const selected = [];
+  for (const fileName of candidateFiles) {
+    try {
+      const fixture = loadFixture(path.join(fixtureDir, fileName));
+      if (!fixtureMatches(fixture, argv)) continue;
+      selected.push({ fileName, fixture });
+    } catch (e) {
+      selected.push({ fileName, loadError: e });
+    }
   }
 
   if (!selected.length) {
@@ -105,10 +116,13 @@ async function main() {
   console.log(`[evals] ${selected.length} fixture(s), tier=${tier}\n`);
 
   const results = [];
-  for (const f of selected) {
-    let fix;
-    try { fix = loadFixture(path.join(fixtureDir, f)); }
-    catch (e) { console.log(`  ${f} ... LOAD ERROR: ${e.message}`); continue; }
+  for (const entry of selected) {
+    if (entry.loadError) {
+      console.log(`  ${entry.fileName} ... LOAD ERROR: ${entry.loadError.message}`);
+      results.push({ pass: false, fixtureId: entry.fileName, status: 'load-error', errors: [entry.loadError.message] });
+      continue;
+    }
+    const fix = entry.fixture;
     process.stdout.write(`  ${fix.id} ... `);
     const t0 = Date.now();
     let r;
