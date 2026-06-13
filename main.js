@@ -6,12 +6,16 @@ const http = require('http');
 const { fork } = require('child_process');
 
 const APPDATA = process.env.APPDATA || os.homedir();
-const POLARIS_DIR = path.join(APPDATA, '.claude', 'polaris');
+const APP_DISPLAY_NAME = process.env.POLARIS_APP_NAME || 'Polaris-lab';
+const APP_SLUG = process.env.POLARIS_APP_SLUG || 'polaris-lab';
+const IS_POLARIS_LAB = APP_SLUG === 'polaris-lab' || process.env.POLARIS_LAB === '1';
+app.setName(APP_DISPLAY_NAME);
+const POLARIS_DIR = process.env.POLARIS_DIR || path.join(APPDATA, '.claude', APP_SLUG);
 const MOCKUP_SRC = app.isPackaged
   ? path.join(process.resourcesPath, 'resources', 'mockup.html')
   : path.join(__dirname, 'resources', 'mockup.html');
 const MOCKUP_DEST = path.join(POLARIS_DIR, 'mockup.html');
-const SERVER_PORT = 40000;
+const SERVER_PORT = Number(process.env.SERVER_PORT) || (IS_POLARIS_LAB ? 40010 : 40000);
 const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const SERVER_LOG_PATH = path.join(POLARIS_DIR, 'logs', 'server-stderr.log');
 const RESTART_WINDOW_MS = 30000;
@@ -52,6 +56,10 @@ function startServer() {
     env: {
       ...process.env,
       POLARIS_DIR,
+      POLARIS_LAB: IS_POLARIS_LAB ? '1' : '',
+      POLARIS_APP_NAME: APP_DISPLAY_NAME,
+      POLARIS_APP_SLUG: APP_SLUG,
+      POLARIS_SOURCE_DIR: __dirname,
       MOCKUP_DEST,
       SERVER_PORT: String(SERVER_PORT),
       RESOURCES_PATH: process.resourcesPath ? path.join(process.resourcesPath, 'resources') : path.join(__dirname, 'resources'),
@@ -194,9 +202,9 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    title: 'Polaris',
+    title: APP_DISPLAY_NAME,
     backgroundColor: '#0a0e1a',
-    icon: path.join(__dirname, 'assets', process.platform === 'darwin' ? 'icon.icns' : 'icon.ico'),
+    icon: path.join(__dirname, 'assets', process.platform === 'darwin' ? 'icon.icns' : 'icon-lab.ico'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform !== 'darwin' && {
       titleBarOverlay: {

@@ -1,6 +1,7 @@
-# Polaris: build public distributable (only public: true features)
-# Output: dist\Polaris Setup *.exe — does NOT auto-install.
-Set-Location "C:\Users\scott\Code\Polaris"
+# Polaris-lab: build public distributable (only public: true features)
+# Output: dist\Polaris-lab Setup *.exe — does NOT auto-install.
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $repoRoot
 
 $buildFlagsPath = "resources\build-flags.json"
 $originalFlags  = Get-Content $buildFlagsPath -Raw
@@ -13,7 +14,9 @@ function Restore-Flags {
 Write-Host "==> Setting publicBuild = true..." -ForegroundColor Cyan
 Set-Content $buildFlagsPath '{"publicBuild":true}'
 
-Write-Host "==> Building Polaris (public, dist)..." -ForegroundColor Cyan
+$productName = "Polaris-lab"
+
+Write-Host "==> Building $productName (public, dist)..." -ForegroundColor Cyan
 npm run dist:public
 if (-not $?) {
     Write-Host "==> Build failed. Restoring flags and aborting." -ForegroundColor Red
@@ -23,7 +26,7 @@ if (-not $?) {
 
 Restore-Flags
 
-$installer = Get-ChildItem "dist\Polaris Setup *.exe" |
+$installer = Get-ChildItem "dist\$productName Setup *.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
@@ -32,7 +35,7 @@ if (-not $installer) {
     exit 1
 }
 
-$publicName = $installer.FullName -replace 'Polaris Setup', 'Polaris Public Setup'
+$publicName = $installer.FullName -replace "$productName Setup", "$productName Public Setup"
 Rename-Item $installer.FullName $publicName -Force
 Write-Host "    renamed → $(Split-Path $publicName -Leaf)" -ForegroundColor DarkGray
 

@@ -1528,7 +1528,7 @@
           <input type="text" id="session-search" placeholder="Search sessions..." style="width:100%;padding:5px 28px 5px 10px;border-radius:5px;border:1px solid #444;font-size:12px;background:var(--input-bg);color:var(--text);box-sizing:border-box;" />
           <button id="session-search-clear" onclick="clearSessionSearch()" style="display:none;position:absolute;right:6px;background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;line-height:1;padding:0;">✕</button>
         </div>
-        <button id="health-pill" class="health-pill degraded" onclick="toggleHealthPanel()" title="Polaris health monitor"><span class="health-dot"></span><span id="health-pill-text">Health Checking</span></button>
+        <button id="health-pill" class="health-pill degraded" onclick="toggleHealthPanel()" title="Polaris health monitor" style="display:none;"><span class="health-dot"></span><span id="health-pill-text">Health Disabled</span></button>
         <div id="header-clock" style="text-align:center;font-family:Consolas,monospace;font-size:13px;font-weight:700;color:var(--tag-text);letter-spacing:0.04em;">--:--:--</div>
       </div>
     </div>
@@ -4417,6 +4417,7 @@
   })();
   const ORCHESTRATION_QUIET_MODE = true;
   const sessionStore = {};   // id → { id, name, workDir, projectName, status, startAt, lines, lastPrompt, resumeId, usage }
+  window.sessionStore = sessionStore; // expose for cross-check rendering
   const QUEUE_POLL_INTERVAL_MS = 10000;
   const QUEUE_STALE_RUNNING_MS = 45000;
   const QUEUE_ACTIVE_STATUSES = new Set(['running', 'launching', 'monitoring']);
@@ -4508,6 +4509,7 @@
     lastChecked: null,
     lastDeepCheck: 0,
   };
+  const HEALTH_POLLING_ENABLED = false;
   let healthCheckInFlight = null;
   let healthPollTimer = null;
 
@@ -4529,6 +4531,15 @@
   }
 
   function renderHealthIndicator() {
+    if (!HEALTH_POLLING_ENABLED) {
+      const pill = document.getElementById('health-pill');
+      if (pill) pill.style.display = 'none';
+      setHealthText('health-detail-status', 'DISABLED');
+      setHealthText('health-detail-explanation', 'Health polling disabled');
+      setHealthText('health-detail-issue', 'Health polling disabled');
+      return;
+    }
+
     const derived = classifyHealth();
     healthState.status = derived.status;
     healthState.issue = derived.issue;
@@ -4619,6 +4630,10 @@
   }
 
   async function runHealthCheck(forceDeep = false) {
+    if (!HEALTH_POLLING_ENABLED) {
+      renderHealthIndicator();
+      return { ok: true, disabled: true };
+    }
     if (healthCheckInFlight) return healthCheckInFlight;
     healthCheckInFlight = (async () => {
       try {
@@ -4656,11 +4671,20 @@
   }
 
   function startHealthPolling() {
+    if (!HEALTH_POLLING_ENABLED) {
+      if (healthPollTimer) {
+        clearInterval(healthPollTimer);
+        healthPollTimer = null;
+      }
+      renderHealthIndicator();
+      return;
+    }
     if (healthPollTimer) return;
     healthPollTimer = setInterval(() => runHealthCheck(false), 15000);
   }
 
   function toggleHealthPanel(force) {
+    if (!HEALTH_POLLING_ENABLED) return;
     const panel = document.getElementById('health-panel');
     if (!panel) return;
     const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
@@ -5208,21 +5232,13 @@
 
       case 'orchConflict': {
         if (typeof renderOrchConflict === 'function') renderOrchConflict(msg);
-        const panel = document.getElementById('orchestrator-panel');
-        if (panel && panel.classList.contains('hidden')) {
-          panel.classList.remove('hidden');
-          if (typeof checkAutoActivate === 'function') checkAutoActivate();
-        }
+        // Auto-open disabled per user request
         break;
       }
 
       case 'orchAmber': {
         if (typeof renderOrchAmber === 'function') renderOrchAmber(msg);
-        const panel = document.getElementById('orchestrator-panel');
-        if (panel && panel.classList.contains('hidden')) {
-          panel.classList.remove('hidden');
-          if (typeof checkAutoActivate === 'function') checkAutoActivate();
-        }
+        // Auto-open disabled per user request
         break;
       }
 
@@ -7811,13 +7827,31 @@ Do not wait for Scott unless the queue explicitly requires a human decision. Do 
       return;
     }
 
-    // Group entries by sessionId, preserving order of first appearance.
-    const sessionOrder = [];
-    const bySession = {};
+    // Group by project, then by sessionId
+    const projectOrder = [];
+    const byProject = {};
+    const sessionOrder = {};
+    const bySessionInProject = {};
+
     entries.forEach((e, i) => {
       const sid = e.sessionId || '(unknown)';
-      if (!bySession[sid]) { bySession[sid] = []; sessionOrder.push(sid); }
-      bySession[sid].push({ e, i });
+      const sess = window.sessionStore?.[sid] || {};
+      const projName = sess.projectName || '(Unbound)';
+
+      if (!byProject[projName]) {
+        byProject[projName] = [];
+        projectOrder.push(projName);
+        bySessionInProject[projName] = [];
+        sessionOrder[projName] = [];
+      }
+
+      if (!bySessionInProject[projName][sid]) {
+        bySessionInProject[projName][sid] = [];
+        sessionOrder[projName].push(sid);
+      }
+
+      bySessionInProject[projName][sid].push({ e, i });
+      byProject[projName].push({ e, i });
     });
 
     const verdictColor = v => v === 'PASS' ? '#4ade80' : v === 'FAIL' ? '#f87171' : '#fbbf24';
@@ -7828,52 +7862,70 @@ Do not wait for Scott unless the queue explicitly requires a human decision. Do 
       ? `<span style="color:#f87171;">${d}</span>`
       : '<span style="color:#64748b;">pending</span>';
 
-    list.innerHTML = sessionOrder.map(sid => {
-      const group    = bySession[sid];
-      const verdicts = group.map(({ e }) => e.review?.verdict || '—');
-      const groupVerdict = verdicts.includes('FAIL') ? 'FAIL' : verdicts.includes('ERROR') ? 'ERROR' : 'PASS';
-      const vc       = verdictColor(groupVerdict);
-      const vb       = verdictBg(groupVerdict);
-      const firstTs  = group[0]?.e?.ts ? new Date(group[0].e.ts).toLocaleString() : '';
-      // Use the session name from sessionStore if available, otherwise shorten the ID.
-      const sName    = (window.sessionStore?.[sid]?.name) || sid.slice(0, 12);
+    list.innerHTML = projectOrder.map(projName => {
+      const projGroup = byProject[projName];
+      const projVerdicts = projGroup.map(({ e }) => e.review?.verdict || '—');
+      const projVerdict = projVerdicts.includes('FAIL') ? 'FAIL' : projVerdicts.includes('ERROR') ? 'ERROR' : 'PASS';
+      const projVc = verdictColor(projVerdict);
+      const projVb = verdictBg(projVerdict);
+      const projFirstTs = projGroup[0]?.e?.ts ? new Date(projGroup[0].e.ts).toLocaleString() : '';
 
-      const fileRows = group.map(({ e, i }) => {
-        const v        = e.review?.verdict || '—';
-        const vc2      = verdictColor(v);
-        const fname    = (e.filePath || '').split(/[\\/]/).pop();
-        const summary  = escHtml(e.review?.summary || '');
-        const issues   = Array.isArray(e.review?.issues) ? e.review.issues : [];
-        const issHtml  = issues.length
-          ? `<ul style="margin:3px 0 0 0;padding-left:16px;color:#94a3b8;font-size:10px;line-height:1.5;">${issues.map(iss => `<li>${escHtml(iss)}</li>`).join('')}</ul>`
-          : '';
-        const ts2      = e.ts ? new Date(e.ts).toLocaleTimeString() : '';
-        const checkBtn = (v === 'FAIL' || v === 'ERROR')
-          ? `<button onclick="event.stopPropagation(); launchCheckSession(${i})" style="padding:1px 8px;border-radius:3px;border:none;background:#2563eb;color:#fff;font-size:9px;font-weight:700;cursor:pointer;flex-shrink:0;font-family:inherit;">Check</button>`
-          : '';
-        return `<div class="cc-history-row" data-idx="${i}" onclick="openCrossCheckDetail(${i})"
-            style="padding:7px 10px 7px 20px;border-bottom:1px solid #161e2e;cursor:pointer;border-left:3px solid ${vc2}40;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:${summary ? '3px' : '0'};">
-            <span style="padding:1px 6px;border-radius:999px;background:${verdictBg(v)};color:${vc2};font-size:9px;font-weight:800;letter-spacing:0.05em;flex-shrink:0;">${v}</span>
-            <span style="color:#94a3b8;font-size:10px;flex-shrink:0;width:72px;">${escHtml(e.operation || '')}</span>
-            <span style="color:#93c5fd;font-family:'Consolas',monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${escHtml(e.filePath || '')}">${escHtml(fname)}</span>
-            <span style="font-size:10px;flex-shrink:0;">${decisionTag(e.userDecision)}</span>
-            <span style="font-size:10px;color:#475569;flex-shrink:0;font-family:'Consolas',monospace;">${ts2}</span>
-            ${checkBtn}
+      const sessionsHtml = sessionOrder[projName].map(sid => {
+        const sessGroup = bySessionInProject[projName][sid];
+        const sessVerdicts = sessGroup.map(({ e }) => e.review?.verdict || '—');
+        const sessVerdict = sessVerdicts.includes('FAIL') ? 'FAIL' : sessVerdicts.includes('ERROR') ? 'ERROR' : 'PASS';
+        const sessVc = verdictColor(sessVerdict);
+        const sessVb = verdictBg(sessVerdict);
+        const sessFirstTs = sessGroup[0]?.e?.ts ? new Date(sessGroup[0].e.ts).toLocaleString() : '';
+        const sName = (window.sessionStore?.[sid]?.name) || sid.slice(0, 12);
+
+        const fileRows = sessGroup.map(({ e, i }) => {
+          const v = e.review?.verdict || '—';
+          const vc2 = verdictColor(v);
+          const fname = (e.filePath || '').split(/[\\/]/).pop();
+          const summary = escHtml(e.review?.summary || '');
+          const issues = Array.isArray(e.review?.issues) ? e.review.issues : [];
+          const issHtml = issues.length
+            ? `<ul style="margin:3px 0 0 0;padding-left:16px;color:#94a3b8;font-size:10px;line-height:1.5;">${issues.map(iss => `<li>${escHtml(iss)}</li>`).join('')}</ul>`
+            : '';
+          const ts2 = e.ts ? new Date(e.ts).toLocaleTimeString() : '';
+          const checkBtn = (v === 'FAIL' || v === 'ERROR')
+            ? `<button onclick="event.stopPropagation(); launchCheckSession(${i})" style="padding:1px 8px;border-radius:3px;border:none;background:#2563eb;color:#fff;font-size:9px;font-weight:700;cursor:pointer;flex-shrink:0;font-family:inherit;">Check</button>`
+            : '';
+          return `<div class="cc-history-row" data-idx="${i}" onclick="openCrossCheckDetail(${i})"
+              style="padding:7px 10px 7px 20px;border-bottom:1px solid #161e2e;cursor:pointer;border-left:3px solid ${vc2}40;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${summary ? '3px' : '0'};">
+              <span style="padding:1px 6px;border-radius:999px;background:${verdictBg(v)};color:${vc2};font-size:9px;font-weight:800;letter-spacing:0.05em;flex-shrink:0;">${v}</span>
+              <span style="color:#94a3b8;font-size:10px;flex-shrink:0;width:72px;">${escHtml(e.operation || '')}</span>
+              <span style="color:#93c5fd;font-family:'Consolas',monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${escHtml(e.filePath || '')}">${escHtml(fname)}</span>
+              <span style="font-size:10px;flex-shrink:0;">${decisionTag(e.userDecision)}</span>
+              <span style="font-size:10px;color:#475569;flex-shrink:0;font-family:'Consolas',monospace;">${ts2}</span>
+              ${checkBtn}
+            </div>
+            ${summary ? `<div style="color:#94a3b8;font-size:10px;line-height:1.5;">${summary}</div>` : ''}
+            ${issHtml}
+          </div>`;
+        }).join('');
+
+        return `<div style="margin-left:16px;border-left:1px solid #334155;border-bottom:1px solid #0f172a;">
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(15,23,42,0.5);position:sticky;top:0;z-index:0;">
+            <span style="padding:1px 5px;border-radius:999px;background:${sessVb};color:${sessVc};font-size:8px;font-weight:800;letter-spacing:0.05em;flex-shrink:0;">${sessVerdict}</span>
+            <span style="color:#cbd5e1;font-size:10px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(sid)}">${escHtml(sName)}</span>
+            <span style="color:#64748b;font-size:9px;flex-shrink:0;">${sessGroup.length} file${sessGroup.length !== 1 ? 's' : ''}</span>
+            <span style="color:#475569;font-size:9px;flex-shrink:0;font-family:'Consolas',monospace;">${sessFirstTs}</span>
           </div>
-          ${summary ? `<div style="color:#94a3b8;font-size:10px;line-height:1.5;">${summary}</div>` : ''}
-          ${issHtml}
+          ${fileRows}
         </div>`;
       }).join('');
 
       return `<div style="border-bottom:2px solid #0f172a;">
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0d1117;position:sticky;top:0;z-index:1;">
-          <span style="padding:1px 7px;border-radius:999px;background:${vb};color:${vc};font-size:9px;font-weight:800;letter-spacing:0.05em;">${groupVerdict}</span>
-          <span style="color:#e2e8f0;font-size:11px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(sid)}">${escHtml(sName)}</span>
-          <span style="color:#64748b;font-size:10px;flex-shrink:0;">${group.length} file${group.length !== 1 ? 's' : ''}</span>
-          <span style="color:#475569;font-size:10px;flex-shrink:0;font-family:'Consolas',monospace;">${firstTs}</span>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0d1117;position:sticky;top:0;z-index:2;">
+          <span style="padding:1px 7px;border-radius:999px;background:${projVb};color:${projVc};font-size:9px;font-weight:800;letter-spacing:0.05em;flex-shrink:0;">${projVerdict}</span>
+          <span style="color:#e2e8f0;font-size:12px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(projName)}</span>
+          <span style="color:#64748b;font-size:10px;flex-shrink:0;">${projGroup.length} file${projGroup.length !== 1 ? 's' : ''}</span>
+          <span style="color:#475569;font-size:10px;flex-shrink:0;font-family:'Consolas',monospace;">${projFirstTs}</span>
         </div>
-        ${fileRows}
+        ${sessionsHtml}
       </div>`;
     }).join('');
 
@@ -15062,7 +15114,9 @@ This is your current workflow status across all branches. Review the tasks and P
       }).catch(e => pushDebugLog('[focus-dbg] fetch error: ' + e.message, true));
       renderGrid();
     }
-    requestAnimationFrame(() => enterResumeMode(sid, s.model || null));
+    const tier = document.querySelector('.model-select')?.value || 'balanced';
+    const model = resolveModel(tier);
+    requestAnimationFrame(() => enterResumeMode(sid, model));
   }
 
   function camMarkDone(sid, label, color, alreadyClosed = false) {
@@ -16350,8 +16404,12 @@ This is your current workflow status across all branches. Review the tasks and P
     renderHealthIndicator();
     refreshMeetupReservations();
     setInterval(refreshMeetupReservations, 5 * 60 * 1000);
-    setTimeout(() => runHealthCheck(false), 250);
-    startHealthPolling();
+    if (HEALTH_POLLING_ENABLED) {
+      setTimeout(() => runHealthCheck(false), 250);
+      startHealthPolling();
+    } else {
+      renderHealthIndicator();
+    }
   });
 
 })();
@@ -16498,19 +16556,9 @@ This is your current workflow status across all branches. Review the tasks and P
     return counts;
   }
 
-  // Auto-activate: open panel if any project has 2+ active sessions
+  // Auto-activate disabled per user request
   function checkAutoActivate() {
-    const counts = countActiveByProject();
-    const shouldBeOpen = Object.values(counts).some(n => n >= 2);
-    const panel = document.getElementById('orchestrator-panel');
-    if (!panel) return;
-    if (shouldBeOpen && panel.classList.contains('hidden')) {
-      panel.classList.remove('hidden');
-      startOrchPoll();
-    } else if (!shouldBeOpen && !panel.classList.contains('hidden')) {
-      panel.classList.add('hidden');
-      stopOrchPoll();
-    }
+    // Manual button control only
   }
 
   function startOrchPoll() {

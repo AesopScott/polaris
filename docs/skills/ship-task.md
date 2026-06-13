@@ -5,6 +5,16 @@ description: End-to-end task workflow with human gates. Resumes from the task's 
 
 # /ship-task [task-number]
 
+## Backlog Read/Write Isolation Protocol (Task #60)
+
+Do not check out `main` in the shared primary working tree just to read or mutate backlog state.
+
+- For read-only task lookup, run `git fetch origin main` and read `docs/backlog.json` from `origin/main` with `git show origin/main:docs/backlog.json`, or use a disposable worktree from `origin/main`.
+- Any step that mutates `docs/backlog.json` or `docs/backlog-archive.json` must create a disposable backlog worktree from fresh `origin/main`, write JSON with Node `fs` using explicit `utf8`, commit only the touched backlog files, `git pull --rebase origin main`, then `git push origin HEAD:main`.
+- If push is rejected, fetch/rebase/reapply the exact task-number mutation and retry. Never force-push `main`.
+- Remove the disposable worktree after the push succeeds and report the backlog commit SHA.
+
+
 Walks the full task lifecycle with a human gate at every step. Detects the task's current `status` in `docs/backlog.json` and **resumes** from the right place — you don't have to re-run the earlier steps.
 
 ## Directive Polling (multi-session only)
@@ -133,7 +143,7 @@ If creation fails (path collision, disk space, network error), stop immediately 
 
 ## Step 0 — Read backlog and pick the task
 
-Follow the backlog-on-main protocol (worktree-pinned or `git checkout main && git pull`, verify with `git branch --show-current`).
+Follow the Backlog Read/Write Isolation Protocol above; do not check out `main` in the shared primary working tree.
 
 Read `docs/backlog.json`.
 
@@ -166,12 +176,12 @@ Based on the task's current `status`:
 | `backlog` | **Step 1 (plan)** | **MUST invoke `/plan-task {N}` FIRST.** Never skip to cross-boundary-audit for backlog tasks. |
 | `planned` | Step 2 (start build) | Invoke `/start-build {N}`. Plan is complete; create the task branch, then audit. |
 | `build-started` | Ask user | "Code already started on the task branch. Has the cross-boundary audit run on the task branch yet? [no, run audit now / yes, still coding / yes, ready to finish build]" |
-| `cba-complete` | Step 4 (finish-build) | Boundary audit passed; proceed to finish build. |
-| `build-finished` | Step 5 (review PR) | PR opened and pushed; code reviews next. Invoke `/review-pr`. |
-| `pr-reviewed` | Step 6 (codex review) | Claude review complete; proceed to Codex review. |
-| `codex-reviewed` | (wait) | Codex review complete; approval handler determining status. Resume if status becomes `review-passed` (proceed to Step 7) or `review-blocked` (fix code and re-run review). |
-| `review-passed` | Step 7 (promote to prod) | Both reviews approved; ready to promote to production. Invoke `/promote-to-prod`. |
-| `review-blocked` | (fix & retry) | Reviews found blockers. User fixes code and re-runs the blocking review (Claude or Codex). Then resume from that review step. |
+| `build-finished` | Step 5 (review PR) | Code is committed and PR is open; invoke `/review-pr`. |
+| `cba-complete` | Step 4 (finish build) | Cross-boundary audit passed; invoke `/finish-build` to open the PR and set `build-finished`. |
+| `pr-reviewed` | Step 6 (Codex review) | Claude review captured; invoke `/codex-review`. |
+| `codex-reviewed` | Wait | Both reviews are captured; wait for orchestrator approval handler to set `review-passed` or `review-blocked`. |
+| `review-passed` | Step 7 (promote to prod) | Reviews passed; invoke `/promote-to-prod`. |
+| `review-blocked` | Stop | Fix blockers on the task branch, then rerun `/review-pr` and `/codex-review`. |
 | `staged` | Step 7 (promote to prod) | CareGuide task promoted to stage and ready for production. Invoke `/promote-to-prod`; it marks production after deploy succeeds. |
 | `production` | Stop | Tell user "Task #{N} is already in production." Do not proceed. |
 
@@ -183,7 +193,7 @@ Based on the task's current `status`:
 
 Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "planning", lastSkill: "plan-task" })` before invoking the skill.
 
-Invoke `/plan-task {N}` via the Skill tool. It will load Obsidian context, write the plan, save to `docs/backlog.json` on main, flip status to `planned`.
+Invoke `/plan-task {N}` via the Skill tool. It will load Obsidian context, write the plan, save to `docs/backlog.json` through the isolated backlog write protocol, flip status to `ready`.
 
 After it completes:
 - Show the plan summary to the user
@@ -242,7 +252,7 @@ Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "coding", lastSkill
 
 ## Step 4 — Finish build (`build-started` → `build-finished`)
 
-Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "build-finished", lastSkill: "finish-build" })` before invoking the skill.
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "finish-build", lastSkill: "finish-build" })` before invoking the skill. Do not mark the task build-finished until `/finish-build` succeeds.
 
 Invoke `/finish-build`. It will verify registries match code, run incremental cross-boundary audit, commit task code, open the PR to CareGuide stage or to main for every other project, record PR URL, and mark `build-finished` on main.
 
@@ -257,7 +267,7 @@ If it succeeds, capture the PR URL.
 - `fix`: stop the workflow — user will adjust code and re-invoke `/finish-build`
 - `abort`: stop
 
-## Step 5 — Review PR (`build-finished` → `pr-reviewed`)
+## Step 5 — Review PR (`build-finished` → reviewer assessment)
 
 Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review", lastSkill: "review-pr" })` before invoking the skill.
 
@@ -268,36 +278,30 @@ After it completes:
 - Identify any CRITICAL or HIGH issues that must be resolved before production
 
 **Gate:** "Claude review complete. {findings summary}. Address issues or proceed to Codex review? [yes proceed / fix / abort]"
-- `yes`: Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "pr-reviewed", lastSkill: "review-pr" })`; continue to Step 6 (Codex review)
+- `yes`: continue to Step 6 (Codex review)
 - `fix`: stop the workflow — user will fix issues on the task branch and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
-## Step 6 — Codex Review (`pr-reviewed` → `review-passed` or `review-blocked`)
+## Step 6 — Codex Review (`review` → independent assessment)
 
 Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "codex-review", lastSkill: "codex-review" })` before invoking the skill.
 
 Invoke `/codex-review {N}`. It will run an independent Codex review and compare findings against the Claude review from Step 5.
 
-**Status during Codex review is `pr-reviewed`.** After both reviews complete, the gate below determines the outcome:
-- No CRITICAL or HIGH blockers across both reviews → set status to `review-passed` and proceed to Step 7.
-- Blocking issues found → set status to `review-blocked` and stop.
-
-In orchestrated multi-session runs, the approval handler may set `codex-reviewed` as an intermediate status; the resumption table holds at `codex-reviewed` until the handler flips to `review-passed` or `review-blocked`.
-
 After it completes:
 - Surface the Codex review findings and any disagreements with the Claude review
 - Identify any additional issues or confirm the reviews align
 
-**Gate:** "Codex review complete and compared. {findings summary}. Both reviews are now complete. Approve and proceed to production? [yes (no blockers) / fix / abort]"
-- `yes`: Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review-passed", lastSkill: "codex-review" })`; continue to Step 7 (promote to production)
-- `fix`: Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "review-blocked", lastSkill: "codex-review" })`; stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
+**Gate:** "Codex review complete and compared. {findings summary}. Waiting for orchestrator approval handler to set `review-passed` or `review-blocked`. [acknowledge / fix / abort]"
+- `acknowledge`: stop the workflow here; the orchestrator resumes promotion after PHASE 6C sets `review-passed`
+- `fix`: stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 
-## Step 7 — Promote to production (`review-passed` or `staged` → `production`)
+## Step 7 — Promote to production (`cba-complete` or `staged` → `production`)
 
-> **Reached after reviews are complete and approved in Steps 5-6.** Task status is `review-passed` (set at the end of Step 6 after both reviews pass, or by the orchestrator approval handler in multi-session runs). This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
+> **Reached after reviews are complete in Steps 5-6.** This step invokes the final production gate. There is no `origin/prod` branch; production means reviewed work is on `origin/main`, the main deploy succeeds, and the task is marked `production`.
 
-Invoke `/promote-to-prod`. The orchestrator will send a merge directive to the owning session. The session executes the merge, validates success, and then proceeds with deploy verification. `/promote-to-prod` will choose the correct path:
+Invoke `/promote-to-prod`. It will choose the correct path:
 - CareGuide with real staged work: stage → main, then production deploy from main.
 - All other projects: reviewed PRs → main, then production deploy from main.
 

@@ -271,15 +271,15 @@ export async function executeDirectTool(
 export function toolLabel(name: string, input: Record<string, any>): string {
   const truncate = (s: string, max = 60) => s.length > max ? s.slice(0, max - 1) + '…' : s;
   switch (name) {
-    case 'Read':       return `Read  ${truncate(input.file_path || input.path || '')}`;
-    case 'Write':      return `Write ${truncate(input.file_path || '')}`;
-    case 'Edit':       return `Edit  ${truncate(input.file_path || '')}`;
-    case 'Glob':       return `Glob  ${truncate(input.pattern || '')}`;
-    case 'Grep':       return `Grep  ${truncate(input.pattern || '')}`;
-    case 'Bash':       return `Bash  ${truncate(input.command || '', 80)}`;
-    case 'PowerShell': return `PS    ${truncate(input.command || '', 80)}`;
-    case 'WebFetch':   return `Fetch ${truncate(input.url || '')}`;
-    case 'WebSearch':  return `Search ${truncate(input.query || '')}`;
+    case "Read":       return `Read  ${truncate(input.file_path || input.path || '')}`;
+    case "Write":      return `Write ${truncate(input.file_path || '')}`;
+    case "Edit":       return `Edit  ${truncate(input.file_path || '')}`;
+    case "Glob":       return `Glob  ${truncate(input.pattern || '')}`;
+    case "Grep":       return `Grep  ${truncate(input.pattern || '')}`;
+    case "Bash":       return `Bash  ${truncate(input.command || '', 80)}`;
+    case "PowerShell": return `PS    ${truncate(input.command || '', 80)}`;
+    case "WebFetch":   return `Fetch ${truncate(input.url || '')}`;
+    case "WebSearch":  return `Search ${truncate(input.query || '')}`;
     default:           return name.startsWith('mcp__') ? `MCP   ${name.slice(5)}` : name;
   }
 }

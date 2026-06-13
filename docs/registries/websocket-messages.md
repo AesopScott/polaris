@@ -918,7 +918,7 @@ _Not an object schema._
 | --- | --- | --- |
 | `type` | "session-height" | yes |
 | `sessionId` | string | yes |
-| `height` | string (nullable) | yes |
+| `height` | number (nullable) | yes |
 
 ### `SessionPinnedMessage`
 

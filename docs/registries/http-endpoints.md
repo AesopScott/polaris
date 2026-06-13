@@ -493,7 +493,7 @@ Append a timestamped session summary (branch, worktree, modified files, contenti
 
 **Method:** `POST`
 **Producer:** `resources/mockup.html` — `orchPushObsidian()` called from "Push Obsidian →" button in orchestrator panel
-**Consumer:** `server.js` — looks up project obsidianDir, locates `3-Build_Plan.md` or `Build Plan.md`, appends summary
+**Consumer:** `server.js` — looks up project obsidianDir, locates canonical `3-Build-Plan.md` first, falls back to legacy build-plan names for existing vaults, appends summary
 
 **Request Payload:**
 ```json
@@ -510,7 +510,7 @@ Append a timestamped session summary (branch, worktree, modified files, contenti
 { "error": "string" }
 ```
 
-**Status:** ✓ Implemented (task #36, Phase 4) — `server.js`; candidate list: `3-Build-Plan.md`, `3-Build_Plan.md`, `Build Plan.md`, `Build-Plan.md`; creates Build folder if missing
+**Status:** ✓ Implemented (task #36, Phase 4; task #58 canonicalization) — `server.js`; candidate list: `3-Build-Plan.md`, `Build Plan.md`, `Build-Plan.md`, `3-Build_Plan.md`; creates `3-Build-Plan.md` when no build-plan file exists
 
 ---
 
