@@ -6,6 +6,11 @@ import {
   initialStrengthForMemory,
   prepareMemoryWrite,
   decayedStrengthForMemory,
+  jaccardSimilarity,
+  substringOverlap,
+  memorySimilarity,
+  findDuplicateMemory,
+  planMemoryConsolidation,
 } from '../../lib/memory.js';
 
 describe('memory importance scoring', () => {
@@ -92,5 +97,103 @@ describe('memory importance scoring', () => {
       accessCount: 0,
       lastAccessedAt: { seconds: now },
     }, now)).toBe(1);
+  });
+});
+
+describe('memory write deduplication', () => {
+  it('scores tag overlap with Jaccard similarity', () => {
+    expect(jaccardSimilarity(['memory', 'firestore'], ['firestore', 'memory'])).toBe(1);
+    expect(jaccardSimilarity(['memory'], ['memory', 'search'])).toBe(0.5);
+    expect(jaccardSimilarity(['memory'], ['policy'])).toBe(0);
+  });
+
+  it('scores substring overlap on normalized content', () => {
+    expect(substringOverlap(
+      'Scott prefers concise summaries.',
+      'Future sessions should remember that Scott prefers concise summaries.'
+    )).toBe(1);
+    expect(substringOverlap('memory importance scoring', 'unrelated policy gate')).toBeLessThan(0.7);
+  });
+
+  it('combines tag and content similarity for duplicate detection', () => {
+    const candidate = {
+      project: 'Polaris',
+      content: 'Scott prefers concise summaries.',
+      tags: ['preference', 'style'],
+    };
+    const existing = {
+      id: 'mem1',
+      project: 'Polaris',
+      content: 'Future sessions should remember that Scott prefers concise summaries.',
+      tags: ['style', 'preference'],
+    };
+
+    expect(memorySimilarity(candidate, existing)).toBeGreaterThan(0.7);
+    expect(findDuplicateMemory(candidate, [existing])?.memory.id).toBe('mem1');
+  });
+
+  it('does not match memories across projects', () => {
+    const candidate = {
+      project: 'Polaris',
+      content: 'Scott prefers concise summaries.',
+      tags: ['style'],
+    };
+    const existing = {
+      id: 'mem1',
+      project: 'GAIN',
+      content: 'Scott prefers concise summaries.',
+      tags: ['style'],
+    };
+
+    expect(findDuplicateMemory(candidate, [existing])).toBe(null);
+  });
+
+  it('splits batch candidates into writes and reinforcements', () => {
+    const existingByProject = new Map([
+      ['Polaris', [{
+        id: 'existing-1',
+        project: 'Polaris',
+        content: 'Future sessions should remember that Scott prefers concise summaries.',
+        tags: ['style', 'preference'],
+      }]],
+    ]);
+    const candidates = [
+      {
+        project: 'Polaris',
+        content: 'Scott prefers concise summaries.',
+        tags: ['preference', 'style'],
+      },
+      {
+        project: 'Polaris',
+        content: 'Use Firestore for durable project memory.',
+        tags: ['architecture', 'memory'],
+      },
+    ];
+
+    const plan = planMemoryConsolidation(candidates, existingByProject);
+    expect(plan.toReinforce).toHaveLength(1);
+    expect(plan.toReinforce[0].existing.id).toBe('existing-1');
+    expect(plan.toWrite).toHaveLength(1);
+    expect(plan.toWrite[0].content).toContain('Firestore');
+  });
+
+  it('deduplicates repeated candidates within the same extraction batch', () => {
+    const existingByProject = new Map();
+    const candidates = [
+      {
+        project: 'Polaris',
+        content: 'Use Firestore for durable project memory.',
+        tags: ['architecture', 'memory'],
+      },
+      {
+        project: 'Polaris',
+        content: 'Use Firestore for durable project memory.',
+        tags: ['memory', 'architecture'],
+      },
+    ];
+
+    const plan = planMemoryConsolidation(candidates, existingByProject);
+    expect(plan.toWrite).toHaveLength(1);
+    expect(plan.toReinforce).toHaveLength(1);
   });
 });
