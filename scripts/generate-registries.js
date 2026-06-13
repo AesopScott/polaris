@@ -110,7 +110,11 @@ function describeSchema(schema) {
       base = `Record<string, ${describeSchema(inner._def.valueType)}>`;
       break;
     case 'ZodObject':
-      base = 'object';
+      {
+        const shape = objectShape(inner);
+        const literalType = shape?.type ? literalValue(shape.type) : null;
+        base = literalType && literalType !== 'object' ? `${literalType} object` : 'object';
+      }
       break;
     case 'ZodUnion':
       base = inner._def.options.map(describeSchema).join(' | ');
