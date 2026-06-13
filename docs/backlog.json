@@ -403,7 +403,7 @@
       "dependencies": [],
       "impact": "standard",
       "branch": "codex/task-57-agent-memory-injection",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/76",
       "description": "Wire buildMemoryInjectionBlock into runDirectAgent's turn-1 system-prompt assembly — the agent counterpart of #51. Deferred from #51 because agent runs are near-zero today; gated on agentic flows going live (next-gen query engine, AESOP->diamond automation). Full spec in docs/task-51-handoff.md.",
       "plan": "Wire Firestore memory injection into direct agent sessions on the first project turn by reusing the existing memoryInjection helper from the chat path. Agent injection is guarded to skip DeepSeek Q-mode, continuations, eval runners, routines, and the Health Monitor so background workers and acceptance harnesses stay lean. A shared appendMemoryInjectionLog() helper records both chat and agent injection traces into memory-injection-log.jsonl so the existing Memory panel injection history reflects actual injected context. The old dependency on missing backlog task #51 is satisfied by the existing lib/memoryInjection.js module already present on main.",
       "proofUnits": [
@@ -444,7 +444,7 @@
           "expectedPassingEvidence": "Vitest memory tests pass, including memoryInjection.test.js coverage for classification, formatting, reinforcement, missing project, and timeout fallback."
         }
       ],
-      "updated_at": "2026-06-13T23:57:34.567Z"
+      "updated_at": "2026-06-13T23:59:12.726Z"
     },
     {
       "number": 58,
