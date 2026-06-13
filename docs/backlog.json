@@ -89,9 +89,9 @@
       "category": "enhancement",
       "priority": 10,
       "impact": "standard",
-      "status": "build-finished",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [],
       "branch": "codex/task-49-memory-importance",
       "pr_url": "https://github.com/AesopScott/polaris/pull/70",
@@ -125,7 +125,7 @@
           "expectedPassingEvidence": "server.js syntax check passes and the extraction prompt plus toWrite mapping include importance."
         }
       ],
-      "updated_at": "2026-06-13T22:45:26.686Z"
+      "updated_at": "2026-06-13T22:49:02.704Z"
     },
     {
       "number": 50,
