@@ -10976,6 +10976,60 @@ async function handleMessage(ws, raw) {
     return;
   }
 
+  if (type === 'get-firestore-memories') {
+    const project = String(msg.project || '').trim();
+    const includeGlobal = msg.includeGlobal !== false;
+    if (!project) {
+      sendTo(ws, { type: 'firestore-memories', ok: false, error: 'Project is required', memories: [] });
+      return;
+    }
+    const toClientMemory = m => ({
+      id:            m.id,
+      project:       m.project || null,
+      content:       m.content || '',
+      type:          m.type || 'fact',
+      tags:          Array.isArray(m.tags) ? m.tags : [],
+      importance:    m.importance ?? null,
+      strength:      m.strength ?? null,
+      accessCount:   m.accessCount || 0,
+      createdAt:     m.createdAt?.seconds || null,
+      lastAccessedAt:m.lastAccessedAt?.seconds || null,
+      updatedAt:     m.updatedAt?.seconds || null,
+    });
+    try {
+      const memories = await memory.listMemoriesForProject(project, { includeGlobal, limit: 100 });
+      sendTo(ws, { type: 'firestore-memories', ok: true, project, includeGlobal, memories: memories.map(toClientMemory) });
+    } catch (e) {
+      sendTo(ws, { type: 'firestore-memories', ok: false, project, includeGlobal, error: e.message, memories: [] });
+    }
+    return;
+  }
+
+  if (type === 'update-memory') {
+    if (msg.uiToken !== UI_TOKEN) {
+      sendTo(ws, { type: 'memory-edit-result', ok: false, action: 'update', id: msg.id || null, error: 'Memory edits can only be saved from the UI' });
+      return;
+    }
+    const result = await memory.updateMemory(msg.id, {
+      content: msg.content,
+      type: msg.memoryType || msg.memory_type || msg.kind || msg.memType || msg.typeValue,
+      tags: msg.tags,
+      importance: msg.importance,
+    });
+    sendTo(ws, { type: 'memory-edit-result', action: 'update', ...result });
+    return;
+  }
+
+  if (type === 'archive-memory') {
+    if (msg.uiToken !== UI_TOKEN) {
+      sendTo(ws, { type: 'memory-edit-result', ok: false, action: 'archive', id: msg.id || null, error: 'Memory edits can only be saved from the UI' });
+      return;
+    }
+    const result = await memory.archiveMemory(msg.id);
+    sendTo(ws, { type: 'memory-edit-result', action: 'archive', ...result });
+    return;
+  }
+
   if (type === 'get-config') {
     sendTo(ws, { type: 'config', config: maskedConfig(readConfig()) });
     return;
