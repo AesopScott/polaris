@@ -181,10 +181,43 @@
       "category": "feature",
       "priority": 30,
       "impact": "standard",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-26",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "branch": "codex/task-52-memory-edit-ui",
+      "plan": "Add a human correction loop for Firestore memories inside the existing Memory panel. The memory module now exposes list, edit, and archive helpers; server WebSocket handlers list active project/global memories and protect edit/archive writes with the UI token; the Memory panel lets Scott select a project, include global memories, edit content/type/tags/importance inline, and archive bad memories immediately. Editing resets strength using the importance-based initial strength calculation so corrected memories re-enter retrieval with the right durability.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Memory edits normalize fields and reset strength",
+          "expectedBehavior": "Editing content/type/tags/importance trims content, normalizes comma-separated tags, clamps importance, and resets strength from the importance/type mapping.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no prepareMemoryEdit() helper or human edit normalization path.",
+          "expectedPassingEvidence": "Vitest passes prepareMemoryEdit() coverage for tag normalization, content trimming, importance preservation, and strength reset."
+        },
+        {
+          "number": 2,
+          "title": "Memory panel can list project and global Firestore memories",
+          "expectedBehavior": "The UI can request active memories for the selected project and optionally include global memories, with rows showing content, type, tags, strength, accessCount, and age.",
+          "proofType": "unit-test-and-parse-check",
+          "exactCommand": "npm run test:memory && node HTML script parse check",
+          "expectedInitialFailure": "Before this change, the Memory panel only displayed Obsidian retrieval index stats and QueryMemory history.",
+          "expectedPassingEvidence": "Vitest passes listMemoryDocs() fake-Firestore coverage for project+global listing, and the mockup.html script blocks parse cleanly."
+        },
+        {
+          "number": 3,
+          "title": "Archive and edit writes are gated and routed through WebSocket handlers",
+          "expectedBehavior": "Saving an edit calls update-memory with the UI bootstrap token and archiving calls archive-memory with the UI bootstrap token; server-side writes reject missing tokens and the token is not distributed in WebSocket init messages.",
+          "proofType": "code-audit-and-syntax",
+          "exactCommand": "node --check server.js",
+          "expectedInitialFailure": "Before this change, there were no update-memory or archive-memory WebSocket handlers.",
+          "expectedPassingEvidence": "server.js syntax check passes, mockup.html script parsing passes, and code inspection shows UI-token checks before update/archive writes while the token is injected through the served renderer HTML instead of the WebSocket init payload."
+        }
+      ],
+      "updated_at": "2026-06-13T23:20:33.714Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/73"
     },
     {
       "number": 53,

@@ -5,10 +5,12 @@ import {
   normalizeImportance,
   initialStrengthForMemory,
   prepareMemoryWrite,
+  prepareMemoryEdit,
   decayedStrengthForMemory,
   GLOBAL_MEMORY_PROJECT,
   hasGlobalProjectTag,
   normalizeMemoryProject,
+  normalizeEditableTags,
   jaccardSimilarity,
   substringOverlap,
   memorySimilarity,
@@ -17,6 +19,7 @@ import {
   memoryProjectsForSearch,
   rankMemoryResults,
   searchMemoryDocs,
+  listMemoryDocs,
 } from '../../lib/memory.js';
 
 describe('memory importance scoring', () => {
@@ -91,6 +94,28 @@ describe('memory importance scoring', () => {
     });
 
     expect(doc.project).toBe('global');
+  });
+
+  it('prepares human memory edits with normalized tags and reset strength', () => {
+    const edit = prepareMemoryEdit({
+      content: ' Scott prefers direct task status updates. ',
+      type: 'preference',
+      tags: 'Style, project: global, style',
+      importance: 4,
+    });
+
+    expect(normalizeEditableTags('Style, project: global, style')).toEqual(['style', 'project: global']);
+    expect(edit).toEqual({
+      content: 'Scott prefers direct task status updates.',
+      type: 'preference',
+      tags: ['style', 'project: global'],
+      importance: 4,
+      strength: 0.9,
+    });
+  });
+
+  it('rejects empty human memory edit content', () => {
+    expect(() => prepareMemoryEdit({ content: '   ', type: 'fact' })).toThrow('Memory content is required');
   });
 
   it('decays from the importance-derived peak without raising strength', () => {
@@ -351,5 +376,63 @@ describe('cross-project memory search tier', () => {
 
     expect(queriedProjects).toEqual(['Polaris', 'global']);
     expect(results.map(result => result.id)).toEqual(['global-memory', 'project-memory']);
+  });
+});
+
+describe('memory correction listing', () => {
+  it('lists requested and global active memories through Firestore', async () => {
+    const queriedProjects = [];
+    const docsByProject = {
+      Polaris: [{
+        id: 'project-memory',
+        data: () => ({
+          project: 'Polaris',
+          content: 'Project-specific memory',
+          tags: ['memory'],
+          strength: 0.8,
+          accessCount: 2,
+          lastAccessedAt: { seconds: 2_000_000 },
+        }),
+      }],
+      global: [{
+        id: 'global-memory',
+        data: () => ({
+          project: 'global',
+          content: 'Global memory',
+          tags: ['project: global'],
+          strength: 0.9,
+          accessCount: 5,
+          lastAccessedAt: { seconds: 2_000_000 },
+        }),
+      }],
+    };
+
+    const firestore = {
+      collection: () => {
+        const chain = {
+          project: null,
+          where(field, op, value) {
+            if (field === 'project' && op === '==') this.project = value;
+            return this;
+          },
+          orderBy() {
+            return this;
+          },
+          limit() {
+            return this;
+          },
+          async get() {
+            queriedProjects.push(this.project);
+            return { docs: docsByProject[this.project] || [] };
+          },
+        };
+        return chain;
+      },
+    };
+
+    const results = await listMemoryDocs(firestore, 'Polaris', { includeGlobal: true, limit: 50 });
+
+    expect(queriedProjects).toEqual(['Polaris', 'global']);
+    expect(results.map(result => result.id)).toEqual(['project-memory', 'global-memory']);
   });
 });
