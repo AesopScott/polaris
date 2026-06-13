@@ -19,10 +19,43 @@
       "category": "test",
       "priority": 88,
       "impact": "standard",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-22",
       "completed_at": null,
-      "dependencies": []
+      "dependencies": [],
+      "branch": "codex/task-30-agent-eval-acceptance",
+      "pr_url": null,
+      "plan": "Expand the direct-agent eval harness into a product-critical acceptance slice without relying on nondeterministic Cross-Check UI flows. Add fixture suite/tag selection, scorecard output, response assertions, flexible tool-choice assertions, and acceptance fixtures for authorized writes, write scope, destructive-command refusal, QueryMemory/file fallback, and missing-file recovery. Defer Cross-Check approval/rejection, backlog transitions, latency regression deltas, and model matrix enforcement until a deterministic server harness is available for those flows.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Acceptance fixtures cover core direct-agent behaviors",
+          "expectedBehavior": "Agent eval fixtures include tagged acceptance coverage for tool choice, write scope, permission refusal, QueryMemory fallback, and missing-file recovery.",
+          "proofType": "static-fixture-audit",
+          "exactCommand": "node -e \"const fs=require('fs'); const files=fs.readdirSync('test/agent-evals/fixtures').filter(f=>f.endsWith('.json')); const fixtures=files.map(f=>JSON.parse(fs.readFileSync('test/agent-evals/fixtures/'+f,'utf8'))); const acc=fixtures.filter(f=>f.suite==='acceptance'); const tags=new Set(acc.flatMap(f=>f.tags||[])); for (const tag of ['tool-choice','write-scope','permissions','refusal','querymemory','fallback','failure-recovery']) if (!tags.has(tag)) throw new Error('missing tag '+tag); console.log(acc.length+' acceptance fixtures cover '+[...tags].sort().join(','));\"",
+          "expectedInitialFailure": "Before this change, only two fixtures participated in acceptance-like behavior and fixtures had no suite/tag metadata.",
+          "expectedPassingEvidence": "The audit command exits 0 and reports acceptance fixtures covering the required tags."
+        },
+        {
+          "number": 2,
+          "title": "Eval runner can select suites and write scorecards",
+          "expectedBehavior": "The eval runner accepts --suite, --tags, --json, and --markdown arguments and emits concise pass-rate, tool-call, token, latency, and error data.",
+          "proofType": "syntax-and-code-audit",
+          "exactCommand": "node --check test/agent-evals/run-evals.js",
+          "expectedInitialFailure": "Before this change, run-evals.js had no suite/tag filtering and no scorecard writers.",
+          "expectedPassingEvidence": "Syntax check exits 0 and code inspection shows fixtureMatches(), compactResult(), writeJsonScorecard(), and writeMarkdownScorecard()."
+        },
+        {
+          "number": 3,
+          "title": "Live acceptance suite is runnable when Polaris server is active",
+          "expectedBehavior": "npm run test:agent-evals:acceptance runs all acceptance fixtures through the Polaris WebSocket harness on POLARIS_PORT or port 40000.",
+          "proofType": "manual-live-command",
+          "exactCommand": "npm run test:agent-evals:acceptance",
+          "expectedInitialFailure": "Before this change, no npm script existed for the acceptance suite.",
+          "expectedPassingEvidence": "With Polaris server running, the command exits 0 and prints all selected acceptance fixtures passing. If the server is not running, the command should fail fast with a WebSocket connection error rather than masking the missing runtime."
+        }
+      ],
+      "updated_at": "2026-06-13T22:35:22.725Z"
     },
     {
       "number": 39,

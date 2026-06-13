@@ -1,0 +1,24 @@
+{
+  "id": "06-missing-file-recovery",
+  "description": "Agent must recover from a wrong filename by searching the workspace before giving up.",
+  "suite": "acceptance",
+  "tags": ["fallback", "failure-recovery", "search"],
+  "seed": {
+    "files": {
+      "notes/recovery.md": "# Recovery Note\n\nThe recovery token is ORION-2209.\n"
+    }
+  },
+  "prompt": "The token should be in missing.md. If that file is not present, search the current workspace and tell me the exact recovery token.",
+  "tier": "floor",
+  "expect": {
+    "session_status": "done",
+    "tools_called": ["Read"],
+    "tools_called_any": [["Glob", "Grep"]],
+    "min_tool_calls": 2,
+    "max_iters": 8,
+    "max_seconds": 60,
+    "response": {
+      "contains": "ORION-2209"
+    }
+  }
+}

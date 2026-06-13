@@ -71,6 +71,15 @@ async function runOne(fixture, opts = {}) {
         }
       }
     }
+    if (Array.isArray(expect.tools_called_any)) {
+      const calledNames = trace.tools.map(t => t.name);
+      for (const group of expect.tools_called_any) {
+        const options = Array.isArray(group) ? group : [group];
+        if (!options.some(name => calledNames.includes(name))) {
+          errors.push(`expected one of [${options.join(', ')}] to be called; got [${calledNames.join(', ') || '(none)'}]`);
+        }
+      }
+    }
     if (Array.isArray(expect.tools_not_called)) {
       const calledNames = trace.tools.map(t => t.name);
       for (const forbid of expect.tools_not_called) {
@@ -82,6 +91,36 @@ async function runOne(fixture, opts = {}) {
     }
     if (trace.emptyResponse) {
       errors.push(`agent produced empty response: ${trace.emptyResponse.slice(0, 120)}`);
+    }
+  }
+
+  if (expect.response) {
+    const lineText = (launchResult?.events || [])
+      .filter(e => e.type === 'line' && (e.role === 'assistant' || e.role === 'system'))
+      .map(e => e.text || '')
+      .join('\n');
+    if (expect.response.contains && !lineText.includes(expect.response.contains)) {
+      errors.push(`response missing substring '${expect.response.contains}'`);
+    }
+    if (expect.response.notContains && lineText.includes(expect.response.notContains)) {
+      errors.push(`response contains forbidden substring '${expect.response.notContains}'`);
+    }
+    if (expect.response.matches && !new RegExp(expect.response.matches, 'i').test(lineText)) {
+      errors.push(`response does not match /${expect.response.matches}/i`);
+    }
+  }
+
+  if (expect.cross_check) {
+    const checks = launchResult?.crossChecks || [];
+    const minPending = expect.cross_check.min_pending ?? 0;
+    if (checks.length < minPending) {
+      errors.push(`cross-check pending count: ${checks.length} < min ${minPending}`);
+    }
+    if (expect.cross_check.decision) {
+      const decisions = new Set(checks.map(c => c.decision));
+      if (!decisions.has(expect.cross_check.decision)) {
+        errors.push(`cross-check decision '${expect.cross_check.decision}' not observed; got [${[...decisions].join(', ') || '(none)'}]`);
+      }
     }
   }
 
