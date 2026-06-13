@@ -24,7 +24,7 @@
       "completed_at": null,
       "dependencies": [],
       "branch": "codex/task-30-agent-eval-acceptance",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/69",
       "plan": "Expand the direct-agent eval harness into a product-critical acceptance slice without relying on nondeterministic Cross-Check UI flows. Add fixture suite/tag selection, scorecard output, response assertions, flexible tool-choice assertions, and acceptance fixtures for authorized writes, write scope, destructive-command refusal, QueryMemory/file fallback, and missing-file recovery. Defer Cross-Check approval/rejection, backlog transitions, latency regression deltas, and model matrix enforcement until a deterministic server harness is available for those flows.",
       "proofUnits": [
         {
@@ -55,7 +55,7 @@
           "expectedPassingEvidence": "With Polaris server running, the command exits 0 and prints all selected acceptance fixtures passing. If the server is not running, the command should fail fast with a WebSocket connection error rather than masking the missing runtime."
         }
       ],
-      "updated_at": "2026-06-13T22:35:22.725Z"
+      "updated_at": "2026-06-13T22:38:48.601Z"
     },
     {
       "number": 39,
