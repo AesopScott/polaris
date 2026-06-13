@@ -156,14 +156,39 @@
       "title": "Reconcile duplicate build-plan files (3-Build_Plan.md vs 3-Build-Plan.md)",
       "category": "Infrastructure",
       "priority": 1,
-      "status": "backlog",
+      "status": "build-finished",
       "dependencies": [],
       "impact": "standard",
-      "branch": null,
+      "branch": "codex/task-58-build-plan-reconcile",
       "pr_url": null,
       "description": "Planning skills (design-discussion/outline-plan/write-plan) write 3-Build_Plan.md (underscore, ~1734 lines) while CLAUDE.md and vault git track 3-Build-Plan.md (hyphen, ~2085 lines) — two divergent build-plan files. Reconcile: pick the canonical, merge unique planning history, update the ~3 skill SKILL.md references, retire the other. Related: the Obsidian vault git repo has NO remote configured — wire the intended remote so Build docs are backed up off-machine.",
-      "plan": null,
-      "proofUnits": []
+      "plan": [
+        "Select 3-Build-Plan.md as the canonical Polaris build-plan filename because CLAUDE.md, context.md, extraction code, and sync checks already read/write that path.",
+        "Migrate the historical underscore-file contents into the canonical file once, then retire 3-Build_Plan.md as a pointer so future sessions do not continue divergent writes.",
+        "Update /push-obsidian routing and endpoint registry documentation so Polaris creates 3-Build-Plan.md for new vaults while retaining read fallback for legacy files.",
+        "Record the unresolved Obsidian remote issue as follow-up evidence because the vault repo currently has no configured remote URL to attach safely."
+      ],
+      "proofUnits": [
+        {
+          "id": "PU58-1",
+          "name": "Canonical build-plan routing",
+          "expectedFailingEvidence": "Before the change, /push-obsidian created 3-Build_Plan.md when no build-plan file existed.",
+          "expectedPassingEvidence": "server.js now creates 3-Build-Plan.md and searches that canonical filename before legacy alternatives."
+        },
+        {
+          "id": "PU58-2",
+          "name": "Vault history preserved",
+          "expectedFailingEvidence": "Before the change, 3-Build_Plan.md and 3-Build-Plan.md had divergent planning history.",
+          "expectedPassingEvidence": "The underscore file history is appended to 3-Build-Plan.md under a migration section and the underscore file now points readers to the canonical file."
+        },
+        {
+          "id": "PU58-3",
+          "name": "Registry and sync remain valid",
+          "expectedFailingEvidence": "Before the change, the endpoint registry documented underscore-first lookup language.",
+          "expectedPassingEvidence": "The registry documents hyphen-first canonical lookup and npm checks/tests pass."
+        }
+      ],
+      "updated_at": "2026-06-13T17:35:18.863Z"
     },
     {
       "number": 59,

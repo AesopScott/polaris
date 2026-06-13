@@ -9658,15 +9658,16 @@ const httpServer = http.createServer((req, res) => {
           ? (path.isAbsolute(proj.obsidianDir) ? proj.obsidianDir : path.join(vaultPath, proj.obsidianDir))
           : path.join(vaultPath, `${(session.projectName || 'Unknown').replace(/[<>:"/\\|?*]/g, '_')}_Build`);
 
-        // Locate the Build Plan file
-        const candidates = ['3-Build-Plan.md', '3-Build_Plan.md', 'Build Plan.md', 'Build-Plan.md'];
+        // Locate the canonical Build Plan file. The underscore variant is retired;
+        // keep legacy alternatives readable but never create new underscore files.
+        const candidates = ['3-Build-Plan.md', 'Build Plan.md', 'Build-Plan.md', '3-Build_Plan.md'];
         let planPath = null;
         for (const name of candidates) {
           const c = path.join(obsDir, name);
           if (fs.existsSync(c)) { planPath = c; break; }
         }
         if (!planPath) {
-          planPath = path.join(obsDir, '3-Build_Plan.md');
+          planPath = path.join(obsDir, '3-Build-Plan.md');
           if (!fs.existsSync(obsDir)) fs.mkdirSync(obsDir, { recursive: true });
           fs.writeFileSync(planPath, `# Build Plan\n`, 'utf8');
         }
