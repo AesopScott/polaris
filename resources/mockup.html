@@ -13670,7 +13670,7 @@ This is your current workflow status across all branches. Review the tasks and P
         <textarea id="memory-content-${key}" style="width:100%;min-height:58px;resize:vertical;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;font-family:inherit;box-sizing:border-box;line-height:1.45;">${escHtml(m.content || '')}</textarea>
         <div style="display:grid;grid-template-columns:110px 90px 1fr;gap:8px;margin-top:8px;">
           <select id="memory-type-${key}" style="background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;">
-            ${['decision','preference','feedback','pattern','fact'].map(t => `<option value="${t}" ${t === (m.type || 'fact') ? 'selected' : ''}>${t}</option>`).join('')}
+            ${['instruction','decision','preference','feedback','pattern','fact'].map(t => `<option value="${t}" ${t === (m.type || 'fact') ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
           <input id="memory-importance-${key}" type="number" min="1" max="5" step="1" value="${escHtml(String(m.importance || ''))}" placeholder="importance" style="background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;">
           <input id="memory-tags-${key}" value="${escHtmlAttr(tags)}" placeholder="tags, comma separated" style="background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;">
