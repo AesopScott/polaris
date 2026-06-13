@@ -226,9 +226,9 @@
       "category": "feature",
       "priority": 40,
       "impact": "major",
-      "status": "build-finished",
+      "status": "production",
       "created_at": "2026-05-26",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [
         50
       ],
@@ -263,7 +263,7 @@
           "expectedPassingEvidence": "server.js syntax check passes, memory tests cover prepareDistilledMemory()/applyDistilledMemory() helpers, and code inspection shows paginated listDistillationCandidates(), shouldRunMemoryDistillation() durable cadence gating, runMemoryDistillation() state writes, OpenRouter synthesis, transaction guarded applyDistilledMemory(), console logs, and routine notification on success."
         }
       ],
-      "updated_at": "2026-06-13T23:36:37.566Z",
+      "updated_at": "2026-06-13T23:38:23.852Z",
       "pr_url": "https://github.com/AesopScott/polaris/pull/74"
     },
     {
