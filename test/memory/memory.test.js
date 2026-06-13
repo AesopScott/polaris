@@ -6,6 +6,7 @@ import {
   initialStrengthForMemory,
   prepareMemoryWrite,
   prepareMemoryEdit,
+  stabilityForMemory,
   decayedStrengthForMemory,
   GLOBAL_MEMORY_PROJECT,
   DISTILLED_MEMORY_SOURCE,
@@ -150,6 +151,30 @@ describe('memory importance scoring', () => {
       accessCount: 0,
       lastAccessedAt: { seconds: now },
     }, now)).toBe(1);
+  });
+
+  it('uses memory type to calibrate forgetting stability', () => {
+    const base = { accessCount: 0 };
+    expect(stabilityForMemory({ ...base, type: 'fact' })).toBeCloseTo(7 * Math.log(2), 6);
+    expect(stabilityForMemory({ ...base, type: 'preference' })).toBeCloseTo(14 * Math.log(2), 6);
+    expect(stabilityForMemory({ ...base, type: 'decision' })).toBeCloseTo(21 * Math.log(2), 6);
+    expect(stabilityForMemory({ ...base, type: 'unknown' })).toBeCloseTo(stabilityForMemory({ ...base, type: 'fact' }), 6);
+  });
+
+  it('decays durable memory types slower than facts', () => {
+    const now = 1_800_000;
+    const stale = {
+      importance: 4,
+      strength: 0.9,
+      accessCount: 0,
+      lastAccessedAt: { seconds: now - 86400 * 14 },
+    };
+    const fact = decayedStrengthForMemory({ ...stale, type: 'fact' }, now);
+    const preference = decayedStrengthForMemory({ ...stale, type: 'preference' }, now);
+    const decision = decayedStrengthForMemory({ ...stale, type: 'decision', importance: 5, strength: 1 }, now);
+
+    expect(preference).toBeGreaterThan(fact);
+    expect(decision).toBeGreaterThan(preference);
   });
 });
 

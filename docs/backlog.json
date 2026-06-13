@@ -353,13 +353,45 @@
       "category": "enhancement",
       "priority": 60,
       "impact": "minor",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-26",
       "completed_at": null,
       "dependencies": [
         49,
         53
-      ]
+      ],
+      "branch": "codex/task-55-memory-decay-calibration",
+      "plan": "Calibrate Firestore memory decay by memory type without changing the stored document schema. Add a pure stabilityForMemory() helper that preserves access-count reinforcement but multiplies the Ebbinghaus stability window by memory type: decisions decay slowest, preferences slower than facts, feedback/patterns in between, and unknown types fall back to fact behavior. Keep the existing importance-derived peak-strength cap so the change affects decay rate, not initial score semantics. Document the calibrated curve in the Firestore collections registry and cover the behavior with memory unit tests.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Memory type changes decay stability",
+          "expectedBehavior": "Facts use the base forgetting curve, preferences decay slower than facts, decisions decay slower than preferences, and unknown types fall back to fact stability.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, decayedStrengthForMemory() used STABILITY_BASE uniformly for every memory type.",
+          "expectedPassingEvidence": "Vitest passes stabilityForMemory() coverage for fact, preference, decision, and unknown types plus a stale-memory comparison showing durable types retain more strength."
+        },
+        {
+          "number": 2,
+          "title": "Decay keeps existing importance and reinforcement semantics",
+          "expectedBehavior": "The calibrated curve still derives peak strength from importance and still slows down as accessCount increases; it never raises current strength during decay.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change there was no type multiplier, so the existing tests could only prove uniform importance/access-count behavior.",
+          "expectedPassingEvidence": "Existing memory tests continue to pass for importance-derived peak strength, legacy no-importance memories, and decay-without-raising-current-strength behavior."
+        },
+        {
+          "number": 3,
+          "title": "Registry documents calibrated strength behavior",
+          "expectedBehavior": "The Firestore collection registry describes strength as an Ebbinghaus curve with type-calibrated stability rather than a uniform curve.",
+          "proofType": "docs-audit",
+          "exactCommand": "rg \"type-calibrated\" docs/registries/collections.md",
+          "expectedInitialFailure": "Before this change, the registry only described a generic Ebbinghaus curve.",
+          "expectedPassingEvidence": "The registry contains type-calibrated strength wording for polaris_memories and the decay consumer note."
+        }
+      ],
+      "updated_at": "2026-06-13T23:45:29.961Z"
     },
     {
       "number": 57,

@@ -15,7 +15,7 @@ Persistent memory store for Polaris sessions. Holds structured memory entries ex
   content:     string   — the memory text
   type:        string   — "instruction" | "preference" | "fact"
   tags:        string[] — optional keyword tags
-  strength:    number   — 0.0–1.0, Ebbinghaus decay curve; reinforced on retrieval
+  strength:    number   — 0.0–1.0, Ebbinghaus decay curve with type-calibrated stability; reinforced on retrieval
   sessionId:   string   — source session ID (optional)
   sessionType: string   — "agent" | "chat" | "routine" (optional)
   source:      string   — "codex" | "manual"
@@ -32,7 +32,7 @@ Persistent memory store for Polaris sessions. Holds structured memory entries ex
 **Consumers**
 - `lib/memory.js:180` — `searchMemories()` compound query (project + optional keyword, BM25 re-rank client-side)
 - `lib/memory.js:233` — `reinforceMemory()` reads doc, bumps strength + lastReinforced
-- `lib/memory.js:263` — `decayMemories()` reads all docs with strength > 0, applies Ebbinghaus decay
+- `lib/memory.js` — `decayMemories()` reads all docs with strength > 0, applies type-calibrated Ebbinghaus decay
 - `lib/memory.js:307` — `getAllMemories()` reads all docs for a project
 - `lib/memoryInjection.js:124` — `buildMemoryInjectionBlock()` calls `memory.searchMemories()` via DI at session turn 1
 - `server.js:2601` — `toolQueryMemory()` calls `memory.searchMemories()` for agent QueryMemory tool
