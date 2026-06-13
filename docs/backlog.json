@@ -160,7 +160,7 @@
       "dependencies": [],
       "impact": "standard",
       "branch": "codex/task-58-build-plan-reconcile",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/67",
       "description": "Planning skills (design-discussion/outline-plan/write-plan) write 3-Build_Plan.md (underscore, ~1734 lines) while CLAUDE.md and vault git track 3-Build-Plan.md (hyphen, ~2085 lines) — two divergent build-plan files. Reconcile: pick the canonical, merge unique planning history, update the ~3 skill SKILL.md references, retire the other. Related: the Obsidian vault git repo has NO remote configured — wire the intended remote so Build docs are backed up off-machine.",
       "plan": [
         "Select 3-Build-Plan.md as the canonical Polaris build-plan filename because CLAUDE.md, context.md, extraction code, and sync checks already read/write that path.",
@@ -188,7 +188,7 @@
           "expectedPassingEvidence": "The registry documents hyphen-first canonical lookup and npm checks/tests pass."
         }
       ],
-      "updated_at": "2026-06-13T17:35:18.863Z"
+      "updated_at": "2026-06-13T17:42:21.192Z"
     },
     {
       "number": 59,
@@ -214,7 +214,7 @@
       "dependencies": [],
       "impact": "standard",
       "branch": "codex/task-58-build-plan-reconcile",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/67",
       "description": "Multiple parallel sessions edit docs/backlog.json in the shared primary repo (C:\\Users\\scott\\Code\\Polaris) on main at the same time. During task #51 planning, an uncommitted backlog edit was swept into another session's commit (ccf9278) and the working tree briefly showed tasks from 3+ sessions at once (in-flight #56/#59). Fix: backlog reads/writes performed by skills (plan-task, start-build, finish-build, status transitions) should operate in an isolated worktree pinned to a freshly-fetched origin/main, mutate atomically, and push HEAD:main with rebase-on-reject — never edit the shared primary working tree directly. Prevents lost/misattributed backlog changes and task-number collisions.",
       "plan": [
         "Harden every backlog-writing command around a disposable worktree created from freshly fetched origin/main instead of the shared primary working tree.",
@@ -242,7 +242,7 @@
           "expectedPassingEvidence": "npm run check:sync, npm run test:contracts, and npm run test:policy pass on v1.0.646."
         }
       ],
-      "updated_at": "2026-06-13T17:40:21.428Z"
+      "updated_at": "2026-06-13T17:42:21.193Z"
     },
     {
       "number": 62,
