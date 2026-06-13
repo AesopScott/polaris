@@ -155,8 +155,8 @@ Check the task's `status`. The skill's allowed action depends on it:
 | Current status | Allowed action |
 |---|---|
 | `cba-complete` | ✅ Proceed — standard finish path after `/cross-boundary-audit`. |
-| `build-started` | ⚠️ Soft warn: "Task #{N} is `build-started`; `/cross-boundary-audit` should normally set `cba-complete` before finish. Proceed only if the audit evidence is present and Scott confirms." |
-| `in-progress` | ✅ Proceed (legacy status, accepted for backward compat). |
+| `build-started` | ❌ **Refuse.** "Task #{N} is `build-started`; run `/cross-boundary-audit {N}` first so the task reaches `cba-complete`." Stop. |
+| `in-progress` | ❌ **Refuse.** "Task #{N} uses legacy `in-progress`; normalize it through `/start-build` and `/cross-boundary-audit` before finishing." Stop. |
 | `planned` | ⚠️ Soft warn: "Task #{N} is `ready` but you're on the task branch. `/start-build` should have flipped status to `build-started`. Proceed anyway and assume the flip was missed? [yes/no]" On yes, continue. |
 | `pr-reviewed` | ❌ **Refuse.** "Task #{N} is already pr-reviewed (PR exists and is open). Re-finishing would create a duplicate PR. If you need to apply additional changes, push to the existing task branch and the PR auto-updates. Otherwise open a new task for follow-up work." Stop. |
 | `staged` / `production` / `complete` | ❌ **Refuse.** "Task #{N} is {status} (already promoted). Re-finishing not possible." Stop. |

@@ -521,11 +521,12 @@ t.plan = {JSON.stringify(planString)};
 t.proofUnits = {JSON.stringify(proofUnitsArray)};
 t.objective = {JSON.stringify(objectiveObject)};
 t.impact = '{minor|standard|major}';
+t.status = 'planned';
 fs.writeFileSync('docs/backlog.json', JSON.stringify(b, null, 2) + '\n', 'utf8');
 console.log('Task #{N} plan content saved');
 "
 
-> **Note:** Do not set `status` here. The orchestrator writes the `planned` status transition after confirming plan completion.
+> **Note:** This write sets `status: "planned"` in the same backlog commit as the plan content so `/start-build` sees a consistent task state.
 ```
 
 If the plan content is too large to inline safely, write the fields to a patch file first (using the Write tool), then merge:

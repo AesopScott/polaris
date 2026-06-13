@@ -252,7 +252,7 @@ Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "coding", lastSkill
 
 ## Step 4 — Finish build (`build-started` → `build-finished`)
 
-Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "build-finished", lastSkill: "finish-build" })` before invoking the skill.
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "finish-build", lastSkill: "finish-build" })` before invoking the skill. Do not mark the task build-finished until `/finish-build` succeeds.
 
 Invoke `/finish-build`. It will verify registries match code, run incremental cross-boundary audit, commit task code, open the PR to CareGuide stage or to main for every other project, record PR URL, and mark `build-finished` on main.
 
@@ -292,8 +292,8 @@ After it completes:
 - Surface the Codex review findings and any disagreements with the Claude review
 - Identify any additional issues or confirm the reviews align
 
-**Gate:** "Codex review complete and compared. {findings summary}. Ready to promote to production? [yes / fix / abort]"
-- `yes`: continue to Step 7 (promote to production)
+**Gate:** "Codex review complete and compared. {findings summary}. Waiting for orchestrator approval handler to set `review-passed` or `review-blocked`. [acknowledge / fix / abort]"
+- `acknowledge`: stop the workflow here; the orchestrator resumes promotion after PHASE 6C sets `review-passed`
 - `fix`: stop the workflow — user will fix issues and re-invoke `/finish-build` or `/ship-task {N}` to resume
 - `abort`: stop
 

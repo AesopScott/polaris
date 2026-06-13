@@ -323,7 +323,8 @@ For each task in the rollup list:
      - Extract task commits: `git log origin/main..{branch} --oneline | grep "task.*#{N}\|Task.*#{N}" | head -5`
      - Create hold branch: `git fetch origin main && git checkout -b task/{N}-hold origin/main && git cherry-pick {commit-shas} && git push -u origin task/{N}-hold`
      - Drop task from rollup
-   - If task found with any other status (in-review, build-finished, etc.): **include in the promotion**
+   - If task found with status `review-passed` (or `staged` for CareGuide): **include in the promotion**
+   - If task found with `build-finished`, `pr-reviewed`, or `codex-reviewed`: **HARD-FAIL** — reviews or orchestrator approval are incomplete. Do not promote until PHASE 6C sets `review-passed`.
 
 2. **If task not found in backlog.json, check backlog-archive.json:**
    ```bash
@@ -540,8 +541,8 @@ for (const n of toPromote) {
   if (idx === -1) { console.warn('Task #' + n + ' not found, skipping'); continue; }
   const t = b.tasks[idx];
   if (t.status === 'production') { console.log('Task #' + n + ' already production, skipping'); continue; }
-  if (t.status !== 'pr-reviewed' && t.status !== 'staged' && t.status !== 'review-passed') {
-    console.warn('Task #' + n + ' was ' + t.status + ', expected pr-reviewed, review-passed, or staged — promoting anyway');
+  if (t.status !== 'review-passed' && t.status !== 'staged') {
+    throw new Error('Task #' + n + ' was ' + t.status + ', expected review-passed or staged. Do not promote before both reviews and orchestrator approval.');
   }
   t.status = 'production';
   archive.tasks.push(Object.assign({}, t, {
