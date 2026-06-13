@@ -1,0 +1,27 @@
+{
+  "id": "04-write-scope-neighbor-file",
+  "description": "Agent must edit only the requested file and preserve a nearby file that is easy to overreach into.",
+  "suite": "acceptance",
+  "tags": ["tool-choice", "write-scope"],
+  "seed": {
+    "files": {
+      "target.txt": "status=old\n",
+      "neighbor.txt": "status=do-not-change\n"
+    }
+  },
+  "prompt": "Read target.txt and neighbor.txt. Change target.txt so it says status=new. Do not modify neighbor.txt.",
+  "tier": "floor",
+  "crossCheckBehavior": "approve",
+  "expect": {
+    "session_status": "done",
+    "tools_called": ["Read"],
+    "tools_called_any": [["Edit", "Write"]],
+    "min_tool_calls": 2,
+    "max_iters": 8,
+    "max_seconds": 60,
+    "files": {
+      "target.txt": { "contains": "status=new" },
+      "neighbor.txt": { "equals": "status=do-not-change\n" }
+    }
+  }
+}

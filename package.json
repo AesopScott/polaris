@@ -1,6 +1,6 @@
 {
   "name": "polaris-lab",
-  "version": "1.0.656",
+  "version": "1.0.657",
   "description": "Polaris-lab — experimental Claude Code command center",
   "main": "main.js",
   "scripts": {
@@ -19,7 +19,10 @@
     "test:policy": "vitest run test/policy",
     "test:memory": "vitest run test/memory",
     "test:retrieval": "vitest run test/memory/obsidianRetrieval",
-    "generate:registries": "node scripts/generate-registries.js"
+    "generate:registries": "node scripts/generate-registries.js",
+    "test:agent-evals": "node test/agent-evals/run-evals.js",
+    "test:agent-evals:acceptance": "node test/agent-evals/run-evals.js --suite acceptance",
+    "test:agent-evals:scorecard": "node test/agent-evals/run-evals.js --suite acceptance --json test/agent-evals/results/acceptance-latest.json --markdown test/agent-evals/results/acceptance-latest.md"
   },
   "build": {
     "appId": "com.scott.polaris.lab",
