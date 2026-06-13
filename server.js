@@ -86,6 +86,7 @@ const SESSIONS_PERSIST_PATH = path.join(POLARIS_DIR, 'sessions-persist.json');
 const TICKETS_PATH    = path.join(POLARIS_DIR, 'tickets.json');
 const TOKEN_LOG_PATH  = path.join(POLARIS_DIR, 'token-log.jsonl');
 const ROUTINE_NOTIFICATIONS_PATH = path.join(POLARIS_DIR, 'routine-notifications.json');
+const MEMORY_DISTILL_STATE_PATH  = path.join(POLARIS_DIR, 'memory-distillation-state.json');
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30-minute hard cap on agent/routine sessions
 const STALL_CHECK_MS  = 3000;   // heartbeat interval
 const STALL_WARN_MS   = 15000;  // idle â†’ show stall badge at 15 s
@@ -13976,6 +13977,7 @@ wss = new WebSocket.Server({ server: httpServer });
 
 const MEMORY_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MEMORY_DISTILL_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+const MEMORY_DISTILL_RUNNING_TTL_MS = 2 * 60 * 60 * 1000;
 let memoryDistillationRunning = false;
 
 function buildMemoryDistillationPrompt(cluster) {
@@ -14015,21 +14017,43 @@ function parseMemorySynthesis(raw) {
   };
 }
 
-async function runMemoryDistillation() {
+function shouldRunMemoryDistillation(now = Date.now(), state = readJSON(MEMORY_DISTILL_STATE_PATH, {})) {
+  const lastCompleted = state.lastCompletedAt ? Date.parse(state.lastCompletedAt) : 0;
+  const started = state.startedAt ? Date.parse(state.startedAt) : 0;
+  if (state.status === 'running' && started && now - started < MEMORY_DISTILL_RUNNING_TTL_MS) {
+    return { due: false, reason: 'already-running' };
+  }
+  if (lastCompleted && now - lastCompleted < MEMORY_DISTILL_INTERVAL_MS) {
+    return { due: false, reason: 'not-due' };
+  }
+  return { due: true };
+}
+
+async function runMemoryDistillation({ force = false } = {}) {
   if (memoryDistillationRunning) return { skipped: true, reason: 'already-running' };
+  const state = readJSON(MEMORY_DISTILL_STATE_PATH, {});
+  const cadence = shouldRunMemoryDistillation(Date.now(), state);
+  if (!force && !cadence.due) return { skipped: true, reason: cadence.reason };
   memoryDistillationRunning = true;
+  writeJSON(MEMORY_DISTILL_STATE_PATH, { ...state, status: 'running', startedAt: new Date().toISOString() });
   try {
     const cfg = readConfig();
     const apiKey = cfg.openRouterApiKey ? decryptSecret(cfg.openRouterApiKey) : null;
     if (!apiKey) {
       console.warn('[memory-distill] skipped: no OpenRouter API key configured');
-      return { skipped: true, reason: 'missing-api-key' };
+      const skipped = { skipped: true, reason: 'missing-api-key' };
+      writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'skipped', reason: skipped.reason, lastSkippedAt: new Date().toISOString() });
+      return skipped;
     }
 
     const candidates = await memory.listDistillationCandidates({ limit: 500 });
     const clusters = memory.clusterMemoriesForDistillation(candidates, { threshold: 0.42, minClusterSize: 3 }).slice(0, 8);
     console.log(`[memory-distill] candidates=${candidates.length} clusters=${clusters.length}`);
-    if (clusters.length === 0) return { synthesized: 0, archived: 0 };
+    if (clusters.length === 0) {
+      const emptyResult = { synthesized: 0, archived: 0 };
+      writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'complete', lastCompletedAt: new Date().toISOString(), ...emptyResult });
+      return emptyResult;
+    }
 
     const results = [];
     for (const cluster of clusters) {
@@ -14079,9 +14103,12 @@ async function runMemoryDistillation() {
       writeJSON(ROUTINE_NOTIFICATIONS_PATH, [...existing.filter(n => n.routineName !== 'Memory Distillation'), notif]);
       broadcast({ type: 'event-routine-notifications', notifications: readJSON(ROUTINE_NOTIFICATIONS_PATH, []) });
     }
-    return { synthesized, archived, results };
+    const complete = { synthesized, archived, results };
+    writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'complete', lastCompletedAt: new Date().toISOString(), synthesized, archived });
+    return complete;
   } catch (e) {
     console.warn('[memory-distill] error:', e.message);
+    writeJSON(MEMORY_DISTILL_STATE_PATH, { status: 'failed', error: e.message, failedAt: new Date().toISOString() });
     return { error: e.message };
   } finally {
     memoryDistillationRunning = false;

@@ -21,6 +21,7 @@ import {
   isDistillationCandidate,
   clusterMemoriesForDistillation,
   prepareDistilledMemory,
+  contentTermSimilarity,
   memoryProjectsForSearch,
   rankMemoryResults,
   searchMemoryDocs,
@@ -509,6 +510,39 @@ describe('higher-order memory distillation', () => {
     expect(clusters[0].project).toBe('Polaris');
     expect(clusters[0].ids).toEqual(['a', 'b', 'c']);
     expect(clusters[0].tags).toEqual(['style', 'updates']);
+  });
+
+  it('does not cluster unrelated memories merely because broad tags match', () => {
+    expect(contentTermSimilarity(
+      'Use Firestore for durable project memory.',
+      'Prefer compact status updates during orchestration.'
+    )).toBe(0);
+
+    const clusters = clusterMemoriesForDistillation([
+      {
+        id: 'a',
+        project: 'Polaris',
+        content: 'Use Firestore for durable project memory.',
+        type: 'fact',
+        tags: ['memory', 'firestore'],
+      },
+      {
+        id: 'b',
+        project: 'Polaris',
+        content: 'Prefer compact status updates during orchestration.',
+        type: 'preference',
+        tags: ['memory', 'firestore'],
+      },
+      {
+        id: 'c',
+        project: 'Polaris',
+        content: 'Run contract tests before promoting schema changes.',
+        type: 'pattern',
+        tags: ['memory', 'firestore'],
+      },
+    ], { threshold: 0.42, minClusterSize: 3 });
+
+    expect(clusters).toHaveLength(0);
   });
 
   it('prepares distilled memory payloads with provenance tags and source ids', () => {
