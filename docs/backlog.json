@@ -244,7 +244,8 @@
           "expectedPassingEvidence": "Vitest passes rankMemoryResults() coverage proving a global preference can outrank a weaker project memory for the same query."
         }
       ],
-      "updated_at": "2026-06-13T23:04:30.052Z"
+      "updated_at": "2026-06-13T23:06:07.295Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/72"
     },
     {
       "number": 55,
