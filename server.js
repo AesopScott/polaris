@@ -8537,8 +8537,9 @@ const httpServer = http.createServer((req, res) => {
         res.end(`Could not load mockup.html from AppData\nError: ${err.code}\nPath: ${err.path || MOCKUP_DEST}`);
         return;
       }
+      const html = data.replace('__POLARIS_UI_TOKEN__', UI_TOKEN);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(data);
+      res.end(html);
     });
     return;
   }
@@ -14179,7 +14180,6 @@ wss.on('connection', (ws, req) => {
       appVersion: require('./package.json').version,
       recentCommits,
       connectedMcpServers: [...new Set([...getEnabledMcpServers(), ...getConnectedMcpServers()])].filter(s => s !== 'polaris'),
-      uiToken: UI_TOKEN,
       publicBuild: IS_PUBLIC_BUILD,
     });
 

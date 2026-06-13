@@ -209,14 +209,14 @@
         {
           "number": 3,
           "title": "Archive and edit writes are gated and routed through WebSocket handlers",
-          "expectedBehavior": "Saving an edit calls update-memory with the UI token and archiving calls archive-memory with the UI token; server-side writes reject missing tokens and update Firestore through memory.updateMemory()/archiveMemory().",
+          "expectedBehavior": "Saving an edit calls update-memory with the UI bootstrap token and archiving calls archive-memory with the UI bootstrap token; server-side writes reject missing tokens and the token is not distributed in WebSocket init messages.",
           "proofType": "code-audit-and-syntax",
           "exactCommand": "node --check server.js",
           "expectedInitialFailure": "Before this change, there were no update-memory or archive-memory WebSocket handlers.",
-          "expectedPassingEvidence": "server.js syntax check passes and code inspection shows UI-token checks before update/archive writes."
+          "expectedPassingEvidence": "server.js syntax check passes, mockup.html script parsing passes, and code inspection shows UI-token checks before update/archive writes while the token is injected through the served renderer HTML instead of the WebSocket init payload."
         }
       ],
-      "updated_at": "2026-06-13T23:17:40.756Z",
+      "updated_at": "2026-06-13T23:20:33.714Z",
       "pr_url": "https://github.com/AesopScott/polaris/pull/73"
     },
     {
