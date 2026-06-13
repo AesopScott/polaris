@@ -101,7 +101,10 @@ function describeSchema(schema) {
       base = inner._def.values.map((value) => JSON.stringify(value)).join(' | ');
       break;
     case 'ZodArray':
-      base = `${describeSchema(inner._def.type)}[]`;
+      {
+        const item = describeSchema(inner._def.type);
+        base = item.includes(' | ') ? `(${item})[]` : `${item}[]`;
+      }
       break;
     case 'ZodRecord':
       base = `Record<string, ${describeSchema(inner._def.valueType)}>`;
