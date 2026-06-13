@@ -391,7 +391,8 @@
           "expectedPassingEvidence": "The registry contains type-calibrated strength wording for polaris_memories and the decay consumer note."
         }
       ],
-      "updated_at": "2026-06-13T23:45:29.961Z"
+      "updated_at": "2026-06-13T23:47:03.657Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/75"
     },
     {
       "number": 57,
