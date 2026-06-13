@@ -31,9 +31,9 @@
       "category": "feature",
       "priority": 90,
       "impact": "standard",
-      "status": "review-passed",
+      "status": "production",
       "created_at": "2026-05-22",
-      "completed_at": null,
+      "completed_at": "2026-06-13",
       "dependencies": [
         37
       ],
