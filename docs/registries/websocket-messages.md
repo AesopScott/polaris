@@ -116,10 +116,11 @@ Client requests the last N memory injection log entries from the server.
 
 Server response to `get-injection-history` — array of logged injection events.
 
-**Payload:** `{ type: 'injection-history', entries: Array<{ ts: number, sessionId: string, sessionName: string|null, project: string, query: string, queryType: 'high-signal'|'low-signal', effectiveQuery: string, memories: Array<{ content: string, type: string, strength: number|null, accessCount: number }> }> }`
+**Payload:** `{ type: 'injection-history', entries: Array<{ ts: number, sessionId: string, sessionName: string|null, sessionType?: 'agent'|'chat'|string|null, project: string, query: string, queryType: 'high-signal'|'low-signal', effectiveQuery: string, memories: Array<{ content: string, type: string, strength: number|null, accessCount: number }> }> }`
 
 **Producers (server sends)**
 - `server.js:~12662` — `sendTo(ws, { type: 'injection-history', entries })`
+- `server.js` — `appendMemoryInjectionLog()` writes chat and direct-agent turn-1 memory injection events to `memory-injection-log.jsonl`
 
 **Consumers (client handles)**
 - `resources/mockup.html:5739` — `case 'injection-history': renderInjectionPanel(msg.entries || [])`

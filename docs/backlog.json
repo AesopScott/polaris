@@ -399,16 +399,52 @@
       "title": "Agent-session memory injection (gated on agentic flows live)",
       "category": "feature",
       "priority": 5,
-      "status": "backlog",
-      "dependencies": [
-        51
-      ],
+      "status": "build-finished",
+      "dependencies": [],
       "impact": "standard",
-      "branch": null,
+      "branch": "codex/task-57-agent-memory-injection",
       "pr_url": null,
       "description": "Wire buildMemoryInjectionBlock into runDirectAgent's turn-1 system-prompt assembly — the agent counterpart of #51. Deferred from #51 because agent runs are near-zero today; gated on agentic flows going live (next-gen query engine, AESOP->diamond automation). Full spec in docs/task-51-handoff.md.",
-      "plan": null,
-      "proofUnits": []
+      "plan": "Wire Firestore memory injection into direct agent sessions on the first project turn by reusing the existing memoryInjection helper from the chat path. Agent injection is guarded to skip DeepSeek Q-mode, continuations, eval runners, routines, and the Health Monitor so background workers and acceptance harnesses stay lean. A shared appendMemoryInjectionLog() helper records both chat and agent injection traces into memory-injection-log.jsonl so the existing Memory panel injection history reflects actual injected context. The old dependency on missing backlog task #51 is satisfied by the existing lib/memoryInjection.js module already present on main.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Direct agent turn one injects project memories safely",
+          "expectedBehavior": "On the first normal project direct-agent turn, runDirectAgent() retrieves ranked Firestore memories, appends the POLARIS MEMORY block to the hidden system prompt, and leaves later turns untouched.",
+          "proofType": "syntax-and-code-audit",
+          "exactCommand": "node --check server.js && rg \"shouldInjectAgentMemory|buildMemoryInjectionBlockWithTrace(memory, session.projectName\" server.js",
+          "expectedInitialFailure": "Before this change, runDirectAgent() only loaded Obsidian projectMemory and never called buildMemoryInjectionBlockWithTrace().",
+          "expectedPassingEvidence": "server.js syntax check exits 0 and code inspection shows shouldInjectAgentMemory gating plus the direct-agent call to buildMemoryInjectionBlockWithTrace()."
+        },
+        {
+          "number": 2,
+          "title": "Background and eval direct runs stay excluded",
+          "expectedBehavior": "DeepSeek Q-mode, continuation runs, eval runners, routines, and the Health Monitor do not receive automatic memory injection.",
+          "proofType": "code-audit",
+          "exactCommand": "rg \"!isDeepSeekQueueMode|!continuationContext|!session.routineTag|!session.evalRunner|Health Monitor Session\" server.js",
+          "expectedInitialFailure": "Before this change there was no agent injection guard because no agent injection existed.",
+          "expectedPassingEvidence": "The direct-agent guard explicitly excludes DeepSeek Q-mode, continuations, routines, eval runners, and Health Monitor sessions."
+        },
+        {
+          "number": 3,
+          "title": "Injection history logs both chat and agent traces",
+          "expectedBehavior": "Chat and agent turn-one injections write a bounded JSONL trace with session type, project, query classification, effective query, and injected memories; get-injection-history returns entries with the documented shape.",
+          "proofType": "syntax-and-registry-audit",
+          "exactCommand": "node --check server.js && rg \"appendMemoryInjectionLog|sessionType.*agent|sessionType.*chat\" server.js && rg \"sessionType\" docs/registries/websocket-messages.md",
+          "expectedInitialFailure": "Before this change, INJECTION_LOG_PATH was readable by the UI but no shared writer logged chat or agent injection traces.",
+          "expectedPassingEvidence": "server.js syntax check exits 0, appendMemoryInjectionLog() is called from both chat and agent paths, and the websocket registry documents sessionType on injection-history entries."
+        },
+        {
+          "number": 4,
+          "title": "Memory injection helper remains safe and tested",
+          "expectedBehavior": "The shared helper keeps low/high-signal query routing, cap enforcement, fire-and-forget reinforcement, missing-project no-op, and timeout-safe failure behavior.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before the helper existed, agent injection could not reuse tested query classification or timeout behavior.",
+          "expectedPassingEvidence": "Vitest memory tests pass, including memoryInjection.test.js coverage for classification, formatting, reinforcement, missing project, and timeout fallback."
+        }
+      ],
+      "updated_at": "2026-06-13T23:57:34.567Z"
     },
     {
       "number": 58,
