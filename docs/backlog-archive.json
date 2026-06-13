@@ -723,7 +723,7 @@
           "title": "Architecture.md documents refactored system",
           "expectedBehavior": "2-Architecture.md in Obsidian is updated to document the refactored module structure, dependencies, data flow, and design decisions.",
           "proofType": "registry-diff",
-          "exactCommand": "Read Obsidian file: G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\2-Architecture.md. Verify: Sections exist for refactored module overview, module dependency graph, data flow between modules, design decisions and rationale.",
+          "exactCommand": "Read Obsidian file: G:\\My Drive\\Obsidian\\Polaris_Build\\2-Architecture.md. Verify: Sections exist for refactored module overview, module dependency graph, data flow between modules, design decisions and rationale.",
           "expectedInitialFailure": "Architecture.md is not updated or lacks module documentation.",
           "expectedPassingEvidence": "Architecture.md has clear sections documenting the 8 modules, their responsibilities, dependencies, and the WebSocket adapter pattern.",
           "waiverGuidance": "N/A � Obsidian doc review is straightforward."
@@ -1236,7 +1236,7 @@
           "title": "Push Obsidian writes session summary to Build Plan",
           "expectedBehavior": "Clicking Push Obsidian appends a timestamped session summary (branch, worktree, modified files, conflict status) to the project 3-Build_Plan.md in Obsidian.",
           "proofType": "manual-script",
-          "exactCommand": "1. Open a session with some modified files\n2. Click Push Obsidian in the orchestrator panel\n3. Open G:\\My Drive\\Aesop Academy\\Obsidian\\Polaris_Build\\3-Build_Plan.md\n4. Verify a new timestamped session summary block was appended",
+          "exactCommand": "1. Open a session with some modified files\n2. Click Push Obsidian in the orchestrator panel\n3. Open G:\\My Drive\\Obsidian\\Polaris_Build\\3-Build_Plan.md\n4. Verify a new timestamped session summary block was appended",
           "expectedInitialFailure": "Button does nothing; file unchanged; or write fails silently.",
           "expectedPassingEvidence": "Build Plan shows new summary block matching the session actual branch/worktree/file state.",
           "waiverGuidance": "N/A"
@@ -1816,7 +1816,7 @@
           "title": "Obsidian task file contains POC Findings section",
           "expectedBehavior": "Task file exists at Polaris_Build/Tasks/Task-34-langgraph-integration-poc-validation.md and contains ## POC Findings heading.",
           "proofType": "smoke-command",
-          "exactCommand": "node -e \"const fs=require('fs'); const c=fs.readFileSync('G:\\\\\\\\My Drive\\\\\\\\Aesop Academy\\\\\\\\Obsidian\\\\\\\\Polaris_Build\\\\\\\\Tasks\\\\\\\\Task-34-langgraph-integration-poc-validation.md','utf8'); console.assert(c.includes('## POC Findings'),'Missing section'); console.log('PASS');\"",
+          "exactCommand": "node -e \"const fs=require('fs'); const c=fs.readFileSync('G:\\\\\\\\My Drive\\\\\\\\Obsidian\\\\\\\\Polaris_Build\\\\\\\\Tasks\\\\\\\\Task-34-langgraph-integration-poc-validation.md','utf8'); console.assert(c.includes('## POC Findings'),'Missing section'); console.log('PASS');\"",
           "expectedInitialFailure": "File not found.",
           "expectedPassingEvidence": "Prints PASS; exit code 0.",
           "waiverGuidance": "N/A"
@@ -2233,7 +2233,6 @@
       "promoted_via_pr": null
     },
     {
-<<<<<<< HEAD
       "number": 31,
       "title": "Make trust, proof, cost, and recovery visible in the product",
       "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
@@ -2311,8 +2310,6 @@
       "promoted_via_pr": null
     },
     {
-=======
->>>>>>> chore/mark-tasks-production-60
       "number": 28,
       "title": "Upgrade project memory into ranked retrieval",
       "description": "QueryMemory currently loads Obsidian markdown files and can return all memory at once, which creates prompt bloat and weak relevance control. Add a local retrieval layer with chunking, lexical plus semantic ranking, freshness signals, project and task metadata, cited snippets, and retrieval traces. Default QueryMemory to top relevant excerpts while preserving an escape hatch for full-file reads.",
@@ -2321,11 +2318,7 @@
       "impact": "major",
       "status": "production",
       "created_at": "2026-05-22",
-<<<<<<< HEAD
       "completed_at": "2026-05-29",
-=======
-      "completed_at": null,
->>>>>>> chore/mark-tasks-production-60
       "dependencies": [],
       "plan": "Replace the all-or-nothing Obsidian dump in QueryMemory with a ranked-retrieval layer.\n\n## Phases\n\n1. Core retrieval module (TDD): Build and test lib/obsidianRetrieval.js (heading-aware chunker, BM25, OpenRouter embeddings fail-soft, cosine ranker, trace formatter).\n2. QueryMemory upgrade: Add query param to tool schema, lazy-init session.memoryIndex, disk embedding cache (mtime+size guard), return top-5 cited excerpts + retrieval trace, append to traces.jsonl.\n3. Memory status panel: get-memory-status WS handler + Memory nav button and panel in mockup.html.\n4. Verify + formalize: e2e smoke, version bump, changelog.\n\n## First Proof Unit\n\nWrite failing vitest suite for lib/obsidianRetrieval.js. Run: npx vitest run test/memory/obsidianRetrieval. Expected failure: Cannot find module.",
       "objective": {
@@ -2444,135 +2437,8 @@
       "branch": "task/28-upgrade-project-memory-into-ranked-retr",
       "pr_url": "https://github.com/AesopScott/polaris/pull/60",
       "project_source": "Polaris",
-<<<<<<< HEAD
-      "promoted_via_pr": null
-    },
-    {
-      "number": 31,
-      "title": "Make trust, proof, cost, and recovery visible in the product",
-      "description": "Polaris's strongest product idea is an AI command center with trust rails, not just parallel agent sessions. Bring task state, proof state, risk state, Cross-Check state, and cost state into a clearer first-class workflow surface. Add explanations for why a session is waiting, one-click recovery from failed gates, and a guided task lane for plan, build, review, stage, and production promotion.",
-      "category": "feature",
-      "priority": 90,
-      "impact": "standard",
-      "status": "production",
-      "created_at": "2026-05-22",
-      "completed_at": "2026-05-29",
-      "dependencies": [],
-      "plan": "## Overview\n\nMake the ship-task pipeline observable and actionable from within the Polaris UI. Surface pipeline step position, cross-boundary audit findings as a coding checklist, and review findings as a prioritized severity list. Add a trusted-caller bypass so pipeline skill writes to backlog.json do not trigger approval prompts.\n\n## Phases\n\n1. Server trust bypass: Add isPipelineSkill flag to server.js write-approval gate (additive only)\n2. Skill output format contract: Add structured ## FINDINGS blocks to /cross-boundary-audit, /review-pr, /codex-review\n3. Task Lane panel: 8-step pipeline progress indicator in mockup.html with live WS updates\n4. Cross-check + review UI redesign: Compact verdict+rationale in cross-check panel; CRITICAL/HIGH/MEDIUM/LOW findings list\n\n## First Proof Unit\n\nA session flagged isPipelineSkill writes to backlog.json without triggering an approval modal. Verified by launching a test agent session, having it write a no-op status change, and confirming no approval prompt appears.",
-      "proofUnits": [
-        {
-          "number": 1,
-          "title": "Server trust bypass — pipeline writes skip approval",
-          "expectedBehavior": "A session flagged as isPipelineSkill writes to backlog.json without triggering the approval modal.",
-          "proofType": "manual-script",
-          "exactCommand": "(1) Launch test agent session with isPipelineSkill:true set in session metadata. (2) Have it write a no-op status change to a test task in backlog.json. (3) Confirm no approval prompt appears in the UI; confirm write lands.",
-          "expectedInitialFailure": "Write triggers approval modal and stalls.",
-          "expectedPassingEvidence": "Write completes silently; task status updated in backlog.json without any approval prompt.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 2,
-          "title": "Cross-boundary-audit emits structured findings checklist",
-          "expectedBehavior": "Running /cross-boundary-audit appends a ## FINDINGS section with numbered checklist items to the audit output.",
-          "proofType": "manual-script",
-          "exactCommand": "(1) Run /cross-boundary-audit on any task branch. (2) Scroll to the bottom of the output. (3) Confirm ## FINDINGS section is present with at least one numbered item.",
-          "expectedInitialFailure": "Audit output ends with unstructured prose; no ## FINDINGS section.",
-          "expectedPassingEvidence": "Output contains ## FINDINGS block with numbered checklist items.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 3,
-          "title": "Review skills emit structured severity block",
-          "expectedBehavior": "/review-pr and /codex-review output begins with a ## FINDINGS block containing CRITICAL/HIGH/MEDIUM/LOW tagged items before prose.",
-          "proofType": "manual-script",
-          "exactCommand": "(1) Run /review-pr on any PR. (2) Confirm output starts with ## FINDINGS section with severity labels. (3) Confirm existing prose review follows unchanged.",
-          "expectedInitialFailure": "Output is free prose with no ## FINDINGS section.",
-          "expectedPassingEvidence": "Output contains ## FINDINGS block with severity-tagged items followed by existing prose.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 4,
-          "title": "Task Lane panel shows live pipeline position",
-          "expectedBehavior": "Opening the Task Lane panel displays the 8-step pipeline with the current step highlighted based on backlog.json status for the active task.",
-          "proofType": "ui-check",
-          "exactCommand": "(1) Open Polaris and select a task in build-started status. (2) Open the Task Lane panel. (3) Confirm step 4 (coding) is highlighted and steps 1-3 show as complete. (4) Update task status to build-finished. (5) Confirm panel updates live.",
-          "expectedInitialFailure": "No Task Lane panel exists; pipeline state not visible.",
-          "expectedPassingEvidence": "Panel renders 8-step track; correct step highlighted; updates live on status change.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 5,
-          "title": "Cross-check panel shows verdict + rationale (not raw diff)",
-          "expectedBehavior": "The cross-check panel shows a verdict badge and one-paragraph rationale per result, with raw diff collapsed behind a toggle.",
-          "proofType": "ui-check",
-          "exactCommand": "(1) Run a pre-build check to generate a cross-check result. (2) Open the cross-check panel. (3) Confirm results show PASS/WARN/FAIL badge + rationale paragraph. (4) Confirm no raw diff visible by default. (5) Click Show diff toggle and confirm diff expands.",
-          "expectedInitialFailure": "Cross-check panel shows raw diff wall with no verdict badge or rationale.",
-          "expectedPassingEvidence": "Panel shows compact verdict + rationale; diff hidden behind toggle.",
-          "waiverGuidance": "N/A"
-        },
-        {
-          "number": 6,
-          "title": "End-to-end pipeline walkthrough with Task Lane visible",
-          "expectedBehavior": "Running /ship-task on a test task while the Task Lane panel is open shows the step indicator advancing in real time at each skill boundary.",
-          "proofType": "manual-script",
-          "exactCommand": "(1) Pick a planned task. (2) Open the Task Lane panel. (3) Run /start-build — confirm panel advances to step 2. (4) Run /cross-boundary-audit — confirm findings appear as checklist in step 3. (5) Signal coding done — confirm step 4 clears. (6) Run /finish-build — confirm panel advances to step 5.",
-          "expectedInitialFailure": "Task Lane panel does not update; pipeline position invisible.",
-          "expectedPassingEvidence": "Panel step indicator advances at each transition; no approval prompts appear during backlog writes.",
-          "waiverGuidance": "N/A"
-        }
-      ],
-      "branch": "task/31-make-trust-proof-cost-and-recovery",
-      "objective": {
-        "statement": "Make the ship-task pipeline observable and actionable within the Polaris UI — surface pipeline step position, audit findings as a coding checklist, and review findings as a prioritized severity list, so Scott can manage the pipeline without reading walls of terminal output.",
-        "successCriteria": [
-          "Pipeline-skill writes to backlog.json bypass the approval gate without interrupting normal session writes",
-          "cross-boundary-audit output includes a structured ## FINDINGS checklist block",
-          "review-pr and codex-review output includes a CRITICAL/HIGH/MEDIUM/LOW findings block before prose",
-          "Task Lane panel renders 8-step pipeline with live step position from backlog.json status",
-          "Cross-check panel shows compact verdict + rationale with diff behind a toggle",
-          "End-to-end: Task Lane step indicator advances at each skill boundary during a /ship-task run"
-        ],
-        "nonGoals": [
-          "Changes to backlog.json schema or status lifecycle logic",
-          "Task-level cost aggregation across sessions",
-          "Real-time cross-session pipeline sync",
-          "Changes to the underlying pipeline step sequence or logic"
-        ],
-        "proofMap": [
-          {
-            "criterion": "Pipeline-skill writes to backlog.json bypass the approval gate",
-            "proofUnit": 1
-          },
-          {
-            "criterion": "cross-boundary-audit output includes structured ## FINDINGS checklist",
-            "proofUnit": 2
-          },
-          {
-            "criterion": "review-pr and codex-review emit CRITICAL/HIGH/MEDIUM/LOW findings block",
-            "proofUnit": 3
-          },
-          {
-            "criterion": "Task Lane panel renders 8-step pipeline with live step position",
-            "proofUnit": 4
-          },
-          {
-            "criterion": "Cross-check panel shows compact verdict + rationale with diff toggle",
-            "proofUnit": 5
-          },
-          {
-            "criterion": "Task Lane step indicator advances at each skill boundary",
-            "proofUnit": 6
-          }
-        ],
-        "stopConditions": []
-      },
-      "pr_url": "https://github.com/AesopScott/polaris/pull/61",
-      "project_source": "Polaris",
-      "promoted_via_pr": null
-=======
       "promoted_via_pr": "60",
       "promoted_at": "2026-05-29T04:54:58.904Z"
->>>>>>> chore/mark-tasks-production-60
     }
   ]
 }
