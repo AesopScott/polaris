@@ -13975,6 +13975,119 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 wss = new WebSocket.Server({ server: httpServer });
 
 const MEMORY_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const MEMORY_DISTILL_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+let memoryDistillationRunning = false;
+
+function buildMemoryDistillationPrompt(cluster) {
+  const lines = cluster.memories.map((m, i) => {
+    const tags = Array.isArray(m.tags) && m.tags.length ? ` tags=${m.tags.join(', ')}` : '';
+    return `${i + 1}. (${m.type || 'fact'}${tags}) ${String(m.content || '').trim()}`;
+  }).join('\n');
+  return `You are consolidating episodic Polaris memories into one higher-order durable memory.
+
+Project: ${cluster.project}
+
+Source memories:
+${lines}
+
+Write one consolidated memory that captures the repeated pattern, preference, or lesson. Do not mention that it came from multiple source memories.
+
+Return ONLY valid JSON:
+{
+  "content": "one concise durable memory, 1-2 sentences",
+  "type": "preference | pattern | feedback | fact",
+  "importance": 3,
+  "tags": ["keyword", "keyword"]
+}`;
+}
+
+function parseMemorySynthesis(raw) {
+  const text = String(raw || '').trim();
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON object returned');
+  const parsed = JSON.parse(match[0]);
+  if (!parsed.content || typeof parsed.content !== 'string') throw new Error('Synthesis content is required');
+  return {
+    content: parsed.content.trim(),
+    type: parsed.type || 'pattern',
+    importance: parsed.importance || 4,
+    tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+  };
+}
+
+async function runMemoryDistillation() {
+  if (memoryDistillationRunning) return { skipped: true, reason: 'already-running' };
+  memoryDistillationRunning = true;
+  try {
+    const cfg = readConfig();
+    const apiKey = cfg.openRouterApiKey ? decryptSecret(cfg.openRouterApiKey) : null;
+    if (!apiKey) {
+      console.warn('[memory-distill] skipped: no OpenRouter API key configured');
+      return { skipped: true, reason: 'missing-api-key' };
+    }
+
+    const candidates = await memory.listDistillationCandidates({ limit: 500 });
+    const clusters = memory.clusterMemoriesForDistillation(candidates, { threshold: 0.42, minClusterSize: 3 }).slice(0, 8);
+    console.log(`[memory-distill] candidates=${candidates.length} clusters=${clusters.length}`);
+    if (clusters.length === 0) return { synthesized: 0, archived: 0 };
+
+    const results = [];
+    for (const cluster of clusters) {
+      const result = await callOpenRouterOnce(
+        'openai/gpt-4.1-mini',
+        apiKey,
+        [{ role: 'user', content: buildMemoryDistillationPrompt(cluster) }],
+        700,
+        60000
+      );
+      if (result.error) {
+        console.warn(`[memory-distill] synthesis failed project=${cluster.project}: ${result.error}`);
+        results.push({ project: cluster.project, error: result.error });
+        continue;
+      }
+      let synthesis;
+      try {
+        synthesis = parseMemorySynthesis(result.content);
+      } catch (e) {
+        console.warn(`[memory-distill] parse failed project=${cluster.project}: ${e.message}`);
+        results.push({ project: cluster.project, error: e.message });
+        continue;
+      }
+      const applied = await memory.applyDistilledMemory({ cluster, synthesis });
+      if (applied.ok) {
+        console.log(`[memory-distill] synthesized ${applied.id} project=${cluster.project} archived=${applied.archived}`);
+      } else {
+        console.warn(`[memory-distill] apply failed project=${cluster.project}: ${applied.error}`);
+      }
+      results.push({ project: cluster.project, ...applied });
+    }
+
+    const synthesized = results.filter(r => r.ok).length;
+    const archived = results.reduce((sum, r) => sum + (r.archived || 0), 0);
+    if (synthesized > 0) {
+      const notif = {
+        id: `memory-distill-${Date.now()}`,
+        routineName: 'Memory Distillation',
+        title: 'Memory Distillation Complete',
+        timestamp: new Date().toISOString(),
+        items: [
+          `Synthesized ${synthesized} higher-order memor${synthesized === 1 ? 'y' : 'ies'}`,
+          `Archived ${archived} episodic source memories`,
+        ],
+      };
+      const existing = readJSON(ROUTINE_NOTIFICATIONS_PATH, []);
+      writeJSON(ROUTINE_NOTIFICATIONS_PATH, [...existing.filter(n => n.routineName !== 'Memory Distillation'), notif]);
+      broadcast({ type: 'event-routine-notifications', notifications: readJSON(ROUTINE_NOTIFICATIONS_PATH, []) });
+    }
+    return { synthesized, archived, results };
+  } catch (e) {
+    console.warn('[memory-distill] error:', e.message);
+    return { error: e.message };
+  } finally {
+    memoryDistillationRunning = false;
+  }
+}
+
 async function runMemoryDecay() {
   try {
     const result = await memory.decayMemories();
@@ -13987,6 +14100,11 @@ setTimeout(() => {
   runMemoryDecay();
   setInterval(runMemoryDecay, MEMORY_DECAY_INTERVAL_MS);
 }, 30_000);
+
+setTimeout(() => {
+  runMemoryDistillation();
+  setInterval(runMemoryDistillation, MEMORY_DISTILL_INTERVAL_MS);
+}, 90_000);
 
 const wsHeartbeatTimer = setInterval(() => {
   if (!wss) return;

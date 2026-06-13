@@ -8,6 +8,8 @@ import {
   prepareMemoryEdit,
   decayedStrengthForMemory,
   GLOBAL_MEMORY_PROJECT,
+  DISTILLED_MEMORY_SOURCE,
+  DISTILLED_MEMORY_TAG,
   hasGlobalProjectTag,
   normalizeMemoryProject,
   normalizeEditableTags,
@@ -16,6 +18,9 @@ import {
   memorySimilarity,
   findDuplicateMemory,
   planMemoryConsolidation,
+  isDistillationCandidate,
+  clusterMemoriesForDistillation,
+  prepareDistilledMemory,
   memoryProjectsForSearch,
   rankMemoryResults,
   searchMemoryDocs,
@@ -434,5 +439,98 @@ describe('memory correction listing', () => {
 
     expect(queriedProjects).toEqual(['Polaris', 'global']);
     expect(results.map(result => result.id)).toEqual(['project-memory', 'global-memory']);
+  });
+});
+
+describe('higher-order memory distillation', () => {
+  it('filters out archived, decision, and already-distilled memories', () => {
+    expect(isDistillationCandidate({
+      id: 'active',
+      project: 'Polaris',
+      content: 'Use concise updates.',
+      type: 'preference',
+      tags: ['style'],
+    })).toBe(true);
+    expect(isDistillationCandidate({
+      id: 'archived',
+      project: 'Polaris',
+      content: 'Old memory',
+      _archived: true,
+    })).toBe(false);
+    expect(isDistillationCandidate({
+      id: 'decision',
+      project: 'Polaris',
+      content: 'Use Firestore.',
+      type: 'decision',
+    })).toBe(false);
+    expect(isDistillationCandidate({
+      id: 'distilled',
+      project: 'Polaris',
+      content: 'A synthesized memory.',
+      source: DISTILLED_MEMORY_SOURCE,
+    })).toBe(false);
+  });
+
+  it('clusters repeated episodic memories by project and similarity', () => {
+    const memories = [
+      {
+        id: 'a',
+        project: 'Polaris',
+        content: 'Scott prefers concise status updates during long orchestration work.',
+        type: 'preference',
+        tags: ['style', 'updates'],
+      },
+      {
+        id: 'b',
+        project: 'Polaris',
+        content: 'Scott prefers concise status updates during multi-agent orchestration.',
+        type: 'feedback',
+        tags: ['updates', 'style'],
+      },
+      {
+        id: 'c',
+        project: 'Polaris',
+        content: 'Keep progress updates concise and direct when orchestrating agents.',
+        type: 'pattern',
+        tags: ['style', 'updates'],
+      },
+      {
+        id: 'other-project',
+        project: 'GAIN',
+        content: 'Scott prefers concise status updates during long orchestration work.',
+        type: 'preference',
+        tags: ['style', 'updates'],
+      },
+    ];
+
+    const clusters = clusterMemoriesForDistillation(memories, { threshold: 0.3, minClusterSize: 3 });
+
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].project).toBe('Polaris');
+    expect(clusters[0].ids).toEqual(['a', 'b', 'c']);
+    expect(clusters[0].tags).toEqual(['style', 'updates']);
+  });
+
+  it('prepares distilled memory payloads with provenance tags and source ids', () => {
+    const distilled = prepareDistilledMemory({
+      project: 'Polaris',
+      content: 'Scott prefers concise orchestration status updates.',
+      type: 'preference',
+      tags: ['style', 'updates'],
+      sourceIds: ['a', 'b', 'c'],
+      importance: 4,
+    });
+
+    expect(distilled).toMatchObject({
+      project: 'Polaris',
+      content: 'Scott prefers concise orchestration status updates.',
+      type: 'preference',
+      source: DISTILLED_MEMORY_SOURCE,
+      importance: 4,
+      strength: 0.9,
+      distilledFrom: ['a', 'b', 'c'],
+    });
+    expect(distilled.tags).toContain(DISTILLED_MEMORY_TAG);
+    expect(distilled.tags).toContain('source-count:3');
   });
 });

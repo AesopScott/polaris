@@ -226,12 +226,44 @@
       "category": "feature",
       "priority": 40,
       "impact": "major",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-26",
       "completed_at": null,
       "dependencies": [
         50
-      ]
+      ],
+      "branch": "codex/task-53-memory-distillation",
+      "plan": "Add weekly higher-order memory distillation. The memory module now filters distillation candidates, clusters repeated non-decision memories by project/tag/content similarity, prepares provenance-tagged distilled memories, and applies a Firestore batch that writes the higher-order memory while archiving original episodic source memories. The server runs a one-at-a-time weekly fire-and-forget routine that asks OpenRouter for one synthesis per cluster, logs candidates/clusters/results, and posts a routine notification when memories are synthesized.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Distillation candidates exclude unsafe inputs",
+          "expectedBehavior": "Archived memories, decisions, already-distilled memories, and empty/projectless records are not eligible for higher-order synthesis.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no distillation candidate filter.",
+          "expectedPassingEvidence": "Vitest passes isDistillationCandidate() coverage for active, archived, decision, and already-distilled memories."
+        },
+        {
+          "number": 2,
+          "title": "Repeated episodic memories cluster by project and similarity",
+          "expectedBehavior": "Three or more similar non-decision memories in the same project form a cluster, while similar memories from another project stay isolated.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no higher-order clustering helper.",
+          "expectedPassingEvidence": "Vitest passes clusterMemoriesForDistillation() coverage for project-scoped clustering and source id/tag aggregation."
+        },
+        {
+          "number": 3,
+          "title": "Weekly routine writes synthesis and archives originals",
+          "expectedBehavior": "The server routine finds clusters weekly, asks the model for one higher-order memory per cluster, writes a distilled memory with provenance tags, archives source memories in the same batch, and logs results.",
+          "proofType": "syntax-and-code-audit",
+          "exactCommand": "node --check server.js && npm run test:memory",
+          "expectedInitialFailure": "Before this change, only daily decay was scheduled; no weekly distillation routine or applyDistilledMemory() path existed.",
+          "expectedPassingEvidence": "server.js syntax check passes, memory tests cover prepareDistilledMemory(), and code inspection shows runMemoryDistillation() scheduled weekly with one-at-a-time guard, model synthesis, applyDistilledMemory(), console logs, and routine notification on success."
+        }
+      ],
+      "updated_at": "2026-06-13T23:26:38.722Z"
     },
     {
       "number": 54,
