@@ -154,9 +154,10 @@ Check the task's `status`. The skill's allowed action depends on it:
 
 | Current status | Allowed action |
 |---|---|
-| `build-started` | ✅ Proceed — standard finish path. |
+| `cba-complete` | ✅ Proceed — standard finish path after `/cross-boundary-audit`. |
+| `build-started` | ⚠️ Soft warn: "Task #{N} is `build-started`; `/cross-boundary-audit` should normally set `cba-complete` before finish. Proceed only if the audit evidence is present and Scott confirms." |
 | `in-progress` | ✅ Proceed (legacy status, accepted for backward compat). |
-| `ready` | ⚠️ Soft warn: "Task #{N} is `ready` but you're on the task branch. `/start-build` should have flipped status to `build-started`. Proceed anyway and assume the flip was missed? [yes/no]" On yes, continue. |
+| `planned` | ⚠️ Soft warn: "Task #{N} is `ready` but you're on the task branch. `/start-build` should have flipped status to `build-started`. Proceed anyway and assume the flip was missed? [yes/no]" On yes, continue. |
 | `pr-reviewed` | ❌ **Refuse.** "Task #{N} is already pr-reviewed (PR exists and is open). Re-finishing would create a duplicate PR. If you need to apply additional changes, push to the existing task branch and the PR auto-updates. Otherwise open a new task for follow-up work." Stop. |
 | `staged` / `production` / `complete` | ❌ **Refuse.** "Task #{N} is {status} (already promoted). Re-finishing not possible." Stop. |
 | `backlog` | ❌ **Refuse.** "Task #{N} has no plan and was never started, but you're on a task branch for it. Something is wrong — verify the branch matches the task you intended." Stop. |
@@ -379,7 +380,7 @@ Append a record of the audit results and the build completion to the task's Obsi
    **Files committed (Step 4):** {list of files staged for the task commit}
    **Registry files updated:** {list from docs/registries/ that changed, or "none"}
 
-   **Status flip:** build-started → build-finished
+   **Status flip:** cba-complete → build-finished
    ```
 
 5. Tell the user: "Build + audit logged to `{ProjectObsidian}_Build/Tasks/Task-{N}-{slug}.md`."

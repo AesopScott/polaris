@@ -132,7 +132,7 @@ Also note the current working directory (`$PWD` in PowerShell, `pwd` in bash).
 | Situation | Action |
 |---|---|
 | Branch is `main` or `stage`, CWD is the project source tree (`C:\Users\scott\Code\{ProjectName}`) | ✅ **Proceed** — stable location for production promotion operations. |
-| Branch is `main` or detached HEAD, CWD is a Polaris temp session dir (path contains `AppData\Local\Temp\polaris-wt`), AND `git worktree list` shows a `[main]` entry in the project source tree | ✅ **Proceed** — the primary `[main]` worktree exists in the source tree. Route all `git checkout main`, backlog.json edits, and archive commits to the primary path, not the temp CWD. |
+| Branch is `main` or detached HEAD, CWD is a Polaris temp session dir (path contains `AppData\Local\Temp\polaris-wt`), AND `git worktree list` shows a `[main]` entry in the project source tree | ✅ **Proceed for read/merge orchestration only** — do not route backlog edits or archive commits to the primary path. Step 9 must use the disposable backlog worktree protocol. |
 | Branch is `main` or detached HEAD, CWD is a Polaris temp session dir, AND no `[main]` primary worktree exists in the source tree | ⚠️ **Create an isolated worktree** before continuing (see below). |
 
 **Creating an isolated worktree when required:**
@@ -503,15 +503,21 @@ Prod is healthy. Now flip backlog statuses and archive shipped tasks inside this
 **Path A (stage → main):** Create a disposable backlog closeout worktree from `origin/main` using the Backlog Write Isolation Protocol (the merge has already updated origin/main):
 
 ```bash
-git fetch origin main --prune
-git switch -c chore/mark-tasks-production-{pr-number} origin/main
+git -C "C:/Users/scott/Code/{ProjectName}" fetch origin main --prune
+DEST="C:/Users/scott/Code/{ProjectName}/worktrees/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+BRANCH="chore/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+git -C "C:/Users/scott/Code/{ProjectName}" worktree add "$DEST" -b "$BRANCH" origin/main
+cd "$DEST"
 ```
 
 **Path B (direct to main):** Create a disposable backlog closeout worktree from `origin/main` using the Backlog Write Isolation Protocol (the merge has already updated origin/main):
 
 ```bash
-git fetch origin main --prune
-git switch -c chore/mark-tasks-production-{pr-number} origin/main
+git -C "C:/Users/scott/Code/{ProjectName}" fetch origin main --prune
+DEST="C:/Users/scott/Code/{ProjectName}/worktrees/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+BRANCH="chore/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+git -C "C:/Users/scott/Code/{ProjectName}" worktree add "$DEST" -b "$BRANCH" origin/main
+cd "$DEST"
 ```
 
 **Both paths:** If the branch already exists locally (rare — leftover from an aborted prior run), delete it first with the user's confirmation, or pick a suffix.
@@ -534,8 +540,8 @@ for (const n of toPromote) {
   if (idx === -1) { console.warn('Task #' + n + ' not found, skipping'); continue; }
   const t = b.tasks[idx];
   if (t.status === 'production') { console.log('Task #' + n + ' already production, skipping'); continue; }
-  if (t.status !== 'cba-complete' && t.status !== 'staged') {
-    console.warn('Task #' + n + ' was ' + t.status + ', expected cba-complete or staged — promoting anyway');
+  if (t.status !== 'pr-reviewed' && t.status !== 'staged' && t.status !== 'review-passed') {
+    console.warn('Task #' + n + ' was ' + t.status + ', expected pr-reviewed, review-passed, or staged — promoting anyway');
   }
   t.status = 'production';
   archive.tasks.push(Object.assign({}, t, {
@@ -557,59 +563,12 @@ If at least one task changed:
 ```bash
 git add docs/backlog.json docs/backlog-archive.json
 git commit -m "chore(backlog): promote #{N1}, #{N2} to production; archive shipped tasks (via #{pr-number})"
-git push -u origin HEAD
+git pull --rebase origin main
+git push origin HEAD:main
+# then remove the disposable backlog worktree and run git worktree prune from the source repo
 ```
 
-**Path A (stage → main):** Create the backlog closeout PR to main:
-```bash
-gh pr create --base main --head chore/mark-tasks-production-{pr-number} \
-  --title "chore(backlog): tasks #{N1}, #{N2} to production; archive" \
-  --body "..."
-```
-
-**Path B (direct to main):** Create the backlog closeout PR to main:
-```bash
-gh pr create --base main --head chore/mark-tasks-production-{pr-number} \
-  --title "chore(backlog): tasks #{N1}, #{N2} to production; archive" \
-  --body "..."
-```
-
-PR body (both paths):
-
-```
-## Summary
-
-Closes the backlog loop after [#{pr-number}]({pr-url}) merged to `main` and the production deploy from `main` succeeded.
-
-Promoted tasks are moved from the active backlog to the archive with source attribution.
-
-## Tasks promoted to production & archived
-
-- #{N1} — {title}
-- #{N2} — {title}
-- ...
-
-## Skipped (already production)
-
-- #{Nx} — {title}  *(omit section if empty)*
-
-## Test plan
-
-- [ ] `docs/backlog.json` parses (valid JSON)
-- [ ] `docs/backlog-archive.json` parses (valid JSON)
-- [ ] Each promoted task is removed from backlog and appears in archive with `project_source`, `promoted_via_pr`, and `promoted_at` fields
-- [ ] Each skipped task (already production) remains in neither file (was already archived in a prior promotion)
-```
-
-Capture the backlog closeout PR number and URL, then auto-merge it:
-
-```bash
-gh pr merge {closeout-pr-number} --merge --auto
-```
-
-If auto-merge is unavailable, poll required checks and merge when they pass. If checks fail, stop and report the closeout PR URL; the production deploy already succeeded, but the backlog/archive closeout did not complete and must be retried by re-running `/promote-to-prod` or merging the closeout PR.
-
-After the closeout PR merges, verify the task numbers are no longer in `docs/backlog.json` and are present in `docs/backlog-archive.json` on the target branch.
+After the `HEAD:main` push succeeds, verify the task numbers are no longer in `docs/backlog.json` and are present in `docs/backlog-archive.json` on `origin/main`.
 
 If zero tasks changed (all already production): skip the commit/PR, note in the report.
 
@@ -633,7 +592,7 @@ Any individual failure is a soft-warn — log it and continue with the next task
 
 ## Step 10 — Log Production to Obsidian (one section per task)
 
-Now that prod deploy is verified healthy AND the backlog closeout PR is merged (or the tasks were already production), append a Production capstone to each rolled-up task's Obsidian tracker.
+Now that prod deploy is verified healthy AND the backlog closeout commit is pushed (or the tasks were already production), append a Production capstone to each rolled-up task's Obsidian tracker.
 
 1. Resolve `{ProjectObsidian}` via CWD basename fuzzy-match against `*_Build/` folders. If no match, skip Obsidian logging.
 
@@ -651,7 +610,7 @@ Now that prod deploy is verified healthy AND the backlog closeout PR is merged (
 
       **Promotion PR:** {pr-url} — MERGED at {mergedAt}
       **Prod deploy:** SUCCESS — workflow run {run-url}
-      **Backlog closeout PR:** {closeout-pr-url, or "(none — already production)" if Step 9 skipped this task}
+      **Backlog closeout commit:** {closeout-commit-sha, or "(none — already production)" if Step 9 skipped this task}
       **Promotion path:** {Path A (stage→main) or Path B (direct-to-main)}
 
       **Status flip:** {prior-status} → production
@@ -665,7 +624,7 @@ Tell the user:
 - **Promotion path:** {Path A (stage→main) or Path B (direct-to-main)}
 - **Promotion PR:** `#{pr-number}` ({title}) — MERGED at `{mergedAt}`
 - **Prod deploy:** SUCCESS — workflow run `{run-url}`
-- **Tasks marked production:** `{N1}, N2, ...` (via merged backlog closeout PR `{closeout-pr-url}`)
+- **Tasks marked production:** `{N1}, N2, ...` (via backlog closeout commit `{closeout-commit-sha}`)
 - **Tasks skipped (already production):** `{list, or "none"}`
 - **Cleanup:** `{count}` merged task branches + `{count}` worktrees removed (Step 9.5)
 - **Next step:** none for the promotion lifecycle. `/promote-to-prod` completed the deploy verification, production status flip, archive move, and Obsidian production log.

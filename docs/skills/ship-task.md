@@ -176,8 +176,12 @@ Based on the task's current `status`:
 | `backlog` | **Step 1 (plan)** | **MUST invoke `/plan-task {N}` FIRST.** Never skip to cross-boundary-audit for backlog tasks. |
 | `planned` | Step 2 (start build) | Invoke `/start-build {N}`. Plan is complete; create the task branch, then audit. |
 | `build-started` | Ask user | "Code already started on the task branch. Has the cross-boundary audit run on the task branch yet? [no, run audit now / yes, still coding / yes, ready to finish build]" |
-| `build-finished` | Step 5 (review PR) | Code is committed; reviews are next. Proceed to `/review-pr`. |
-| `cba-complete` | Step 6 (codex review) | Claude review complete; proceed to Codex review. |
+| `build-finished` | Step 5 (review PR) | Code is committed and PR is open; invoke `/review-pr`. |
+| `cba-complete` | Step 4 (finish build) | Cross-boundary audit passed; invoke `/finish-build` to open the PR and set `build-finished`. |
+| `pr-reviewed` | Step 6 (Codex review) | Claude review captured; invoke `/codex-review`. |
+| `codex-reviewed` | Wait | Both reviews are captured; wait for orchestrator approval handler to set `review-passed` or `review-blocked`. |
+| `review-passed` | Step 7 (promote to prod) | Reviews passed; invoke `/promote-to-prod`. |
+| `review-blocked` | Stop | Fix blockers on the task branch, then rerun `/review-pr` and `/codex-review`. |
 | `staged` | Step 7 (promote to prod) | CareGuide task promoted to stage and ready for production. Invoke `/promote-to-prod`; it marks production after deploy succeeds. |
 | `production` | Stop | Tell user "Task #{N} is already in production." Do not proceed. |
 
@@ -280,7 +284,7 @@ After it completes:
 
 ## Step 6 — Codex Review (`review` → independent assessment)
 
-Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "cba-complete", lastSkill: "codex-review" })` before invoking the skill.
+Call `mcp__polaris__SetTaskState({ taskNumber: N, taskState: "codex-review", lastSkill: "codex-review" })` before invoking the skill.
 
 Invoke `/codex-review {N}`. It will run an independent Codex review and compare findings against the Claude review from Step 5.
 

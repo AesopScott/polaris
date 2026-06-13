@@ -469,11 +469,11 @@ Both `/review-pr` and `/codex-review` append their output to a **deterministic t
 ### Step 2: Compare and decide
 
 **APPROVE** — both reviews found no CRITICAL or HIGH issues:
-→ Set task status to `review-passed` via `node -e` utf8
+→ Use the Backlog Write Isolation Protocol to set task status to `review-passed` with Node `fs`/utf8 in a disposable backlog worktree
 → Write `high` directive to session: "Both reviews passed. Orchestrator will issue merge directive on next tick."
 
 **BLOCK** — one or both reviews found CRITICAL or HIGH issues:
-→ Set task status to `review-blocked` via `node -e` utf8
+→ Use the Backlog Write Isolation Protocol to set task status to `review-blocked` with Node `fs`/utf8 in a disposable backlog worktree
 → Write `high` directive to session listing all CRITICAL/HIGH findings
 → Write to `orchestrator-alerts.json`
 
