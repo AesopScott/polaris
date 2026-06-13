@@ -210,14 +210,39 @@
       "title": "Isolate backlog writes from the shared primary repo (concurrency hazard)",
       "category": "Infrastructure",
       "priority": 2,
-      "status": "backlog",
+      "status": "build-finished",
       "dependencies": [],
       "impact": "standard",
-      "branch": null,
+      "branch": "codex/task-58-build-plan-reconcile",
       "pr_url": null,
       "description": "Multiple parallel sessions edit docs/backlog.json in the shared primary repo (C:\\Users\\scott\\Code\\Polaris) on main at the same time. During task #51 planning, an uncommitted backlog edit was swept into another session's commit (ccf9278) and the working tree briefly showed tasks from 3+ sessions at once (in-flight #56/#59). Fix: backlog reads/writes performed by skills (plan-task, start-build, finish-build, status transitions) should operate in an isolated worktree pinned to a freshly-fetched origin/main, mutate atomically, and push HEAD:main with rebase-on-reject — never edit the shared primary working tree directly. Prevents lost/misattributed backlog changes and task-number collisions.",
-      "plan": null,
-      "proofUnits": []
+      "plan": [
+        "Harden every backlog-writing command around a disposable worktree created from freshly fetched origin/main instead of the shared primary working tree.",
+        "Require Node fs utf8 JSON writes, exact task-number mutation reapplication after rebase conflicts, push HEAD:main without force, and cleanup of the disposable worktree.",
+        "Sync the command source files from ~/.claude/commands into docs/skills so Polaris documentation mirrors the executable skill instructions.",
+        "Keep read-only build/review skills from checking out main just to inspect backlog state by using git show origin/main:docs/backlog.json or the same disposable worktree pattern."
+      ],
+      "proofUnits": [
+        {
+          "id": "PU60-1",
+          "name": "Backlog writers avoid primary tree",
+          "expectedFailingEvidence": "Before the change, command files instructed sessions to checkout/pull main or edit docs/backlog.json directly in the active tree.",
+          "expectedPassingEvidence": "Backlog-writing commands now include the Task #60 isolation protocol and direct status-write steps point to that protocol."
+        },
+        {
+          "id": "PU60-2",
+          "name": "Command docs mirror source commands",
+          "expectedFailingEvidence": "Before the change, ~/.claude/commands and docs/skills could drift, so sessions and docs disagreed on backlog behavior.",
+          "expectedPassingEvidence": "Updated command files are copied directly to docs/skills for the modified skills."
+        },
+        {
+          "id": "PU60-3",
+          "name": "Project checks remain green",
+          "expectedFailingEvidence": "Before verification, the package/changelog/build-plan sync could drift after the version bump.",
+          "expectedPassingEvidence": "npm run check:sync, npm run test:contracts, and npm run test:policy pass on v1.0.646."
+        }
+      ],
+      "updated_at": "2026-06-13T17:40:21.428Z"
     },
     {
       "number": 62,

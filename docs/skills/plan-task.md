@@ -1,40 +1,42 @@
 ---
 name: plan-task
-description: Produce a concrete implementation plan for a backlog task before any build session touches it. Loads Obsidian project context (Build folder + recent Sessions), confirms the feature is reachable end-to-end by its target persona before planning, audits boundary changes, and saves the plan to docs/backlog.json on main.
+description: Produce a concrete implementation plan for a backlog task before any build session touches it. Loads Obsidian project context (Build folder + recent Sessions), confirms the feature is reachable end-to-end by its target persona before planning, audits boundary changes, and saves the plan to docs/backlog.json through the isolated backlog write protocol.
 ---
 
 # /plan-task [task-number]
 
-Produce an implementation plan for a backlog task. Loads project mission and recent-session context from Obsidian first, confirms the feature can actually be reached and smoke-tested by its target persona (filing prerequisite tasks if not), then plans against the backlog. Saves the plan back to `docs/backlog.json` on main so the next `/start-build` picks it up.
+## Backlog Write Isolation Protocol (Task #60)
 
-## Directive Polling (multi-session only) with Error Handling
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
+Produce an implementation plan for a backlog task. Loads project mission and recent-session context from Obsidian first, confirms the feature can actually be reached and smoke-tested by its target persona (filing prerequisite tasks if not), then plans against the backlog. Saves the plan back to `docs/backlog.json` through the isolated backlog write protocol so the next `/start-build` picks it up.
+
+## Directive Polling (multi-session only)
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-**Poll with try-catch and retry (use `node -e` with utf8, never Read tool):**
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with "Scope and limits" below
 
-```bash
-timeout=5; retries=0; max_retries=3
-while [ $retries -lt $max_retries ]; do
-  timeout $timeout node -e "
-    try {
-      const fs = require('fs');
-      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
-      if (!fs.existsSync(dirPath)) { console.log('no-directive'); process.exit(0); }
-      const data = JSON.parse(fs.readFileSync(dirPath, 'utf8'));
-      const pending = data.directives && data.directives.find(d => 
-        d.target.sessionId === (process.env.SESSION_ID || 'unknown') && d.status === 'pending'
-      );
-      console.log(pending ? JSON.stringify(pending) : 'no-directive');
-    } catch (e) { console.error('read-failed: ' + e.message); process.exit(1); }
-  " && break
-  retries=$((retries + 1)); [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
-done
-[ $retries -eq $max_retries ] && echo "⚠️ Directive polling unavailable; continuing in single-session mode."
-```
-
-**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
-**On timeout/failure:** Continue to "Scope and limits" in single-session fallback mode. Do not halt.
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Scope and limits".
 
 ---
 
@@ -174,7 +176,7 @@ This step is **required** before reading the backlog. Skipping it produces plans
 
 ## Step 2 — Sync main and read the backlog
 
-**Backlog edits must happen on `main` (or in a worktree pinned to `main`).**
+**Backlog reads that may lead to writes must use the Backlog Write Isolation Protocol above.**
 
 ```bash
 git worktree list
@@ -185,7 +187,7 @@ If a worktree pinned to `main` exists at a known path (other than the current wo
 Otherwise, in the current working directory:
 ```bash
 git status                       # working tree must be clean — if uncommitted changes, stop and tell the user to commit or stash first
-git checkout main && git pull
+# Do not run git checkout main here; read origin/main or create the disposable backlog worktree from the protocol above.
 git branch --show-current        # MUST print exactly "main"
 ```
 

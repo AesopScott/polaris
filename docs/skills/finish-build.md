@@ -5,16 +5,31 @@ description: Complete the current build session after cross-boundary audit passe
 
 # /finish-build
 
+## Backlog Read/Write Isolation Protocol (Task #60)
+
+Do not check out `main` in the shared primary working tree just to read or mutate backlog state.
+
+- For read-only task lookup, run `git fetch origin main` and read `docs/backlog.json` from `origin/main` with `git show origin/main:docs/backlog.json`, or use a disposable worktree from `origin/main`.
+- Any step that mutates `docs/backlog.json` or `docs/backlog-archive.json` must create a disposable backlog worktree from fresh `origin/main`, write JSON with Node `fs` using explicit `utf8`, commit only the touched backlog files, `git pull --rebase origin main`, then `git push origin HEAD:main`.
+- If push is rejected, fetch/rebase/reapply the exact task-number mutation and retry. Never force-push `main`.
+- Remove the disposable worktree after the push succeeds and report the backlog commit SHA.
+
+
 You are completing a build session. The cross-boundary audit must have passed (status `cba-complete`) before this skill runs. Commit task code to the task branch, push, then open a PR targeting either CareGuide's real `stage` environment or `main` for all other projects. Nothing merges or leaves the task branch until you explicitly run a promote command.
 
-## Directive Polling (multi-session only) with Error Handling
+## Directive Polling (multi-session only)
 
-If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives:
+If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-Poll with try-catch and retry (use `node -e`, never Read tool). Retry up to 3 times with exponential backoff. Timeout 5s per attempt.
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with Step 0
 
-**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
-**On timeout/failure:** Log warning and proceed to Step 0 in single-session fallback mode. Do not halt.
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to Step 0.
 
 ---
 
