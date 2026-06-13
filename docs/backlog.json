@@ -141,7 +141,7 @@
         49
       ],
       "branch": "codex/task-50-memory-dedupe",
-      "pr_url": null,
+      "pr_url": "https://github.com/AesopScott/polaris/pull/71",
       "plan": "Add write-time memory deduplication to the batch memory write path. New pure helpers compute tag Jaccard similarity, normalized substring overlap, combined memory similarity, duplicate selection, and a consolidation plan that splits candidates into writes versus reinforcements. addMemories() now fetches active existing memories once per project in the batch, reinforces near-duplicates above the 0.7 threshold, writes only new memories, and suppresses repeated candidates inside the same extraction batch.",
       "proofUnits": [
         {
@@ -172,7 +172,7 @@
           "expectedPassingEvidence": "Tests prove repeated candidates produce one write and one reinforcement plan item."
         }
       ],
-      "updated_at": "2026-06-13T22:53:10.237Z"
+      "updated_at": "2026-06-13T22:55:22.459Z"
     },
     {
       "number": 52,
