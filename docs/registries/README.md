@@ -11,6 +11,8 @@ A boundary is anywhere two pieces of code refer to the same name independently a
 | [websocket-events.md](websocket-events.md) | WS event types with full payload docs (server→client push events) | ~20 | 0 |
 | [http-endpoints.md](http-endpoints.md) | HTTP endpoints: Polaris server + Python LangGraph executor | ~15 | 0 |
 | [backlog-task-fields.md](backlog-task-fields.md) | Fields on BacklogTask objects in docs/backlog.json | ~12 | 0 |
+| [tool-schemas.md](tool-schemas.md) | Direct agent tool input/result schemas generated from Zod contracts | 14 tools | 0 |
+| [mcp-envelopes.md](mcp-envelopes.md) | MCP server, tool envelope, call, and result schemas generated from Zod contracts | 6 schemas | 0 |
 | [agent-state-schema.md](agent-state-schema.md) | LangGraph agent state schema between executor and server | varies | 0 |
 | [python-modules.md](python-modules.md) | Python module boundaries in agents/ | varies | 0 |
 | [env-vars.md](env-vars.md) | `process.env.*` variables read in server.js / main.js / test harness | 11 | 1 orphan consumer (`POLARIS_PORT`) |

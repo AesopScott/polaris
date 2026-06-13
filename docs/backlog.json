@@ -31,16 +31,44 @@
       "category": "feature",
       "priority": 90,
       "impact": "standard",
-      "status": "backlog",
+      "status": "review-passed",
       "created_at": "2026-05-22",
       "completed_at": null,
       "dependencies": [
         37
       ],
-      "branch": null,
-      "pr_url": null,
-      "plan": null,
-      "proofUnits": []
+      "branch": "codex/task-39-registry-generation",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/68",
+      "plan": "## Overview\n\nGenerate contract registry markdown from the compiled Zod contract modules so schema docs can be refreshed deterministically instead of being hand-maintained. The generator uses `compiled/contracts/` as the build output path because `tsconfig.contracts.json` currently emits there, despite the older backlog wording mentioning `dist/contracts/`.\n\n## Phases\n\n1. Add `scripts/generate-registries.js` to introspect the compiled contract modules.\n2. Add `npm run generate:registries` and a `--check` drift mode.\n3. Regenerate/merge the WebSocket and backlog registry sections while preserving manual gap and audit notes.\n4. Generate new `tool-schemas.md` and `mcp-envelopes.md` registries and list them in the registry README.\n5. Verify contract compilation, generated output stability, and policy tests.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Generator command exists and writes registries",
+          "expectedBehavior": "npm run generate:registries runs scripts/generate-registries.js and produces the four target registry files.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run generate:registries",
+          "expectedInitialFailure": "Missing npm script or missing generator file before implementation.",
+          "expectedPassingEvidence": "Command exits 0 and reports generated/unchanged for websocket-messages.md, backlog-task-fields.md, tool-schemas.md, and mcp-envelopes.md."
+        },
+        {
+          "number": 2,
+          "title": "Generated registries are deterministic",
+          "expectedBehavior": "The check mode detects drift and exits 0 immediately after generation.",
+          "proofType": "registry-diff",
+          "exactCommand": "npm run generate:registries -- --check",
+          "expectedInitialFailure": "Before check mode exists, the command cannot verify committed generated sections.",
+          "expectedPassingEvidence": "Command exits 0 and reports all generated registries unchanged."
+        },
+        {
+          "number": 3,
+          "title": "Contract compilation and policy tests still pass",
+          "expectedBehavior": "The compiled contract modules still build and policy tests remain green after adding the generator workflow.",
+          "proofType": "smoke-command",
+          "exactCommand": "npm run build:contracts && npm run test:policy",
+          "expectedInitialFailure": "A broken contract import or package script change would fail TypeScript compilation or the policy suite.",
+          "expectedPassingEvidence": "tsc exits 0 and Vitest reports 26 policy tests passing."
+        }
+      ]
     },
     {
       "number": 48,
