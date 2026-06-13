@@ -231,7 +231,7 @@ describe('UserQuestionAnswerMessage', () => {
   it('accepts valid answer', () => {
     const result = UserQuestionAnswerMessage.safeParse({
       type: 'user-question-answer',
-      sessionId: 's1',
+      questionId: 'q1',
       answer: 'option A',
     });
     expect(result.success).toBe(true);
@@ -240,7 +240,7 @@ describe('UserQuestionAnswerMessage', () => {
   it('rejects missing answer', () => {
     const result = UserQuestionAnswerMessage.safeParse({
       type: 'user-question-answer',
-      sessionId: 's1',
+      questionId: 'q1',
     });
     expect(result.success).toBe(false);
     expect(result.error?.errors[0].path).toContain('answer');
@@ -251,7 +251,7 @@ describe('CrossCheckDecisionMessage', () => {
   it('accepts approve without reason', () => {
     const result = CrossCheckDecisionMessage.safeParse({
       type: 'cross-check-decision',
-      sessionId: 's1',
+      checkId: 'cc1',
       decision: 'approve',
     });
     expect(result.success).toBe(true);
@@ -260,7 +260,7 @@ describe('CrossCheckDecisionMessage', () => {
   it('accepts reject with reason', () => {
     const result = CrossCheckDecisionMessage.safeParse({
       type: 'cross-check-decision',
-      sessionId: 's1',
+      checkId: 'cc1',
       decision: 'reject',
       reason: 'Looks risky',
     });
@@ -270,7 +270,7 @@ describe('CrossCheckDecisionMessage', () => {
   it('rejects invalid decision value', () => {
     const result = CrossCheckDecisionMessage.safeParse({
       type: 'cross-check-decision',
-      sessionId: 's1',
+      checkId: 'cc1',
       decision: 'maybe',
     });
     expect(result.success).toBe(false);
@@ -282,7 +282,7 @@ describe('CrossCheckPostHocDecisionMessage', () => {
   it('accepts valid post-hoc decision', () => {
     const result = CrossCheckPostHocDecisionMessage.safeParse({
       type: 'cross-check-post-hoc-decision',
-      sessionId: 's1',
+      checkId: 'cc1',
       decision: 'approve',
     });
     expect(result.success).toBe(true);
@@ -293,7 +293,7 @@ describe('InstallerPermissionDecisionMessage', () => {
   it('accepts allow decision', () => {
     const result = InstallerPermissionDecisionMessage.safeParse({
       type: 'installer-permission-decision',
-      sessionId: 's1',
+      checkId: 'perm1',
       decision: 'allow',
     });
     expect(result.success).toBe(true);
@@ -302,7 +302,7 @@ describe('InstallerPermissionDecisionMessage', () => {
   it('accepts deny decision', () => {
     const result = InstallerPermissionDecisionMessage.safeParse({
       type: 'installer-permission-decision',
-      sessionId: 's1',
+      checkId: 'perm1',
       decision: 'deny',
     });
     expect(result.success).toBe(true);
@@ -311,7 +311,7 @@ describe('InstallerPermissionDecisionMessage', () => {
   it('rejects unknown decision value', () => {
     const result = InstallerPermissionDecisionMessage.safeParse({
       type: 'installer-permission-decision',
-      sessionId: 's1',
+      checkId: 'perm1',
       decision: 'skip',
     });
     expect(result.success).toBe(false);
@@ -326,18 +326,20 @@ describe('DeleteQueueMessageMessage', () => {
     const result = DeleteQueueMessageMessage.safeParse({
       type: 'delete-queue-message',
       sessionId: 's1',
-      messageId: 'msg-42',
+      queueType: 'steering',
+      index: 0,
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects missing messageId', () => {
+  it('rejects missing queue index', () => {
     const result = DeleteQueueMessageMessage.safeParse({
       type: 'delete-queue-message',
       sessionId: 's1',
+      queueType: 'steering',
     });
     expect(result.success).toBe(false);
-    expect(result.error?.errors[0].path).toContain('messageId');
+    expect(result.error?.errors[0].path).toContain('index');
   });
 });
 
@@ -346,8 +348,9 @@ describe('EditQueueMessageMessage', () => {
     const result = EditQueueMessageMessage.safeParse({
       type: 'edit-queue-message',
       sessionId: 's1',
-      messageId: 'msg-42',
-      newContent: 'Updated content',
+      queueType: 'steering',
+      index: 0,
+      prompt: 'Updated content',
     });
     expect(result.success).toBe(true);
   });
@@ -360,7 +363,7 @@ describe('CostUpdateMessage', () => {
     const result = CostUpdateMessage.safeParse({
       type: 'cost-update',
       sessionId: 's1',
-      cost: 0.0023,
+      totalCost: 0.0023,
     });
     expect(result.success).toBe(true);
   });
@@ -369,10 +372,10 @@ describe('CostUpdateMessage', () => {
     const result = CostUpdateMessage.safeParse({
       type: 'cost-update',
       sessionId: 's1',
-      cost: 'free',
+      totalCost: 'free',
     });
     expect(result.success).toBe(false);
-    expect(result.error?.errors[0].path).toContain('cost');
+    expect(result.error?.errors[0].path).toContain('totalCost');
   });
 });
 
@@ -529,7 +532,7 @@ describe('AnyClientMessage discriminated union', () => {
   it('routes cross-check-decision correctly', () => {
     const result = AnyClientMessage.safeParse({
       type: 'cross-check-decision',
-      sessionId: 's1',
+      checkId: 'cc1',
       decision: 'reject',
       reason: 'Bad idea',
     });

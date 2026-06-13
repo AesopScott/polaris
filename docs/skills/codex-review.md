@@ -5,18 +5,40 @@ description: Independent code review via Codex (GPT-5.4 family) with two modes, 
 
 # /codex-review [pr-number | task <N> | <commit-range> | (no arg)]
 
+## Backlog Write Isolation Protocol (Task #60)
+
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
 Run a structured code review using **Codex** (a different model family from Claude), then compare it against a prior `/review-pr` review if one exists in this session's context. The skill runs in one of two modes depending on the argument (see **Review modes** below).
 
 You do **not** post to GitHub. Output is text only.
 
-## Directive Polling (multi-session only) with Error Handling
+## Directive Polling (multi-session only)
 
-If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives:
+If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-Poll with try-catch and retry (use `node -e`, never Read tool). Retry up to 3 times with exponential backoff. Timeout 5s per attempt.
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with "Review modes" below
 
-**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
-**On timeout/failure:** Log warning and proceed to "Review modes" in single-session fallback mode. Do not halt.
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Review modes".
 
 ---
 
@@ -98,7 +120,7 @@ The rest of this file applies only when the argument is a backlog **task number*
 - **Cannot promote to `main`.** Reviews are advisory output. Never offers to merge, never asks about promotion.
 - **No rollups.** Single-PR review. Multi-task rollup review is `/promote-stage`'s and `/promote-to-prod`'s audit step.
 
-> **Recommended flow (single terminal):** after `/finish-build` completes, run `/clear` to wipe the build session's memory, then `/review-pr task {N}`, then `/codex-review task {N}`. Both take the same task number. The two reviews share the post-`/clear` session, so this skill's comparison step finds the prior Claude review in context automatically. `/clear` is the reset that gives the reviewer a fresh head — no need to open a new terminal.
+> **Recommended flow (single terminal):** after `/finish-build` completes, run `/clear` to wipe the build session's memory, then `/review-pr {N}`, then `/codex-review {N}`. Both take the same task number. The two reviews share the post-`/clear` session, so this skill's comparison step finds the prior Claude review in context automatically. `/clear` is the reset that gives the reviewer a fresh head — no need to open a new terminal.
 
 ## Objective-Centric Criteria Contract
 
@@ -141,10 +163,8 @@ Same lifecycle check as `/review-pr`:
 | Current status | Allowed action |
 |---|---|
 | `build-finished` | ✅ Proceed — standard review status (awaiting Codex review). |
-| `review-blocked` | ✅ Proceed — re-running Codex review after fixes to resolve a blocked review. |
-| `codex-reviewed` | ⚠️ Soft warn: "Task #{N} is already codex-reviewed. This will produce a follow-up Codex review. Proceed? [yes/no]" |
-| `review-passed` | ⚠️ Soft warn: "Task #{N} has already passed review. This is an after-the-fact re-review. Proceed? [yes/no]" |
-| `cba-complete` | ⚠️ Soft warn: "Task #{N} is already cba-complete (cross-boundary audit done — further along the pipeline than this step). This is an after-the-fact review. Proceed? [yes/no]" |
+| `pr-reviewed` | ✅ Proceed — standard status (Claude review done, awaiting Codex review). |
+| `codex-reviewed` | ⚠️ Soft warn: "Task #{N} is already codex-reviewed. This is a follow-up Codex review. Proceed? [yes/no]" |
 | `staged` / `production` / `complete` | ⚠️ Soft warn: "Task #{N} is already {status}. Review is after-the-fact only. Proceed? [yes/no]" |
 | `planned` / `backlog` / `build-started` | ❌ **Refuse.** "Task #{N} doesn't have a finished build to review (status: {status}). Run `/finish-build` first." Stop. |
 
@@ -160,7 +180,7 @@ Compare `git branch --show-current` to the task's `branch` field. If they match,
 
 > ⚠️ This session appears to be the one that wrote the code for Task #{task-N} (PR #{pr-N}). Reviewing your own work is a known anti-pattern.
 >
-> Recommended: start a new session and run `/codex-review task {task-N}` there.
+> Recommended: start a new session and run `/codex-review {task-N}` there.
 
 Ask whether to **abort** (default) or override. Only continue on explicit override.
 
@@ -198,7 +218,7 @@ Codex will include these findings in its review. See `/review-pr` Step 4a for th
 
 Invoke the Codex review path (`mcp__codex__codex_review` preferred, `/codex:rescue` as fallback) with a prompt that instructs Codex to:
 
-> Review pull request #{pr-N} for the {project-name} project (Task #{task-N}). The PR title is "{title}", base is `stage`, head is `task/{task-N}-{slug}`.
+> Review pull request #{pr-N} for the {project-name} project (Task #{task-N}). The PR title is "{title}", base is `main`, head is `task/{task-N}-{slug}`.
 >
 > Context:
 > - Task spec (from `docs/backlog.json` task #{task-N}): {description + plan + objective}
@@ -309,7 +329,7 @@ For every section where the two reviewers reached different conclusions, summari
 
 **If not found**, tell the user:
 
-> No prior `/review-pr task {task-N}` output in this session. To get a Claude vs Codex comparison, run `/review-pr task {task-N}` first in this same session, then `/codex-review task {task-N}` again. The current run produced only the Codex review above.
+> No prior `/review-pr {task-N}` output in this session. To get a Claude vs Codex comparison, run `/review-pr {task-N}` first in this same session, then `/codex-review {task-N}` again. The current run produced only the Codex review above.
 
 ## Step 9 — Log Codex Review + Comparison to Obsidian
 
@@ -341,7 +361,7 @@ Append the Codex review (and comparison, if generated) to the task's Obsidian tr
 
 ## Step 10 — Set task status to `codex-reviewed` (task mode only)
 
-In task mode, after the Codex review is complete and logged, set the task's status to `codex-reviewed` in `docs/backlog.json` on main:
+In task mode, after the Codex review is complete and logged, set the task's status to `codex-reviewed` in `docs/backlog.json`:
 
 ```bash
 node -e "
@@ -356,24 +376,11 @@ if (task) {
 "
 ```
 
-This status indicates that the Codex review has been captured and findings are documented. The orchestrator approval handler (PHASE 6C) will now read both `/review-pr` and `/codex-review` findings to determine the final status (`review-passed` or `review-blocked`).
+This status indicates the Codex review has been captured and findings are documented. The orchestrator approval handler (PHASE 6C) will now read both `/review-pr` and `/codex-review` findings from the task file and determine the final status (`review-passed` or `review-blocked`).
 
-**Important:** This skill does NOT set `review-blocked` or `review-passed`. Only the orchestrator approval handler sets those statuses.
+**Important:** This skill does NOT set `review-blocked` or `review-passed`. Only the orchestrator approval handler (PHASE 6C) sets those statuses. Ensure the **Verdict** is clearly stated in the completion banner so the orchestrator can parse it without ambiguity.
 
-## Step 11 — Approval handler will read both reviews
-
-> **Note on status:** You set `codex-reviewed` in Step 10. The orchestrator approval handler (PHASE 6C) now reads both `/review-pr` findings AND `/codex-review` findings and decides:
->
-> | Both Approve | Codex Blocks | Claude Blocks but Codex Approves |
-> |---|---|---|
-> | Status → `review-passed` | Status → `review-blocked` | Status → `review-blocked` |
-> | (Merge proceeds) | (Merge blocked; user fixes) | (Merge blocked; user fixes) |
->
-> The orchestrator handler reads the Verdicts from both reviews' completion banners. Ensure your **Verdict** is clearly stated so it can be parsed without ambiguity.
-> 
-> **If `review-blocked` is set:** The user will fix the code and re-run this `/codex-review` skill (or `/review-pr` if only Claude blocked). The skill runs again from Step 1, captures new findings, and repeats until `review-passed` is reached.
-
-## Step 12 — Final question
+## Step 11 — Final question
 
 Ask: "Post the Codex review (and comparison, if generated) as a GitHub PR comment, continue working from the recommendations, or take a different action?"
 

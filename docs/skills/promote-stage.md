@@ -5,77 +5,44 @@ description: CareGuide-only. Promote `stage` to `main` for pre-production testin
 
 # /promote-stage
 
+## Backlog Write Isolation Protocol (Task #60)
+
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
 You are promoting CareGuide's real `stage` environment. This is the final gate before production deploy. Verify all tasks on stage have passed review, then promote to `main` for final validation.
 
-## Directive Polling (multi-session only) with Error Handling
+## Directive Polling (multi-session only)
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-**Polling with try-catch and retry:**
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with "Merge Model" below
 
-Use `node -e` with try-catch to read the directive file safely (never use the Read tool):
-
-```bash
-timeout=5
-retries=0
-max_retries=3
-
-while [ $retries -lt $max_retries ]; do
-  timeout $timeout node -e "
-    try {
-      const fs = require('fs');
-      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
-      if (!fs.existsSync(dirPath)) {
-        console.log('no-directive');
-        process.exit(0);
-      }
-      const content = fs.readFileSync(dirPath, 'utf8');
-      const data = JSON.parse(content);
-      const sessionId = process.env.SESSION_ID || 'unknown';
-      const pending = data.directives && data.directives.find(d => 
-        d.target.sessionId === sessionId && d.status === 'pending'
-      );
-      if (pending) {
-        console.log(JSON.stringify(pending));
-      } else {
-        console.log('no-directive');
-      }
-    } catch (e) {
-      console.error('read-failed: ' + e.message);
-      process.exit(1);
-    }
-  " && break
-  retries=$((retries + 1))
-  [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
-done
-
-if [ $retries -eq $max_retries ]; then
-  echo "⚠️ Directive polling unavailable (max retries). Proceeding in single-session mode."
-fi
-```
-
-**Behavior:**
-
-1. If directive found:
-   - Set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>` in the file
-   - Execute the `instruction` field as a user message
-   - Set `status: "completed"`, write `completedAt` and `result`
-   - Proceed with the directive's instructions
-
-2. If no directive found:
-   - **Single-session:** Continue to "Merge Model" normally
-   - **Multi-session:** Continue to "Merge Model" (fallback to normal operation)
-
-3. If polling fails (max retries exceeded):
-   - Log "Orchestrator coordination unavailable"
-   - Continue to "Merge Model" in single-session fallback mode
-   - **Do not halt** on missing directives
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Merge Model".
 
 ## Merge Model
 
-**In multi-session context:** This skill opens a stage → main PR and stops. The orchestrator may coordinate the merge through directives. Do NOT merge directly in multi-session mode — let the orchestrator coordinate via directives or wait for human approval on GitHub.
+**In multi-session context:** Request the orchestrator to merge via `branch-requests.json`. Do NOT merge directly.
 
-**In single-session context:** Open a stage → main PR, get human approval, then merge directly and push.
+**In single-session context:** Merge stage → main directly and push.
 
 ---
 
@@ -134,7 +101,7 @@ Each project gets two sibling folders at the vault root. This is hard-coded — 
 - **CareGuide-only by default.** `/promote-stage` is valid only for Parental CareGuide/CareGuide because it is the only project with a real, testable stage environment. For every other project, stop and tell Scott: "This project has no real testable stage. Use `/promote-to-prod` or the direct main PR path instead." Continue only if Scott explicitly overrides this policy for this session.
 - **Rollup-scoped, not single-task.** This skill processes EVERY task currently `cba-complete` that has merged to stage since the last promotion. Single-task invocation is not possible — the rollup is the unit of promotion.
 - **Opens the stage→main PR but does NOT merge it.** Production merge is human action on GitHub. If you want auto-merge + auto-ship, invoke `/promote-to-prod` instead.
-- **Flips backlog statuses to `staged`.** For each pr-reviewed task merged to stage, updates its status in docs/backlog.json on main.
+- **Flips backlog statuses to `staged`.** For each pr-reviewed task merged to stage, updates its status in docs/backlog.json through the isolated backlog write protocol.
 
 ## Objective-Centric Criteria Contract
 
@@ -427,10 +394,10 @@ For **every task included** in this rollup (Step 2's list), append a Promotion r
 For each task in the rollup, update its status on main:
 
 ```bash
-git checkout main && git pull
+# Do not run git checkout main here; read origin/main or create the disposable backlog worktree from the protocol above.
 ```
 
-Update `docs/backlog.json` using `node -e` — never use the Edit tool on JSON files (Windows encoding rule). Substitute `[{N1}, {N2}, ...]` with the actual task numbers from the rollup:
+Inside the disposable backlog worktree from the Backlog Write Isolation Protocol, update `docs/backlog.json` using `node -e` — never use the Edit tool on JSON files (Windows encoding rule). Substitute `[{N1}, {N2}, ...]` with the actual task numbers from the rollup:
 
 ```bash
 node -e "

@@ -40,25 +40,29 @@ export const CROSS_CHECK_MAX_ENTRIES = 500;
 
 /** Result produced by the reviewer model for a single diff. */
 export interface CrossCheckReview {
-  verdict: 'approve' | 'reject' | 'warn';
+  verdict: 'PASS' | 'FAIL' | 'ERROR' | 'WARN';
   summary: string;
   issues: string[];
   model: string;
   ms: number;
+  usage?: any;
 }
 
 /** A single cross-check audit record persisted to JSONL. */
 export interface CrossCheckEntry {
-  ts: string;               // ISO timestamp
+  ts: string;                   // ISO timestamp
   sessionId: string;
   filePath: string;
-  operation: string;        // 'write' | 'edit' | 'bash' | 'post-hoc'
-  verdict: string;
-  decision: 'approved' | 'rejected' | 'auto-approved' | 'timed-out';
+  operation: string;            // 'write' | 'edit' | 'bash' | 'post-hoc'
+  originalLines?: number;
+  newLines?: number;
   originalBytes?: number;
   newBytes?: number;
-  model?: string;
-  ms?: number;
+  review?: CrossCheckReview;
+  userDecision?: 'approve' | 'reject' | 'keep' | 'restore';
+  sessionPrompt?: string;
+  originalContent?: string | null;
+  newContent?: string | null;
 }
 
 /** In-flight approval gate waiting for the user's UI response. */

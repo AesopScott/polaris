@@ -1,16 +1,19 @@
-# Polaris: build (dist:fast) + install in one shot
-Set-Location "C:\Users\scott\Code\Polaris"
+# Polaris-lab: build (dist:fast) + install in one shot
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $repoRoot
 
-# Kill any running Polaris processes before building. If Polaris.exe is running
+# Kill any running Polaris-lab processes before building. If Polaris-lab.exe is running
 # it locks files in dist\, causing "Can't open output file" from NSIS. Same
 # story for orphaned installer windows. node.exe children are filtered to only
-# those running from the Polaris install dir, so dev tooling is left alone.
-Write-Host "==> Closing running Polaris processes..." -ForegroundColor Cyan
+# those running from the Polaris-lab install dir, so dev tooling is left alone.
+Write-Host "==> Closing running Polaris-lab processes..." -ForegroundColor Cyan
 
 $killed = 0
+$productName = "Polaris-lab"
+$runtimeDir = "$env:APPDATA\.claude\polaris-lab"
 
-Get-Process -Name "Polaris" -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "    killing Polaris.exe pid=$($_.Id)" -ForegroundColor DarkGray
+Get-Process -Name $productName -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "    killing $productName.exe pid=$($_.Id)" -ForegroundColor DarkGray
     Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
     $script:killed++
 }
@@ -18,15 +21,15 @@ Get-Process -Name "Polaris" -ErrorAction SilentlyContinue | ForEach-Object {
 Get-Process -Name "node" -ErrorAction SilentlyContinue | ForEach-Object {
     try {
         $p = $_.Path
-        if ($p -and $p -like "*\Programs\Polaris\*") {
-            Write-Host "    killing Polaris node.exe pid=$($_.Id)" -ForegroundColor DarkGray
+        if ($p -and $p -like "*\Programs\$productName\*") {
+            Write-Host "    killing $productName node.exe pid=$($_.Id)" -ForegroundColor DarkGray
             Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
             $script:killed++
         }
     } catch {}
 }
 
-Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "Polaris Setup*" } | ForEach-Object {
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like "$productName Setup*" } | ForEach-Object {
     Write-Host "    killing $($_.ProcessName) pid=$($_.Id)" -ForegroundColor DarkGray
     Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
     $script:killed++
@@ -40,14 +43,14 @@ if ($killed -gt 0) {
 }
 
 $newVersion = node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)"
-Write-Host "==> Building Polaris v$newVersion (dist:fast)..." -ForegroundColor Cyan
+Write-Host "==> Building $productName v$newVersion (dist:fast)..." -ForegroundColor Cyan
 npm run dist:fast
 if (-not $?) {
     Write-Host "==> Build failed. Aborting." -ForegroundColor Red
     exit 1
 }
 
-$installer = Get-ChildItem "dist\Polaris Setup *.exe" |
+$installer = Get-ChildItem "dist\$productName Setup *.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
@@ -56,7 +59,7 @@ if (-not $installer) {
     exit 1
 }
 
-$privateName = $installer.FullName -replace 'Polaris Setup', 'Polaris Private Setup'
+$privateName = $installer.FullName -replace "$productName Setup", "$productName Private Setup"
 if (Test-Path $privateName) { Remove-Item $privateName -Force }
 Rename-Item $installer.FullName $privateName -Force
 Write-Host "    renamed → $(Split-Path $privateName -Leaf)" -ForegroundColor DarkGray
@@ -68,7 +71,8 @@ Write-Host "==> Done." -ForegroundColor Green
 
 $head = (git rev-parse HEAD).Trim()
 $builtAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-$stateFile = "$env:APPDATA\.claude\polaris\last-build-head.json"
+if (-not (Test-Path $runtimeDir)) { New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null }
+$stateFile = "$runtimeDir\last-build-head.json"
 $json = "{`"head`":`"$head`",`"builtAt`":`"$builtAt`",`"version`":`"$newVersion`"}"
 [System.IO.File]::WriteAllText($stateFile, $json, [System.Text.UTF8Encoding]::new($false))
-Write-Host "==> Notified Polaris: HEAD $($head.Substring(0,7)) v$newVersion marked as built." -ForegroundColor Green
+Write-Host "==> Notified ${productName}: HEAD $($head.Substring(0,7)) v$newVersion marked as built." -ForegroundColor Green

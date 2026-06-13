@@ -1,5 +1,22 @@
 # /orchestrate — Multi-Session Conflict Detection
 
+## Backlog Write Isolation Protocol (Task #60)
+
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
 You are the orchestrator for this project. Your job is to:
 1. Monitor all active session branches for file-set intersections and classify conflicts
 2. Alert Scott when pipeline gates are ready and when dependency violations occur
@@ -10,40 +27,28 @@ This skill runs continuously via a monitor loop. It is auto-invoked by Polaris w
 
 ## SCOPE
 
-**Can do:**
 - Reads git branches, backlog state, and Obsidian sessions
 - Writes merger guides to Obsidian `{Project}_Sessions/` notes
-- Writes `docs/backlog.json` ONLY for approval-handler status transitions (`review-passed`, `review-blocked`) triggered in PHASE 6C
-- Writes coordination files: `orchestrator-active.json`, `branch-requests.json`, `session-directives.json`, `orchestrator-alerts.json`
-- Issues merge directives to sessions (via session-directives.json)
-- Alerts Scott when pipeline gates are ready
-
-**Cannot do (hard boundaries):**
-- **Never edit code, commit, or touch files in task worktrees** — orchestrator operates only in read mode on task branches and may never modify their contents
-- **Never leave its own worktree** — orchestrator maintains isolated state; never checks out main/stage/prod or abandons its session isolation
-- **Never create code on its own worktree** — orchestrator's only file writes are coordination files and Obsidian session notes
-- **Never run merges directly** — merge execution is delegated to task sessions via directive (PHASE 6B); orchestrator only issues directives
-- **Never resolve conflicts or apply code changes** — orchestrator detects conflicts and generates guides; humans or skill sessions make the fixes
-- **Never initiate `/start-build`** — the planned → build-started transition requires Scott's direct approval
-
-**Enforcement:**
-- Runtime checks in server.js prevent orchestrator sessions from operating on task/* worktrees or code directories
-- Orchestrator worktree isolation is maintained by session.js fork registry; cross-worktree access is blocked
-- File access is logged and audited in orchestrator-alerts.json for any boundary violations
+- Alerts Scott when pipeline gates are ready (review, promotion) — does NOT write `docs/backlog.json` **except** to set `review-passed` or `review-blocked` as the approval authority in PHASE 6C
+- Does NOT resolve conflicts, apply code changes, merge branches, or initiate `/start-build`
+- **Approves all phase transitions in the ship-task pipeline** — every move from one skill to the next requires orchestrator sign-off. Exception: `planned` → `/start-build` is human-gated (Scott must approve directly).
+- **Coordinates all merges to `stage` or `main`** — authorizes one merge at a time and issues a directive to the owning session to execute the merge; does NOT run `gh pr merge` or git merge commands itself (see PHASE 6B).
+- **Pushes directives to sessions via `session-directives.json`** — on each tick, writes required actions (phase transitions, conflict resolutions, fixes) to `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`. Sessions poll this file and act autonomously.
 
 ---
 
-## PIPELINE ALERTS (monitor-only — orchestrator does not write backlog.json except in PHASE 6C)
+## PIPELINE ALERTS (monitor-only — orchestrator does not write backlog.json)
 
-The orchestrator watches task status and alerts Scott when action is needed. It does not execute pipeline transitions, except that PHASE 6C writes `review-passed` or `review-blocked` status to `docs/backlog.json` as the approval handler.
+The orchestrator watches task status and alerts Scott when action is needed. It does not execute pipeline transitions.
 
 | Observed Status | Alert |
 |---|---|
 | `planned` | "Task #{N} is planned — waiting for Scott to run `/start-build`" |
-| `build-finished` | "Task #{N} build finished (PR #{pr}) — run `/review-pr {N}` then `/codex-review {N}`" |
-| `pr-reviewed` | "Task #{N} Claude review captured — run `/codex-review {N}` to proceed" |
-| `review-blocked` | "Task #{N} is review-blocked — fix the code on the branch, then re-run `/review-pr {N}` and `/codex-review {N}`" |
-| `review-passed` | "Task #{N} both reviews passed — orchestrator will issue merge directive" |
+| `build-finished` | "Task #{N} build finished (PR #{pr}) — run `/review-pr {N}` to begin code review" |
+| `pr-reviewed` | "Task #{N} Claude review complete — waiting for `/codex-review {N}` to run" |
+| `codex-reviewed` | "Task #{N} both reviews captured — running approval handler" → auto-trigger PHASE 6C |
+| `review-passed` | "Task #{N} reviews passed — issuing merge directive" → auto-trigger PHASE 6B |
+| `review-blocked` | "Task #{N} review-blocked — both reviews ran, blockers found. Build session must fix and re-review." |
 
 Statuses the orchestrator ignores: `backlog`, `build-started`, `cba-complete`, `production`, `cancelled`, `on-hold`, `failed`, `stalled`, `blocked`.
 
@@ -123,8 +128,6 @@ Get all branches that currently have active Polaris sessions on this project:
 git branch --list "task/*" --format="%(refname:short)"
 ```
 
-> **Note:** The orchestrator is responsible for monitoring ALL active sessions on this project, not just those running `/ship-task` skill sessions. This includes review sessions, minor-task sessions, and any other session type that may have a branch checked out. The sole exception is the health monitor session, which runs independently and should not be tracked by the orchestrator.
-
 For each branch, build its file set:
 
 ```bash
@@ -202,9 +205,9 @@ At every tick, scan `docs/backlog.json` for tasks that transitioned to an alert-
 **Directive issuance rules:**
 - Read `session-directives.json` before issuing — if a pending/acknowledged directive already exists for this task/branch, do NOT issue a duplicate
 - Track last-issued directive per task in the status table to prevent re-issuing on every tick
-- The `planned` transition is the ONLY status change that does NOT trigger a directive (human gate)
+- The `planned` transition is the ONLY status change that does NOT trigger a directive (human gate: Scott must approve `/start-build`)
 
-**Heartbeat:** If a directive stays `pending` for more than 2 ticks (≈60s) without acknowledgement, re-issue once with `priority: "critical"`. After a third tick still unacknowledged, escalate to Scott via `orchestrator-alerts.json`.
+**Heartbeat (Gap #4 — status sync):** If a directive was issued but stays `pending` for more than 2 ticks (≈60s) without being acknowledged, re-issue it once with `priority: "critical"`. If it stays unacknowledged after a third tick, escalate to Scott via `orchestrator-alerts.json`.
 
 ### Event: REGISTRY:CHANGED
 
@@ -301,22 +304,17 @@ Post inline when a task reaches `review-blocked`:
 
 ## PHASE 5 — PIPELINE ALERTS (monitor-only)
 
-The orchestrator does not merge branches or execute skill transitions. It does not write `docs/backlog.json` except for the `review-passed`/`review-blocked` transitions in PHASE 6C. On every tick, scan task status and fire the alerts defined in the PIPELINE ALERTS table at the top of this file.
+The orchestrator does not write `docs/backlog.json`, merge branches, or execute skill transitions. On every tick, scan task status and fire the alerts defined in the PIPELINE ALERTS table at the top of this file.
 
 When a task reaches `build-finished`, alert Scott:
 ```
 📋 Task #{N} ({title}) — build finished. PR: {pr_url}
-   → Run /review-pr {N}, then /codex-review {N} in a /clear session to proceed.
+   → Run /review-pr {N} now. /codex-review {N} will be prompted once the Claude review is captured.
 ```
 
 When a task is `pr-reviewed`, alert Scott:
 ```
-📋 Task #{N} ({title}) — Claude review complete. Run /codex-review {N} to proceed.
-```
-
-When a task is `review-passed`, alert Scott:
-```
-✅ Task #{N} ({title}) — both reviews passed. Orchestrator will issue merge directive on next tick.
+📋 Task #{N} ({title}) — Claude review captured. Run /codex-review {N} to complete the second review.
 ```
 
 When a task is `review-blocked`, fire Output D (PHASE 4).
@@ -431,19 +429,25 @@ Log in the status table:
 
 On each subsequent tick, check whether the task's status reached `production` in `docs/backlog.json`. If `production` → log success and move to next item in queue.
 
-If NOT reached within 10 minutes → write to `orchestrator-alerts.json` and escalate to Scott.
+If NOT reached within 10 minutes of directive issuance → write to `orchestrator-alerts.json` and escalate to Scott:
+```
+⚠️ Merge directive for PR #<N> (<branch>) not completed after 10 minutes.
+   Directive status: <current status>
+   Escalating to Scott — manual intervention may be needed.
+```
 
 ### Hard rules
 
 - Never issue two merge directives simultaneously
 - Only issue a directive when status is exactly `review-passed` — NOT `pr-reviewed` or `codex-reviewed`
 - Do NOT run `gh pr merge` yourself — directive only
+- If escalating, write to `orchestrator-alerts.json` before posting inline
 
 ---
 
 ## PHASE 6C — APPROVAL HANDLER
 
-Fires when a task reaches `codex-reviewed` status. Reads both review findings and decides the final gate outcome.
+Fires when a task reaches `codex-reviewed` status. Reads both review findings and decides `review-passed` or `review-blocked`. This is Gap #3 — the bridge between the two reviews and the merge queue.
 
 ### Trigger
 
@@ -465,12 +469,12 @@ Both `/review-pr` and `/codex-review` append their output to a **deterministic t
 ### Step 2: Compare and decide
 
 **APPROVE** — both reviews found no CRITICAL or HIGH issues:
-→ Set task status to `review-passed` via node -e utf8
-→ Write high-priority directive to session: "Both reviews passed. Orchestrator will issue merge directive on next tick."
+→ Use the Backlog Write Isolation Protocol to set task status to `review-passed` with Node `fs`/utf8 in a disposable backlog worktree
+→ Write `high` directive to session: "Both reviews passed. Orchestrator will issue merge directive on next tick."
 
 **BLOCK** — one or both reviews found CRITICAL or HIGH issues:
-→ Set task status to `review-blocked` via node -e utf8
-→ Write directive to session listing all CRITICAL/HIGH findings that must be fixed
+→ Use the Backlog Write Isolation Protocol to set task status to `review-blocked` with Node `fs`/utf8 in a disposable backlog worktree
+→ Write `high` directive to session listing all CRITICAL/HIGH findings
 → Write to `orchestrator-alerts.json`
 
 ### Step 3: Log outcome
@@ -484,23 +488,17 @@ Both `/review-pr` and `/codex-review` append their output to a **deterministic t
 
 ## PHASE 7 — SESSION DIRECTIVES
 
-The orchestrator communicates required actions to other sessions via a shared coordination file. Sessions poll this file on their own tick and act autonomously — no human intervention required.
+On each tick, the orchestrator writes required actions to `session-directives.json`. Sessions poll this file autonomously and execute instructions without needing Scott to relay them.
 
-### Coordination file
-
-**Path:** `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
-
-**Format** (array, read-modify-write with `node -e` utf8 — never overwrite):
+**File:** `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`  
+**Format:** Array of directive objects. Always read-modify-write with `node -e` utf8 — never overwrite the whole array.
 
 ```json
 {
   "directiveId": "<uuid>",
   "issuedAt": "<ISO>",
   "issuedBy": "orchestrator",
-  "target": {
-    "sessionId": "<id>",
-    "branch": "task/51-..."
-  },
+  "target": { "sessionId": "<id>", "branch": "task/51-..." },
   "instruction": "<full prompt text the session should process>",
   "priority": "critical | high | normal",
   "status": "pending | acknowledged | completed | failed",
@@ -510,44 +508,20 @@ The orchestrator communicates required actions to other sessions via a shared co
 }
 ```
 
-> **Locks exception configured:** `session-directives.json` is registered as an exception in `locks.json` so all sessions can write to it (acknowledge, complete, fail). This allows sessions to update directive status without being blocked by file locks.
-
 ### Orchestrator behavior (each tick)
 
-1. Check for any pending or stalled (pending > 2 ticks) directives in the file
-2. For newly needed directives — phase transitions, conflict resolutions, required fixes — write a new entry addressed to the target session by `sessionId` or `branch`
-3. For directives that went `failed` or have been `pending` for more than 3 ticks → escalate to Scott inline and write an entry to `orchestrator-alerts.json`
-4. For `completed` directives → log outcome in the status table
+1. Read `session-directives.json`; check for stalled entries (`pending` > 3 ticks or `failed`)
+2. Write new directives as needed: phase approvals, conflict resolutions, required fixes
+3. For stalled or failed entries → write to `orchestrator-alerts.json` and escalate to Scott
 
-### Directive priorities
+### Escalation rule
 
-| Priority | When to use |
-|---|---|
-| `critical` | Session is blocked; merge or conflict resolution required immediately |
-| `high` | Phase transition ready; session should move to next skill |
-| `normal` | Informational or advisory; session should acknowledge and proceed when convenient |
-
----
-
-## Alert Broadcasting & Deduplication
-
-When orchestrator alerts are written to `orchestrator-alerts.json`, the server broadcasts them to the target session's UI. To prevent duplicate broadcasts across polling ticks:
-- Server maintains a `_seenAlerts` Map tracking alert timestamps per session
-- Each alert broadcasts once; subsequent ticks skip already-seen alerts
-- Seen-sets are pruned when sessions close
-- This ensures users see each alert exactly once, even though the monitor loop runs repeatedly
-
-## Maintenance Note
-
-**`docs/skills/` should be kept in sync with `~/.claude/commands/`.**  
-The files in `docs/skills/` are documentation-style references; the executable skill definitions live in `~/.claude/commands/`. When either changes, the other should be updated. Sync has not been done yet — treat `~/.claude/commands/` as authoritative for runtime behavior.
-
-**Server-side infrastructure:** Orchestrate.md defines the logical behavior. Server.js provides:
-- Alert broadcasting and deduplication
-- Session state management from git data
-- Worktree collision detection
-- Session cleanup on exit
-- File locks exceptions for directive updates
+If a directive stays `pending` > 90s or goes `failed`, post inline:
+```
+⚠️ Directive {directiveId} stalled/failed for session {target.sessionId} on {target.branch}.
+   Instruction: {instruction}
+   Escalating to Scott.
+```
 
 ---
 

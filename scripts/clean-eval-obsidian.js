@@ -30,7 +30,8 @@ const path = require('path');
 const os = require('os');
 
 const APPDATA = process.env.APPDATA || os.homedir();
-const POLARIS_DIR = path.join(APPDATA, '.claude', 'polaris');
+const APP_SLUG = process.env.POLARIS_APP_SLUG || 'polaris-lab';
+const POLARIS_DIR = process.env.POLARIS_DIR || path.join(APPDATA, '.claude', APP_SLUG);
 const LOGS_DIR = path.join(POLARIS_DIR, 'logs');
 const CFG_PATH = path.join(POLARIS_DIR, 'config.json');
 const dry = process.argv.includes('--dry') || process.argv.includes('--dry-run');

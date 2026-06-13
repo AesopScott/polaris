@@ -5,18 +5,24 @@ description: Audit and fix boundary contracts during the build. Verifies all new
 
 # /cross-boundary-audit [task-number]
 
+## Backlog Write Isolation Protocol (Task #60)
+
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
 You are auditing the boundary contracts and proof units for the current task before the PR is pushed. This skill runs after developer coding but before `/finish-build`.
-
-## Directive Polling (multi-session only) with Error Handling
-
-If running in a multi-session context, check for orchestrator directives:
-
-Poll with try-catch and retry (use `node -e`, never Read tool). Retry up to 3 times with exponential backoff. Timeout 5s per attempt.
-
-**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
-**On timeout/failure:** Log warning and proceed to "Scope and Limits" in single-session fallback mode. Do not halt.
-
----
 
 ## Scope and Limits
 
@@ -162,7 +168,7 @@ git commit -m "docs: update registries for task #{N}"
 ### Step 6: Report status
 
 If all gaps are closed:
-- Update `docs/backlog.json` — set task status to `cba-complete`
+- Use the Backlog Write Isolation Protocol to set task status to `cba-complete` in `docs/backlog.json`
 - Print: "✅ Audit complete. All registries are clean and proof units have evidence. Ready for `/finish-build`."
 
 If gaps remain:

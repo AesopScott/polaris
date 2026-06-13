@@ -5,133 +5,44 @@ description: End-to-end production promotion. There is no `origin/prod` branch: 
 
 # /promote-to-prod
 
+## Backlog Write Isolation Protocol (Task #60)
+
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
 You are running the production promotion sequence. There is no `origin/prod` branch. This skill identifies non-production tasks, audits them, gets reviewed work onto `origin/main`, waits for the production deploy workflow from `main` to confirm, then marks the included tasks `production` and archives them. If anything fails, it stops and reports — it never marks tasks as production on a broken deploy.
 
 ## Directive Polling (multi-session only)
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-**Error-safe polling with retry:**
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with "Merge Model" below
 
-Use `node -e` (never the Read tool — encoding issues) to poll with try-catch and retry logic:
-
-```bash
-timeout=5  # 5 second timeout per read
-retries=0
-max_retries=3
-
-while [ $retries -lt $max_retries ]; do
-  timeout $timeout node -e "
-    try {
-      const fs = require('fs');
-      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
-      if (!fs.existsSync(dirPath)) {
-        console.log('no-directive');
-        process.exit(0);
-      }
-      const content = fs.readFileSync(dirPath, 'utf8');
-      const data = JSON.parse(content);
-      const sessionId = process.env.SESSION_ID || 'unknown';
-      const pending = data.directives && data.directives.find(d => 
-        d.target.sessionId === sessionId && d.status === 'pending'
-      );
-      if (pending) {
-        console.log(JSON.stringify(pending));
-      } else {
-        console.log('no-directive');
-      }
-    } catch (e) {
-      console.error('read-failed: ' + e.message);
-      process.exit(1);
-    }
-  " && break
-  retries=$((retries + 1))
-  [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
-done
-
-if [ $retries -eq $max_retries ]; then
-  echo "⚠️ Orchestrator coordination unavailable (max retries exceeded). Proceeding in single-session mode."
-  # Continue with normal execution; no directive expected
-fi
-```
-
-If a directive is found (output is valid JSON):
-- Immediately set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>` (write back to file)
-- The directive's `instruction` field contains the full prompt — execute it as if it were a user message
-- After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
-
-If no directive found or polling times out:
-- **Single-session mode:** Proceed normally to "Merge Model" below
-- **Multi-session mode with timeout:** Log "Orchestrator coordination unavailable; running in single-session mode" and continue
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Merge Model".
 
 ## Merge Model
 
-**In multi-session context:** The orchestrator scans for `pr-reviewed` tasks and will issue a directive to this session telling it which PR to merge and when. Wait for the merge completion directive in Step 6 before proceeding with the merge in Step 7. Do NOT merge directly — await the directive first.
+**In multi-session context:** Request the orchestrator to merge via `branch-requests.json`. Do NOT merge directly.
 
-**In single-session context:** Proceed directly to Step 7 and merge to `main` without waiting for a directive.
-
----
-
-## Step 6 — Poll for Merge Completion Directive (multi-session only)
-
-This step applies ONLY when running in a multi-session context (orchestrator is active). In single-session mode, skip to Step 1.
-
-**Why this step:** In multi-session workflows, the orchestrator coordinates all merges to prevent conflicts. The orchestrator scans `docs/backlog.json` for `pr-reviewed` tasks, queues them for merging, and sends a directive to the active session with instructions: "Merge PR #{N} to main".
-
-**Poll for the directive with error handling:**
-
-Use `node -e` with try-catch (same pattern as the top-level Directive Polling section). Poll with a 5-minute timeout max:
-
-```bash
-timeout=5
-start_time=$(date +%s)
-timeout_secs=300  # 5 minutes
-
-while true; do
-  current_time=$(date +%s)
-  elapsed=$((current_time - start_time))
-  if [ $elapsed -gt $timeout_secs ]; then
-    echo "⚠️ Merge directive timeout after 5 minutes. Proceeding with fallback."
-    break
-  fi
-  
-  result=$(timeout $timeout node -e "..." 2>&1) || {
-    sleep 2
-    continue
-  }
-  
-  if [ "$result" != "no-directive" ] && [ ! -z "$result" ]; then
-    # Directive found
-    pr_number=$(echo "$result" | grep -oP '#\K\d+' || true)
-    if [ ! -z "$pr_number" ]; then
-      echo "Merge directive received: PR #$pr_number"
-      # Proceed to Step 7 with this PR
-      break
-    fi
-  fi
-  
-  sleep 2
-done
-```
-
-**Behavior:**
-
-1. If directive found within 5 minutes:
-   - Extract PR number from `instruction` field
-   - Set `status: "acknowledged"` in directive file
-   - Proceed to Step 7 with the orchestrator's PR number
-
-2. If no directive within 5 minutes:
-   - **Single-session fallback:** Use `/promote-to-prod`'s auto-select to find eligible task PRs (Step 7 logic applies)
-   - **Multi-session timeout:** Notify user: "Orchestrator coordination unavailable — merge directive not received after 5 minutes. You can manually merge the eligible reviewed PR(s) or investigate orchestrator status."
-
-**Error recovery:**
-
-If directive polling fails with read errors:
-- Retry up to 3 times with exponential backoff
-- If all retries fail: log "Orchestrator coordination lost" and proceed with single-session fallback
-
-After completing the merge (Step 7), a completion directive from the orchestrator may be issued (see Step 7-After below).
+**In single-session context:** Merge to `main` directly and push.
 
 ---
 
@@ -187,7 +98,7 @@ Each project gets two sibling folders at the vault root. This is hard-coded — 
 
 ## Scope and limits
 
-- **Rollup-scoped, not single-task.** This skill processes EVERY non-production task found on either main or stage branches. Single-task invocation is not possible — the rollup is the unit of promotion. Tasks in any non-production status are accepted.
+- **Rollup-scoped, not single-task.** This skill processes eligible reviewed tasks found on either main or stage branches. Single-task invocation is not possible — the rollup is the unit of promotion. A task is eligible only when its backlog status is `review-passed` (Polaris/direct-to-main) or `staged` (CareGuide stage path).
 - **This is the ONLY skill in the workflow that can mark tasks `production`.** There is no `origin/prod` branch and no prod-branch merge. Production promotion means the reviewed code is on `origin/main`, the main deploy succeeds, and backlog/archive state is closed.
 - **Flips backlog statuses to `production` inside this workflow** (Step 9) only if Step 8's prod deploy verification succeeds. Failure leaves the backlog untouched.
 - **Two production paths:** CareGuide may promote stage → main when `stage` is ahead of main. Every other project promotes task PRs to main directly, even if a `stage` branch exists. In both paths, production is verified from `main`.
@@ -221,7 +132,7 @@ Also note the current working directory (`$PWD` in PowerShell, `pwd` in bash).
 | Situation | Action |
 |---|---|
 | Branch is `main` or `stage`, CWD is the project source tree (`C:\Users\scott\Code\{ProjectName}`) | ✅ **Proceed** — stable location for production promotion operations. |
-| Branch is `main` or detached HEAD, CWD is a Polaris temp session dir (path contains `AppData\Local\Temp\polaris-wt`), AND `git worktree list` shows a `[main]` entry in the project source tree | ✅ **Proceed** — the primary `[main]` worktree exists in the source tree. Route all `git checkout main`, backlog.json edits, and archive commits to the primary path, not the temp CWD. |
+| Branch is `main` or detached HEAD, CWD is a Polaris temp session dir (path contains `AppData\Local\Temp\polaris-wt`), AND `git worktree list` shows a `[main]` entry in the project source tree | ✅ **Proceed for read/merge orchestration only** — do not route backlog edits or archive commits to the primary path. Step 9 must use the disposable backlog worktree protocol. |
 | Branch is `main` or detached HEAD, CWD is a Polaris temp session dir, AND no `[main]` primary worktree exists in the source tree | ⚠️ **Create an isolated worktree** before continuing (see below). |
 
 **Creating an isolated worktree when required:**
@@ -394,8 +305,8 @@ For each task PR from both branches, extract the task number from the title (`Ta
 
 **Path B (direct to main):** Find reviewed task PRs targeting main (not yet marked production):
 
-1. Find all open task PRs targeting main: `gh pr list --state open --base main --limit 50 --json number,title,headRefName,url` — include reviewed, non-production tasks ready to ship.
-2. Also find task PRs already merged to main but not yet marked `production`: `gh pr list --state merged --base main --limit 50 --json number,title,mergedAt,url` — filter to PRs merged AFTER the most recent production/archive closeout.
+1. Find all open task PRs targeting main: `gh pr list --state open --base main --limit 50 --json number,title,headRefName,url`. For each candidate, read `docs/backlog.json` before any merge action and include only tasks whose status is exactly `review-passed`. If a task is `build-finished`, `pr-reviewed`, `codex-reviewed`, `review-blocked`, or anything else, exclude it and report that PHASE 6C approval is required first.
+2. Also find task PRs already merged to main but not yet marked `production`: `gh pr list --state merged --base main --limit 50 --json number,title,mergedAt,url` — filter to PRs merged AFTER the most recent production/archive closeout, then apply the same backlog status gate before backlog closeout.
 
 For each task PR, extract the task number from the title (`Task #{N}: ...`). Read `docs/backlog.json` and pull each task's `title`, `description`, `status`, and `pr_url`.
 
@@ -412,7 +323,8 @@ For each task in the rollup list:
      - Extract task commits: `git log origin/main..{branch} --oneline | grep "task.*#{N}\|Task.*#{N}" | head -5`
      - Create hold branch: `git fetch origin main && git checkout -b task/{N}-hold origin/main && git cherry-pick {commit-shas} && git push -u origin task/{N}-hold`
      - Drop task from rollup
-   - If task found with any other status (in-review, build-finished, etc.): **include in the promotion**
+   - If task found with status `review-passed` (or `staged` for CareGuide): **include in the promotion**
+   - If task found with `build-finished`, `pr-reviewed`, or `codex-reviewed`: **HARD-FAIL** — reviews or orchestrator approval are incomplete. Do not promote until PHASE 6C sets `review-passed`.
 
 2. **If task not found in backlog.json, check backlog-archive.json:**
    ```bash
@@ -540,7 +452,7 @@ The `--auto` flag enqueues the merge to run once required status checks pass. Pa
 If `gh pr merge --auto` fails with "auto-merge is not allowed for this repository":
 - Fall back to polling. `gh pr checks {pr-number} --watch` blocks until checks finish.
 - If `gh pr checks` exits 0 (all passing): `gh pr merge {pr-number} --merge`.
-- If `gh pr checks` exits non-zero (something failed): stop. Report which check failed. Do NOT proceed to Step 7-After or Step 8 or 9.
+- If `gh pr checks` exits non-zero (something failed): stop. Report which check failed. Do NOT proceed to Step 8 or 9.
 
 After issuing the merge command, poll:
 
@@ -551,77 +463,6 @@ gh pr view {pr-number} --json state,mergedAt,mergeCommit
 Until `state == "MERGED"`. Cap at 10 minutes; if still not merged, stop and report (likely a check still pending or failing).
 
 Capture each `mergeCommit.oid`; the newest merge SHA for the rollup is `{merge-sha}` and is needed for Step 8.
-
-## Step 7-After — Validate Merge and Poll for Merge Completion Directive
-
-**Validate the merge succeeded:**
-
-1. Verify the PR state is `MERGED`: `gh pr view {pr-number} --json state` should return `"MERGED"`
-2. Fetch main from origin: `git fetch origin main`
-3. Verify the merge commit is now on main: `git log origin/main --oneline | head -1` should show the merge commit from Step 7
-4. If validation fails, stop. Report: "Merge validation failed — PR #{pr-number} is not on origin/main. Investigate and retry."
-
-**Push to origin (if not already pushed):**
-
-In multi-session mode, after the merge is validated, ensure the branch is available on origin:
-
-```bash
-git push origin main
-```
-
-**Poll for merge completion directive (multi-session only) with error handling:**
-
-In multi-session workflows, after the merge completes, the orchestrator may send a merge completion directive confirming the merge was successful from its perspective. Poll with timeout and retry:
-
-```bash
-timeout=5
-retries=0
-max_retries=2
-poll_deadline=30  # seconds
-
-start=$(date +%s)
-while true; do
-  elapsed=$(($(date +%s) - start))
-  if [ $elapsed -ge $poll_deadline ]; then
-    echo "ℹ️ Merge completion directive not received (30s timeout)"
-    break
-  fi
-  
-  result=$(timeout $timeout node -e "..." 2>&1) || {
-    retries=$((retries + 1))
-    if [ $retries -le $max_retries ]; then
-      sleep 1
-      continue
-    else
-      echo "⚠️ Directive poll failed after retries (continuing anyway)"
-      break
-    fi
-  }
-  
-  if [ "$result" = "found" ]; then
-    echo "Merge completion directive acknowledged"
-    break
-  fi
-  
-  sleep 2
-done
-```
-
-**Behavior:**
-
-1. If directive found within 30 seconds:
-   - Set `status: "acknowledged"` in directive file
-   - Note the confirmation
-   - Proceed to Step 8
-
-2. If no directive within 30 seconds:
-   - **Single-session:** Proceed normally to Step 8 (no directive expected)
-   - **Multi-session:** Log "Merge completion directive not received — proceeding with deploy check" and continue to Step 8
-
-3. If polling fails with errors:
-   - Retry up to 2 times
-   - If all retries fail: log warning "Directive coordination lost; continuing anyway" and proceed to Step 8
-   - **Do not halt** — the merge has already happened and must be validated via deploy
 
 ## Step 8 — Watch the prod deploy
 
@@ -658,27 +499,31 @@ If `gh run watch` itself hangs past 15 min, stop and tell the user to check the 
 
 ## Step 9 — Mark rolled-up tasks production and close the backlog loop
 
-Prod deploy is healthy and complete. Now flip backlog statuses to `production` and archive shipped tasks inside this `/promote-to-prod` run. This is not a separate human step.
+Prod is healthy. Now flip backlog statuses and archive shipped tasks inside this `/promote-to-prod` run. This is not a separate human step.
 
-**Pre-flight:** Verify that promoted tasks have status `pr-reviewed` (or `staged` for CareGuide) in `docs/backlog.json`. Tasks in any other status should not be promoted to `production`.
-
-**Path A (stage → main):** Create a backlog closeout branch from main (the merge has already updated origin/main):
+**Path A (stage → main):** Create a disposable backlog closeout worktree from `origin/main` using the Backlog Write Isolation Protocol (the merge has already updated origin/main):
 
 ```bash
-git fetch origin main --prune
-git switch -c chore/mark-tasks-production-{pr-number} origin/main
+git -C "C:/Users/scott/Code/{ProjectName}" fetch origin main --prune
+DEST="C:/Users/scott/Code/{ProjectName}/worktrees/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+BRANCH="chore/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+git -C "C:/Users/scott/Code/{ProjectName}" worktree add "$DEST" -b "$BRANCH" origin/main
+cd "$DEST"
 ```
 
-**Path B (direct to main):** Create a backlog closeout branch from main (the merge has already updated origin/main):
+**Path B (direct to main):** Create a disposable backlog closeout worktree from `origin/main` using the Backlog Write Isolation Protocol (the merge has already updated origin/main):
 
 ```bash
-git fetch origin main --prune
-git switch -c chore/mark-tasks-production-{pr-number} origin/main
+git -C "C:/Users/scott/Code/{ProjectName}" fetch origin main --prune
+DEST="C:/Users/scott/Code/{ProjectName}/worktrees/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+BRANCH="chore/backlog-production-{pr-number}-$(date +%Y%m%d%H%M%S)"
+git -C "C:/Users/scott/Code/{ProjectName}" worktree add "$DEST" -b "$BRANCH" origin/main
+cd "$DEST"
 ```
 
 **Both paths:** If the branch already exists locally (rare — leftover from an aborted prior run), delete it first with the user's confirmation, or pick a suffix.
 
-Update `docs/backlog.json` and `docs/backlog-archive.json` using `node -e` — never use the Edit tool on JSON files (Windows encoding rule). Substitute `[{N1}, {N2}]` with the actual task numbers, `{ProjectName}` with the project name, and `{pr-number}` with the promotion PR number:
+Inside the disposable backlog worktree from the Backlog Write Isolation Protocol, update `docs/backlog.json` and `docs/backlog-archive.json` using `node -e` — never use the Edit tool on JSON files (Windows encoding rule). Substitute `[{N1}, {N2}]` with the actual task numbers, `{ProjectName}` with the project name, and `{pr-number}` with the promotion PR number:
 
 ```bash
 node -e "
@@ -696,8 +541,8 @@ for (const n of toPromote) {
   if (idx === -1) { console.warn('Task #' + n + ' not found, skipping'); continue; }
   const t = b.tasks[idx];
   if (t.status === 'production') { console.log('Task #' + n + ' already production, skipping'); continue; }
-  if (t.status !== 'pr-reviewed' && t.status !== 'staged') {
-    console.warn('Task #' + n + ' was ' + t.status + ', expected pr-reviewed or staged — promoting anyway');
+  if (t.status !== 'review-passed' && t.status !== 'staged') {
+    throw new Error('Task #' + n + ' was ' + t.status + ', expected review-passed or staged. Do not promote before both reviews and orchestrator approval.');
   }
   t.status = 'production';
   archive.tasks.push(Object.assign({}, t, {
@@ -719,59 +564,12 @@ If at least one task changed:
 ```bash
 git add docs/backlog.json docs/backlog-archive.json
 git commit -m "chore(backlog): promote #{N1}, #{N2} to production; archive shipped tasks (via #{pr-number})"
-git push -u origin HEAD
+git pull --rebase origin main
+git push origin HEAD:main
+# then remove the disposable backlog worktree and run git worktree prune from the source repo
 ```
 
-**Path A (stage → main):** Create the backlog closeout PR to main:
-```bash
-gh pr create --base main --head chore/mark-tasks-production-{pr-number} \
-  --title "chore(backlog): tasks #{N1}, #{N2} to production; archive" \
-  --body "..."
-```
-
-**Path B (direct to main):** Create the backlog closeout PR to main:
-```bash
-gh pr create --base main --head chore/mark-tasks-production-{pr-number} \
-  --title "chore(backlog): tasks #{N1}, #{N2} to production; archive" \
-  --body "..."
-```
-
-PR body (both paths):
-
-```
-## Summary
-
-Closes the backlog loop after [#{pr-number}]({pr-url}) merged to `main` and the production deploy from `main` succeeded.
-
-Promoted tasks are moved from the active backlog to the archive with source attribution.
-
-## Tasks promoted to production & archived
-
-- #{N1} — {title}
-- #{N2} — {title}
-- ...
-
-## Skipped (already production)
-
-- #{Nx} — {title}  *(omit section if empty)*
-
-## Test plan
-
-- [ ] `docs/backlog.json` parses (valid JSON)
-- [ ] `docs/backlog-archive.json` parses (valid JSON)
-- [ ] Each promoted task is removed from backlog and appears in archive with `project_source`, `promoted_via_pr`, and `promoted_at` fields
-- [ ] Each skipped task (already production) remains in neither file (was already archived in a prior promotion)
-```
-
-Capture the backlog closeout PR number and URL, then auto-merge it:
-
-```bash
-gh pr merge {closeout-pr-number} --merge --auto
-```
-
-If auto-merge is unavailable, poll required checks and merge when they pass. If checks fail, stop and report the closeout PR URL; the production deploy already succeeded, but the backlog/archive closeout did not complete and must be retried by re-running `/promote-to-prod` or merging the closeout PR.
-
-After the closeout PR merges, verify the task numbers are no longer in `docs/backlog.json` and are present in `docs/backlog-archive.json` on the target branch.
+After the `HEAD:main` push succeeds, verify the task numbers are no longer in `docs/backlog.json` and are present in `docs/backlog-archive.json` on `origin/main`.
 
 If zero tasks changed (all already production): skip the commit/PR, note in the report.
 
@@ -795,7 +593,7 @@ Any individual failure is a soft-warn — log it and continue with the next task
 
 ## Step 10 — Log Production to Obsidian (one section per task)
 
-Now that prod deploy is verified healthy AND the backlog closeout PR is merged (or the tasks were already production), append a Production capstone to each rolled-up task's Obsidian tracker.
+Now that prod deploy is verified healthy AND the backlog closeout commit is pushed (or the tasks were already production), append a Production capstone to each rolled-up task's Obsidian tracker.
 
 1. Resolve `{ProjectObsidian}` via CWD basename fuzzy-match against `*_Build/` folders. If no match, skip Obsidian logging.
 
@@ -813,7 +611,7 @@ Now that prod deploy is verified healthy AND the backlog closeout PR is merged (
 
       **Promotion PR:** {pr-url} — MERGED at {mergedAt}
       **Prod deploy:** SUCCESS — workflow run {run-url}
-      **Backlog closeout PR:** {closeout-pr-url, or "(none — already production)" if Step 9 skipped this task}
+      **Backlog closeout commit:** {closeout-commit-sha, or "(none — already production)" if Step 9 skipped this task}
       **Promotion path:** {Path A (stage→main) or Path B (direct-to-main)}
 
       **Status flip:** {prior-status} → production
@@ -827,7 +625,7 @@ Tell the user:
 - **Promotion path:** {Path A (stage→main) or Path B (direct-to-main)}
 - **Promotion PR:** `#{pr-number}` ({title}) — MERGED at `{mergedAt}`
 - **Prod deploy:** SUCCESS — workflow run `{run-url}`
-- **Tasks marked production:** `{N1}, N2, ...` (via merged backlog closeout PR `{closeout-pr-url}`)
+- **Tasks marked production:** `{N1}, N2, ...` (via backlog closeout commit `{closeout-commit-sha}`)
 - **Tasks skipped (already production):** `{list, or "none"}`
 - **Cleanup:** `{count}` merged task branches + `{count}` worktrees removed (Step 9.5)
 - **Next step:** none for the promotion lifecycle. `/promote-to-prod` completed the deploy verification, production status flip, archive move, and Obsidian production log.

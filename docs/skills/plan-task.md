@@ -1,40 +1,42 @@
 ---
 name: plan-task
-description: Produce a concrete implementation plan for a backlog task before any build session touches it. Loads Obsidian project context (Build folder + recent Sessions), confirms the feature is reachable end-to-end by its target persona before planning, audits boundary changes, and saves the plan to docs/backlog.json on main.
+description: Produce a concrete implementation plan for a backlog task before any build session touches it. Loads Obsidian project context (Build folder + recent Sessions), confirms the feature is reachable end-to-end by its target persona before planning, audits boundary changes, and saves the plan to docs/backlog.json through the isolated backlog write protocol.
 ---
 
 # /plan-task [task-number]
 
-Produce an implementation plan for a backlog task. Loads project mission and recent-session context from Obsidian first, confirms the feature can actually be reached and smoke-tested by its target persona (filing prerequisite tasks if not), then plans against the backlog. Saves the plan back to `docs/backlog.json` on main so the next `/start-build` picks it up.
+## Backlog Write Isolation Protocol (Task #60)
 
-## Directive Polling (multi-session only) with Error Handling
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
+Produce an implementation plan for a backlog task. Loads project mission and recent-session context from Obsidian first, confirms the feature can actually be reached and smoke-tested by its target persona (filing prerequisite tasks if not), then plans against the backlog. Saves the plan back to `docs/backlog.json` through the isolated backlog write protocol so the next `/start-build` picks it up.
+
+## Directive Polling (multi-session only)
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-**Poll with try-catch and retry (use `node -e` with utf8, never Read tool):**
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with "Scope and limits" below
 
-```bash
-timeout=5; retries=0; max_retries=3
-while [ $retries -lt $max_retries ]; do
-  timeout $timeout node -e "
-    try {
-      const fs = require('fs');
-      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
-      if (!fs.existsSync(dirPath)) { console.log('no-directive'); process.exit(0); }
-      const data = JSON.parse(fs.readFileSync(dirPath, 'utf8'));
-      const pending = data.directives && data.directives.find(d => 
-        d.target.sessionId === (process.env.SESSION_ID || 'unknown') && d.status === 'pending'
-      );
-      console.log(pending ? JSON.stringify(pending) : 'no-directive');
-    } catch (e) { console.error('read-failed: ' + e.message); process.exit(1); }
-  " && break
-  retries=$((retries + 1)); [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
-done
-[ $retries -eq $max_retries ] && echo "⚠️ Directive polling unavailable; continuing in single-session mode."
-```
-
-**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
-**On timeout/failure:** Continue to "Scope and limits" in single-session fallback mode. Do not halt.
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Scope and limits".
 
 ---
 
@@ -174,24 +176,15 @@ This step is **required** before reading the backlog. Skipping it produces plans
 
 ## Step 2 — Sync main and read the backlog
 
-**Backlog edits must happen on `main` (or in a worktree pinned to `main`).**
+**Backlog reads that may lead to writes must use the Backlog Write Isolation Protocol above.**
 
 ```bash
 git worktree list
 ```
 
-If a worktree pinned to `main` exists at a known path (other than the current working directory if you're on another branch), change to that working directory and treat all subsequent steps as happening there.
+Create or use a disposable backlog worktree from fresh `origin/main` as described in the Backlog Write Isolation Protocol above. Treat all subsequent backlog reads and writes in this skill as happening inside that disposable worktree. Do not change into the shared primary `main` worktree.
 
-Otherwise, in the current working directory:
-```bash
-git status                       # working tree must be clean — if uncommitted changes, stop and tell the user to commit or stash first
-git checkout main && git pull
-git branch --show-current        # MUST print exactly "main"
-```
-
-If the verification doesn't print exactly `main`, stop and surface the error — do not proceed.
-
-Read `docs/backlog.json`. If it doesn't exist, ask the user: "No backlog exists. Want to scaffold one with this task as the first entry?"
+Read `docs/backlog.json` from the disposable backlog worktree. If it doesn't exist, ask the user: "No backlog exists. Want to scaffold one with this task as the first entry?"
 
 ## Step 3 — Find the task
 
@@ -204,10 +197,10 @@ Read the task's `status`. The skill's allowed action depends on it:
 | Current status | Allowed action |
 |---|---|
 | `backlog` | ✅ Proceed — standard new-plan path. |
-| `ready` | ⚠️ Plan already exists. Ask: "Task #{N} already has a plan. [Use existing → stop / Re-plan from scratch → proceed / Abort]". |
-| `in-progress` | ❌ **Refuse.** "Task #{N} is in-progress with branch `{branch}`. Re-planning would conflict with active code on the task branch. To replan from scratch, first reset the task to `backlog` in `docs/backlog.json` and delete the task branch if it exists." Stop. |
-| `in-review` | ❌ **Refuse.** "Task #{N} is in-review — already merged to stage. Re-planning would orphan the existing PR. Open a new task for follow-up work, or revert this task's status manually if the previous merge was a mistake." Stop. |
-| `complete` | ❌ **Refuse.** "Task #{N} is complete. Create a new task for additional work." Stop. |
+| `planned` | ⚠️ Plan already exists. Ask: "Task #{N} already has a plan. [Use existing → stop / Re-plan from scratch → proceed / Abort]". |
+| `build-started` | ❌ **Refuse.** "Task #{N} is in-progress with branch `{branch}`. Re-planning would conflict with active code on the task branch. To replan from scratch, first reset the task to `backlog` in `docs/backlog.json` and delete the task branch if it exists." Stop. |
+| `build-finished` / `pr-reviewed` / `codex-reviewed` / `review-passed` / `review-blocked` | ❌ **Refuse.** "Task #{N} is already beyond planning with status `{status}`. Open a new task for follow-up work, or intentionally reset the task through the backlog protocol." Stop. |
+| `production` | ❌ **Refuse.** "Task #{N} is already production. Create a new task for additional work." Stop. |
 
 Do NOT skip this check. Out-of-order workflow execution is the most common cause of corrupted task state.
 
@@ -406,15 +399,15 @@ List the task's dependencies. They come in two flavours — both block readiness
 Any test deps captured in Step 3b should be reflected here. Confirm they appear in the `dependencies` array.
 
 For each dep, look it up in the backlog and report its status. Statuses that count as "satisfied":
-- `complete` — fully shipped, safe to depend on.
-- `in-review` — code is on stage but not in prod. Acceptable for **build** deps if both tasks will ship together; risky for **test** deps because the dep itself may not have been smoke-tested yet.
-- Anything else (`backlog`, `ready`, `in-progress`) — **flag clearly**. The build session can technically still proceed, but the task can't be promoted to prod until the dep clears.
+- `production` — fully shipped, safe to depend on.
+- `review-passed` / `pr-reviewed` — code has review evidence but is not production yet. Acceptable for **build** deps only if both tasks will ship together; risky for **test** deps.
+- Anything else (`backlog`, `planned`, `build-started`, `build-finished`, `review-blocked`) — **flag clearly**. The build session can technically still proceed, but the task can't be promoted to prod until the dep clears.
 
 ## Step 8 — Save the plan with proof units
 
-**Sanity check before commit:** run `git branch --show-current` again — if it does not print `main`, stop. Something has gone wrong since Step 2.
+**Sanity check before commit:** verify you are inside the disposable backlog worktree created from `origin/main`, not the shared primary worktree.
 
-**Write to `docs/backlog.json` using `node -e`** — never use the Edit tool on JSON files (Windows encoding rule). The four fields to set are documented below. After reviewing them, construct and run the `node -e` command shown at the end of this step.
+**Write to `docs/backlog.json` using `node -e` inside the disposable backlog worktree** — never use the Edit tool on JSON files (Windows encoding rule). The four fields to set are documented below. After reviewing them, construct and run the `node -e` command shown at the end of this step.
 
 Fields to add to the task object:
 
@@ -528,11 +521,12 @@ t.plan = {JSON.stringify(planString)};
 t.proofUnits = {JSON.stringify(proofUnitsArray)};
 t.objective = {JSON.stringify(objectiveObject)};
 t.impact = '{minor|standard|major}';
+t.status = 'planned';
 fs.writeFileSync('docs/backlog.json', JSON.stringify(b, null, 2) + '\n', 'utf8');
 console.log('Task #{N} plan content saved');
 "
 
-> **Note:** Do not set `status` here. The orchestrator writes the `planned` status transition after confirming plan completion.
+> **Note:** This write sets `status: "planned"` in the same backlog commit as the plan content so `/start-build` sees a consistent task state.
 ```
 
 If the plan content is too large to inline safely, write the fields to a patch file first (using the Write tool), then merge:
@@ -552,19 +546,21 @@ console.log('Task #' + patch.number + ' plan saved → status planned');
 "
 ```
 
-**Commit and push on main:**
+**Commit and push through the disposable backlog worktree:**
 
 ```bash
 git add docs/backlog.json
 git commit -m "chore(backlog): plan task #{number} — {title}"
-git push
+git pull --rebase origin main
+git push origin HEAD:main
+# then remove the disposable backlog worktree and run git worktree prune from the source repo
 ```
 
 The saved proof units enable /start-build to load them and confirm the first unit's entry evidence exists, /finish-build to verify each proof unit has been satisfied, and /review-pr to check that the proof trail is documented in the PR.
 
 ## Step 9 — Log to Obsidian Tasks tracker
 
-After the plan is committed to `docs/backlog.json` on main, also write it to the project's Obsidian task tracker.
+After the plan is pushed to `origin/main` through the disposable backlog worktree, also write it to the project's Obsidian task tracker.
 
 1. **Reuse the Obsidian project name** captured in Step 1.
 2. **Compute the task file path:** `{ProjectObsidian}_Build/Tasks/Task-{N}-{slug}.md` where `{slug}` is the task title lowercased, non-alphanumeric → hyphens, collapsed, max 40 chars.
@@ -590,9 +586,9 @@ After the plan is committed to `docs/backlog.json` on main, also write it to the
 
    {full plan text, as written to backlog.json}
 
-   **Dependencies checked:** {list with each dep's status, e.g., "#7: done; #8: ready"}
+   **Dependencies checked:** {list with each dep's status, e.g., "#7: production; #8: planned"}
 
-   **Status flip:** backlog → ready
+   **Status flip:** backlog → planned
    ```
 
 5. **Append the Proof Units section** via `mcp__mcp-obsidian__obsidian_append_content`:

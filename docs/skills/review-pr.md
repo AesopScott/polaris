@@ -5,67 +5,40 @@ description: Code review skill with two modes. (1) Ad-hoc mode — pass a PR num
 
 # /review-pr [pr-number | task <N> | <commit-range> | (no arg)]
 
+## Backlog Write Isolation Protocol (Task #60)
+
+Any step in this skill that mutates `docs/backlog.json` or `docs/backlog-archive.json` must use this protocol. Do not edit the shared primary working tree for backlog state, even if it is currently on `main`.
+
+1. Resolve the project source repo and fetch fresh main:
+   `git -C "<repo>" fetch origin main`
+2. Create a disposable backlog worktree from `origin/main`:
+   `git -C "<repo>" worktree add "<repo>/worktrees/backlog-<task-or-purpose>-<timestamp>" -b "chore/backlog-<task-or-purpose>-<timestamp>" origin/main`
+3. In that disposable worktree, read and write JSON with Node `fs` using explicit `utf8`. Never use the Edit tool or PowerShell JSON cmdlets for these files.
+4. Stage only backlog files touched by the mutation, then commit with a conventional `chore(backlog): ...` message.
+5. Before pushing, run `git pull --rebase origin main` from the disposable worktree. If the rebase conflicts, resolve only the backlog JSON conflict by re-reading the rebased file and reapplying the intended task-number mutation; do not accept unrelated hunks blindly.
+6. Push with `git push origin HEAD:main`. If rejected, repeat fetch/rebase/reapply/push. Never force-push `main`.
+7. Remove the disposable worktree after a successful push: `git -C "<repo>" worktree remove "<path>"`, then `git -C "<repo>" worktree prune`.
+
+Read-only task lookup may use `git show origin/main:docs/backlog.json` after fetch, or the disposable worktree if a write may follow. The final report must name the backlog commit SHA pushed to `main`.
+
+
 This skill reviews code and outputs a structured review. It runs in one of two modes depending on the argument (see **Review modes** below).
 
 **You do not post to GitHub. You output the review as text only.**
 
-## Directive Polling (multi-session only) with Error Handling
+## Directive Polling (multi-session only)
 
 If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-**Polling with try-catch and retry:**
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with "Review modes" below
 
-Use `node -e` with error handling (never the Read tool):
-
-```bash
-timeout=5
-retries=0
-max_retries=3
-
-while [ $retries -lt $max_retries ]; do
-  timeout $timeout node -e "
-    try {
-      const fs = require('fs');
-      const dirPath = \`\${process.env.APPDATA}\\.claude\\polaris\\session-guidance\\session-directives.json\`;
-      if (!fs.existsSync(dirPath)) {
-        console.log('no-directive');
-        process.exit(0);
-      }
-      const content = fs.readFileSync(dirPath, 'utf8');
-      const data = JSON.parse(content);
-      const sessionId = process.env.SESSION_ID || 'unknown';
-      const pending = data.directives && data.directives.find(d => 
-        d.target.sessionId === sessionId && d.status === 'pending'
-      );
-      if (pending) {
-        console.log(JSON.stringify(pending));
-      } else {
-        console.log('no-directive');
-      }
-    } catch (e) {
-      console.error('read-failed: ' + e.message);
-      process.exit(1);
-    }
-  " && break
-  retries=$((retries + 1))
-  [ $retries -lt $max_retries ] && sleep $(echo "2 ^ $retries" | bc) || true
-done
-
-if [ $retries -eq $max_retries ]; then
-  echo "⚠️ Directive polling unavailable. Proceeding in single-session mode."
-fi
-```
-
-**Behavior:**
-
-1. If directive found:
-   - Set `status: "acknowledged"` and `acknowledgedAt: <ISO timestamp>`
-   - Execute the `instruction` field as a user message
-   - Set `status: "completed"` with `completedAt` and `result`
-
-2. If no directive or polling fails:
-   - Continue to "Review modes" in single-session fallback mode
-   - **Do not halt** on missing directives
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to "Review modes".
 
 ---
 
@@ -487,9 +460,9 @@ After outputting the review, append it to the task's Obsidian tracker so the ful
 
 5. Tell the user: "Review logged to `{ProjectObsidian}_Build/Tasks/Task-{task-N}-{slug}.md`."
 
-## Step 7 — Set task status to `pr-reviewed` (task mode only)
+## Step 7b — Set task status to `pr-reviewed` (task mode only)
 
-In task mode, after the review is complete and logged, set the task's status to `pr-reviewed` in `docs/backlog.json` on main:
+In task mode, after the review is complete and logged, set the task's status to `pr-reviewed` in `docs/backlog.json` using the Backlog Write Isolation Protocol:
 
 ```bash
 node -e "
@@ -504,7 +477,7 @@ if (task) {
 "
 ```
 
-This status indicates that the Claude review has been captured and findings are documented. The approval handler will read both `/review-pr` and `/codex-review` findings to determine the final status (`review-passed` or `review-blocked`).
+This status indicates the Claude review has been captured and findings are documented. The orchestrator approval handler (PHASE 6C) reads both `/review-pr` and `/codex-review` findings to determine the final status (`review-passed` or `review-blocked`).
 
 **Important:** This skill does NOT set `review-blocked` or `review-passed`. Only the orchestrator approval handler (PHASE 6C) sets those statuses.
 

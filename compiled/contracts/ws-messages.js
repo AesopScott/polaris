@@ -40,7 +40,7 @@ exports.TransferSessionMessage = WebSocketMessage.extend({
 exports.SessionHeightMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('session-height'),
     sessionId: zod_1.z.string(),
-    height: zod_1.z.string().nullable(),
+    height: zod_1.z.number().nullable(),
 });
 exports.SessionColumnMessage = WebSocketMessage.extend({
     type: zod_1.z.literal('session-column'),

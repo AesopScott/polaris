@@ -5,16 +5,31 @@ description: Complete the current build session after cross-boundary audit passe
 
 # /finish-build
 
+## Backlog Read/Write Isolation Protocol (Task #60)
+
+Do not check out `main` in the shared primary working tree just to read or mutate backlog state.
+
+- For read-only task lookup, run `git fetch origin main` and read `docs/backlog.json` from `origin/main` with `git show origin/main:docs/backlog.json`, or use a disposable worktree from `origin/main`.
+- Any step that mutates `docs/backlog.json` or `docs/backlog-archive.json` must create a disposable backlog worktree from fresh `origin/main`, write JSON with Node `fs` using explicit `utf8`, commit only the touched backlog files, `git pull --rebase origin main`, then `git push origin HEAD:main`.
+- If push is rejected, fetch/rebase/reapply the exact task-number mutation and retry. Never force-push `main`.
+- Remove the disposable worktree after the push succeeds and report the backlog commit SHA.
+
+
 You are completing a build session. The cross-boundary audit must have passed (status `cba-complete`) before this skill runs. Commit task code to the task branch, push, then open a PR targeting either CareGuide's real `stage` environment or `main` for all other projects. Nothing merges or leaves the task branch until you explicitly run a promote command.
 
-## Directive Polling (multi-session only) with Error Handling
+## Directive Polling (multi-session only)
 
-If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives:
+If this session is running in a multi-session context (2+ active sessions on this project), check for orchestrator directives before proceeding:
 
-Poll with try-catch and retry (use `node -e`, never Read tool). Retry up to 3 times with exponential backoff. Timeout 5s per attempt.
+1. Read `%APPDATA%\.claude\polaris\session-guidance\session-directives.json`
+2. Look for an entry where `target.sessionId` matches this session's ID AND `status === "pending"`
+3. If found:
+   - Immediately set `status: "acknowledged"` and write `acknowledgedAt: <ISO timestamp>`
+   - The directive's `instruction` field contains the full prompt — execute it as if it were a user message
+   - After completing the directive, set `status: "completed"`, write `completedAt` and a brief `result`
+4. If not found or single-session context: proceed normally with Step 0
 
-**On finding directive:** Set `status: "acknowledged"`, execute `instruction`, set `status: "completed"` with result.
-**On timeout/failure:** Log warning and proceed to Step 0 in single-session fallback mode. Do not halt.
+> **Note:** If `session-directives.json` doesn't exist or this session has no pending directives, that's normal — continue to Step 0.
 
 ---
 
@@ -139,9 +154,10 @@ Check the task's `status`. The skill's allowed action depends on it:
 
 | Current status | Allowed action |
 |---|---|
-| `build-started` | ✅ Proceed — standard finish path. |
-| `in-progress` | ✅ Proceed (legacy status, accepted for backward compat). |
-| `ready` | ⚠️ Soft warn: "Task #{N} is `ready` but you're on the task branch. `/start-build` should have flipped status to `build-started`. Proceed anyway and assume the flip was missed? [yes/no]" On yes, continue. |
+| `cba-complete` | ✅ Proceed — standard finish path after `/cross-boundary-audit`. |
+| `build-started` | ❌ **Refuse.** "Task #{N} is `build-started`; run `/cross-boundary-audit {N}` first so the task reaches `cba-complete`." Stop. |
+| `in-progress` | ❌ **Refuse.** "Task #{N} uses legacy `in-progress`; normalize it through `/start-build` and `/cross-boundary-audit` before finishing." Stop. |
+| `planned` | ❌ **Refuse.** "Task #{N} is only `planned`; run `/start-build {N}` and `/cross-boundary-audit {N}` before finishing." Stop. |
 | `pr-reviewed` | ❌ **Refuse.** "Task #{N} is already pr-reviewed (PR exists and is open). Re-finishing would create a duplicate PR. If you need to apply additional changes, push to the existing task branch and the PR auto-updates. Otherwise open a new task for follow-up work." Stop. |
 | `staged` / `production` / `complete` | ❌ **Refuse.** "Task #{N} is {status} (already promoted). Re-finishing not possible." Stop. |
 | `backlog` | ❌ **Refuse.** "Task #{N} has no plan and was never started, but you're on a task branch for it. Something is wrong — verify the branch matches the task you intended." Stop. |
@@ -364,7 +380,7 @@ Append a record of the audit results and the build completion to the task's Obsi
    **Files committed (Step 4):** {list of files staged for the task commit}
    **Registry files updated:** {list from docs/registries/ that changed, or "none"}
 
-   **Status flip:** build-started → build-finished
+   **Status flip:** cba-complete → build-finished
    ```
 
 5. Tell the user: "Build + audit logged to `{ProjectObsidian}_Build/Tasks/Task-{N}-{slug}.md`."
