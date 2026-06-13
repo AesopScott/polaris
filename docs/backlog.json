@@ -134,12 +134,45 @@
       "category": "enhancement",
       "priority": 10,
       "impact": "standard",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-26",
       "completed_at": null,
       "dependencies": [
         49
-      ]
+      ],
+      "branch": "codex/task-50-memory-dedupe",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/71",
+      "plan": "Add write-time memory deduplication to the batch memory write path. New pure helpers compute tag Jaccard similarity, normalized substring overlap, combined memory similarity, duplicate selection, and a consolidation plan that splits candidates into writes versus reinforcements. addMemories() now fetches active existing memories once per project in the batch, reinforces near-duplicates above the 0.7 threshold, writes only new memories, and suppresses repeated candidates inside the same extraction batch.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Similarity helpers detect near-duplicate memories",
+          "expectedBehavior": "Memory candidates are compared using tag Jaccard similarity plus normalized substring overlap on content.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, memory.js had no similarity helpers or duplicate detection functions.",
+          "expectedPassingEvidence": "Vitest passes tests for jaccardSimilarity(), substringOverlap(), memorySimilarity(), and findDuplicateMemory()."
+        },
+        {
+          "number": 2,
+          "title": "Batch consolidation splits writes from reinforcements",
+          "expectedBehavior": "Candidates similar to existing project memories above the 0.7 threshold are reinforced instead of written as new documents.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, addMemories() wrote every candidate as a new document.",
+          "expectedPassingEvidence": "Tests prove planMemoryConsolidation() returns one reinforcement and one write for mixed batches."
+        },
+        {
+          "number": 3,
+          "title": "Intra-batch duplicates are suppressed",
+          "expectedBehavior": "Repeated candidates from the same extraction batch do not produce duplicate new Firestore documents.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:memory",
+          "expectedInitialFailure": "Before this change, two identical candidates in one batch generated two writes.",
+          "expectedPassingEvidence": "Tests prove repeated candidates produce one write and one reinforcement plan item."
+        }
+      ],
+      "updated_at": "2026-06-13T22:55:22.459Z"
     },
     {
       "number": 52,

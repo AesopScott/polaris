@@ -202,6 +202,10 @@ function mergeGeneratedSection(existing, section, fallbackHeading) {
   return `${existing.trimEnd()}\n\n${section}\n`;
 }
 
+function normalizeEol(value) {
+  return value.replace(/\r\n/g, '\n');
+}
+
 function writeFile(relativePath, content, options = {}) {
   const target = path.join(repoRoot, relativePath);
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -210,7 +214,7 @@ function writeFile(relativePath, content, options = {}) {
     ? mergeGeneratedSection(existing, generatedSection(content), options.heading)
     : `${options.heading ? `${options.heading}\n\n` : ''}${generatedSection(content)}\n`;
 
-  if (existing === next) {
+  if (normalizeEol(existing) === normalizeEol(next)) {
     console.log(`unchanged ${relativePath}`);
     return;
   }
