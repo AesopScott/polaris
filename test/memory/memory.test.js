@@ -111,7 +111,7 @@ describe('memory write deduplication', () => {
     expect(substringOverlap(
       'Scott prefers concise summaries.',
       'Future sessions should remember that Scott prefers concise summaries.'
-    )).toBe(1);
+    )).toBeGreaterThan(0.7);
     expect(substringOverlap('memory importance scoring', 'unrelated policy gate')).toBeLessThan(0.7);
   });
 
@@ -130,6 +130,24 @@ describe('memory write deduplication', () => {
 
     expect(memorySimilarity(candidate, existing)).toBeGreaterThan(0.7);
     expect(findDuplicateMemory(candidate, [existing])?.memory.id).toBe('mem1');
+  });
+
+  it('does not dedupe a short generic substring without tag support', () => {
+    const candidate = {
+      project: 'Polaris',
+      content: 'Use Firestore',
+      tags: ['auth'],
+    };
+    const existing = {
+      id: 'mem1',
+      project: 'Polaris',
+      content: 'Use Firestore for durable project memory.',
+      tags: ['memory'],
+    };
+
+    expect(substringOverlap(candidate.content, existing.content)).toBe(0);
+    expect(memorySimilarity(candidate, existing)).toBe(0);
+    expect(findDuplicateMemory(candidate, [existing])).toBe(null);
   });
 
   it('does not match memories across projects', () => {
@@ -195,5 +213,33 @@ describe('memory write deduplication', () => {
     const plan = planMemoryConsolidation(candidates, existingByProject);
     expect(plan.toWrite).toHaveLength(1);
     expect(plan.toReinforce).toHaveLength(1);
+  });
+
+  it('collapses multiple candidates matching the same existing memory into one reinforcement', () => {
+    const existingByProject = new Map([
+      ['Polaris', [{
+        id: 'existing-1',
+        project: 'Polaris',
+        content: 'Future sessions should remember that Scott prefers concise summaries.',
+        tags: ['style', 'preference'],
+      }]],
+    ]);
+    const candidates = [
+      {
+        project: 'Polaris',
+        content: 'Scott prefers concise summaries.',
+        tags: ['preference', 'style'],
+      },
+      {
+        project: 'Polaris',
+        content: 'Scott prefers concise summaries in updates.',
+        tags: ['style', 'preference'],
+      },
+    ];
+
+    const plan = planMemoryConsolidation(candidates, existingByProject);
+    expect(plan.toWrite).toHaveLength(0);
+    expect(plan.toReinforce).toHaveLength(1);
+    expect(plan.toReinforce[0].existing.id).toBe('existing-1');
   });
 });
