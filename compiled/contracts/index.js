@@ -16,5 +16,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./backlog"), exports);
 __exportStar(require("./mcp"), exports);
+__exportStar(require("./security-audit"), exports);
 __exportStar(require("./tools"), exports);
 __exportStar(require("./ws-messages"), exports);

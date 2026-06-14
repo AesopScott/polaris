@@ -57,19 +57,73 @@ Persistent memory store for Polaris sessions. Holds structured memory entries ex
 
 ---
 
+## Planned: `polaris_security_audit_facts`
+
+Future security tooling must store point-in-time entity attributes as bi-temporal facts, not flat log rows. The contract source is `src/contracts/security-audit.ts` (`BiTemporalAuditFact`). Task #59 registers the schema constraint only; no producer writes this collection yet.
+
+**Schema / shape:**
+```
+{
+  entityId:   string
+  attribute:  string
+  value:      unknown
+  validFrom:  ISO timestamp  — when the fact became true in the real world
+  validTo:    ISO timestamp | null — when the fact stopped being true; null = still open
+  txFrom:     ISO timestamp  — when Polaris recorded/believed this version
+  txTo:       ISO timestamp | null — when Polaris superseded this version; null = current belief
+  source:     string (optional)
+  evidenceId: string (optional)
+}
+```
+
+**Required query shape:** reconstruct with both timelines: `validFrom <= validAt`, `validTo == null OR validAt < validTo`, `txFrom <= txAt`, `txTo == null OR txAt < txTo`.
+
+**Indexes needed when implemented:** `(entityId, attribute, validFrom, validTo, txFrom, txTo)` plus workload-specific indexes for compliance scans.
+
+**Status:** planned design constraint (Task #59)
+
+---
+
+## Planned: `polaris_security_audit_edges`
+
+Future security tooling must store security graph relationships as bi-temporal edges, so overlap detection can find windows where multiple conditions were simultaneously true. The contract source is `src/contracts/security-audit.ts` (`BiTemporalAuditEdge`). Task #59 registers the schema constraint only; no producer writes this collection yet.
+
+**Schema / shape:**
+```
+{
+  subjectId:  string
+  predicate:  string
+  objectId:   string
+  validFrom:  ISO timestamp
+  validTo:    ISO timestamp | null
+  txFrom:     ISO timestamp
+  txTo:       ISO timestamp | null
+  source:     string (optional)
+  evidenceId: string (optional)
+}
+```
+
+**Required overlap query:** compound condition detection must intersect `validFrom`/`validTo` intervals first, then apply transaction-time visibility to answer when Polaris knew about the window.
+
+**Indexes needed when implemented:** `(subjectId, predicate, objectId, validFrom, validTo, txFrom, txTo)` plus reverse lookup indexes for graph traversal.
+
+**Status:** planned design constraint (Task #59)
+
+---
+
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-27T00:00:00Z (by /cross-boundary-audit)
+**Last audit:** 2026-06-13T00:00:00Z (by Task #59 design constraint)
 
 **Boundaries checked:** Firestore collections
 
 **Evidence recorded:**
-- 1 entry with complete producer/consumer pairs ✓
-- 0 entries with gaps ⚠
+- 1 active entry with complete producer/consumer pairs ✓
+- 2 planned security audit entries intentionally have no producers yet ⚠
 - 0 entries with shape mismatches ⚠
-- New identifiers introduced on task #56: none
+- New identifiers introduced on task #59: `polaris_security_audit_facts`, `polaris_security_audit_edges`
 - Registries match current code diff: yes
 
-**Gaps identified:** none
+**Gaps identified:** planned collections have no producers/consumers until future security tooling implements the writer/query layer.
 
 **Status:** Audit complete
