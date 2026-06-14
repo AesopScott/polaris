@@ -64,9 +64,12 @@ Future security tooling must store point-in-time entity attributes as bi-tempora
 **Schema / shape:**
 ```
 {
+  recordId:   string         — stable identity across corrections/revisions
+  revisionId: string         — unique identity for this transaction-time version
+  supersedesId: string | null (optional) — prior revision closed by this correction
   entityId:   string
   attribute:  string
-  value:      unknown
+  value:      unknown        — required; absent value is not an auditable fact
   validFrom:  ISO timestamp  — when the fact became true in the real world
   validTo:    ISO timestamp | null — when the fact stopped being true; null = still open
   txFrom:     ISO timestamp  — when Polaris recorded/believed this version
@@ -77,6 +80,8 @@ Future security tooling must store point-in-time entity attributes as bi-tempora
 ```
 
 **Required query shape:** reconstruct with both timelines: `validFrom <= validAt`, `validTo == null OR validAt < validTo`, `txFrom <= txAt`, `txTo == null OR txAt < txTo`.
+
+**Correction invariant:** one open transaction version per `recordId`; corrections set old `txTo`, insert a new `revisionId`, and set `supersedesId` to the prior revision.
 
 **Indexes needed when implemented:** `(entityId, attribute, validFrom, validTo, txFrom, txTo)` plus workload-specific indexes for compliance scans.
 
@@ -91,6 +96,9 @@ Future security tooling must store security graph relationships as bi-temporal e
 **Schema / shape:**
 ```
 {
+  recordId:   string
+  revisionId: string
+  supersedesId: string | null (optional)
   subjectId:  string
   predicate:  string
   objectId:   string
@@ -103,7 +111,7 @@ Future security tooling must store security graph relationships as bi-temporal e
 }
 ```
 
-**Required overlap query:** compound condition detection must intersect `validFrom`/`validTo` intervals first, then apply transaction-time visibility to answer when Polaris knew about the window.
+**Required overlap query:** compound condition detection must extract the `validFrom`/`validTo` interval intersection first, then apply transaction-time visibility to answer when Polaris knew about the window.
 
 **Indexes needed when implemented:** `(subjectId, predicate, objectId, validFrom, validTo, txFrom, txTo)` plus reverse lookup indexes for graph traversal.
 

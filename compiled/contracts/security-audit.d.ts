@@ -1,46 +1,88 @@
 import { z } from 'zod';
-export declare const BiTemporalAuditFact: z.ZodObject<{
-    entityId: z.ZodString;
-    attribute: z.ZodString;
-    value: z.ZodUnknown;
+export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
+    recordId: z.ZodString;
+    revisionId: z.ZodString;
+    supersedesId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     validFrom: z.ZodString;
     validTo: z.ZodNullable<z.ZodString>;
     txFrom: z.ZodString;
     txTo: z.ZodNullable<z.ZodString>;
     source: z.ZodOptional<z.ZodString>;
     evidenceId: z.ZodOptional<z.ZodString>;
+} & {
+    entityId: z.ZodString;
+    attribute: z.ZodString;
+    value: z.ZodEffects<z.ZodAny, any, any>;
 }, "strip", z.ZodTypeAny, {
-    entityId: string;
-    attribute: string;
+    recordId: string;
+    revisionId: string;
     validFrom: string;
     validTo: string | null;
     txFrom: string;
     txTo: string | null;
-    value?: unknown;
+    entityId: string;
+    attribute: string;
+    value?: any;
+    supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }, {
-    entityId: string;
-    attribute: string;
+    recordId: string;
+    revisionId: string;
     validFrom: string;
     validTo: string | null;
     txFrom: string;
     txTo: string | null;
-    value?: unknown;
+    entityId: string;
+    attribute: string;
+    value?: any;
+    supersedesId?: string | null | undefined;
+    source?: string | undefined;
+    evidenceId?: string | undefined;
+}>, {
+    recordId: string;
+    revisionId: string;
+    validFrom: string;
+    validTo: string | null;
+    txFrom: string;
+    txTo: string | null;
+    entityId: string;
+    attribute: string;
+    value?: any;
+    supersedesId?: string | null | undefined;
+    source?: string | undefined;
+    evidenceId?: string | undefined;
+}, {
+    recordId: string;
+    revisionId: string;
+    validFrom: string;
+    validTo: string | null;
+    txFrom: string;
+    txTo: string | null;
+    entityId: string;
+    attribute: string;
+    value?: any;
+    supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }>;
-export declare const BiTemporalAuditEdge: z.ZodObject<{
-    subjectId: z.ZodString;
-    predicate: z.ZodString;
-    objectId: z.ZodString;
+export declare const BiTemporalAuditEdge: z.ZodEffects<z.ZodObject<{
+    recordId: z.ZodString;
+    revisionId: z.ZodString;
+    supersedesId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     validFrom: z.ZodString;
     validTo: z.ZodNullable<z.ZodString>;
     txFrom: z.ZodString;
     txTo: z.ZodNullable<z.ZodString>;
     source: z.ZodOptional<z.ZodString>;
     evidenceId: z.ZodOptional<z.ZodString>;
+} & {
+    subjectId: z.ZodString;
+    predicate: z.ZodString;
+    objectId: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    recordId: string;
+    revisionId: string;
     validFrom: string;
     validTo: string | null;
     txFrom: string;
@@ -48,9 +90,12 @@ export declare const BiTemporalAuditEdge: z.ZodObject<{
     subjectId: string;
     predicate: string;
     objectId: string;
+    supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }, {
+    recordId: string;
+    revisionId: string;
     validFrom: string;
     validTo: string | null;
     txFrom: string;
@@ -58,15 +103,49 @@ export declare const BiTemporalAuditEdge: z.ZodObject<{
     subjectId: string;
     predicate: string;
     objectId: string;
+    supersedesId?: string | null | undefined;
+    source?: string | undefined;
+    evidenceId?: string | undefined;
+}>, {
+    recordId: string;
+    revisionId: string;
+    validFrom: string;
+    validTo: string | null;
+    txFrom: string;
+    txTo: string | null;
+    subjectId: string;
+    predicate: string;
+    objectId: string;
+    supersedesId?: string | null | undefined;
+    source?: string | undefined;
+    evidenceId?: string | undefined;
+}, {
+    recordId: string;
+    revisionId: string;
+    validFrom: string;
+    validTo: string | null;
+    txFrom: string;
+    txTo: string | null;
+    subjectId: string;
+    predicate: string;
+    objectId: string;
+    supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }>;
 export type BiTemporalAuditFactType = z.infer<typeof BiTemporalAuditFact>;
 export type BiTemporalAuditEdgeType = z.infer<typeof BiTemporalAuditEdge>;
 export type BiTemporalRecord = BiTemporalAuditFactType | BiTemporalAuditEdgeType;
+export type TimeInterval = {
+    from: string;
+    to: string | null;
+};
 export declare function intervalContains(from: string, to: string | null, at: string): boolean;
 export declare function intervalsOverlap(leftFrom: string, leftTo: string | null, rightFrom: string, rightTo: string | null): boolean;
+export declare function intervalIntersection(leftFrom: string, leftTo: string | null, rightFrom: string, rightTo: string | null): TimeInterval | null;
 export declare function isKnownAt(record: BiTemporalRecord, txAt: string): boolean;
 export declare function isValidAt(record: BiTemporalRecord, validAt: string): boolean;
 export declare function isVisibleAt(record: BiTemporalRecord, validAt: string, txAt: string): boolean;
 export declare function validIntervalsOverlap(left: Pick<BiTemporalRecord, 'validFrom' | 'validTo'>, right: Pick<BiTemporalRecord, 'validFrom' | 'validTo'>): boolean;
+export declare function validIntervalIntersection(left: Pick<BiTemporalRecord, 'validFrom' | 'validTo'>, right: Pick<BiTemporalRecord, 'validFrom' | 'validTo'>): TimeInterval | null;
+export declare function hasOpenTransactionConflict(left: BiTemporalRecord, right: BiTemporalRecord): boolean;

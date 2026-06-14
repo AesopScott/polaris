@@ -18,6 +18,9 @@ Facts describe attributes on entities, such as MFA state, device encryption, acc
 
 ```ts
 {
+  recordId: string;
+  revisionId: string;
+  supersedesId?: string | null;
   entityId: string;
   attribute: string;
   value: unknown;
@@ -36,6 +39,9 @@ Edges describe relationships between entities, such as access, ownership, member
 
 ```ts
 {
+  recordId: string;
+  revisionId: string;
+  supersedesId?: string | null;
   subjectId: string;
   predicate: string;
   objectId: string;
@@ -48,7 +54,7 @@ Edges describe relationships between entities, such as access, ownership, member
 }
 ```
 
-Intervals are half-open: `from <= t < to`. A `null` end means the interval remains open.
+Intervals are half-open: `from <= t < to`. A `null` end means the interval remains open. When an end timestamp is non-null, it must be later than its start timestamp. Zero-length and inverted intervals are invalid.
 
 ## Reconstruction Queries
 
@@ -70,10 +76,10 @@ To inspect historical belief, use the past `validAt` and the historical `txAt`.
 Never overwrite a fact or edge in place. Corrections close the prior transaction interval and insert a new version:
 
 1. Set the old record's `txTo` to the correction transaction timestamp.
-2. Insert the corrected record with the same valid-time interval and `txFrom` equal to that timestamp.
+2. Insert the corrected record with the same `recordId`, a new `revisionId`, `supersedesId` pointing at the prior revision, and `txFrom` equal to that timestamp.
 3. Leave `validFrom`/`validTo` unchanged unless the correction also changes when the fact was true.
 
-This preserves both the current best truth and the historical belief trail.
+At most one revision for a `recordId` may have `txTo: null`. This preserves both the current best truth and the historical belief trail.
 
 ## Compound Condition Windows
 
@@ -84,7 +90,7 @@ account.status = "suspended"
 AND account hasAccessTo system
 ```
 
-The breach window exists where the valid-time intervals overlap. Transaction-time then answers when Polaris knew enough to detect the window.
+The breach window is the valid-time interval intersection. Transaction-time then answers when Polaris knew enough to detect the window.
 
 ## Non-Goals
 
@@ -102,4 +108,5 @@ The enforceable schema lives in `src/contracts/security-audit.ts`:
 - `isKnownAt()`
 - `isVisibleAt()`
 - `validIntervalsOverlap()`
-
+- `validIntervalIntersection()`
+- `hasOpenTransactionConflict()`
