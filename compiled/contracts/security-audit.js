@@ -13,9 +13,14 @@ exports.hasOpenTransactionConflict = hasOpenTransactionConflict;
 const zod_1 = require("zod");
 const IsoTimestamp = zod_1.z.string().datetime({ offset: true });
 const OpenEndedIsoTimestamp = IsoTimestamp.nullable();
-const RequiredAuditValue = zod_1.z.any().refine(value => value !== undefined, {
-    message: 'Fact value is required',
-});
+const RequiredAuditValue = zod_1.z.lazy(() => zod_1.z.union([
+    zod_1.z.string(),
+    zod_1.z.number(),
+    zod_1.z.boolean(),
+    zod_1.z.null(),
+    zod_1.z.array(RequiredAuditValue),
+    zod_1.z.record(RequiredAuditValue),
+]));
 const BiTemporalFields = zod_1.z.object({
     recordId: zod_1.z.string().min(1),
     revisionId: zod_1.z.string().min(1),

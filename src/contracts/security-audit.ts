@@ -2,9 +2,16 @@ import { z } from 'zod';
 
 const IsoTimestamp = z.string().datetime({ offset: true });
 const OpenEndedIsoTimestamp = IsoTimestamp.nullable();
-const RequiredAuditValue = z.any().refine(value => value !== undefined, {
-  message: 'Fact value is required',
-});
+export type AuditValue = string | number | boolean | null | AuditValue[] | { [key: string]: AuditValue };
+
+const RequiredAuditValue: z.ZodType<AuditValue> = z.lazy(() => z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(RequiredAuditValue),
+  z.record(RequiredAuditValue),
+]));
 
 const BiTemporalFields = z.object({
   recordId: z.string().min(1),

@@ -1,4 +1,7 @@
 import { z } from 'zod';
+export type AuditValue = string | number | boolean | null | AuditValue[] | {
+    [key: string]: AuditValue;
+};
 export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
     recordId: z.ZodString;
     revisionId: z.ZodString;
@@ -12,8 +15,9 @@ export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
 } & {
     entityId: z.ZodString;
     attribute: z.ZodString;
-    value: z.ZodEffects<z.ZodAny, any, any>;
+    value: z.ZodType<AuditValue, z.ZodTypeDef, AuditValue>;
 }, "strip", z.ZodTypeAny, {
+    value: AuditValue;
     recordId: string;
     revisionId: string;
     validFrom: string;
@@ -22,11 +26,11 @@ export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
     txTo: string | null;
     entityId: string;
     attribute: string;
-    value?: any;
     supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }, {
+    value: AuditValue;
     recordId: string;
     revisionId: string;
     validFrom: string;
@@ -35,11 +39,11 @@ export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
     txTo: string | null;
     entityId: string;
     attribute: string;
-    value?: any;
     supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }>, {
+    value: AuditValue;
     recordId: string;
     revisionId: string;
     validFrom: string;
@@ -48,11 +52,11 @@ export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
     txTo: string | null;
     entityId: string;
     attribute: string;
-    value?: any;
     supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
 }, {
+    value: AuditValue;
     recordId: string;
     revisionId: string;
     validFrom: string;
@@ -61,7 +65,6 @@ export declare const BiTemporalAuditFact: z.ZodEffects<z.ZodObject<{
     txTo: string | null;
     entityId: string;
     attribute: string;
-    value?: any;
     supersedesId?: string | null | undefined;
     source?: string | undefined;
     evidenceId?: string | undefined;
