@@ -13107,7 +13107,7 @@ async function handleMessage(ws, raw) {
       const now = new Date().toISOString().split('T')[0];
       const content = `# ${projectName} â€” Status\n\n**Last Updated:** ${now}\n\n${note || ''}`;
       await fsp.writeFile(filePath, content, 'utf8');
-      sendTo(ws, { type: 'project-status-saved', projectName, filePath });
+      sendTo(ws, { type: 'project-status-saved', projectName, filePath, content });
     } catch (e) {
       sendTo(ws, { type: 'error', text: `Project status save failed: ${e.message}` });
     }

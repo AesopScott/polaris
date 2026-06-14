@@ -5825,7 +5825,10 @@
       case 'project-status-saved':
         pushDebugLog(`[project-status] ✓ saved: ${msg.projectName}`);
         closeStatusModal();
-        projectStatusCache[msg.projectName] = '';
+        if (msg.projectName && typeof msg.content === 'string') {
+          projectStatusCache[msg.projectName] = msg.content;
+          renderStatusPanel(projectStatusCache);
+        }
         wsSend({ type: 'get-project-statuses' });
         break;
 

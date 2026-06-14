@@ -5,12 +5,24 @@
       "title": "Status button not updating from text entered after session close",
       "category": "fix",
       "priority": 1,
-      "status": "on-hold",
+      "status": "production",
       "dependencies": [],
       "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
-      "plan": null,
-      "branch": null,
-      "pr_url": null
+      "plan": "Fix the Project Status save loop so a submitted status note updates the visible status card immediately. The server now returns the markdown content it just wrote in the project-status-saved response, and the renderer uses that content to update projectStatusCache and rerender the Status panel before the background get-project-statuses refresh completes.",
+      "branch": "codex/task-4-status-button",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/79",
+      "completed_at": "2026-06-13",
+      "updated_at": "2026-06-13",
+      "proofUnits": [
+        {
+          "title": "Optimistic status-note cache update",
+          "expectedBehavior": "Saving a project status note updates the visible Status panel immediately from the save acknowledgement, even before the follow-up refresh returns.",
+          "preferredProof": "static UI/server path check",
+          "exactCommand": "rg \"project-status-saved.*content|projectStatusCache\\[msg.projectName\\] = msg.content|renderStatusPanel\\(projectStatusCache\\)\" server.js resources/mockup.html",
+          "expectedInitialFailure": "Before this change, project-status-saved omitted the saved content and the renderer blanked projectStatusCache[msg.projectName] before refreshing.",
+          "expectedPassingEvidence": "Search finds the server echoing content and the renderer writing msg.content into projectStatusCache before rerendering."
+        }
+      ]
     },
     {
       "number": 30,
