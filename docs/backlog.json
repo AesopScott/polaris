@@ -110,10 +110,22 @@
       "category": "feature",
       "priority": 50,
       "impact": "minor",
-      "status": "backlog",
+      "status": "production",
       "created_at": "2026-05-25",
-      "completed_at": null,
-      "dependencies": []
+      "completed_at": "2026-06-13",
+      "dependencies": [],
+      "updated_at": "2026-06-13",
+      "plan": "Minor product-decision task. Investigated the existing Obsidian-backed session notes, project status notes, QueryMemory retrieval, and memory distillation flow. Decision: do not replace Obsidian with Notes now; keep Obsidian as the current markdown knowledge base and require any future Notes work to be scoped as either a provider abstraction, internal Quick Notes panel, or native RAG replacement path.",
+      "proofUnits": [
+        {
+          "title": "Record Notes vs Obsidian decision",
+          "expectedBehavior": "Task #48 has an explicit product decision explaining whether Notes replaces or augments Obsidian.",
+          "preferredProof": "documentation review",
+          "exactCommand": "rg \"Do not replace Obsidian|Quick Notes|native RAG|Task #48\" docs/notes-vs-obsidian-decision.md docs/backlog.json",
+          "expectedInitialFailure": "Before this change, Task #48 only contained a vague backlog note with no decision artifact.",
+          "expectedPassingEvidence": "Search finds the decision note and backlog plan stating Obsidian remains the current knowledge base while future Notes work requires a scoped provider, Quick Notes, or native RAG task."
+        }
+      ]
     },
     {
       "number": 49,
