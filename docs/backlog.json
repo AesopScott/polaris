@@ -494,13 +494,55 @@
       "category": "feature",
       "priority": 70,
       "impact": "major",
-      "status": "backlog",
+      "status": "build-finished",
       "created_at": "2026-05-25",
       "completed_at": null,
       "dependencies": [
         57,
         58
-      ]
+      ],
+      "branch": "codex/task-59-bitemporal-audit-schema",
+      "plan": "Establish a bi-temporal security audit schema contract before future security tooling writes data. Add src/contracts/security-audit.ts with Zod schemas for facts and graph edges carrying stable record/revision identity, required fact values, valid-time and transaction-time intervals, and schema refinements that reject zero-length or inverted intervals. Add pure helper functions for half-open intervals, historical belief reconstruction, current belief about past facts, valid-time overlap detection, actual overlap-window extraction, and open transaction-version conflict detection. Add contract tests that prove were-we-secure-at-T and did-Polaris-know-at-T are independent questions. Document the design in docs/security-bitemporal-audit-schema.md and register the planned Firestore collections and Zod contract module so future tooling cannot collapse this into a flat append-only log.",
+      "proofUnits": [
+        {
+          "number": 1,
+          "title": "Bi-temporal fact and edge schemas require two timelines",
+          "expectedBehavior": "Security audit facts and graph edges require recordId/revisionId, validFrom/validTo, txFrom/txTo, valid interval ordering, and facts require a value.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:contracts",
+          "expectedInitialFailure": "Before this change, no security-audit contract module existed and no schema required both timelines.",
+          "expectedPassingEvidence": "Vitest passes BiTemporalAuditFact and BiTemporalAuditEdge tests for required fields, required fact value, accepted valid shapes, and rejection of zero-length/inverted intervals."
+        },
+        {
+          "number": 2,
+          "title": "Past truth and past knowledge reconstruct independently",
+          "expectedBehavior": "Given validAt and txAt, helpers can distinguish a fact that was true before Polaris knew it from a fact visible to Polaris at a later transaction time.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:contracts",
+          "expectedInitialFailure": "Before this change, there were no interval helpers for valid-time versus transaction-time reconstruction.",
+          "expectedPassingEvidence": "Vitest passes isValidAt(), isKnownAt(), isVisibleAt(), and correction-history tests showing historical belief differs from current corrected belief."
+        },
+        {
+          "number": 3,
+          "title": "Compound condition windows use valid-time overlap",
+          "expectedBehavior": "Security graph tooling can extract overlapping valid-time windows such as suspended account plus live access edge before applying transaction-time visibility.",
+          "proofType": "unit-test",
+          "exactCommand": "npm run test:contracts",
+          "expectedInitialFailure": "Before this change, there was no shared overlap helper or edge schema for security graph windows.",
+          "expectedPassingEvidence": "Vitest passes validIntervalsOverlap(), intervalIntersection(), validIntervalIntersection(), and intervalsOverlap() tests for breach-window extraction plus non-overlap cases."
+        },
+        {
+          "number": 4,
+          "title": "Design and registries prevent flat-log implementation drift",
+          "expectedBehavior": "Docs and registries state that future security tooling must not use a flat log, must preserve stable record/revision identity, and must preserve both valid-time and transaction-time fields.",
+          "proofType": "docs-audit",
+          "exactCommand": "rg \"Do not.*flat|valid_time|transaction_time|recordId|revisionId|polaris_security_audit_facts|polaris_security_audit_edges|security-audit\" docs src/contracts test/contracts",
+          "expectedInitialFailure": "Before this change, Task #59 only existed as a backlog note and the registries had no future security audit collection or contract entry.",
+          "expectedPassingEvidence": "Search finds the design doc, planned collection registry entries, zod-contract registry entry, source contract, and tests including record/revision identity."
+        }
+      ],
+      "updated_at": "2026-06-14T00:17:11.064Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/77"
     },
     {
       "number": 60,

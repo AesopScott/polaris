@@ -118,12 +118,38 @@ Zod schemas for MCP (Model Context Protocol) server configuration and tool envel
 
 ---
 
-## `src/contracts/index.ts`
+## `src/contracts/security-audit.ts`
 
-Barrel export re-exporting all four contract modules. Single import point for consumers that need multiple schemas.
+Zod schemas and pure helpers for future bi-temporal security audit facts and graph edges. Added by Task #59 as a design constraint before any writer or UI exists.
+
+**Key exports:**
+- `BiTemporalAuditFact` — entity attribute record with `validFrom`/`validTo` plus `txFrom`/`txTo`
+- `BiTemporalAuditEdge` — graph relationship record with the same two timelines
+- `intervalContains()`, `intervalsOverlap()` — half-open interval helpers
+- `intervalIntersection()` — returns the actual overlapping interval instead of only a boolean
+- `isValidAt()`, `isKnownAt()`, `isVisibleAt()` — reconstruction helpers for real-world time vs Polaris knowledge time
+- `validIntervalsOverlap()`, `validIntervalIntersection()` — compound condition window helpers
+- `hasOpenTransactionConflict()` — detects multiple open transaction versions for the same `recordId`
+- `BiTemporalAuditFactType`, `BiTemporalAuditEdgeType`, `BiTemporalRecord` — inferred TypeScript types
 
 **Producers**
-- `src/contracts/index.ts:1–4` — `export * from './backlog'`, `'./mcp'`, `'./tools'`, `'./ws-messages'`
+- `src/contracts/security-audit.ts` — schema definitions and pure interval/reconstruction helpers
+- `src/contracts/index.ts` — barrel re-export
+
+**Consumers**
+- `test/contracts/security-audit.test.ts` — Vitest contract tests; verifies required two-timeline fields, half-open interval behavior, historical belief reconstruction, corrections, and valid-time overlap detection
+- `docs/security-bitemporal-audit-schema.md` — human-readable design contract for future security tooling
+
+**Status:** planned design contract — test consumer exists; runtime writer/query consumers deferred to future security tooling
+
+---
+
+## `src/contracts/index.ts`
+
+Barrel export re-exporting all five contract modules. Single import point for consumers that need multiple schemas.
+
+**Producers**
+- `src/contracts/index.ts` — re-exports `backlog`, `mcp`, `security-audit`, `tools`, and `ws-messages`
 
 **Consumers**
 - No current imports of the barrel form. Test files import from individual module paths (e.g. `../../src/contracts/ws-messages`).
@@ -140,6 +166,7 @@ Barrel export re-exporting all four contract modules. Single import point for co
 | `src/contracts/backlog.ts` | `test/contracts/backlog.test.ts` ✓ | being wired (task #38) | ⚠ orphan runtime |
 | `src/contracts/tools.ts` | `test/contracts/tools.test.ts` ✓ | none (future task) | ⚠ orphan runtime |
 | `src/contracts/mcp.ts` | `test/contracts/mcp.test.ts` ✓ | none (future task) | ⚠ orphan runtime |
+| `src/contracts/security-audit.ts` | `test/contracts/security-audit.test.ts` ✓ | none (future security tooling) | planned design contract |
 | `src/contracts/index.ts` | none | none | ⚠ orphan producer |
 
 **Task #38 scope (runtime wiring):** `backlog.ts` + `ws-messages.ts` only. `tools.ts` and `mcp.ts` runtime consumers are deferred to a future task.
@@ -152,21 +179,21 @@ Barrel export re-exporting all four contract modules. Single import point for co
 
 ## Audit Trail — Proof of Registry Verification
 
-**Last audit:** 2026-05-24T00:00:00Z (by /cross-boundary-audit for task #40)
+**Last audit:** 2026-06-13T00:00:00Z (by Task #59 design constraint)
 
 **Boundaries checked:** `src/contracts/*.ts` module exports → all consumers in `test/`, `src/runtime/`, `server.js`
 
 **Evidence recorded:**
-- 4 schema modules with test consumers ✓ (ws-messages, backlog, tools, mcp)
-- 4 entries with no runtime consumer ⚠ (intentional — pending task #38)
+- 5 schema modules with test consumers ✓ (ws-messages, backlog, tools, mcp, security-audit)
+- 5 entries with no/full pending runtime consumer ⚠ (intentional — task #38 or future security tooling)
 - 1 barrel export with no consumer ⚠ (intentional — pending task #38)
 - 2 shape drift risks flagged (AnyClientMessage duplication; inline tool schemas)
-- New identifiers introduced by task #40: none (test files are consumers, no new schema exports)
+- New identifiers introduced by task #59: `security-audit.ts`, `BiTemporalAuditFact`, `BiTemporalAuditEdge`, interval/reconstruction helpers
 - New identifiers introduced by task #37 (producers): all 4 modules and ~80 named exports
 - Registries match current code diff: yes
 
 **Gaps identified:**
-- All `⚠` entries are intentional, documented with task #38 as the resolution path
+- All `⚠` entries are intentional, documented with task #38 or future security tooling as the resolution path
 - `src/contracts/index.ts` barrel has no consumers — acceptable, task #38 will use it
 - `AnyClientMessage` maintained in two places — flag for task #38 consolidation
 - Inline tool JSON-schemas in server.js duplicate Zod schemas — flag for task #38
@@ -182,7 +209,7 @@ Barrel export re-exporting all four contract modules. Single import point for co
 **Boundaries checked:** `src/contracts/*.ts` module exports → all consumers in `test/`, `src/runtime/`, `server.js`
 
 **Evidence recorded:**
-- 4 schema modules confirmed — ws-messages, backlog, tools, mcp
+- 5 schema modules confirmed — ws-messages, backlog, tools, mcp, security-audit
 - `ImpactEnum` + `ImpactType` pre-registered (task #38 Phase A will add to `src/contracts/backlog.ts`)
 - tools.ts and mcp.ts runtime consumer attribution corrected: NOT task #38 — deferred to future task
 - ws-messages.ts and backlog.ts runtime consumer attribution confirmed in scope for task #38
