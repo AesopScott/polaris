@@ -6783,14 +6783,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   let systemPrompt = isDeepSeekQueueMode
     ? buildDeepSeekQueueSystemPrompt(config, workDir)
     : buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
-  const shouldInjectAgentMemory = !isDeepSeekQueueMode
-    && !continuationContext
-    && existingMessageCount === 0
-    && !!session.projectName
-    && !session.routineTag
-    && !session.evalRunner
-    && session.name !== 'Health Monitor Session';
-  if (shouldInjectAgentMemory) {
+  if (memInj.shouldInjectAgentMemory({ isDeepSeekQueueMode, continuationContext, existingMessageCount, session })) {
     try {
       const memoryQuery = typeof effectiveMessage === 'string' ? effectiveMessage : userMessage;
       const trace = await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, memoryQuery);
@@ -7132,12 +7125,12 @@ function appendMemoryInjectionLog(entry = {}) {
     sessionName: entry.sessionName || null,
     sessionType: entry.sessionType || null,
     project: entry.project || null,
-    query: entry.query || '',
+    query: memInj.truncateInjectionLogText(entry.query || '', memInj.INJECTION_LOG_QUERY_CAP),
     queryType: entry.queryType || 'low-signal',
-    effectiveQuery: entry.effectiveQuery || '',
+    effectiveQuery: memInj.truncateInjectionLogText(entry.effectiveQuery || '', memInj.INJECTION_LOG_QUERY_CAP),
     memories: Array.isArray(entry.memories)
       ? entry.memories.slice(0, 10).map(m => ({
-          content: String(m.content || ''),
+          content: memInj.truncateInjectionLogText(m.content || '', memInj.INJECTION_LOG_MEMORY_CAP),
           type: m.type || 'fact',
           strength: typeof m.strength === 'number' ? m.strength : null,
           accessCount: Number.isFinite(Number(m.accessCount)) ? Number(m.accessCount) : 0,
