@@ -865,7 +865,7 @@ async function getMeetupReservationSummary() {
     const cfg = readConfig();
     const sourceUrl = process.env.POLARIS_MEETUP_RESERVATIONS_URL
       || cfg.meetupReservationsUrl
-      || 'https://mojoaistudio.com/api/meetup-admin?action=reservation-count';
+      || 'https://mojoaistudio.com/api/meetup-rsvp-count';
     const headers = { 'Accept': 'application/json' };
     const mojoEnvPath = path.join('C:', 'Users', 'scott', 'Code', 'Mojo', '.env');
     const fileExists = fs.existsSync(mojoEnvPath);
