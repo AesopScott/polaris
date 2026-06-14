@@ -11745,6 +11745,7 @@ async function handleMessage(ws, raw) {
     const newName = `Transfer: ${src.name || 'session'}`;
     const displayPrompt = `[Transfer from ${src.name || src.id}] Continuing prior session â€” full diag log handed to new session as context.`;
     const cfg = readConfig();
+    const gptTransferModel = GPT_TIER_MODELS[transferTier] || GPT_TIER_MODELS.balanced;
     const transferModel = isChatLike
       ? ((cfg.chatBackend || 'max').toLowerCase() === 'max'
         ? (transferTier === 'power'
@@ -11756,9 +11757,9 @@ async function handleMessage(ws, raw) {
       : isDeepSeek
         ? (cfg.deepSeekApiModel || 'deepseek-v4-pro')
       : isCodex
-        ? (cfg.codexModel || src.model || null)
+        ? 'openai/codex-1 (Codex CLI)'
         : isGpt
-          ? (src.model || null)
+          ? `openai/${gptTransferModel.display} (GPT)`
           : transferTier === 'power'
             ? (cfg.openRouterOpusModel || cfg.openRouterFloorModel || 'google/gemini-2.5-flash')
             : transferTier === 'balanced'
