@@ -541,7 +541,8 @@
           "expectedPassingEvidence": "Search finds the design doc, planned collection registry entries, zod-contract registry entry, source contract, and tests."
         }
       ],
-      "updated_at": "2026-06-14T00:09:39.948Z"
+      "updated_at": "2026-06-14T00:12:08.353Z",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/77"
     },
     {
       "number": 60,
