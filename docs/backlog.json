@@ -9,8 +9,8 @@
       "dependencies": [],
       "description": "When a session is closed, any status text entered in the status input field is not being reflected in the UI. The status button should update to show the new text immediately when it's submitted, regardless of whether the session is still active. Investigation needed to determine if this is a client-side state sync issue, a WebSocket connection drop, or a server-side persistence problem.",
       "plan": "Fix the Project Status save loop so a submitted status note updates the visible status card immediately. The server now returns the markdown content it just wrote in the project-status-saved response, and the renderer uses that content to update projectStatusCache and rerender the Status panel before the background get-project-statuses refresh completes.",
-      "branch": null,
-      "pr_url": null,
+      "branch": "codex/task-4-status-button",
+      "pr_url": "https://github.com/AesopScott/polaris/pull/79",
       "completed_at": "2026-06-13",
       "updated_at": "2026-06-13",
       "proofUnits": [
