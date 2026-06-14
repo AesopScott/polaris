@@ -7662,9 +7662,11 @@ Do not wait for Scott unless the queue explicitly requires a human decision. Do 
       }
       case 'transfer': {
         if (!s) break;
-        showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will be asked to continue the work using the same model and project.`, () => {
-          wsSend({ type: 'transfer-session', sessionId, targetProject: s.projectName });
-          pushDebugLog(`[card] Transfer requested: ${s.name || sessionId}`);
+        showInlineConfirm(cardEl, `Transfer "${s.name || 'session'}" to a new session? The diag log will be copied and the new session will continue using your current mode and model tier.`, () => {
+          const mode = getLaunchMode();
+          const tier = document.querySelector('.palette:not(.hidden) .model-select')?.value || 'balanced';
+          wsSend({ type: 'transfer-session', sessionId, targetProject: s.projectName, mode, tier });
+          pushDebugLog(`[card] Transfer requested: ${s.name || sessionId} mode=${mode} tier=${tier}`);
         }, 'Yes, Transfer');
         break;
       }

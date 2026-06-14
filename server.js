@@ -11733,24 +11733,50 @@ async function handleMessage(ws, raw) {
       'restate the prior session\'s work; reference it only as needed.\n\n' +
       `--- PRIOR SESSION DIAG (sessionId=${src.id}) ---\n${diagContent}\n--- END DIAG ---`;
 
-    // Pick id prefix and runner to mirror source session type.
-    const isCodex = !!src.isCodex;
-    const isGpt = !!src.isGpt;
-    const isChatLike = !isCodex && !isGpt && !!src.isChat;
+    // Prefer the user's current prompt-bar mode/tier; mirror source type when absent.
+    const transferMode = typeof msg.mode === 'string' ? msg.mode.toLowerCase() : '';
+    const transferTier = typeof msg.tier === 'string' && msg.tier ? msg.tier.toLowerCase() : (src.tier || 'balanced');
+    const isCodex = transferMode === 'codex' || (!transferMode && !!src.isCodex);
+    const isGpt = transferMode === 'gpt' || (!transferMode && !!src.isGpt);
+    const isDeepSeek = transferMode === 'deep' || (!transferMode && src.directProvider === 'deepseek');
+    const isChatLike = transferMode === 'chat' || (!transferMode && !isCodex && !isGpt && !!src.isChat);
     const idPrefix = isCodex ? 'codex' : isGpt ? 'gpt' : isChatLike ? 'chat' : 's';
     const newId = `${idPrefix}_${Date.now()}`;
     const newName = `Transfer: ${src.name || 'session'}`;
     const displayPrompt = `[Transfer from ${src.name || src.id}] Continuing prior session â€” full diag log handed to new session as context.`;
+    const cfg = readConfig();
+    const transferModel = isChatLike
+      ? ((cfg.chatBackend || 'max').toLowerCase() === 'max'
+        ? (transferTier === 'power'
+          ? 'anthropic/claude-opus-4-7 (Max plan)'
+          : transferTier === 'floor'
+            ? 'anthropic/claude-haiku-4-5-20251001 (Max plan)'
+            : 'anthropic/claude-sonnet-4-6 (Max plan)')
+        : (cfg.chatModel || 'deepseek/deepseek-chat'))
+      : isDeepSeek
+        ? (cfg.deepSeekApiModel || 'deepseek-v4-pro')
+      : isCodex
+        ? (cfg.codexModel || src.model || null)
+        : isGpt
+          ? (src.model || null)
+          : transferTier === 'power'
+            ? (cfg.openRouterOpusModel || cfg.openRouterFloorModel || 'google/gemini-2.5-flash')
+            : transferTier === 'balanced'
+              ? (cfg.openRouterSonnetModel || cfg.openRouterFloorModel || 'google/gemini-2.5-flash')
+              : (cfg.openRouterFloorModel || 'google/gemini-2.5-flash');
 
     const newSession = {
       id: newId,
       name: newName,
       workDir: src.workDir || null,
       projectName: src.projectName || null,
-      model: src.model || null,
-      tier: src.tier || null,
-      cliModel: src.cliModel || resolveCliModel(src.tier),
-      isChat: !!src.isChat,
+      model: transferModel,
+      tier: transferTier,
+      directProvider: isDeepSeek ? 'deepseek' : null,
+      isDeepSeek,
+      deepQueueMode: isDeepSeek,
+      cliModel: isChatLike ? resolveCliModel(transferTier) : (src.cliModel || resolveCliModel(transferTier)),
+      isChat: isChatLike,
       isGpt,
       isCodex,
       status: 'running',
@@ -11780,6 +11806,11 @@ async function handleMessage(ws, raw) {
     if (isChatLike || isGpt || isCodex) createdMsg.isChat = true;
     if (isGpt) createdMsg.isGpt = true;
     if (isCodex) createdMsg.isCodex = true;
+    if (isDeepSeek) {
+      createdMsg.isDeepSeek = true;
+      createdMsg.directProvider = 'deepseek';
+      createdMsg.deepQueueMode = true;
+    }
     broadcast(createdMsg);
 
     // Display only the short header in the terminal â€” full diag is in lastPrompt.
