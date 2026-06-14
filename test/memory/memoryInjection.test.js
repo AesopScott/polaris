@@ -5,6 +5,10 @@ import {
   classifyQuery,
   formatMemoryBlock,
   buildMemoryInjectionBlock,
+  truncateInjectionLogText,
+  shouldInjectAgentMemory,
+  INJECTION_LOG_QUERY_CAP,
+  INJECTION_LOG_MEMORY_CAP,
 } from '../../lib/memoryInjection.js';
 
 // ─── PU1: classifyQuery routes terse vs rich queries ─────────────────────────
@@ -194,5 +198,39 @@ describe('buildMemoryInjectionBlock', () => {
     fakeMemory.searchMemories.mockImplementation(() => new Promise(() => {}));
     const result = await buildMemoryInjectionBlock(fakeMemory, 'Polaris', 'test query here', { searchTimeoutMs: 10 });
     expect(result).toBe('');
+  });
+});
+
+describe('agent memory injection policy', () => {
+  const normalSession = { projectName: 'Polaris', name: 'Builder', routineTag: null, evalRunner: false };
+
+  it('allows normal project agents on the first direct turn', () => {
+    expect(shouldInjectAgentMemory({
+      isDeepSeekQueueMode: false,
+      continuationContext: null,
+      existingMessageCount: 0,
+      session: normalSession,
+    })).toBe(true);
+  });
+
+  it('skips later turns and sessions without a project', () => {
+    expect(shouldInjectAgentMemory({ existingMessageCount: 2, session: normalSession })).toBe(false);
+    expect(shouldInjectAgentMemory({ existingMessageCount: 0, session: { ...normalSession, projectName: null } })).toBe(false);
+  });
+
+  it('skips DeepSeek, continuations, routines, evals, and Health Monitor', () => {
+    expect(shouldInjectAgentMemory({ isDeepSeekQueueMode: true, session: normalSession })).toBe(false);
+    expect(shouldInjectAgentMemory({ continuationContext: 'prior diag', session: normalSession })).toBe(false);
+    expect(shouldInjectAgentMemory({ session: { ...normalSession, routineTag: 'Routine' } })).toBe(false);
+    expect(shouldInjectAgentMemory({ session: { ...normalSession, evalRunner: true } })).toBe(false);
+    expect(shouldInjectAgentMemory({ session: { ...normalSession, name: 'Health Monitor Session' } })).toBe(false);
+  });
+
+  it('caps injection log text before writing runtime history', () => {
+    const query = 'q'.repeat(INJECTION_LOG_QUERY_CAP + 50);
+    const memory = 'm'.repeat(INJECTION_LOG_MEMORY_CAP + 50);
+    expect(truncateInjectionLogText(query, INJECTION_LOG_QUERY_CAP)).toHaveLength(INJECTION_LOG_QUERY_CAP);
+    expect(truncateInjectionLogText(memory, INJECTION_LOG_MEMORY_CAP)).toHaveLength(INJECTION_LOG_MEMORY_CAP);
+    expect(truncateInjectionLogText(query, INJECTION_LOG_QUERY_CAP)).toMatch(/\.\.\.$/);
   });
 });

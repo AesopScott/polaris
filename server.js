@@ -6676,6 +6676,7 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   // from the current task packet, not from an additive transcript.
   if (isDeepSeekQueueMode) session.messages = [];
   else if (!session.messages) session.messages = loadSessionMessages(sessionId);
+  const existingMessageCount = session.messages.length;
 
   // Extract text from any DOCX/PDF docs and prepend to the user message.
   const agentDocs  = session.pendingDocs  || [];
@@ -6779,9 +6780,30 @@ async function runDirectAgent(sessionId, userMessage, workDir, broadcastUserMess
   session.startAt = session.startAt || Date.now();
   if (!session.resolvedModel) session.resolvedModel = model;
 
-  const systemPrompt = isDeepSeekQueueMode
+  let systemPrompt = isDeepSeekQueueMode
     ? buildDeepSeekQueueSystemPrompt(config, workDir)
     : buildDirectSystemPrompt(config, workDir, session.projectMemory, session.isChat === false, false, session.continuationContext || null);
+  if (memInj.shouldInjectAgentMemory({ isDeepSeekQueueMode, continuationContext, existingMessageCount, session })) {
+    try {
+      const memoryQuery = typeof effectiveMessage === 'string' ? effectiveMessage : userMessage;
+      const trace = await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, memoryQuery);
+      if (trace.block) {
+        systemPrompt += '\n\n' + trace.block.trim();
+        appendMemoryInjectionLog({
+          sessionId,
+          sessionName: session.name,
+          sessionType: 'agent',
+          project: session.projectName,
+          query: memoryQuery,
+          queryType: trace.queryType,
+          effectiveQuery: trace.effectiveQuery,
+          memories: trace.memories,
+        });
+      }
+    } catch (e) {
+      console.warn('[memory-injection] direct agent injection failed:', e.message);
+    }
+  }
   const startMs = Date.now();
   if (!session.claudeSessionId) broadcast({ type: 'line', sessionId, text: `[direct:${apiProvider}${isDeepSeekQueueMode ? ':q' : ''}] model=${model}`, role: 'system' });
   const _memKeys = Object.keys(session.projectMemory || {});
@@ -7095,6 +7117,37 @@ function appendTokenLog(sessionId, model, usage) {
   try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify({ ts: Date.now(), sessionId, model: model || 'unknown', input: inp, output: out }) + '\n', 'utf8'); } catch {}
 }
 
+function appendMemoryInjectionLog(entry = {}) {
+  try { fs.mkdirSync(POLARIS_DIR, { recursive: true }); } catch {}
+  const safeEntry = {
+    ts: Date.now(),
+    sessionId: entry.sessionId || null,
+    sessionName: entry.sessionName || null,
+    sessionType: entry.sessionType || null,
+    project: entry.project || null,
+    query: memInj.truncateInjectionLogText(entry.query || '', memInj.INJECTION_LOG_QUERY_CAP),
+    queryType: entry.queryType || 'low-signal',
+    effectiveQuery: memInj.truncateInjectionLogText(entry.effectiveQuery || '', memInj.INJECTION_LOG_QUERY_CAP),
+    memories: Array.isArray(entry.memories)
+      ? entry.memories.slice(0, 10).map(m => ({
+          content: memInj.truncateInjectionLogText(m.content || '', memInj.INJECTION_LOG_MEMORY_CAP),
+          type: m.type || 'fact',
+          strength: typeof m.strength === 'number' ? m.strength : null,
+          accessCount: Number.isFinite(Number(m.accessCount)) ? Number(m.accessCount) : 0,
+        }))
+      : [],
+  };
+  try {
+    fs.appendFileSync(INJECTION_LOG_PATH, JSON.stringify(safeEntry) + '\n', 'utf8');
+    const lines = fs.readFileSync(INJECTION_LOG_PATH, 'utf8').split('\n').filter(Boolean);
+    if (lines.length > INJECTION_LOG_MAX_LINES) {
+      fs.writeFileSync(INJECTION_LOG_PATH, lines.slice(-INJECTION_LOG_MAX_LINES).join('\n') + '\n', 'utf8');
+    }
+  } catch (e) {
+    console.warn('[memory-injection] append log failed:', e.message);
+  }
+}
+
 // Routines fire via api.deepseek.com â€” bypasses Claude CLI entirely (no 30K-token
 // project-context cold load). DeepSeek pricing is ~$0.27/MTok in vs Anthropic's $3.
 function spawnDeepSeekRoutine(sessionId, prompt, config) {
@@ -7401,7 +7454,8 @@ async function spawnMaxChat(sessionId, prompt, config) {
     // Inject ranked project memories at turn 1, capped at 5-8k tokens to balance context vs cost.
     if (session.projectName) {
       try {
-        const { block: memBlock } = await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
+        const trace = await memInj.buildMemoryInjectionBlockWithTrace(memory, session.projectName, prompt);
+        const memBlock = trace.block;
         if (memBlock) {
           const memStr = memBlock.trim();
           const memTokens = Buffer.byteLength(memStr, 'utf8') / 4; // rough estimate
@@ -7411,6 +7465,16 @@ async function spawnMaxChat(sessionId, prompt, config) {
             const trimmed = memStr.slice(0, 8000 * 4).trim();
             hiddenSystemPrompt += '\n\n' + trimmed + '\n[... memory truncated at 8k tokens ...]';
           }
+          appendMemoryInjectionLog({
+            sessionId,
+            sessionName: session.name,
+            sessionType: 'chat',
+            project: session.projectName,
+            query: prompt,
+            queryType: trace.queryType,
+            effectiveQuery: trace.effectiveQuery,
+            memories: trace.memories,
+          });
         }
       } catch (e) {
         dlog('MEMORY_INJECTION_ERR', e.message);
