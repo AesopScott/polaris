@@ -399,7 +399,7 @@
       "title": "Agent-session memory injection (gated on agentic flows live)",
       "category": "feature",
       "priority": 5,
-      "status": "build-finished",
+      "status": "production",
       "dependencies": [],
       "impact": "standard",
       "branch": "codex/task-57-agent-memory-injection",
@@ -444,7 +444,8 @@
           "expectedPassingEvidence": "Vitest memory tests pass, including memoryInjection.test.js coverage for classification, formatting, reinforcement, missing project, and timeout fallback."
         }
       ],
-      "updated_at": "2026-06-14T00:03:21.797Z"
+      "updated_at": "2026-06-14T00:05:15.555Z",
+      "completed_at": "2026-06-13"
     },
     {
       "number": 58,
